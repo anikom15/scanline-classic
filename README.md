@@ -1,5 +1,8 @@
 # Scanline Classic
 
+A general purpose RetroArch shader with an emphasis on realism while
+maintaining a high degree of flexibility and aesthetic quality. 
+
 Version 1.0
 README Edition 1
 
@@ -10,9 +13,6 @@ or any later version published by the Free Software Foundation;
 with no Invariant Sections, no Front-Cover Texts, and no Back-Cover Texts.
 A copy of the license is included in the section entitled "GNU
 Free Documentation License".
-
-A general purpose RetroArch shader with an emphasis on realism while
-maintaining a high degree of flexibility and aesthetic quality.
 
 ## Installation
 
@@ -203,7 +203,7 @@ Rec. BT.709/sRGB (HD) content:
 * G: 0.7152
 * B: 0.0722
 
-#### CHROMA_*n*_X, CHROMA_*n*_Y, CHROMA_*n*_WEIGHT
+#### CHROMA\_*n*\_X, CHROMA\_*n*\_Y, CHROMA\_*n*\_WEIGHT
 
 X and Y are chromaticity coordinates for the *n*th primary.  WEIGHT is
 the relative intensity of the primary, and will affect the white point.
