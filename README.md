@@ -4,6 +4,7 @@ A general purpose RetroArch shader with an emphasis on realism while
 maintaining a high degree of flexibility and aesthetic quality. 
 
 Version 1.0
+
 README Edition 1
 
 Copyright (C) 2023 W. M. Martinez
