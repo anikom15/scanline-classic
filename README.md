@@ -126,10 +126,10 @@ it's probably best to set them reasonable values based on a video
 standard like NTSC or PAL.
 
 Currently these parameters simply compensate for the geometry
-functions.  Higher values results in less distortion, because the
-extremes of the picture area (where the distortion is most), is getting
-replaced by black.  Note that these parameters do not scale the picture
-in any way.  They simply affect the math applied in the geometry
+functions.  Higher values result in less distortion, because the
+extremes of the picture area (where the distortion is highest), is
+getting replaced by black.  Note that these parameters do not scale the
+picture in any way.  They simply affect the math applied in the geometry
 section of the shader.  This allows you to experiment with values
 without risk of affecting the aspect ratio.
 
@@ -138,13 +138,13 @@ without risk of affecting the aspect ratio.
 Famicom and Super Famicom:
 * H_FRONT: 20.0
 * H_BACK: 40.0
-* V_FRONT: 5
+* V_FRONT: 5.0
 * V_BACK: 14.0
 
 VGA:
-* H_FRONT: 16
-* H_BACK: 48
-* V_FRONT: 10
+* H_FRONT: 16.0
+* H_BACK: 48.0
+* V_FRONT: 10.0
 * V_BACK: 33.0
 
 ### Color Correction Options
@@ -305,7 +305,7 @@ Higher values are sharper whereas lower values are blurrier.
 
 Using 0.5 will give a very aesthetic, Trinitron-like look.  Lower
 values will look more like a shadow mask or slot mask.  You can use
-1.0 for monochrome CRTs, as those have sharp picure quality.
+1.0 for monochrome CRTs, as those have sharp picture quality.
 
 #### HI_RES_THRES
 
@@ -393,7 +393,7 @@ May be left at 0.0, or may be arbitrarily set for a desired effect.
 
 This is similar to the signal porch settings but scales the piture so
 that it actually appears smaller.  By displaying the picture in a
-smaller box, the effects of geometric distortion is lessened.  Arcade
+smaller box, the effects of geometric distortion are lessened.  Arcade
 monitors and televisions didn't do this, but broadcast monitors and
 computer monitors provided settings to allow the user to display an
 underscanned image.
