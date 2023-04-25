@@ -1,3 +1,5 @@
+#version 450
+
 /* Filename: scanline-advanced.slang
 
    Copyright (C) 2010 Team XBMC
@@ -16,8 +18,6 @@
 
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <https://www.gnu.org/licenses/>. */ 
-
-#version 450
 
 #include "common.h"
 #include "color.h"
