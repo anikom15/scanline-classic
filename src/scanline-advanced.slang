@@ -23,6 +23,7 @@
 #include "color.h"
 #include "filter.h"
 #include "geometry.h"
+#include "subpixel_masks.h"
 
 layout(std140, set = 0, binding = 0) uniform UBO {
 	mat4 MVP;
@@ -30,6 +31,7 @@ layout(std140, set = 0, binding = 0) uniform UBO {
 	vec4 OriginalSize;
 	vec4 SourceSize;
 	uint FrameCount;
+	float MASK_TYPE;
 } global;
 
 layout(push_constant) uniform Push
@@ -98,6 +100,7 @@ layout(push_constant) uniform Push
 #pragma parameter X_COMP "Horizontal distortion compensation" 0.0 -1.0 1.0 0.01
 #pragma parameter Y_COMP "Vertical distortion compensation" 0.0 -1.0 1.0 0.01
 #pragma parameter UNDERSCAN "Underscan (%)" 5.0 0.0 100.0 1.0
+#pragma parameter MASK_TYPE "Subpixel layout" 1.0 1.0 25.0 1.0
 #pragma parameter ZOOM "Viewport zoom" 1.0 0.0 10.0 0.01
 #pragma parameter COLOR_SPACE "Output color space" 1.0 1.0 4.0 1.0
 
@@ -131,6 +134,7 @@ layout(push_constant) uniform Push
 #define X_COMP config.X_COMP
 #define Y_COMP config.Y_COMP
 #define UNDERSCAN config.UNDERSCAN
+#define MASK_TYPE global.MASK_TYPE
 #define ZOOM config.ZOOM
 #define COLOR_SPACE config.COLOR_SPACE
 
@@ -187,6 +191,11 @@ vec3 color(vec2 uv, sampler2D tex)
 	}
 	return col;
 }
+
+vec3 mask(vec2 uv)
+{
+	return colorrgb(mask_weights(uv, 1.0, int(MASK_TYPE - 1.0)));
+} 
 
 vec3 pixel(float x, float y, sampler2D tex)
 {
@@ -310,6 +319,9 @@ void main()
 	       render(xystart.y + stepxy.y, x, xtaps, Source) * ytaps.g +
 	       render(xystart.y + stepxy.y * 2.0, x, xtaps, Source) * ytaps.b +
 	       render(xystart.y + stepxy.y * 3.0, x, xtaps, Source) * ytaps.a);
+
+	if (COLOR_MODE > 2.0)
+		col *= mask(vTexCoord.xy * global.OutputSize.xy);
 
 	col = clamp(col, 0.0, 1.0);
 	col = crt_gamma(col);
