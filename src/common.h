@@ -35,6 +35,16 @@ float cb(const float x)
 	return x * x * x;
 }
 
+float crt_linear(const float x)
+{
+	return pow(x, 2.4);
+}
+
+float crt_gamma(const float x)
+{
+	return pox(x, 1.0 / 2.4);
+}
+
 float sdr_linear(const float x)
 {
 	return x < 0.081 ? x / 4.5 : pow((x + 0.099) / 1.099, 1.0 / 0.45);

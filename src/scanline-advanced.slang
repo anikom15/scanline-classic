@@ -157,7 +157,7 @@ vec3 color(vec2 uv, sampler2D tex)
 	float G = 1.0;
 
 	if (TRANSFER_FUNCTION < 2.0)
-		col = sdr_linear(texture(tex, uv).rgb);
+		col = crt_linear(texture(tex, uv).rgb);
 	else
 		col = srgb_linear(texture(tex, uv).rgb);
 
@@ -312,7 +312,7 @@ void main()
 	       render(xystart.y + stepxy.y * 3.0, x, xtaps, Source) * ytaps.a);
 
 	col = clamp(col, 0.0, 1.0);
-	col = srgb_gamma(col);
+	col = crt_gamma(col);
 
 	FragColor = vec4(col, 1.0);
 }
