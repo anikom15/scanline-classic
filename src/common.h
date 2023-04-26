@@ -40,9 +40,19 @@ float crt_linear(const float x)
 	return pow(x, 2.4);
 }
 
+vec3 crt_linear(const vec3 x)
+{
+	return vec3(crt_linear(x.r), crt_linear(x.g), crt_linear(x.b));
+}
+
 float crt_gamma(const float x)
 {
-	return pox(x, 1.0 / 2.4);
+	return pow(x, 1.0 / 2.4);
+}
+
+vec3 crt_gamma(const vec3 x)
+{
+	return vec3(crt_gamma(x.r), crt_gamma(x.g), crt_gamma(x.b));
 }
 
 float sdr_linear(const float x)
