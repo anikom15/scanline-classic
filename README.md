@@ -3,9 +3,9 @@
 A general purpose RetroArch shader with an emphasis on realism while
 maintaining a high degree of flexibility and aesthetic quality. 
 
-Version 1.0
+Version 2.0
 
-README Edition 1
+README Edition 2
 
 Copyright (C) 2023 W. M. Martinez
 Permission is granted to copy, distribute and/or modify this document
@@ -403,6 +403,22 @@ underscanned image.
 
 When emulating computers and using the other geometry settings, it's
 best to set this to around 10.0.
+
+### Mask Settings
+
+#### MASK_TYPE
+
+Selects a shadow mask pattern to overlay across the image.  There are
+24 masks.  Setting this to 1.0 disables the overlay.
+
+##### Recommendations
+
+For output displays under 1080 lines it's not recommended to use a mask.
+Monitors without sufficient brightness should also not use a mask.  The
+best mask to use depends primarily on subpixel layout, and so you should
+experiment to determine what the best mask to use is.  If unsure, Mask
+24.0 is a safe option, but inappropriate for non-Trinitron type CRTs
+(most computer monitors and arcade monitors).
 
 ### Output Settings
 

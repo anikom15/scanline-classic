@@ -1,6 +1,7 @@
 #version 450
 
 /* Filename: scanline-advanced.slang
+   Version 2.0
 
    Copyright (C) 2010 Team XBMC
    Copyright (C) 2011 Stefanos A.

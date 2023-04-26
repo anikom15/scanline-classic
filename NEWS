@@ -1,0 +1,5 @@
+Version 2.0
+
+* Added support for shadow masks provided by hunterk.
+
+* Changed gamma model to simple 2.4 power law.
