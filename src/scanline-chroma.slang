@@ -62,6 +62,22 @@ layout(push_constant) uniform Push
 #define CHROMA_C_WEIGHT config.CHROMA_C_WEIGHT
 #define SCALE_W config.SCALE_W
 
+vec3 Yrgb_to_RGB(mat3 toRGB, vec3 W, vec3 Yrgb)
+{
+	mat3 xyYrgb = mat3(CHROMA_A_X, CHROMA_A_Y, Yrgb.r,
+	                   CHROMA_B_X, CHROMA_B_Y, Yrgb.g,
+	                   CHROMA_C_X, CHROMA_C_Y, Yrgb.b);
+	mat3 XYZrgb = mat3(xyY_to_XYZ(xyYrgb[0]),
+	                   xyY_to_XYZ(xyYrgb[1]),
+	                   xyY_to_XYZ(xyYrgb[2]));
+	mat3 RGBrgb = mat3(toRGB * XYZrgb[0],
+	                   toRGB * XYZrgb[1],
+	                   toRGB * XYZrgb[2]);
+	return vec3(dot(W, vec3(RGBrgb[0].r, RGBrgb[1].r, RGBrgb[2].r)),
+	            dot(W, vec3(RGBrgb[0].g, RGBrgb[1].g, RGBrgb[2].g)),
+	            dot(W, vec3(RGBrgb[0].b, RGBrgb[1].b, RGBrgb[2].b)));
+}
+
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
@@ -83,31 +99,9 @@ void main()
 	mat3 toRGB = colorspace_rgb();
 	vec3 Yrgb = texture(Source, vTexCoord).rgb;
 	vec3 W = vec3(CHROMA_A_WEIGHT, CHROMA_B_WEIGHT, CHROMA_C_WEIGHT);
-	mat3 xyYrgb = mat3(CHROMA_A_X, CHROMA_A_Y, Yrgb.r,
-	                   CHROMA_B_X, CHROMA_B_Y, Yrgb.g,
-	                   CHROMA_C_X, CHROMA_C_Y, Yrgb.b);
-	mat3 XYZrgb = mat3(xyY_to_XYZ(xyYrgb[0]),
-	                   xyY_to_XYZ(xyYrgb[1]),
-	                   xyY_to_XYZ(xyYrgb[2]));
-	mat3 RGBrgb = mat3(toRGB * XYZrgb[0],
-	                   toRGB * XYZrgb[1],
-	                   toRGB * XYZrgb[2]);
-	vec3 RGB = vec3(W.r * (RGBrgb[0].r + RGBrgb[1].r + RGBrgb[2].r),
-	                W.g * (RGBrgb[0].g + RGBrgb[1].g + RGBrgb[2].g),
-	                W.b * (RGBrgb[0].b + RGBrgb[1].b + RGBrgb[2].b));
+	vec3 RGB = Yrgb_to_RGB(toRGB, W, Yrgb);
 	if (SCALE_W > 0.0) {
-		mat3 xyYw = mat3(CHROMA_A_X, CHROMA_A_Y, 1.0,
-		                 CHROMA_B_X, CHROMA_B_Y, 1.0,
-		                 CHROMA_C_X, CHROMA_C_Y, 1.0);
-		mat3 XYZw = mat3(xyY_to_XYZ(xyYw[0]),
-		                 xyY_to_XYZ(xyYw[1]),
-		                 xyY_to_XYZ(xyYw[2]));
-		mat3 RGBw = mat3(toRGB * XYZw[0],
-		                 toRGB * XYZw[1],
-		                 toRGB * XYZw[2]);
-		vec3 white = vec3(W.r * (RGBw[0].r + RGBw[1].r + RGBw[2].r),
-		                  W.g * (RGBw[0].g + RGBw[1].g + RGBw[2].g),
-		                  W.b * (RGBw[0].b + RGBw[1].b + RGBw[2].b)); 
+		vec3 white = Yrgb_to_RGB(toRGB, W, WHITE);
 		float G = 1.0 / max(max(white.r, white.g), white.b);
 
 		RGB *= G;
