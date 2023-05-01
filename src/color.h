@@ -25,16 +25,17 @@ mat3 colorspace_rgb()
 	return XYZ_TO_sRGB;
 }
 
-vec3
-color1(const vec3 col, const float x, const float y, const float scale,
-       const float Yr, const float Yg, const float Yb)
+vec3 RGB_to_xyY(const float x, const float y, const vec3 Y, const vec3 RGB)
 {
-	mat3 RGB = colorspace_rgb();
-	float z = 1.0 - x - y;
-	float Y = Yr * col.r + Yg * col.g + Yb * col.b;
-	float X = Y * x / y;
-	float Z = Y * z / y;
-	vec3 XYZ = vec3(X, Y, Z);
+	return vec3(x, y, dot(Y, RGB));
+}
 
-	return scale * RGB * XYZ;
-} 
+vec3 xyY_to_XYZ(const vec3 xyY)
+{
+	float x = xyY.x;
+	float y = xyY.y;
+	float Y = xyY.z;
+	float z = 1.0 - x - y;
+
+	return vec3(Y * x / y, Y, Y * z / Y);
+}

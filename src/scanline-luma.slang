@@ -1,6 +1,6 @@
 #version 450
 
-/* Filename: scanline-advanced.slang
+/* Filename: scanline-luma.slang
    Version 2.0
 
    Copyright (C) 2023 W. M. Martinez
@@ -21,10 +21,12 @@
 #include "common.h"
 #include "color.h"
 
+#pragma name Luma
+
 layout(std140, set = 0, binding = 0) uniform UBO {
 	mat4 MVP;
 	vec4 SourceSize;
-	vec4 PassFeedbackSize0;
+	vec4 LumaFeedbackSize;
 } global;
 
 layout(push_constant) uniform Push
@@ -35,16 +37,6 @@ layout(push_constant) uniform Push
 	float LUMINANCE_WEIGHT_R;
 	float LUMINANCE_WEIGHT_G;
 	float LUMINANCE_WEIGHT_B;
-	float CHROMA_A_X;
-	float CHROMA_A_Y;
-	float CHROMA_B_X;
-	float CHROMA_B_Y;
-	float CHROMA_C_X;
-	float CHROMA_C_Y;
-	float CHROMA_A_WEIGHT;
-	float CHROMA_B_WEIGHT;
-	float CHROMA_C_WEIGHT;
-	float SCALE_W;
 	float PHOSPHORESCENSE_A;
 	float PHOSPHORESCENSE_B;
 	float PHOSPHORESCENSE_C; 
@@ -62,16 +54,6 @@ layout(push_constant) uniform Push
 #pragma parameter LUMINANCE_WEIGHT_R "Red channel luminance weight" 0.2124 0.0 1.0 0.01
 #pragma parameter LUMINANCE_WEIGHT_G "Green channel luminance weight" 0.7011 0.0 1.0 0.01
 #pragma parameter LUMINANCE_WEIGHT_B "Blue channel luminance weight" 0.0866 0.0 1.0 0.01
-#pragma parameter CHROMA_A_X "Chromaticity A x" 0.630 0.0 1.0 0.001
-#pragma parameter CHROMA_A_Y "Chromaticity A y" 0.340 0.0 1.0 0.001
-#pragma parameter CHROMA_B_X "Chromaticity B x" 0.310 0.0 1.0 0.001
-#pragma parameter CHROMA_B_Y "Chromaticity B y" 0.595 0.0 1.0 0.001
-#pragma parameter CHROMA_C_X "Chromaticity C x" 0.155 0.0 1.0 0.001
-#pragma parameter CHROMA_C_Y "Chromaticity C y" 0.070 0.0 1.0 0.001
-#pragma parameter CHROMA_A_WEIGHT "Chromaticity A luminance weight" 0.2124 0.0 1.0 0.01
-#pragma parameter CHROMA_B_WEIGHT "Chromaticity B luminance weight" 0.7011 0.0 1.0 0.01
-#pragma parameter CHROMA_C_WEIGHT "Chromaticity C luminance weight" 0.0866 0.0 1.0 0.01
-#pragma parameter SCALE_W "Scale white point" 1.0 0.0 1.0 1.0
 #pragma parameter PHOSPHORESCENSE_A "Phosphorescense decay rate A (1/s)" 9.0 0.0 100.0 1.0
 #pragma parameter PHOSPHORESCENSE_B "Phosphorescense decay rate B (1/s)" 9.0 0.0 100.0 1.0
 #pragma parameter PHOSPHORESCENSE_C "Phosphorescense decay rate C (1/s)" 9.0 0.0 100.0 1.0
@@ -88,16 +70,6 @@ layout(push_constant) uniform Push
 #define LUMINANCE_WEIGHT_R config.LUMINANCE_WEIGHT_R
 #define LUMINANCE_WEIGHT_G config.LUMINANCE_WEIGHT_G
 #define LUMINANCE_WEIGHT_B config.LUMINANCE_WEIGHT_B
-#define CHROMA_A_X config.CHROMA_A_X
-#define CHROMA_A_Y config.CHROMA_A_Y
-#define CHROMA_B_X config.CHROMA_B_X
-#define CHROMA_B_Y config.CHROMA_B_Y
-#define CHROMA_C_X config.CHROMA_C_X
-#define CHROMA_C_Y config.CHROMA_C_Y
-#define CHROMA_A_WEIGHT config.CHROMA_A_WEIGHT
-#define CHROMA_B_WEIGHT config.CHROMA_B_WEIGHT
-#define CHROMA_C_WEIGHT config.CHROMA_C_WEIGHT
-#define SCALE_W config.SCALE_W
 #define PHOSPHORESCENSE_A config.PHOSPHORESCENSE_A
 #define PHOSPHORESCENSE_B config.PHOSPHORESCENSE_B
 #define PHOSPHORESCENSE_C config.PHOSPHORESCENSE_C
@@ -107,33 +79,6 @@ layout(push_constant) uniform Push
 #define PHOS_TRAP_A config.PHOS_TRAP_A
 #define PHOS_TRAP_B config.PHOS_TRAP_B
 #define PHOS_TRAP_C config.PHOS_TRAP_C
-
-vec3 color2(const vec3 col)
-{
-	return color1(col, CHROMA_A_X, CHROMA_A_Y, CHROMA_A_WEIGHT,
-	              LUMINANCE_WEIGHT_R, LUMINANCE_WEIGHT_G, LUMINANCE_WEIGHT_B) +
-	       color1(col, CHROMA_B_X, CHROMA_B_Y, CHROMA_B_WEIGHT,
-	              LUMINANCE_WEIGHT_R, LUMINANCE_WEIGHT_G, LUMINANCE_WEIGHT_B);
-}
-
-vec3 colorrgb(const vec3 col)
-{
-	return color1(col, CHROMA_A_X, CHROMA_A_Y, CHROMA_A_WEIGHT, 1.0, 0.0, 0.0) +
-	       color1(col, CHROMA_B_X, CHROMA_B_Y, CHROMA_B_WEIGHT, 0.0, 1.0, 0.0) +
-	       color1(col, CHROMA_C_X, CHROMA_C_Y, CHROMA_C_WEIGHT, 0.0, 0.0, 1.0);
-}
-
-vec3 color(vec3 col)
-{
-	if (COLOR_MODE < 2.0)
-		col = color1(col, CHROMA_A_X, CHROMA_A_Y, CHROMA_A_WEIGHT,
-		             LUMINANCE_WEIGHT_R, LUMINANCE_WEIGHT_G, LUMINANCE_WEIGHT_B);
-	else if (COLOR_MODE < 3.0)
-		col = color2(col);
-	else
-		col = colorrgb(col);
-	return col;
-}
 
 vec3 blend(vec3 col1, vec3 col2)
 {
@@ -162,38 +107,51 @@ void main()
 layout(location = 0) in vec2 vTexCoord;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 1) uniform sampler2D Source;
-layout(set = 0, binding = 2) uniform sampler2D PassFeedback0;
+layout(set = 0, binding = 2) uniform sampler2D LumaFeedback;
 
 void main()
 {
-	vec2 uv = floor(global.PassFeedbackSize0.xy * vTexCoord);
-	vec3 col;
+	vec2 uv = floor(global.LumaFeedbackSize.xy * vTexCoord);
+	vec3 rgb;
+	vec3 Yrgb;
 
-	uv = (uv + 0.5) * global.PassFeedbackSize0.zw;
+	uv = (uv + 0.5) * global.LumaFeedbackSize.zw;
 	if (TRANSFER_FUNCTION < 2.0)
-		col = crt_linear(texture(Source, uv).rgb);
+		rgb = crt_linear(texture(Source, uv).rgb);
 	else
-		col = srgb_linear(texture(Source, uv).rgb); 
-	col = color(col);
-	if (SCALE_W > 0.0) {
-		vec3 maxrgb = color(WHITE);
-		float G = 1.0 / max(max(maxrgb.r, maxrgb.g), maxrgb.b);
+		rgb = srgb_linear(texture(Source, uv).rgb);
+	if (COLOR_MODE < 2.0) {
+		vec3 Wrgb = vec3(LUMINANCE_WEIGHT_R,
+		                 LUMINANCE_WEIGHT_G,
+		                 LUMINANCE_WEIGHT_B);
 
-		col = G * col;
+		Yrgb.r = dot(Wrgb, rgb);
+		Yrgb.g = 0.0;
+		Yrgb.b = 0.0;
+	} else if (COLOR_MODE < 3.0) {
+		vec3 Wrgb = vec3(LUMINANCE_WEIGHT_R,
+		                 LUMINANCE_WEIGHT_G,
+		                 LUMINANCE_WEIGHT_B);
+		Yrgb.r = dot(Wrgb, rgb);
+		Yrgb.g = Yrgb.r;
+		Yrgb.b = 0.0;
+	} else {
+		Yrgb.r = rgb.r;
+		Yrgb.g = rgb.g;
+		Yrgb.b = rgb.b;
 	}
-	col = clamp(col, 0.0, 1.0);
 
-	vec3 col1 = texture(PassFeedback0, uv).rgb;
+	vec3 Yrgb1 = texture(LumaFeedback, uv).rgb;
 
-	col1.r = phosphor_inv_pow(col1.r,
-	                          PHOSPHORESCENSE_A * pow(10.0, PHOS_EXP_A),
-	                          PHOS_TRAP_A);
-	col1.g = phosphor_inv_pow(col1.g,
-	                          PHOSPHORESCENSE_B * pow(10.0, PHOS_EXP_B),
-	                          PHOS_TRAP_B);
-	col1.b = phosphor_inv_pow(col1.b,
-	                          PHOSPHORESCENSE_C * pow(10.0, PHOS_EXP_C),
-	                          PHOS_TRAP_C);
-	col = blend(col, col1);
-	FragColor = vec4(col, 1.0);
-}
+	Yrgb1.r = phosphor_inv_pow(Yrgb1.r,
+	                           PHOSPHORESCENSE_A * pow(10.0, PHOS_EXP_A),
+	                           PHOS_TRAP_A);
+	Yrgb1.g = phosphor_inv_pow(Yrgb1.g,
+	                           PHOSPHORESCENSE_B * pow(10.0, PHOS_EXP_B),
+	                           PHOS_TRAP_B);
+	Yrgb1.b = phosphor_inv_pow(Yrgb1.b,
+	                           PHOSPHORESCENSE_C * pow(10.0, PHOS_EXP_C),
+	                           PHOS_TRAP_C);
+	Yrgb = blend(Yrgb, Yrgb1);
+	FragColor = vec4(Yrgb, 1.0);
+} 
