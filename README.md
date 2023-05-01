@@ -3,9 +3,9 @@
 A general purpose RetroArch shader with an emphasis on realism while
 maintaining a high degree of flexibility and aesthetic quality. 
 
-Version 2.0
+Version 3.0
 
-README Edition 2
+README Edition 3
 
 Copyright (C) 2023 W. M. Martinez
 Permission is granted to copy, distribute and/or modify this document
@@ -26,7 +26,8 @@ needed.  If you need additional help, check the RetroArch documentation.
 The following presets are provided:
 
 * scanline-advanced.slangp: Provides all possible parameters, enabling
-  the most flexibility at the cost of performance and complexity.
+  the most flexibility at the cost of performance and increased
+  complexity.
 
 The following shaders are provided:
 
@@ -60,6 +61,16 @@ Original Mitchell-Netravali Shader Authors
 ## User's Manual
 
 ### Signal Options
+
+#### V_FREQ
+
+This setting represents the average vertical frequency and is used by
+the shaders to keep track of time.
+
+##### Recommendations
+
+This should always be set to the same vertical frequency used by the
+driver.
 
 #### ON_PIXELS and OFF_PIXELS
 
@@ -203,6 +214,22 @@ Rec. BT.709/sRGB (HD) content:
 * R: 0.2126
 * G: 0.7152
 * B: 0.0722
+
+#### PHOSPHORESENSE\_*c*, PHOS\_EXP\_*c*, PHOS\_TRAP\_*c*
+
+This is the time constant for phosphorescent decay.  A larger time
+constant results in a longer decay.  EXP is the order of magnitude as a
+power of 10.
+
+TRAP represents the degree of trapping and escpaing of the particles
+exciting the phosphors.  Lower values will result in a longer decay
+tail.
+
+##### Recommendations
+
+To tune the appearance of the decay trail, it's best to set the
+exponent to 0 or 1 and then adjust the other phosphor settings.  Then
+increase the exponenent to get the desired overall decay speed.
 
 #### CHROMA\_*n*\_X, CHROMA\_*n*\_Y, CHROMA\_*n*\_WEIGHT
 

@@ -1,7 +1,6 @@
 #version 450
 
 /* Filename: scanline-luma.slang
-   Version 2.0
 
    Copyright (C) 2023 W. M. Martinez
 

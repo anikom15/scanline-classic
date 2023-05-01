@@ -1,3 +1,7 @@
+Version 3.0
+
+* New phosphor decay model (requires 3-pass setup).
+
 Version 2.0
 
 * Added support for shadow masks provided by hunterk.
