@@ -1,3 +1,7 @@
+Version 3.1
+
+* Fixes a bug with color transformations.
+
 Version 3.0
 
 * New phosphor decay model (requires 3-pass setup).
