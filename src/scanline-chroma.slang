@@ -28,7 +28,6 @@ layout(std140, set = 0, binding = 0) uniform UBO {
 
 layout(push_constant) uniform Push
 {
-	float COLOR_MODE;
 	float CHROMA_A_X;
 	float CHROMA_A_Y;
 	float CHROMA_B_X;

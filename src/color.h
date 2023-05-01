@@ -37,5 +37,5 @@ vec3 xyY_to_XYZ(const vec3 xyY)
 	float Y = xyY.z;
 	float z = 1.0 - x - y;
 
-	return vec3(Y * x / y, Y, Y * z / Y);
+	return vec3(Y * x / y, Y, Y * z / y);
 }

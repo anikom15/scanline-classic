@@ -18,11 +18,13 @@
    GNU General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program.  If not, see <https://www.gnu.org/licenses/>. */
+   along with this program.  If not, see <https://www.gnu.org/licenses/>. */ 
 
 #include "common.h"
+#include "color.h"
 #include "filter.h"
 #include "geometry.h"
+#include "subpixel_masks.h"
 
 layout(std140, set = 0, binding = 0) uniform UBO {
 	mat4 MVP;
@@ -40,8 +42,10 @@ layout(push_constant) uniform Push
 	float H_BACK;
 	float V_FRONT;
 	float V_BACK;
-	float HI_RES_THRES;
+	float COLOR_MODE;
 	float FOCUS;
+	float HI_RES_THRES;
+	float MASK_TYPE;
 	float PIN_DISTORTION_TYPE;
 	float DEFLECTION_ANGLE;
 	float SCREEN_ANGLE_X;
@@ -59,8 +63,10 @@ layout(push_constant) uniform Push
 #pragma parameter H_BACK "Horizontal back porch length (px)" 40.0 0.0 100.0 1.0
 #pragma parameter V_FRONT "Vertical front porch (lines)" 5.0 0.0 100.0 1.0
 #pragma parameter V_BACK "Vertical back porch (lines)" 14.0 0.0 100.0 1.0
+#pragma parameter COLOR_MODE "Chromaticity mode" 3.0 1.0 3.0 1.0 
+#pragma parameter FOCUS "Focus (%)" 0.50 0.0 1.0 0.01
 #pragma parameter HI_RES_THRES "Hi-res threshold (lines)" 400.0 0.0 720.0 1.0
-#pragma parameter FOCUS "Focus (%)" 0.50 0.0 1.0 0.01 
+#pragma parameter MASK_TYPE "Subpixel layout" 1.0 1.0 25.0 1.0
 #pragma parameter PIN_DISTORTION_TYPE "Pincushion distortion type (electrostatic/magnetic)" 1.0 1.0 2.0 1.0
 #pragma parameter DEFLECTION_ANGLE "CRT deflection angle (°)" 90.0 0.0 180.0 1.0
 #pragma parameter SCREEN_ANGLE_X "CRT H. curvature angle (°)" 60.0 0.0 180.0 1.0
@@ -77,8 +83,10 @@ layout(push_constant) uniform Push
 #define H_BACK config.H_BACK
 #define V_FRONT config.V_FRONT
 #define V_BACK config.V_BACK
-#define HI_RES_THRES config.HI_RES_THRES
+#define COLOR_MODE config.COLOR_MODE
+#define MASK_TYPE config.MASK_TYPE
 #define FOCUS config.FOCUS
+#define HI_RES_THRES config.HI_RES_THRES
 #define PIN_DISTORTION_TYPE config.PIN_DISTORTION_TYPE
 #define DEFLECTION_ANGLE config.DEFLECTION_ANGLE
 #define SCREEN_ANGLE_X config.SCREEN_ANGLE_X
@@ -90,6 +98,11 @@ layout(push_constant) uniform Push
 #define COLOR_SPACE config.COLOR_SPACE
 
 float PIXELS = ON_PIXELS + OFF_PIXELS;
+
+vec3 mask(vec2 uv)
+{
+	return mask_weights(uv, 1.0, int(MASK_TYPE - 1.0));
+} 
 
 vec3 pixel(float x, float y, sampler2D tex)
 {
@@ -212,6 +225,9 @@ void main()
 	       render(xystart.y + stepxy.y, x, xtaps, Source) * ytaps.g +
 	       render(xystart.y + stepxy.y * 2.0, x, xtaps, Source) * ytaps.b +
 	       render(xystart.y + stepxy.y * 3.0, x, xtaps, Source) * ytaps.a);
+
+	if (COLOR_MODE > 2.0)
+		col *= mask(vTexCoord.xy * global.OutputSize.xy);
 
 	col = clamp(col, 0.0, 1.0);
 	col = crt_gamma(col);
