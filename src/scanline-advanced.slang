@@ -56,7 +56,7 @@ layout(push_constant) uniform Push
 	float COLOR_SPACE;
 } config;
 
-#pragma parameter ON_PIXELS "Line-on cycle (lines)" 1.0 0.0 100.0 1.0
+#pragma parameter ON_PIXELS "Line-on cycle (lines)" 1.0 1.0 100.0 1.0
 #pragma parameter OFF_PIXELS "Line-off cycle (lines)" 1.0 0.0 100.0 1.0
 #pragma parameter H_FRONT "Horizontal front porch length (px)" 20.0 0.0 100.0 1.0
 #pragma parameter H_BACK "Horizontal back porch length (px)" 40.0 0.0 100.0 1.0
@@ -105,16 +105,30 @@ vec3 mask(vec2 uv)
 
 vec3 pixel(float x, float y, sampler2D tex)
 {
-	int t = global.OriginalSize.y > int(HI_RES_THRES) ?
-	        int(global.FrameCount) % 2 : 0;
-	int line = int(PIXELS * global.OriginalSize.y * float(y) + float(t));
+	int line;
 
-	if (line % int(PIXELS) > int(ON_PIXELS) - 1 ||
-	    any(lessThan(vec2(x, y), vec2(0.0, 0.0))) ||
+	if (global.OriginalSize.y > HI_RES_THRES) {
+		uint t = global.FrameCount % 2u;
+		line = int(global.OriginalSize.y * y + float(t));
+	} else
+		line = int(2.0 * global.OriginalSize.y * y);
+
+	if (any(lessThan(vec2(x, y), vec2(0.0, 0.0))) ||
 	    any(greaterThan(vec2(x, y), vec2(1.0, 1.0))))
 		return BLACK;
-	else
+	else if (OFF_PIXELS < 1.0)
 		return texture(tex, vec2(x, y)).rgb;
+	else if (ON_PIXELS >= OFF_PIXELS) {
+		if (line % 2 > 0)
+			return mix(BLACK, texture(tex, vec2(x, y)).rgb, (ON_PIXELS - OFF_PIXELS) / PIXELS);
+		else
+			return texture(tex, vec2(x, y)).rgb;
+	} else {
+		if (line % 2 > 0)
+			return BLACK;
+		else
+			return mix(texture(tex, vec2(x, y)).rgb, BLACK, (OFF_PIXELS - ON_PIXELS) / PIXELS);
+	}
 }
 
 vec3 render(float y, vec4 x, vec4 taps, sampler2D tex)
@@ -195,14 +209,14 @@ void main()
 
 	vec2 stepxy = 1.0 / global.SourceSize.xy;
 
-	stepxy.y /= PIXELS;
+	if (global.SourceSize.y < HI_RES_THRES)
+		stepxy.y /= 2.0;
 
 	vec2 pos = uv + stepxy / 2.0;
-
-	if (OFF_PIXELS > 0.0)
-		pos.y -= stepxy.y * ON_PIXELS / PIXELS;
-
 	vec2 f = fract(pos / stepxy);
+
+	if (global.SourceSize.y < HI_RES_THRES && OFF_PIXELS < 1.0)
+		stepxy.y /= ON_PIXELS;
 
 	float C = -1.0 / 3.0 * sq(FOCUS) + 5.0 / 6.0 * FOCUS;
 	float B = 1.0 - 2.0 * C;
