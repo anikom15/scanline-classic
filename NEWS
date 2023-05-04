@@ -1,3 +1,11 @@
+Version 4.0
+
+* Adds support for multi-scan.  The following parameters have been
+  added: SCAN_TYPE, MAX_SCAN_RATE, LINE_DOUBLER, INT_OFF
+
+* The following parameters have been removed: ON_PIXELS, OFF_PIXELS,
+  HI_RES_THRES
+
 Version 3.1
 
 * Fixes a bug with color transformations.

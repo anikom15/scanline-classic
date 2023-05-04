@@ -109,67 +109,6 @@ the shaders to keep track of time.
 This should always be set to the same vertical frequency used by the
 driver.
 
-#### ON_PIXELS and OFF_PIXELS
-
-Represents the ratio of visible scanlines vs. blank scanlines, as
-defined by the vertical resolution of the simulated display.  Nearly all
-arcade games and consoles in the 20th century displayed a progressive
-scan signal using half of the lines allowed by standard 15 kHz displays.
-This technique is colloquially referred as '240p'.  To simulate this
-mode, both ON_PIXELS and OFF_PIXELS should be set to 1.0.
-
-Some games and computers (like the compact Apple Macintoshes) used what
-is known as 'medium res' monitors.  These monitors increase the
-progressive scan resolution from ~240 lines to ~384.  These monitors
-generally used the same components as the 15 kHz monitors, just with
-a higher scanrate.  In this case, the electron beam spot size should
-be the same relative size, and the blank scanlines should appear
-smaller.  This can be achieved by setting ON_PIXELS to 3.0 and
-OFF_PIXELS to 2.0.
-
-Some displays have very nonlinear voltage characteristics resulting in
-a wide variety of distortions, including things referred to as
-'blooming' which greatly inhibits the display of the scanline effect.
-Scanline Classic is intended to simulate *well-behaved* displays, and
-nothing further will be discussed or developed on the simulation of
-these kinds of faults.
-
-31 kHz monitors are also known as 'hi res' and 'VGA' monitors.  These
-monitors support 480p.  They usually can display 15 kHz and 22 kHz
-signals as well.  22 kHz modes are always done by simply scanning the
-lines, which results in 3:2 scanline effect described above.  15 kHz
-signals are handled in one of two possible ways.  The first is exactly
-the same as the 22 kHz mode, and scanlines will be visible in a 1:1
-ratio.  The second is referred to as *line doubling*.  The monitor
-actually displays a 31 kHz signal where each line is displayed twice.
-This can be accomplished by setting ON_PIXELS to 2.0 and OFF_PIXELS to
-0.0.  The 31 kHz (and any greater resolution) signal should be
-simulated by setting ON_PIXELS to 1.0 and OFF_PIXELS to 0.0.
-
-Interlaced content will be discussed in the HI_RES_THRES section.
-
-##### Recommendations
-
-15 kHz signals:
-* ON_PIXELS: 1.0
-* OFF_PIXELS: 1.0
-
-625 line signals (PAL):
-* ON_PIXELS: 3.0
-* OFF_PIXELS: 2.0
-
-22 kHz signals:
-* ON_PIXELS: 4.0
-* OFF_PIXELS: 1.0
-
-31 kHz signals:
-* ON_PIXELS: 1.0
-* OFF_PIXELS: 0.0
-
-15 kHz signals on 31 kHz displays (i.e. VGA DOS games):
-* ON_PIXELS: 2.0
-* OFF_PIXELS: 0.0
-
 #### H_FRONT, H_BACK, V_FRONT, V_BACK:
 
 Represents the front and back porches for the horizontal and vertical
@@ -363,6 +302,59 @@ at 2.4 gamma is more than enough.
 
 ### CRT Simulation Options
 
+#### SCAN\_TYPE
+
+1.0 is used to set interlace mode and 2.0 is used for progressive scan.
+
+In interlace mode, the highest resolutions will be interlaced by
+blanking alternate scanlines every frame.  The resolutions affected by
+interlacing can be set with the MAX\_SCAN\_RATE.
+
+In progressive scan mode, interlacing is never done regardless of the
+resolution.
+
+##### Recommendations
+
+Use interlace mode when appropriate, like for consoles.  Most computers
+since VGA use progressive scan modes and monitors, but some cards like XGA
+supported interlace as well.
+
+#### MAX\_SCAN\_RATE
+
+Tells the shader the highest resolution that should be expected from the
+emulator.  In intelace mode, the highest resolutions will become
+interlaced at 85% of this value.
+
+##### Recommendations
+
+This setting controls the strength of blank scanline visibility, so keep
+that in mind.  For most consoles and 8-bit computers, it's safe to set
+this to 480 or 576.
+
+
+#### LINE\_DOUBLER
+
+Tells the shader whether low resolutions (relative to MAX\_SCAN\_RATE)
+should have their vertical resolution doubled.  This will greatly
+diminish the scanline effect.
+
+##### Recommendations
+
+Real video cards like the original IBM VGA card did this for resolutions
+lower than 480, and so this can be enabled when emulating late 20th
+century computers.  16-bit Japanese computers, even early ones, also made
+use of these.  HDTV CRTs would also use this for 480 line signals.
+
+#### INTER\_OFF
+
+Sets the line offset for interlace mode.  It effetively chooses what
+lines are considered 'odd' and 'even'.
+
+##### Recmmendations
+
+This has little effect in practice, and may not even be consistent
+within the same system and television.
+
 #### FOCUS
 
 Simulates the beam focus of a CRT, but it doesn't attempt to emulate
@@ -375,15 +367,6 @@ Higher values are sharper whereas lower values are blurrier.
 Using 0.5 will give a very aesthetic, Trinitron-like look.  Lower
 values will look more like a shadow mask or slot mask.  You can use
 1.0 for monochrome CRTs, as those have sharp picture quality.
-
-#### HI_RES_THRES
-
-Threshold for interlaced content.  If the original vertical resolution
-(i.e. the actual resolution of the emulator) is greater than this
-threshold, the image will be interlaced by alternating blank scanlines
-placed directly over half of the content.  Care should be taken that the
-content you are playing is supposed to be interlaced.  Systems like the
-SFC, N64, PlayStation, and GameCube all supported interlaced modes.
 
 ##### Recommendations
 
