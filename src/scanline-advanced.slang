@@ -35,15 +35,16 @@ layout(std140, set = 0, binding = 0) uniform UBO {
 
 layout(push_constant) uniform Push
 {
-	float ON_PIXELS;
-	float OFF_PIXELS;
 	float H_FRONT;
 	float H_BACK;
 	float V_FRONT;
 	float V_BACK;
 	float COLOR_MODE;
+	float SCAN_TYPE;
+	float MAX_SCAN_RATE;
+	float LINE_DOUBLER;
+	float INTER_OFF;
 	float FOCUS;
-	float HI_RES_THRES;
 	float MASK_TYPE;
 	float PIN_DISTORTION_TYPE;
 	float DEFLECTION_ANGLE;
@@ -56,15 +57,16 @@ layout(push_constant) uniform Push
 	float COLOR_SPACE;
 } config;
 
-#pragma parameter ON_PIXELS "Line-on cycle (lines)" 1.0 1.0 100.0 1.0
-#pragma parameter OFF_PIXELS "Line-off cycle (lines)" 1.0 0.0 100.0 1.0
 #pragma parameter H_FRONT "Horizontal front porch length (px)" 20.0 0.0 100.0 1.0
 #pragma parameter H_BACK "Horizontal back porch length (px)" 40.0 0.0 100.0 1.0
 #pragma parameter V_FRONT "Vertical front porch (lines)" 5.0 0.0 100.0 1.0
 #pragma parameter V_BACK "Vertical back porch (lines)" 14.0 0.0 100.0 1.0
-#pragma parameter COLOR_MODE "Chromaticity mode" 3.0 1.0 3.0 1.0 
+#pragma parameter COLOR_MODE "Chromaticity mode" 3.0 1.0 3.0 1.0
+#pragma parameter SCAN_TYPE "Scan type" 1.0 1.0 2.0 1.0
+#pragma parameter MAX_SCAN_RATE "Maximum active lines" 480.0 1.0 1200.0 1.0
+#pragma parameter LINE_DOUBLER "Enable line-doubler" 0.0 0.0 1.0 1.0
+#pragma parameter INTER_OFF "Interlace offset" 0.0 0.0 1.0 1.0
 #pragma parameter FOCUS "Focus (%)" 0.50 0.0 1.0 0.01
-#pragma parameter HI_RES_THRES "Hi-res threshold (lines)" 400.0 0.0 720.0 1.0
 #pragma parameter MASK_TYPE "Subpixel layout" 1.0 1.0 25.0 1.0
 #pragma parameter PIN_DISTORTION_TYPE "Pincushion distortion type (electrostatic/magnetic)" 1.0 1.0 2.0 1.0
 #pragma parameter DEFLECTION_ANGLE "CRT deflection angle (°)" 90.0 0.0 180.0 1.0
@@ -76,16 +78,17 @@ layout(push_constant) uniform Push
 #pragma parameter ZOOM "Viewport zoom" 1.0 0.0 10.0 0.01
 #pragma parameter COLOR_SPACE "Output color space" 1.0 1.0 4.0 1.0
 
-#define ON_PIXELS config.ON_PIXELS
-#define OFF_PIXELS config.OFF_PIXELS
 #define H_FRONT config.H_FRONT
 #define H_BACK config.H_BACK
 #define V_FRONT config.V_FRONT
 #define V_BACK config.V_BACK
 #define COLOR_MODE config.COLOR_MODE
+#define SCAN_TYPE config.SCAN_TYPE
+#define MAX_SCAN_RATE config.MAX_SCAN_RATE
+#define LINE_DOUBLER config.LINE_DOUBLER
+#define INTER_OFF config.INTER_OFF
 #define MASK_TYPE config.MASK_TYPE
 #define FOCUS config.FOCUS
-#define HI_RES_THRES config.HI_RES_THRES
 #define PIN_DISTORTION_TYPE config.PIN_DISTORTION_TYPE
 #define DEFLECTION_ANGLE config.DEFLECTION_ANGLE
 #define SCREEN_ANGLE_X config.SCREEN_ANGLE_X
@@ -96,8 +99,6 @@ layout(push_constant) uniform Push
 #define ZOOM config.ZOOM
 #define COLOR_SPACE config.COLOR_SPACE
 
-float PIXELS = ON_PIXELS + OFF_PIXELS;
-
 vec3 mask(vec2 uv)
 {
 	return mask_weights(uv, 1.0, int(MASK_TYPE - 1.0));
@@ -105,29 +106,30 @@ vec3 mask(vec2 uv)
 
 vec3 pixel(float x, float y, sampler2D tex)
 {
+	float yThres = (SCAN_TYPE < 2.0 && global.OriginalSize.y > 1.7 * MAX_SCAN_RATE / 2.0)
+	               ? global.OriginalSize.y / 2.0
+	               : global.OriginalSize.y;
+	float scanw;
 	int line;
 
-	if (global.OriginalSize.y > HI_RES_THRES) {
+	scanw = max(0.0, 2.0 * (yThres / MAX_SCAN_RATE - 0.5));
+	if (SCAN_TYPE < 2.0 && global.OriginalSize.y > 1.7 * MAX_SCAN_RATE / 2.0) {
 		uint t = global.FrameCount % 2u;
 		line = int(global.OriginalSize.y * y + float(t));
 	} else
 		line = int(2.0 * global.OriginalSize.y * y);
+	line += int(INTER_OFF);
 
 	if (any(lessThan(vec2(x, y), vec2(0.0, 0.0))) ||
 	    any(greaterThan(vec2(x, y), vec2(1.0, 1.0))))
 		return BLACK;
-	else if (OFF_PIXELS < 1.0)
+	else if (LINE_DOUBLER > 0.0 && global.OriginalSize.y <= MAX_SCAN_RATE / 2.0 + EPS)
 		return texture(tex, vec2(x, y)).rgb;
-	else if (ON_PIXELS >= OFF_PIXELS) {
+	else {
 		if (line % 2 > 0)
-			return mix(BLACK, texture(tex, vec2(x, y)).rgb, (ON_PIXELS - OFF_PIXELS) / PIXELS);
+			return mix(BLACK, texture(tex, vec2(x, y)).rgb, scanw);
 		else
 			return texture(tex, vec2(x, y)).rgb;
-	} else {
-		if (line % 2 > 0)
-			return BLACK;
-		else
-			return mix(texture(tex, vec2(x, y)).rgb, BLACK, (OFF_PIXELS - ON_PIXELS) / PIXELS);
 	}
 }
 
@@ -209,14 +211,12 @@ void main()
 
 	vec2 stepxy = 1.0 / global.SourceSize.xy;
 
-	if (global.SourceSize.y < HI_RES_THRES)
-		stepxy.y /= 2.0;
+	// Scale vertical for scanlines/interlacing
+	if (SCAN_TYPE > 1.0 || global.OriginalSize.y < 1.7 * MAX_SCAN_RATE / 2.0)
+		stepxy.y /= 2.0;	
 
 	vec2 pos = uv + stepxy / 2.0;
 	vec2 f = fract(pos / stepxy);
-
-	if (global.SourceSize.y < HI_RES_THRES && OFF_PIXELS < 1.0)
-		stepxy.y /= ON_PIXELS;
 
 	float C = -1.0 / 3.0 * sq(FOCUS) + 5.0 / 6.0 * FOCUS;
 	float B = 1.0 - 2.0 * C;
