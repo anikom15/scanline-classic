@@ -5,7 +5,7 @@ maintaining a high degree of flexibility and aesthetic quality.
 
 Version 3.1
 
-README Edition 3
+README Edition 4
 
 Copyright (C) 2023 W. M. Martinez
 Permission is granted to copy, distribute and/or modify this document
@@ -25,14 +25,49 @@ needed.  If you need additional help, check the RetroArch documentation.
 
 The following presets are provided:
 
-* scanline-advanced.slangp: Provides all possible parameters, enabling
-  the most flexibility at the cost of performance and increased
-  complexity.
+* bwtv-p4.slangp: Black and White NTSC television, up to 480i.
+
+* ntsc.slangp: Color NTSC television (SMPTE C primaries) up to 480i.
+
+* pal.slangp: PAL television; compared to NTSC, green is more blue, and
+  red is less orange.  Blank scanlines are thinner.  Up to 576i.
+
+* trinitron-\*.slangp: Less geometric distortion.
+
+* flat-\*.slangp: No geometric distortion.
+
+* hdtv.slangp: Up to 1080i (Good for adding scanlines to 720p content).
+
+* vga.slangp: Multi-scan CRT up to 480p.
+
+* svga.slangp: Multi-scan CRT up to 600p.
+
+* xga.slangp: Multi-scan CRT up to 768i.
+
+* xga2.slangp: Multi-scan CRT up to 768p.
+
+* sxga.slangp: Multi-scan CRT up to 1024p.
+
+* uga.slangp: Multi-scan CRT up to 1200p.  As far as I know, this is the
+  highest resolution standard computer monitor CRTs were capable of.
+
+For 240p modes common for things like the Apple II and CGA card, use an
+NTSC preset.  For 'medium res' monitors like the EGA, use xga.slangp as
+a base.
 
 The following shaders are provided:
 
 * scanline-advanced.slang: Advanced, general purpose shader with all
-  possibilites.
+  possibilites, enabling the most flexibility at the cost of
+  performance and increased complexity.
+
+* scanline-basic.slang: Lightweight single-pass shader.
+
+* scanline-chroma.slang: Transforms luminance values to RGB for final
+  output.
+
+* scanline-luma.slang: Transforms source RGB values to Y depending on
+  color mode.  Phosphor decay is processed here.
 
 The following headers are provide:
 
@@ -40,10 +75,12 @@ The following headers are provide:
 
 * common.h: General purpose convenience variables and functions
 
+* filter.h: Operations for upscaling
+
 * geometry.h: Operations related to geometry, simulating
   three-dimensional screen distortions
 
-* filter.h: Operations for upscaling
+* subpixel\_masks.h: Shadow mask patterns
 
 ## Bugs
 
@@ -117,9 +154,13 @@ Interlaced content will be discussed in the HI_RES_THRES section.
 * ON_PIXELS: 1.0
 * OFF_PIXELS: 1.0
 
-22 kHz signals:
+625 line signals (PAL):
 * ON_PIXELS: 3.0
 * OFF_PIXELS: 2.0
+
+22 kHz signals:
+* ON_PIXELS: 4.0
+* OFF_PIXELS: 1.0
 
 31 kHz signals:
 * ON_PIXELS: 1.0
