@@ -1,3 +1,11 @@
+Version 4.1
+
+* Fixes a bug with line doubler.
+
+* Adds Scanline Basic preset
+
+* Adjusts focus on various presets.
+
 Version 4.0
 
 * Adds support for multi-scan.  The following parameters have been

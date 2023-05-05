@@ -175,16 +175,14 @@ vec3 pixel(float x, float y, sampler2D tex)
 	scanw = max(0.0, 2.0 * (yThres / MAX_SCAN_RATE - 0.5));
 	if (SCAN_TYPE < 2.0 && global.OriginalSize.y > 1.7 * MAX_SCAN_RATE / 2.0) {
 		uint t = global.FrameCount % 2u;
-		line = int(global.OriginalSize.y * y + float(t));
+		line = int(2.0 * yThres * y + float(t));
 	} else
-		line = int(2.0 * global.OriginalSize.y * y);
+		line = int(2.0 * yThres * y);
 	line += int(INTER_OFF);
 
 	if (any(lessThan(vec2(x, y), vec2(0.0, 0.0))) ||
 	    any(greaterThan(vec2(x, y), vec2(1.0, 1.0))))
 		return BLACK;
-	else if (LINE_DOUBLER > 0.0 && global.OriginalSize.y <= MAX_SCAN_RATE / 2.0 + EPS)
-		return color(tex, vec2(x, y));
 	else {
 		if (line % 2 > 0)
 			return mix(BLACK, color(tex, vec2(x, y)), scanw);

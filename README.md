@@ -5,7 +5,7 @@ maintaining a high degree of flexibility and aesthetic quality.
 
 Version 4.1
 
-README Edition 4
+README Edition 5
 
 Copyright (C) 2023 W. M. Martinez
 Permission is granted to copy, distribute and/or modify this document
@@ -24,6 +24,8 @@ needed.  If you need additional help, check the RetroArch documentation.
 ## Usage
 
 The following presets are provided:
+
+* basic.slangp: Preset for Scanline Basic.
 
 * bwtv-p4.slangp: Black and White NTSC television, up to 480i.
 
