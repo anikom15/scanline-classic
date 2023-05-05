@@ -112,19 +112,19 @@ vec3 pixel(float x, float y, sampler2D tex)
 	float scanw;
 	int line;
 
+	if (LINE_DOUBLER > 0.0 && global.OriginalSize.y <= MAX_SCAN_RATE / 2.0 + EPS)
+		yThres *= 2.0;
 	scanw = max(0.0, 2.0 * (yThres / MAX_SCAN_RATE - 0.5));
 	if (SCAN_TYPE < 2.0 && global.OriginalSize.y > 1.7 * MAX_SCAN_RATE / 2.0) {
 		uint t = global.FrameCount % 2u;
-		line = int(global.OriginalSize.y * y + float(t));
+		line = int(2.0 * yThres * y + float(t));
 	} else
-		line = int(2.0 * global.OriginalSize.y * y);
+		line = int(2.0 * yThres * y);
 	line += int(INTER_OFF);
 
 	if (any(lessThan(vec2(x, y), vec2(0.0, 0.0))) ||
 	    any(greaterThan(vec2(x, y), vec2(1.0, 1.0))))
 		return BLACK;
-	else if (LINE_DOUBLER > 0.0 && global.OriginalSize.y <= MAX_SCAN_RATE / 2.0 + EPS)
-		return texture(tex, vec2(x, y)).rgb;
 	else {
 		if (line % 2 > 0)
 			return mix(BLACK, texture(tex, vec2(x, y)).rgb, scanw);
@@ -217,6 +217,9 @@ void main()
 
 	vec2 pos = uv + stepxy / 2.0;
 	vec2 f = fract(pos / stepxy);
+
+	if (LINE_DOUBLER > 0.0 && global.OriginalSize.y <= MAX_SCAN_RATE / 2.0 + EPS)
+		stepxy.y /= 2.0;
 
 	float C = -1.0 / 3.0 * sq(FOCUS) + 5.0 / 6.0 * FOCUS;
 	float B = 1.0 - 2.0 * C;
