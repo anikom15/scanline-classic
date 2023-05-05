@@ -3,7 +3,7 @@
 A general purpose RetroArch shader with an emphasis on realism while
 maintaining a high degree of flexibility and aesthetic quality. 
 
-Version 3.1
+Version 4.1
 
 README Edition 4
 
