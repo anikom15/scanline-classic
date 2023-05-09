@@ -1,3 +1,5 @@
+# XGA monitor, shadow mask focus, low curvature, max 768p lines
+
 shaders = "3"
 
 shader0 = "src/scanline-luma.slang"

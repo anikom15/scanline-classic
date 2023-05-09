@@ -1,3 +1,5 @@
+# XGA monitor, shadow mask focus, low curvature, max 768i lines
+
 shaders = "3"
 
 shader0 = "src/scanline-luma.slang"
@@ -60,4 +62,4 @@ Y_COMP = "0.0"
 UNDERSCAN = "10.0"
 MASK_TYPE = "1.0"
 ZOOM = "1.1"
-COLOR_SPACE = "1.0" 
+COLOR_SPACE = "1.0"

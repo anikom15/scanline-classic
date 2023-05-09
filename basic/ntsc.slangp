@@ -1,6 +1,8 @@
+# NTSC television, slot-mask focus
+
 shaders = "1"
 
-shader0 = "src/scanline-basic.slang"
+shader0 = "../src/scanline-basic.slang"
 filter_linear0 = "false"
 scale_type0 = "viewport"
 scale0 = "1.0"

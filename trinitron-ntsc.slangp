@@ -1,3 +1,6 @@
+# Color NTSC television, aperture grille focus, cylindrical curvature
+# max 480i lines
+
 shaders = "3"
 
 shader0 = "src/scanline-luma.slang"

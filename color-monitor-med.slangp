@@ -1,4 +1,5 @@
-# SVGA monitor, shadow mask focus, low curvature, max 600p lines
+# Medium-res/VGA monitor, shadow mask focus, low curvature
+# max 480p lines
 
 shaders = "3"
 
@@ -49,7 +50,7 @@ CHROMA_B_WEIGHT = "0.7152"
 CHROMA_C_WEIGHT = "0.0722"
 SCALE_W = "1.0"
 SCAN_TYPE = "2.0"
-MAX_SCAN_RATE = "600.0"
+MAX_SCAN_RATE = "480.0"
 LINE_DOUBLER = "1.0"
 INTER_OFF = "0.0"
 FOCUS = "0.12"

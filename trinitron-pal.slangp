@@ -1,3 +1,6 @@
+# Color PAL television, aperture grille focus, cylindrical curvature,
+# max 576i lines
+
 shaders = "3"
 
 shader0 = "src/scanline-luma.slang"
