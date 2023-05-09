@@ -3,7 +3,7 @@
 A general purpose RetroArch shader with an emphasis on realism while
 maintaining a high degree of flexibility and aesthetic quality. 
 
-Version 4.1
+Version 4.2
 
 README Edition 5
 
@@ -53,9 +53,7 @@ The following presets are provided:
 * uga.slangp: Multi-scan CRT up to 1200p.  As far as I know, this is the
   highest resolution standard computer monitor CRTs were capable of.
 
-For 240p modes common for things like the Apple II and CGA card, use an
-NTSC preset.  For 'medium res' monitors like the EGA, use xga.slangp as
-a base.
+Additional presets are provided for more esoteric use cases.
 
 The following shaders are provided:
 
