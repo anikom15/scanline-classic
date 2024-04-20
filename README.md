@@ -3,11 +3,11 @@
 A general purpose RetroArch shader with an emphasis on realism while
 maintaining a high degree of flexibility and aesthetic quality. 
 
-Version 4.2
+Version 5.0
 
-README Edition 5
+README Edition 6
 
-Copyright (C) 2023 W. M. Martinez
+Copyright (C) 2023-2024 W. M. Martinez
 Permission is granted to copy, distribute and/or modify this document
 under the terms of the GNU Free Documentation License, Version 1.3
 or any later version published by the Free Software Foundation;
@@ -484,10 +484,18 @@ this setting to fill the screen.
 
 #### COLOR_SPACE
 
-At the moment, this setting is not used.  However, in the future it is
-intended to allow wide gamut displays to display the content without
-any additional color management.  For now, 1.0 means sRGB and the other
-options do not do anything else.
+This mode is used to match the final color transformation to the output
+display, assuming that the host is not color managed.  If you don't know
+what this means, use sRGB.  All color spaces are normalized to a D65
+white point.  These are the supported color spaces:
+
+ * 1.0 - sRGB
+ * 2.0 - BT.2020
+ * 3.0 - DCI-P3
+ * 4.0 - Adobe RGB
+
+A wide gamut color space is generally not needed, but may offer a richer
+experience for monochrome modes, particularly green monitors.
 
 ## License
 
