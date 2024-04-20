@@ -76,6 +76,7 @@ vec3 sdr_gamma(const vec3 x)
 	return vec3(sdr_gamma(x.r), sdr_gamma(x.g), sdr_gamma(x.b));
 }
 
+// DCI-P3 also uses sRGB's gamma functions.
 float srgb_linear(const float x)
 {
 	return x <= 0.04045 ? x / 12.92 : pow((x + 0.055) / 1.055, 2.4);
@@ -94,4 +95,24 @@ float srgb_gamma(const float x)
 vec3 srgb_gamma(const vec3 x)
 {
 	return vec3(srgb_gamma(x.r), srgb_gamma(x.g), srgb_gamma(x.b));
+}
+
+float adobe_linear(const float x)
+{
+	return pow(x, 563.0 / 256.0);
+}
+
+vec3 adobe_linear(const vec3 x)
+{
+	return vec3(adobe_linear(x.r), adobe_linear(x.g), adobe_linear(x.b));
+}
+
+float adobe_gamma(const float x)
+{
+	return pow(x, 256.0 / 563.0);
+}
+
+vec3 adobe_gamma(const vec3 x)
+{
+	return vec3(adobe_gamma(x.r), adobe_gamma(x.g), adobe_gamma(x.b));
 }
