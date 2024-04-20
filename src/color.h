@@ -35,13 +35,13 @@ mat3 XYZ_TO_DCIP3 = mat3(
 	-0.931384,  1.762664, 0.023625,
 	 0.035846, -0.076172, 0.956885);
 
-mat3 colorspace_rgb(int colorspace)
+mat3 colorspace_rgb(const float colorspace)
 {
-	if (colorspace == 0)
+	if (colorspace == 0.0)
 		return XYZ_TO_sRGB;
-	else if (colorspace == 1)
+	else if (colorspace == 1.0)
 		return XYZ_TO_BT2020;
-	else if (colorspace == 2)
+	else if (colorspace == 2.0)
 		return XYZ_TO_DCIP3;
 	else
 		return XYZ_TO_AdobeRGB;
