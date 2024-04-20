@@ -37,6 +37,7 @@ layout(push_constant) uniform Push
 	float CHROMA_B_WEIGHT;
 	float CHROMA_C_WEIGHT;
 	float SCALE_W;
+	float COLOR_SPACE;
 } config;
 
 
