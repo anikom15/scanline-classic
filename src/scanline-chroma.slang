@@ -38,7 +38,7 @@ layout(push_constant) uniform Push
 	float CHROMA_C_WEIGHT;
 	float SCALE_W;
 } config;
-	
+
 
 #pragma parameter CHROMA_A_X "Chromaticity A x" 0.630 0.0 1.0 0.001
 #pragma parameter CHROMA_A_Y "Chromaticity A y" 0.340 0.0 1.0 0.001
@@ -50,6 +50,7 @@ layout(push_constant) uniform Push
 #pragma parameter CHROMA_B_WEIGHT "Chromaticity B luminance weight" 0.7011 0.0 1.0 0.01
 #pragma parameter CHROMA_C_WEIGHT "Chromaticity C luminance weight" 0.0866 0.0 1.0 0.01
 #pragma parameter SCALE_W "Scale white point" 1.0 0.0 1.0 1.0
+#pragma parameter COLOR_SPACE "Output color space" 1.0 1.0 4.0 1.0
 
 #define CHROMA_A_X config.CHROMA_A_X
 #define CHROMA_A_Y config.CHROMA_A_Y
@@ -61,6 +62,7 @@ layout(push_constant) uniform Push
 #define CHROMA_B_WEIGHT config.CHROMA_B_WEIGHT
 #define CHROMA_C_WEIGHT config.CHROMA_C_WEIGHT
 #define SCALE_W config.SCALE_W
+#define COLOR_SPACE config.COLOR_SPACE
 
 vec3 Yrgb_to_RGB(mat3 toRGB, vec3 W, vec3 Yrgb)
 {
@@ -96,7 +98,7 @@ layout(set = 0, binding = 1) uniform sampler2D Source;
 
 void main()
 {
-	mat3 toRGB = colorspace_rgb();
+	mat3 toRGB = colorspace_rgb(COLOR_SPACE);
 	vec3 Yrgb = texture(Source, vTexCoord).rgb;
 	vec3 W = vec3(CHROMA_A_WEIGHT, CHROMA_B_WEIGHT, CHROMA_C_WEIGHT);
 	vec3 RGB = Yrgb_to_RGB(toRGB, W, Yrgb);
