@@ -213,13 +213,13 @@ void main()
 
 	// Scale vertical for scanlines/interlacing
 	if (SCAN_TYPE > 1.0 || global.OriginalSize.y < 1.7 * MAX_SCAN_RATE / 2.0)
-		stepxy.y /= 2.0;	
-
-	vec2 pos = uv + stepxy / 2.0;
-	vec2 f = fract(pos / stepxy);
+		stepxy.y /= 2.0;
 
 	if (LINE_DOUBLER > 0.0 && global.OriginalSize.y <= MAX_SCAN_RATE / 2.0 + EPS)
 		stepxy.y /= 2.0;
+
+	vec2 pos = uv + stepxy / 2.0;
+	vec2 f = fract(pos / stepxy);
 
 	float C = -1.0 / 3.0 * sq(FOCUS) + 5.0 / 6.0 * FOCUS;
 	float B = 1.0 - 2.0 * C;
