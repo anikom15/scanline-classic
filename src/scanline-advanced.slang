@@ -4,7 +4,7 @@
 
    Copyright (C) 2010 Team XBMC
    Copyright (C) 2011 Stefanos A.
-   Copyright (C) 2023 W. M. Martinez
+   Copyright (C) 2023-2025 W. M. Martinez
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -161,7 +161,7 @@ void main()
 {
 	vec2 uv = vTexCoord.xy;
 	float ar = global.OutputSize.x / global.OutputSize.y;
-	float sar = global.SourceSize.x / global.SourceSize.y;
+	float sar = global.OriginalSize.x / global.OriginalSize.y;
 	float par = ar / sar;
 
 	// Normal coordinates
@@ -171,10 +171,10 @@ void main()
 	uv = ZOOM * correction(uv / ZOOM, X_COMP, Y_COMP); 
 
 	// Scale picture to add some padding to consider non-active signal
-	float hsize = par * (global.SourceSize.x + H_FRONT + H_BACK);
-	float vsize = global.SourceSize.y + V_FRONT + V_BACK;
-	float hscale = par * global.SourceSize.x / hsize;
-	float vscale = global.SourceSize.y / vsize;
+	float hsize = par * (global.OriginalSize.x + H_FRONT + H_BACK);
+	float vsize = global.OriginalSize.y + V_FRONT + V_BACK;
+	float hscale = par * global.OriginalSize.x / hsize;
+	float vscale = global.OriginalSize.y / vsize;
 
 	ar = hsize / vsize;
 	uv.x *= hscale;
@@ -217,6 +217,9 @@ void main()
 
 	if (LINE_DOUBLER > 0.0 && global.OriginalSize.y <= MAX_SCAN_RATE / 2.0 + EPS)
 		stepxy.y /= 2.0;
+
+	//if (stepxy.x > stepxy.y)
+		//stepxy.x /= 2.0;
 
 	vec2 pos = uv + stepxy / 2.0;
 	vec2 f = fract(pos / stepxy);

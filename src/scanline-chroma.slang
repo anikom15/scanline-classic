@@ -40,7 +40,6 @@ layout(push_constant) uniform Push
 	float COLOR_SPACE;
 } config;
 
-
 #pragma parameter CHROMA_A_X "Chromaticity A x" 0.630 0.0 1.0 0.001
 #pragma parameter CHROMA_A_Y "Chromaticity A y" 0.340 0.0 1.0 0.001
 #pragma parameter CHROMA_B_X "Chromaticity B x" 0.310 0.0 1.0 0.001
