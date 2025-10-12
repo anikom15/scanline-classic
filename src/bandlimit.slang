@@ -27,21 +27,17 @@ layout(push_constant) uniform Push
 	vec4 OriginalSize;
 	vec4 OutputSize;
 	uint FrameCount;
-	float TRANSFER_FUNCTION;
 	float LUMA_CHROMA_MODEL;
 	float SIGNAL_BANDWIDTH_A;
 	float SIGNAL_BANDWIDTH_B;
 	float SIGNAL_BANDWIDTH_C;
-	float SIGNAL_SCALE_A;
-	float SIGNAL_SCALE_B;
-	float SIGNAL_SCALE_C;
+	float FILTER_CUTOFF_ATTEN_A;
+	float FILTER_CUTOFF_ATTEN_B;
+	float FILTER_CUTOFF_ATTEN_C;
 	float FILTER_SIZE;
 } config;
 
-#pragma parameter TRANSFER_FUNCTION "Transfer function" 1.0 1.0 2.0 1.0
-#define TRANSFER_FUNCTION config.TRANSFER_FUNCTION
-
-#pragma parameter LUMA_CHROMA_MODEL "Luma-Chroma Color Model (0=YIQ, 1=YUV, 2=YPbPr, 3=YCbCr)" 0 0 3 1
+#pragma parameter LUMA_CHROMA_MODEL "Luma-Chroma Color Model (0=YIQ, 1=YUV, 2=YPbPr, 3=YCbCr)" 2 0 3 1
 #define LUMA_CHROMA_MODEL config.LUMA_CHROMA_MODEL
 
 #pragma parameter SIGNAL_BANDWIDTH_A "Signal Bandwidth A (MHz)" 6.75 0.0 75.0 0.01
@@ -53,14 +49,14 @@ layout(push_constant) uniform Push
 #pragma parameter SIGNAL_BANDWIDTH_C "Signal Bandwidth C (MHz)" 6.75 0.0 75.0 0.01
 #define SIGNAL_BANDWIDTH_C config.SIGNAL_BANDWIDTH_C
 
-#pragma parameter SIGNAL_SCALE_A "Signal Scale A" 1.0 0.0 10.0 0.1
-#define SIGNAL_SCALE_A config.SIGNAL_SCALE_A
+#pragma parameter FILTER_CUTOFF_ATTEN_A "Filter Cutoff Attenuation A (dB)" 3.0 0.0 30.0 1.0
+#define FILTER_CUTOFF_ATTEN_A config.FILTER_CUTOFF_ATTEN_A
 
-#pragma parameter SIGNAL_SCALE_B "Signal Scale B" 1.0 0.0 10.0 0.1
-#define SIGNAL_SCALE_B config.SIGNAL_SCALE_B
+#pragma parameter FILTER_CUTOFF_ATTEN_B "Filter Cutoff Attenuation B (dB)" 3.0 0.0 30.0 1.0
+#define FILTER_CUTOFF_ATTEN_B config.FILTER_CUTOFF_ATTEN_B
 
-#pragma parameter SIGNAL_SCALE_C "Signal Scale C" 1.0 0.0 10.0 0.1
-#define SIGNAL_SCALE_C config.SIGNAL_SCALE_C
+#pragma parameter FILTER_CUTOFF_ATTEN_C "Filter Cutoff Attenuation C (dB)" 3.0 0.0 30.0 1.0
+#define FILTER_CUTOFF_ATTEN_C config.FILTER_CUTOFF_ATTEN_C
 
 #pragma parameter FILTER_SIZE "Gaussian Filter Radius" 5.0 0.0 40.0 1.0
 #define FILTER_SIZE config.FILTER_SIZE
@@ -96,6 +92,8 @@ float gaussian(float x, float sigma)
 	return exp(-x*x*invsqrsigma);
 }
 
+const vec3 TEN = vec3(10.0, 10.0, 10.0);
+
 void main()
 {
 	vec3 res = vec3(720.0 / 6.75 * SIGNAL_BANDWIDTH_A,
@@ -112,23 +110,16 @@ void main()
 	vec3 wsum = vec3(0.0);
 	vec3 pixel;
 	float n = -FILTER_SIZE;
-	vec3 sigma = vec3(1.0 / (2.0 * (res.x / SourceSize.x)),
-	                  1.0 / (2.0 * (res.y / SourceSize.x)),
-	                  1.0 / (2.0 * (res.z / SourceSize.x)));
+	vec3 c = 1.0 / pow(TEN, vec3(-FILTER_CUTOFF_ATTEN_A,
+	                             -FILTER_CUTOFF_ATTEN_B,
+							     -FILTER_CUTOFF_ATTEN_C) / TEN);
+	vec3 sigma = vec3(sqrt(log(c.r)) / (res.x / SourceSize.x),
+	                  sqrt(log(c.g)) / (res.y / SourceSize.x),
+	                  sqrt(log(c.b)) / (res.z / SourceSize.x));
 
 	do
 	{
-		if (TRANSFER_FUNCTION < 2.0)
-			pixel = crt_gamma(COMPAT_TEXTURE(Source, tex + n*dx).rgb);
-		else
-			pixel = srgb_gamma(COMPAT_TEXTURE(Source, tex + n*dx).rgb);
-		if (LUMA_CHROMA_MODEL >= 0)
-			pixel = RGB_TO_YPbPr * pixel;
-		else
-			pixel = RGB_TO_YIQ * pixel;
-		pixel.r *= SIGNAL_SCALE_A;
-		pixel.g *= SIGNAL_SCALE_B;
-		pixel.b *= SIGNAL_SCALE_C;
+		pixel = COMPAT_TEXTURE(Source, tex + n*dx).rgb;
 		w = vec3(gaussian(n+f, sigma.x),
 		         gaussian(n+f, sigma.y),
 		         gaussian(n+f, sigma.z));
@@ -138,14 +129,5 @@ void main()
 	} while (n <= FILTER_SIZE);
 	color = color / wsum;
 
-	if (LUMA_CHROMA_MODEL >= 0)
-		color = YPbPr_TO_RGB * color;
-	else
-		color = YIQ_TO_RGB * color;
-	if (TRANSFER_FUNCTION < 2.0)
-		color = crt_linear(color);
-	else
-		color = srgb_linear(color);
-	color = clamp(color, 0.0, 1.0);
 	FragColor = vec4(color, 1.0);
 }

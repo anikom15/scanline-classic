@@ -1,24 +1,42 @@
 # Color NTSC television, aperture grille focus, cylindrical curvature
 # max 480i lines
 
-shaders = "3"
+shaders = "6"
 
-shader0 = "src/scanline-luma.slang"
+shader0 = "src/component-encode.slang"
 filter_linear0 = "false"
 float_framebuffer0 = "true"
 scale_type0 = "source"
 scale0 = "1.0"
 
-shader1 = "src/scanline-chroma.slang"
+shader1 = "src/bandlimit.slang"
 filter_linear1 = "false"
 float_framebuffer1 = "true"
 scale_type1 = "source"
 scale1 = "1.0"
 
-shader2 = "src/scanline-advanced.slang"
+shader2 = "src/component-decode.slang"
 filter_linear2 = "false"
-scale_type2 = "viewport"
+float_framebuffer2 = "true"
+scale_type2 = "source"
 scale2 = "1.0"
+
+shader3 = "src/scanline-luma.slang"
+filter_linear3 = "false"
+float_framebuffer3 = "true"
+scale_type3 = "source"
+scale3 = "1.0"
+
+shader4 = "src/scanline-chroma.slang"
+filter_linear4 = "false"
+float_framebuffer4 = "true"
+scale_type4 = "source"
+scale4 = "1.0"
+
+shader5 = "src/scanline-advanced.slang"
+filter_linear5 = "false"
+scale_type5 = "viewport"
+scale5 = "1.0"
 
 V_FREQ = "59.94"
 ON_PIXELS = "1.0"
@@ -64,5 +82,5 @@ X_COMP = "0.0"
 Y_COMP = "0.0"
 UNDERSCAN = "0.0"
 MASK_TYPE = "1.0"
-ZOOM = "1.08"
+ZOOM = "1.0"
 COLOR_SPACE = "1.0"
