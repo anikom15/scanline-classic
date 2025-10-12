@@ -218,6 +218,10 @@ void main()
 	if (LINE_DOUBLER > 0.0 && global.OriginalSize.y <= MAX_SCAN_RATE / 2.0 + EPS)
 		stepxy.y /= 2.0;
 
+	// This prevents half-resolution video (e.g. 320 px) from being too blurry
+	if (stepxy.y < stepxy.x)
+		stepxy.x /= 2.0;
+
 	vec2 pos = uv + stepxy / 2.0;
 	vec2 f = fract(pos / stepxy);
 
