@@ -1,6 +1,6 @@
 #version 450
 
-/* Filename: scanline-bandlimit.slang
+/* Filename: scanline-encode.slang
 
    Copyright (C) 2020 guest(r) - guest.r@gmail.com
    Copyright (C) 2023 W. M. Martinez

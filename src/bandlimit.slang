@@ -96,13 +96,16 @@ const vec3 TEN = vec3(10.0, 10.0, 10.0);
 
 void main()
 {
-	vec3 res = vec3(720.0 / 6.75 * SIGNAL_BANDWIDTH_A,
-	                720.0 / 6.75 * SIGNAL_BANDWIDTH_B,
-	                720.0 / 6.75 * SIGNAL_BANDWIDTH_C);
+	vec3 res = vec3(
+		720.0 / 6.75 * SIGNAL_BANDWIDTH_A,
+	    720.0 / 6.75 * SIGNAL_BANDWIDTH_B,
+	    720.0 / 6.75 * SIGNAL_BANDWIDTH_C);
 
-	float f = fract(SourceSize.x * vTexCoord.x);
-	f = 0.5 - f;
-	vec2 tex = floor(SourceSize.xy * vTexCoord)*SourceSize.zw + 0.5*SourceSize.zw;
+	float f = 0.5 - fract(SourceSize.x * vTexCoord.x);
+
+	vec2 tex = floor(SourceSize.xy * vTexCoord)
+		* SourceSize.zw + 0.5 * SourceSize.zw;
+
 	vec3 color = vec3(0.0);
 	vec2 dx  = vec2(SourceSize.z, 0.0);
 
@@ -110,16 +113,19 @@ void main()
 	vec3 wsum = vec3(0.0);
 	vec3 pixel;
 	float n = -FILTER_SIZE;
-	vec3 c = 1.0 / pow(TEN, vec3(-FILTER_CUTOFF_ATTEN_A,
-	                             -FILTER_CUTOFF_ATTEN_B,
-							     -FILTER_CUTOFF_ATTEN_C) / TEN);
-	vec3 sigma = vec3(sqrt(log(c.r)) / (res.x / SourceSize.x),
-	                  sqrt(log(c.g)) / (res.y / SourceSize.x),
-	                  sqrt(log(c.b)) / (res.z / SourceSize.x));
+	vec3 c = 1.0 / pow(
+		TEN, vec3(-FILTER_CUTOFF_ATTEN_A,
+	    -FILTER_CUTOFF_ATTEN_B,
+		-FILTER_CUTOFF_ATTEN_C) / TEN);
+
+	vec3 sigma = vec3(
+		sqrt(log(c.r)) / (res.x / SourceSize.x),
+	    sqrt(log(c.g)) / (res.y / SourceSize.x),
+	    sqrt(log(c.b)) / (res.z / SourceSize.x));
 
 	do
 	{
-		pixel = COMPAT_TEXTURE(Source, tex + n*dx).rgb;
+		pixel = COMPAT_TEXTURE(Source, tex + n * dx).rgb;
 		w = vec3(gaussian(n+f, sigma.x),
 		         gaussian(n+f, sigma.y),
 		         gaussian(n+f, sigma.z));

@@ -1,6 +1,6 @@
 #version 450
 
-/* Filename: scanline-bandlimit.slang
+/* Filename: scanline-decode.slang
 
    Copyright (C) 2020 guest(r) - guest.r@gmail.com
    Copyright (C) 2023 W. M. Martinez
@@ -28,10 +28,29 @@ layout(push_constant) uniform Push
     vec4 OutputSize;
     uint FrameCount;
     float LUMA_CHROMA_MODEL;
+    float COMPONENT_MODE;
+    float CHROMA_CYCLES_PER_LINE_FLOOR;
+    float CHROMA_CYCLES_PER_LINE_FRAC_NUM;
+    float CHROMA_CYCLES_PER_LINE_FRAC_DEN;
 } config;
 
 #pragma parameter LUMA_CHROMA_MODEL "Luma-Chroma Color Model (0=YIQ, 1=YUV, 2=YPbPr, 3=YCbCr)" 2 0 3 1
 #define LUMA_CHROMA_MODEL config.LUMA_CHROMA_MODEL
+
+#pragma parameter COMPONENT_MODE "Component Mode (0=Component, 1=S-Video, 2=Composite, 3=RF)" 0 0 3 1
+#define COMPONENT_MODE config.COMPONENT_MODE
+
+#pragma parameter CHROMA_CYCLES_PER_LINE_FLOOR "Chroma Cycles per Line (integral part)" 227 100 300 1
+#define CHROMA_CYCLES_PER_LINE_FLOOR config.CHROMA_CYCLES_PER_LINE_FLOOR
+
+#pragma parameter CHROMA_CYCLES_PER_LINE_FRAC_NUM "Chroma Cycles per Line (fractional numerator)" 1 0 9 1
+#define CHROMA_CYCLES_PER_LINE_FRAC_NUM config.CHROMA_CYCLES_PER_LINE_FRAC_NUM
+
+#pragma parameter CHROMA_CYCLES_PER_LINE_FRAC_DEN "Chroma Cycles per Line (fractional denominator)" 2 0 9 1
+#define CHROMA_CYCLES_PER_LINE_FRAC_DEN config.CHROMA_CYCLES_PER_LINE_FRAC_DEN
+
+#define CHROMA_CYCLE_SHIFT_PER_LINE (CHROMA_CYCLES_PER_LINE_FRAC_NUM / CHROMA_CYCLES_PER_LINE_FRAC_DEN)
+#define CHROMA_CYCLES_PER_LINE (CHROMA_CYCLES_PER_LINE_FLOOR + CHROMA_CYCLE_SHIFT_PER_LINE)
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
@@ -57,9 +76,32 @@ layout(set = 0, binding = 2) uniform sampler2D Source;
 void main()
 {
     vec3 pixel = texture(Source, vTexCoord).rgb;
+    int lines = int(floor(vTexCoord.y * config.OriginalSize.y));
+    float t = vTexCoord.x * CHROMA_CYCLES_PER_LINE
+        + CHROMA_CYCLE_SHIFT_PER_LINE
+        * (lines % int(CHROMA_CYCLES_PER_LINE_FRAC_DEN));
 
     pixel.g -= 0.5;
     pixel.b -= 0.5;
+
+    float luma = pixel.r;
+    float chroma;
+    float composite;
+
+    // Encode
+    if (COMPONENT_MODE > 1) {
+        if (LUMA_CHROMA_MODEL < 1)
+            chroma = sin(2.0 * PI * NTSC_FSC * pixel.g * t)
+                + cos(2.0 * PI * NTSC_FSC * pixel.b * t);
+        else
+            chroma = sin(2.0 * PI * PAL_FSC * pixel.g * t + 33.0 * PI / 180.0)
+                + cos(2.0 * PI * PAL_FSC * pixel.b * t + 33.0 * PI / 180.0);
+    }
+    if (COMPONENT_MODE > 2)
+        composite = luma + chroma;
+
+    // Decode
+
     if (LUMA_CHROMA_MODEL < 1)
         pixel = YIQ_TO_RGB * pixel;
     else if (LUMA_CHROMA_MODEL < 2)

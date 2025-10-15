@@ -15,6 +15,9 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
+const float NTSC_FSC = 3.579545e6;
+const float PAL_FSC  = 4.4336187e6;
+
 mat3 XYZ_TO_sRGB = mat3(
      3.2406255, -0.9689307,  0.0557101,
     -1.5372080,  1.8758561, -0.2040211,
