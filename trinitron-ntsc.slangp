@@ -15,7 +15,7 @@ float_framebuffer1 = "true"
 scale_type1 = "source"
 scale1 = "1.0"
 
-shader2 = "src/component-decode.slang"
+shader2 = "src/component-composite.slang"
 filter_linear2 = "false"
 float_framebuffer2 = "true"
 scale_type2 = "source"
