@@ -1,9 +1,8 @@
 #version 450
 
-/* Filename: scanline-encode.slang
+/* Filename: video-encode.slang
 
-   Copyright (C) 2020 guest(r) - guest.r@gmail.com
-   Copyright (C) 2023 W. M. Martinez
+   Copyright (C) 2025 W. M. Martinez
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -28,22 +27,30 @@ layout(push_constant) uniform Push
     vec4 OutputSize;
     uint FrameCount;
     float LUMA_CHROMA_MODEL;
-    float SIGNAL_SCALE_A;
-    float SIGNAL_SCALE_B;
-    float SIGNAL_SCALE_C;
+    float SIGNAL_SCALE_Y;
+    float SIGNAL_SCALE_U;
+    float SIGNAL_SCALE_V;
+    float SIGNAL_OFFSET_Y;
+    float SIGNAL_OFFSET_U;
+    float SIGNAL_OFFSET_V;
 } config;
 
 #pragma parameter LUMA_CHROMA_MODEL "Luma-Chroma Color Model (0=YIQ, 1=YUV, 2=YPbPr, 3=YCbCr)" 2 0 3 1
 #define LUMA_CHROMA_MODEL config.LUMA_CHROMA_MODEL
 
-#pragma parameter SIGNAL_SCALE_A "Signal Scale A" 1.0 0.0 10.0 0.1
-#define SIGNAL_SCALE_A config.SIGNAL_SCALE_A
+#pragma parameter SIGNAL_SCALE_Y "Signal Scale Luma" 1.0 0.0 10.0 0.1
+#define SIGNAL_SCALE_Y config.SIGNAL_SCALE_Y
+#pragma parameter SIGNAL_SCALE_U "Signal Scale Chroma I/U/Pb/Cb" 1.0 0.0 10.0 0.1
+#define SIGNAL_SCALE_U config.SIGNAL_SCALE_U
+#pragma parameter SIGNAL_SCALE_V "Signal Scale Chroma Q/V/Pr/Cr" 1.0 0.0 10.0 0.1
+#define SIGNAL_SCALE_V config.SIGNAL_SCALE_V
 
-#pragma parameter SIGNAL_SCALE_B "Signal Scale B" 1.0 0.0 10.0 0.1
-#define SIGNAL_SCALE_B config.SIGNAL_SCALE_B
-
-#pragma parameter SIGNAL_SCALE_C "Signal Scale C" 1.0 0.0 10.0 0.1
-#define SIGNAL_SCALE_C config.SIGNAL_SCALE_C
+#pragma parameter SIGNAL_OFFSET_Y "Signal Offset Luma" 0.0 -1.0 1.0 0.01
+#define SIGNAL_OFFSET_Y config.SIGNAL_OFFSET_Y
+#pragma parameter SIGNAL_OFFSET_U "Signal Offset Chroma I/U/Pb/Cb" 0.0 -1.0 1.0 0.01
+#define SIGNAL_OFFSET_U config.SIGNAL_OFFSET_U
+#pragma parameter SIGNAL_OFFSET_V "Signal Offset Chroma Q/V/Pr/Cr" 0.0 -1.0 1.0 0.01
+#define SIGNAL_OFFSET_V config.SIGNAL_OFFSET_V
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
@@ -78,10 +85,8 @@ void main()
         pixel = RGB_TO_YPbPr * pixel;
     else
         pixel = RGB_TO_YCbCr * pixel;
-    pixel.g += 0.5;
-    pixel.b += 0.5;
-    pixel.r *= SIGNAL_SCALE_A;
-    pixel.g *= SIGNAL_SCALE_B;
-    pixel.b *= SIGNAL_SCALE_C;
+    pixel.r = pixel.r * SIGNAL_SCALE_Y + SIGNAL_OFFSET_Y;
+    pixel.g = pixel.g * SIGNAL_SCALE_U + SIGNAL_OFFSET_U;
+    pixel.b = pixel.b * SIGNAL_SCALE_V + SIGNAL_OFFSET_V;
     FragColor = vec4(pixel, 1.0);
 }

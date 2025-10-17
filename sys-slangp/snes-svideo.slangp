@@ -1,7 +1,88 @@
-#reference "snes.slangp"
-SIGNAL_BANDWIDTH_A = 5.4
-SIGNAL_BANDWIDTH_B = 1.3
-SIGNAL_BANDWIDTH_C = 1.3
-FILTER_CUTOFF_ATTEN_B = 2
-FILTER_CUTOFF_ATTEN_C = 2
-COMPONENT_MODE = 1
+shaders = "6"
+
+shader0 = "../src/video-encode.slang"
+filter_linear0 = "false"
+float_framebuffer0 = "true"
+scale_type0 = "source"
+scale0 = "1.0"
+
+shader1 = "../src/svideo.slang"
+filter_linear1 = "false"
+float_framebuffer1 = "true"
+scale_type1 = "source"
+scale1 = "1.0"
+
+shader2 = "../src/video-decode.slang"
+filter_linear2 = "false"
+float_framebuffer2 = true"
+scale_type2 = "source"
+scale2 = "1.0"
+
+shader3 = "../src/phosphor-luma.slang"
+filter_linear3 = "false"
+float_framebuffer4 = "true"
+scale_type4 = "source"
+scale4 = "1.0"
+
+shader4 = "../src/phosphor-chroma.slang"
+filter_linear4 = "false"
+float_framebuffer4 = "true"
+scale_type4 = "source"
+scale4 = "1.0"
+
+shader5 = "../src/scanline-advanced.slang"
+filter_linear5 = "false"
+scale_type5 = "viewport"
+scale5 = "1.0"
+
+V_LINES_PER_FIELD = 262
+H_FREQ = 15.73427
+H_BLANK_INACTIVE_LEN = 682.5
+FILTER_SIZE_YC = 10.0
+OVERSAMPLE_FACTOR = 2
+V_FREQ = "60.098999"
+H_FRONT = "20.000000"
+H_BACK = "40.000000"
+V_FRONT = "9.000000"
+V_BACK = "14.000000"
+ON_PIXELS = "1.0"
+OFF_PIXELS = "1.0"
+TRANSFER_FUNCTION = "1.0"
+COLOR_MODE = "3.0"
+LUMINANCE_WEIGHT_R = "0.2124"
+LUMINANCE_WEIGHT_G = "0.7011"
+LUMINANCE_WEIGHT_B = "0.0866"
+PHOSPHORESCENSE_A = "3.0"
+PHOSPHORESCENSE_B = "100.0"
+PHOSPHORESCENSE_C = "100.0"
+PHOS_EXP_A = "4.0"
+PHOS_EXP_B = "4.0"
+PHOS_EXP_C = "4.0"
+PHOS_TRAP_A = "1.2"
+PHOS_TRAP_B = "0.75"
+PHOS_TRAP_C = "0.75"
+CHROMA_A_X = "0.630"
+CHROMA_A_Y = "0.340"
+CHROMA_B_X = "0.310"
+CHROMA_B_Y = "0.595"
+CHROMA_C_X = "0.155"
+CHROMA_C_Y = "0.070"
+CHROMA_A_WEIGHT = "0.2124"
+CHROMA_B_WEIGHT = "0.7011"
+CHROMA_C_WEIGHT = "0.0866"
+SCALE_W = "1.0"
+SCAN_TYPE = "1.0"
+MAX_SCAN_RATE = "480.0"
+LINE_DOUBLER = "0.0"
+INTER_OFF = "0.0"
+FOCUS = "0.50"
+PIN_DISTORTION_TYPE = "2.0"
+DEFLECTION_ANGLE = "90.0"
+SCREEN_ANGLE_X = "60.0"
+SCREEN_ANGLE_Y = "30.0"
+X_COMP = "0.0"
+Y_COMP = "0.0"
+UNDERSCAN = "0.0"
+MASK_TYPE = "1.0"
+ZOOM = "1.0"
+COLOR_SPACE = "1.0"

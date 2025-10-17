@@ -1,6 +1,6 @@
 /* Filename: common.h
 
-   Copyright (C) 2023 W. M. Martinez
+   Copyright (C) 2023-2025 W. M. Martinez
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -34,6 +34,11 @@ float sq(const float x)
 float cb(const float x)
 {
 	return x * x * x;
+}
+
+float gaussian(float x, float sigma)
+{
+    return exp(-sq(x) * 1.0 / (2.0 * sq(sigma)));
 }
 
 float crt_linear(const float x)

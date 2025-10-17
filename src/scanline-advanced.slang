@@ -228,8 +228,8 @@ void main()
 	float C = -1.0 / 3.0 * sq(FOCUS) + 5.0 / 6.0 * FOCUS;
 	float B = 1.0 - 2.0 * C;
 
-	vec4 xtaps = kernel4(1.0 - f.x, B, C);
-	vec4 ytaps = kernel4(1.0 - f.y, B, C);
+	vec4 xtaps = bicubic4(1.0 - f.x, B, C);
+	vec4 ytaps = bicubic4(1.0 - f.y, B, C);
 
 	// Make sure all taps added together is exactly 1.0
 	xtaps /= xtaps.r + xtaps.g + xtaps.b + xtaps.a;

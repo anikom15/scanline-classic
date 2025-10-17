@@ -15,7 +15,7 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <https://www.gnu.org/licenses/>. */ 
 
-float kernel(const float x, const float B, const float C)
+float bicubic(const float x, const float B, const float C)
 {
 	float dx = abs(x);
 
@@ -36,10 +36,10 @@ float kernel(const float x, const float B, const float C)
 		return 0.0;
 }
 
-vec4 kernel4(const float x, const float B, const float C)
+vec4 bicubic4(const float x, const float B, const float C)
 {
-	return vec4(kernel(x - 2.0, B, C),
-	            kernel(x - 1.0, B, C),
-	            kernel(x, B, C),
-	            kernel(x + 1.0, B, C));
+	return vec4(bicubic(x - 2.0, B, C),
+	            bicubic(x - 1.0, B, C),
+	            bicubic(x, B, C),
+	            bicubic(x + 1.0, B, C));
 }

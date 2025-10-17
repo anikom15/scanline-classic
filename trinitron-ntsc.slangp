@@ -1,42 +1,30 @@
 # Color NTSC television, aperture grille focus, cylindrical curvature
 # max 480i lines
 
-shaders = "6"
+shaders = "4"
 
-shader0 = "src/component-encode.slang"
+shader0 = "src/rgb-bandlimit.slang"
 filter_linear0 = "false"
 float_framebuffer0 = "true"
 scale_type0 = "source"
 scale0 = "1.0"
 
-shader1 = "src/bandlimit.slang"
+shader1 = "src/phosphor-luma.slang"
 filter_linear1 = "false"
 float_framebuffer1 = "true"
 scale_type1 = "source"
 scale1 = "1.0"
 
-shader2 = "src/component-composite.slang"
+shader2 = "src/phosphor-chroma.slang"
 filter_linear2 = "false"
 float_framebuffer2 = "true"
 scale_type2 = "source"
 scale2 = "1.0"
 
-shader3 = "src/scanline-luma.slang"
+shader3 = "src/scanline-advanced.slang"
 filter_linear3 = "false"
-float_framebuffer3 = "true"
-scale_type3 = "source"
+scale_type3 = "viewport"
 scale3 = "1.0"
-
-shader4 = "src/scanline-chroma.slang"
-filter_linear4 = "false"
-float_framebuffer4 = "true"
-scale_type4 = "source"
-scale4 = "1.0"
-
-shader5 = "src/scanline-advanced.slang"
-filter_linear5 = "false"
-scale_type5 = "viewport"
-scale5 = "1.0"
 
 V_FREQ = "59.94"
 ON_PIXELS = "1.0"
