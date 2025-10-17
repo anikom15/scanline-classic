@@ -1,5 +1,5 @@
 #reference "../trinitron-ntsc.slangp"
-V_FREQ = "60.098999"
+V_FREQ = "60.098"
 H_FRONT = "20.000000"
 H_BACK = "40.000000"
 V_FRONT = "9.000000"

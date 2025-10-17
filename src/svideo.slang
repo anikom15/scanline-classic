@@ -154,9 +154,10 @@ void main()
             + pixel.b * cos(2.0 * PI * SC_FREQ_HZ * t);
         pixel.g = 2.0 * chroma * sin(2.0 * PI * SC_FREQ_HZ * t);
         pixel.b = 2.0 * chroma * cos(2.0 * PI * SC_FREQ_HZ * t);
-        w = vec3(gaussian(n + f, sigma.x),
-                 gaussian(n + f, sigma.y),
-                 gaussian(n + f, sigma.z));
+        w = vec3(
+            gaussian(n + f, sigma.x),
+            gaussian(n + f, sigma.y),
+            gaussian(n + f, sigma.z));
         color = color + w * pixel;
         wsum = wsum + w;
         n = n + 1.0;
