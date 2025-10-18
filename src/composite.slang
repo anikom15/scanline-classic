@@ -1,6 +1,6 @@
 #version 450
 
-/* Filename: svideo.slang
+/* Filename: composite.slang
 
    Copyright (C) 2025 W. M. Martinez
 
@@ -38,6 +38,7 @@ layout(push_constant) uniform Push
     float FILTER_CUTOFF_ATTEN_Y;
     float FILTER_CUTOFF_ATTEN_C;
     float FILTER_SIZE_YC;
+    float COLOR_FILTER_MODE;
     float OVERSAMPLE_FACTOR;
 } config;
 
@@ -63,7 +64,7 @@ layout(push_constant) uniform Push
 #pragma parameter BW_MODE "Black & White Mode (0=Off, 1=On)" 0 0 1 1
 #define BW_MODE config.BW_MODE
 
-#pragma parameter SIGNAL_BANDWIDTH_Y "Signal Bandwidth Y (MHz)" 5.4 0.0 75.0 0.1
+#pragma parameter SIGNAL_BANDWIDTH_Y "Signal Bandwidth Y (MHz)" 6.75 0.0 75.0 0.1
 #define SIGNAL_BANDWIDTH_Y config.SIGNAL_BANDWIDTH_Y
 #pragma parameter SIGNAL_BANDWIDTH_C "Signal Bandwidth C (MHz)" 1.3 0.0 6.75 0.01
 #define SIGNAL_BANDWIDTH_C config.SIGNAL_BANDWIDTH_C
@@ -75,6 +76,9 @@ layout(push_constant) uniform Push
 
 #pragma parameter FILTER_SIZE_YC "Gaussian Filter Radius Y/C" 14.0 0.0 40.0 1.0
 #define FILTER_SIZE_YC config.FILTER_SIZE_YC
+
+#pragma parameter COLOR_FILTER_MODE "Color Filter Mode (0=Notch, 1=Comb, 2=Notch+Comb, 3=Feedback)" 0.0 0.0 3.0 1.0
+#define COLOR_FILTER_MODE config.COLOR_FILTER_MODE
 
 #pragma parameter OVERSAMPLE_FACTOR "Oversample Factor" 1.0 1.0 16.0 1.0
 #define OVERSAMPLE_FACTOR config.OVERSAMPLE_FACTOR
@@ -152,7 +156,20 @@ void main()
     vec3 wsum = vec3(0.0);
     vec3 pixel;
     float n = -OVERSAMPLE_FACTOR * FILTER_SIZE_YC;
+    float composite;
     float chroma;
+
+    // Notch filter characteristics
+    vec2 notch_res = vec2(
+        720.0 / 6.75 * (SC_FREQ_HZ / 1.0e6 - SIGNAL_BANDWIDTH_C),
+        720.0 / 6.75 * (SC_FREQ_HZ / 1.0e6 + SIGNAL_BANDWIDTH_C));
+    vec2 notch_sigma = vec2(
+        sqrt(log(c.g)) / (notch_res.x / (OVERSAMPLE_FACTOR * config.SourceSize.x)),
+        sqrt(log(c.g)) / (notch_res.y / (OVERSAMPLE_FACTOR * config.SourceSize.x)));
+    notch_sigma = notch_sigma * step(COLOR_FILTER_MODE, 0.5);
+    float luma_hp = 0.0;
+    float w_hp = 0.0;
+    float wsum_hp = 0.0;
 
     do
     {
@@ -162,20 +179,62 @@ void main()
         float t = field_time + line * LINE_TIME + offset * pixel_time;
         chroma = pixel.g * sin(2.0 * PI * SC_FREQ_HZ * t)
             + pixel.b * cos(2.0 * PI * SC_FREQ_HZ * t);
-        pixel.r = pixel.r + BW_MODE * chroma;
-        pixel.g = chroma * sin(2.0 * PI * SC_FREQ_HZ * t)
+        composite = pixel.r + chroma;
+        pixel.r = composite;
+        pixel.g = composite * sin(2.0 * PI * SC_FREQ_HZ * t)
             * (1.0 - BW_MODE);
-        pixel.b = chroma * cos(2.0 * PI * SC_FREQ_HZ * t)
+        pixel.b = composite * cos(2.0 * PI * SC_FREQ_HZ * t)
             * (1.0 - BW_MODE);
+
+        /*
+        if (COLOR_FILTER_MODE > 2.0) {
+            // Feedback filter
+            chroma = pixel.g * sin(2.0 * PI * SC_FREQ_HZ * t)
+                + pixel.b * cos(2.0 * PI * SC_FREQ_HZ * t);
+            pixel.r = composite - BW_MODE * chroma;
+        }
+        */
+
         w = vec3(
-            gaussian(n + f, sigma.x),
+            gaussian(n + f, sigma.x + notch_sigma.x),
             gaussian(n + f, sigma.y),
             gaussian(n + f, sigma.z));
-        color = color + w * pixel;
-        wsum = wsum + w;
+
+        // Notch high-pass portion
+        w_hp = 1.0 - gaussian(n + f, notch_sigma.y);
+        luma_hp -= w_hp * pixel.r;
+        wsum_hp += -w_hp;
+
+        color += w * pixel;
+        wsum += w;
         n = n + 1.0;
     } while (n <= FILTER_SIZE_YC);
     color = color / wsum;
+    color.r = luma_hp / wsum_hp;
+    color.g = 0.0;
+    color.b = 0.0;
+    //color.r += luma_hp;
+
+    /*
+    if (COLOR_FILTER_MODE < 1.0) {
+        // Notch filter characteristics
+        vec2 notch_res = vec2(
+            720.0 / 6.75 * (SC_FREQ_HZ - SIGNAL_BANDWIDTH_C),
+            720.0 / 6.75 * (SC_FREQ_HZ + SIGNAL_BANDWIDTH_C));
+        vec2 notch_sigma = vec2(
+            sqrt(log(c.g)) / (notch_res.x / (OVERSAMPLE_FACTOR * config.SourceSize.x)),
+            sqrt(log(c.g)) / (notch_res.y / (OVERSAMPLE_FACTOR * config.SourceSize.x)));
+
+        vec2 w_notch;
+        vec2 wsum_notch = vec2(0.0, 1.0);
+        // Notch filter weights
+        // w.r += gaussian(n + f, notch_sigma.x)
+        //    + 1.0 - gaussian(n + f, notch_sigma.y);
+        w_notch.x = gaussian(n + f, notch_sigma.x);
+        w_notch.y = gaussian(n + f, notch_sigma.y);
+        w.r += w_notch.x + 1.0 - w_notch.y;
+    }
+    */
 
     // Adjust chroma amplitude
     color.g *= 2.0;
