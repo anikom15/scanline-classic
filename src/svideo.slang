@@ -174,7 +174,7 @@ void main()
         color = color + w * pixel;
         wsum = wsum + w;
         n = n + 1.0;
-    } while (n <= FILTER_SIZE_YC);
+    } while (n <= OVERSAMPLE_FACTOR * FILTER_SIZE_YC);
     color = color / wsum;
 
     // Adjust chroma amplitude
