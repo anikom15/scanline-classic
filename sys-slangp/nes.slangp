@@ -10,7 +10,7 @@ shader1 = "../src/composite.slang"
 filter_linear1 = "false"
 float_framebuffer1 = "true"
 scale_type1 = "source"
-scale1 = "1.0"
+scale1 = "3.0"
 
 shader2 = "../src/video-decode.slang"
 filter_linear2 = "false"
@@ -40,7 +40,7 @@ SHORTEN_ODD_FIELD_TIME = 1
 H_FREQ = 15.73427
 H_BLANK_INACTIVE_LEN = 170
 FILTER_SIZE_YC = 10.0
-OVERSAMPLE_FACTOR = 4
+OVERSAMPLE_FACTOR = 3.0
 V_FREQ = "60.098"
 H_FRONT = "20.000000"
 H_BACK = "40.000000"

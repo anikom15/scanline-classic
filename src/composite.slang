@@ -84,9 +84,9 @@ layout(push_constant) uniform Push
 #pragma parameter COLOR_FILTER_MODE "Color Filter Mode (0=BS, 1=Comb, 2=0·1, 3=Feedback, 4=Off)" 0.0 0.0 4.0 1.0
 #define COLOR_FILTER_MODE config.COLOR_FILTER_MODE
 
-#pragma parameter NOTCH_OFFSET_L "Notch Filter Left Cutoff Offset" 1.8 -10.0 10.0 0.1
+#pragma parameter NOTCH_OFFSET_L "Notch Filter Left Cutoff Offset" 1.3 -10.0 10.0 0.1
 #define NOTCH_OFFSET_L config.NOTCH_OFFSET_L
-#pragma parameter NOTCH_OFFSET_R "Notch Filter Right Cutoff Offset" 1.8 -10.0 10.0 0.1
+#pragma parameter NOTCH_OFFSET_R "Notch Filter Right Cutoff Offset" 1.3 -10.0 10.0 0.1
 #define NOTCH_OFFSET_R config.NOTCH_OFFSET_R
 
 #pragma parameter COMB_FILTER_TAPS "Comb Filter Taps" 1 1 3 1
@@ -138,17 +138,17 @@ void main()
     // field * FIELD_TIME + line * LINE_TIME + x * pixel_time
     float field = float(config.FrameCount % 2u);
     float field_time = FIELD_TIME * field;
-    float line = floor(vTexCoord.y * config.SourceSize.y);
+    float line = floor(vTexCoord.y * config.OriginalSize.y);
     float inactive_pixels;
     if (H_BLANK_INACTIVE_UNIT < 0.5)
         inactive_pixels = H_BLANK_INACTIVE_LEN;
     else if (H_BLANK_INACTIVE_UNIT < 1.5)
         inactive_pixels = H_BLANK_INACTIVE_LEN * 1.0e-6
-            * H_FREQ_HZ * config.SourceSize.x;
+            * H_FREQ_HZ * config.OriginalSize.x;
     else
         inactive_pixels = H_BLANK_INACTIVE_LEN / 100.0
-            * config.SourceSize.x;
-    float total_pixels = config.SourceSize.x + inactive_pixels;
+            * config.OriginalSize.x;
+    float total_pixels = config.OriginalSize.x + inactive_pixels;
     float pixel_time = LINE_TIME / total_pixels;
     field_time -= pixel_time * field * SHORTEN_ODD_FIELD_TIME;
 
@@ -170,13 +170,13 @@ void main()
         720.0 / 6.75 * SIGNAL_BANDWIDTH_C,
         720.0 / 6.75 * SIGNAL_BANDWIDTH_C);
     vec3 sigma = vec3(
-        sqrt(log(c.r)) / (res.x / (OVERSAMPLE_FACTOR * config.SourceSize.x)),
-        sqrt(log(c.g)) / (res.y / (OVERSAMPLE_FACTOR * config.SourceSize.x)),
-        sqrt(log(c.b)) / (res.z / (OVERSAMPLE_FACTOR * config.SourceSize.x)));
+        sqrt(log(c.r)) / (res.x / (OVERSAMPLE_FACTOR * config.OriginalSize.x)),
+        sqrt(log(c.g)) / (res.y / (OVERSAMPLE_FACTOR * config.OriginalSize.x)),
+        sqrt(log(c.b)) / (res.z / (OVERSAMPLE_FACTOR * config.OriginalSize.x)));
 
-    vec2 tex = floor(config.SourceSize.xy * vTexCoord)
-        * (config.SourceSize.zw) + 0.5 * (config.SourceSize.zw);
-    vec2 dx = vec2(config.SourceSize.z, 0.0) / OVERSAMPLE_FACTOR;
+    vec2 tex = floor(config.OutputSize.xy * vTexCoord)
+        * (config.OutputSize.zw) + 0.5 * (config.OutputSize.zw);
+    vec2 dx = vec2(config.OutputSize.z, 0.0);
 
     vec3 w;
     vec3 wsum = vec3(0.0);
@@ -193,20 +193,20 @@ void main()
         720.0 / 6.75 * (SC_FREQ_HZ / 1.0e6 + NOTCH_OFFSET_L),
         720.0 / 6.75 * (SC_FREQ_HZ / 1.0e6 + NOTCH_OFFSET_R));
     vec2 notch_sigma = vec2(
-        sqrt(log(c.g)) / (notch_res.x / (OVERSAMPLE_FACTOR * config.SourceSize.x)),
-        sqrt(log(c.g)) / ((OVERSAMPLE_FACTOR * config.SourceSize.x) / notch_res.y));
+        sqrt(log(c.g)) / (notch_res.x / (OVERSAMPLE_FACTOR * config.OriginalSize.x)),
+        sqrt(log(c.g)) / ((OVERSAMPLE_FACTOR * config.OriginalSize.x) / notch_res.y));
     float identity = 0.0;
     float t_identity = 0.0;
     float luma_hp = 0.0;
     float wsum_hp = 0.0;
 
     // Comb filter data
-    vec2 comb_dy = vec2(0.0, -1.0 * config.SourceSize.w);
+    vec2 comb_dy = vec2(0.0, -1.0 * config.OriginalSize.w);
 
     do
     {
         float offset = (tex.x + n * dx.x)
-            * config.SourceSize.x;
+            * config.OriginalSize.x;
         pixel = texture(Source, tex + n * dx).rgb;
         float t = field_time + line * LINE_TIME + offset * pixel_time;
         chroma = pixel.g * sin(2.0 * PI * SC_FREQ_HZ * t)

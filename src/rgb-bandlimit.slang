@@ -45,14 +45,14 @@ layout(push_constant) uniform Push
 #define SIGNAL_BANDWIDTH_R config.SIGNAL_BANDWIDTH_R
 #pragma parameter SIGNAL_BANDWIDTH_G "Signal Bandwidth G (MHz)" 6.75 0.0 75.0 0.01
 #define SIGNAL_BANDWIDTH_G config.SIGNAL_BANDWIDTH_G
-#pragma parameter SIGNAL_BANDWIDTH_B "Signal Bandwidth C (MHz)" 6.75 0.0 75.0 0.01
+#pragma parameter SIGNAL_BANDWIDTH_B "Signal Bandwidth B (MHz)" 6.75 0.0 75.0 0.01
 #define SIGNAL_BANDWIDTH_B config.SIGNAL_BANDWIDTH_B
 
-#pragma parameter FILTER_CUTOFF_ATTEN_R "Filter Cutoff Attenuation A (dB)" 3.0 0.0 30.0 1.0
+#pragma parameter FILTER_CUTOFF_ATTEN_R "Filter Cutoff Attenuation R (dB)" 3.0 0.0 30.0 1.0
 #define FILTER_CUTOFF_ATTEN_R config.FILTER_CUTOFF_ATTEN_R
-#pragma parameter FILTER_CUTOFF_ATTEN_G "Filter Cutoff Attenuation B (dB)" 3.0 0.0 30.0 1.0
+#pragma parameter FILTER_CUTOFF_ATTEN_G "Filter Cutoff Attenuation G (dB)" 3.0 0.0 30.0 1.0
 #define FILTER_CUTOFF_ATTEN_G config.FILTER_CUTOFF_ATTEN_G
-#pragma parameter FILTER_CUTOFF_ATTEN_B "Filter Cutoff Attenuation C (dB)" 3.0 0.0 30.0 1.0
+#pragma parameter FILTER_CUTOFF_ATTEN_B "Filter Cutoff Attenuation B (dB)" 3.0 0.0 30.0 1.0
 #define FILTER_CUTOFF_ATTEN_B config.FILTER_CUTOFF_ATTEN_B
 
 #pragma parameter FILTER_SIZE_RGB "Gaussian Filter Radius" 4.0 0.0 40.0 1.0
@@ -94,6 +94,7 @@ layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
 #define COMPAT_TEXTURE(c,d) texture(c,d)
+#define OutputSize config.OutputSize
 #define SourceSize config.SourceSize
 
 const vec3 TEN = vec3(10.0, 10.0, 10.0);
@@ -111,16 +112,16 @@ void main()
             -FILTER_CUTOFF_ATTEN_G,
             -FILTER_CUTOFF_ATTEN_B) / TEN);
     vec3 sigma = vec3(
-        sqrt(log(c.r)) / (res.x / SourceSize.x),
-        sqrt(log(c.g)) / (res.y / SourceSize.x),
-        sqrt(log(c.b)) / (res.z / SourceSize.x));
+        sqrt(log(c.r)) / (res.x / OutputSize.x),
+        sqrt(log(c.g)) / (res.y / OutputSize.x),
+        sqrt(log(c.b)) / (res.z / OutputSize.x));
 
-    float f = 0.5 - fract(SourceSize.x * vTexCoord.x);
+    float f = 0.5 - fract(OutputSize.x * vTexCoord.x);
 
-    vec2 tex = floor(SourceSize.xy * vTexCoord)
-        * SourceSize.zw + 0.5 * SourceSize.zw;
+    vec2 tex = floor(OutputSize.xy * vTexCoord)
+        * OutputSize.zw + 0.5 * OutputSize.zw;
     vec3 color = vec3(0.0);
-    vec2 dx  = vec2(SourceSize.z, 0.0);
+    vec2 dx  = vec2(OutputSize.z, 0.0);
 
     vec3 w;
     vec3 wsum = vec3(0.0);
