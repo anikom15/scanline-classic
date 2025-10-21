@@ -55,7 +55,7 @@ layout(push_constant) uniform Push
 #pragma parameter FILTER_CUTOFF_ATTEN_B "Filter Cutoff Attenuation B (dB)" 3.0 0.0 30.0 1.0
 #define FILTER_CUTOFF_ATTEN_B config.FILTER_CUTOFF_ATTEN_B
 
-#pragma parameter FILTER_SIZE_RGB "Gaussian Filter Radius" 4.0 0.0 40.0 1.0
+#pragma parameter FILTER_SIZE_RGB "Gaussian Filter Radius" 5.0 0.0 40.0 1.0
 #define FILTER_SIZE_RGB config.FILTER_SIZE_RGB
 
 #pragma parameter SIGNAL_GAIN_R "Signal Gain R" 1.0 0.0 10.0 0.1
@@ -101,6 +101,8 @@ const vec3 TEN = vec3(10.0, 10.0, 10.0);
 
 void main()
 {
+    vec3 color = vec3(0.0);
+
     // Filter parameters
     vec3 res = vec3(
         720.0 / 6.75 * SIGNAL_BANDWIDTH_R,
@@ -120,7 +122,6 @@ void main()
 
     vec2 tex = floor(OutputSize.xy * vTexCoord)
         * OutputSize.zw + 0.5 * OutputSize.zw;
-    vec3 color = vec3(0.0);
     vec2 dx  = vec2(OutputSize.z, 0.0);
 
     vec3 w;

@@ -38,7 +38,6 @@ layout(push_constant) uniform Push
     float FILTER_CUTOFF_ATTEN_Y;
     float FILTER_CUTOFF_ATTEN_C;
     float FILTER_SIZE_YC;
-    float OVERSAMPLE_FACTOR;
 } config;
 
 #pragma parameter V_LINES_PER_FIELD "Video Lines per Field" 262.5 0.0 540.0 0.5
@@ -75,9 +74,6 @@ layout(push_constant) uniform Push
 
 #pragma parameter FILTER_SIZE_YC "Gaussian Filter Radius Y/C" 14.0 0.0 40.0 1.0
 #define FILTER_SIZE_YC config.FILTER_SIZE_YC
-
-#pragma parameter OVERSAMPLE_FACTOR "Oversample Factor" 1.0 1.0 16.0 1.0
-#define OVERSAMPLE_FACTOR config.OVERSAMPLE_FACTOR
 
 #define LINE_TIME (1.0 / H_FREQ_HZ)
 #define FIELD_TIME (LINE_TIME * V_LINES_PER_FIELD)
@@ -127,7 +123,6 @@ void main()
 
     // Modulation + Filter + Demodulation
     vec3 color = vec3(0.0); //texture(Source, vTexCoord).rgb;
-    float f = 0.5 - fract(config.SourceSize.x * vTexCoord.x);
 
     vec3 c = 1.0 / pow(
         TEN, vec3(
@@ -140,26 +135,27 @@ void main()
         720.0 / 6.75 * SIGNAL_BANDWIDTH_C,
         720.0 / 6.75 * SIGNAL_BANDWIDTH_C);
     vec3 sigma = vec3(
-        sqrt(log(c.r)) / (res.x / (OVERSAMPLE_FACTOR * config.SourceSize.x)),
-        sqrt(log(c.g)) / (res.y / (OVERSAMPLE_FACTOR * config.SourceSize.x)),
-        sqrt(log(c.b)) / (res.z / (OVERSAMPLE_FACTOR * config.SourceSize.x)));
+        sqrt(log(c.r)) / (res.x / config.OutputSize.x),
+        sqrt(log(c.g)) / (res.y / config.OutputSize.x),
+        sqrt(log(c.b)) / (res.z / config.OutputSize.x));
 
-    vec2 tex = floor(config.SourceSize.xy * vTexCoord)
-        * (config.SourceSize.zw) + 0.5 * (config.SourceSize.zw);
-    vec2 dx = vec2(config.SourceSize.z, 0.0) / OVERSAMPLE_FACTOR;
+    float f = 0.5 - fract(config.OutputSize.x * vTexCoord.x);
+    vec2 tex = floor(config.OutputSize.xy * vTexCoord)
+        * (config.OutputSize.zw) + 0.5 * (config.OutputSize.zw);
+    vec2 dx = vec2(config.OutputSize.z, 0.0);
 
     vec3 w;
     vec3 wsum = vec3(0.0);
     vec3 pixel;
-    float n = -OVERSAMPLE_FACTOR * FILTER_SIZE_YC;
+    float n = -FILTER_SIZE_YC;
     float chroma;
 
-    do
-    {
+    do {
         float offset = (tex.x + n * dx.x)
             * config.SourceSize.x;
-        pixel = texture(Source, tex + n * dx).rgb;
         float t = field_time + line * LINE_TIME + offset * pixel_time;
+
+        pixel = texture(Source, tex + n * dx).rgb;
         chroma = pixel.g * sin(2.0 * PI * SC_FREQ_HZ * t)
             + pixel.b * cos(2.0 * PI * SC_FREQ_HZ * t);
         pixel.r = pixel.r + BW_MODE * chroma;
@@ -174,7 +170,7 @@ void main()
         color = color + w * pixel;
         wsum = wsum + w;
         n = n + 1.0;
-    } while (n <= OVERSAMPLE_FACTOR * FILTER_SIZE_YC);
+    } while (n <= FILTER_SIZE_YC);
     color = color / wsum;
 
     // Adjust chroma amplitude

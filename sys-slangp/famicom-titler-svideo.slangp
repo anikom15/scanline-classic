@@ -10,7 +10,7 @@ shader1 = "../src/svideo.slang"
 filter_linear1 = "false"
 float_framebuffer1 = "true"
 scale_type1 = "source"
-scale1 = "1.0"
+scale1 = "3.0"
 
 shader2 = "../src/video-decode.slang"
 filter_linear2 = "false"

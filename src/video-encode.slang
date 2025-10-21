@@ -38,11 +38,11 @@ layout(push_constant) uniform Push
 #pragma parameter LUMA_CHROMA_MODEL "Luma-Chroma Color Model (0=YIQ, 1=YUV, 2=YPbPr, 3=YCbCr)" 2 0 3 1
 #define LUMA_CHROMA_MODEL config.LUMA_CHROMA_MODEL
 
-#pragma parameter SIGNAL_SCALE_Y "Signal Scale Luma" 1.0 0.0 10.0 0.1
+#pragma parameter SIGNAL_SCALE_Y "Signal Scale Luma" 1.0 0.0 10.0 0.01
 #define SIGNAL_SCALE_Y config.SIGNAL_SCALE_Y
-#pragma parameter SIGNAL_SCALE_U "Signal Scale Chroma I/U/Pb/Cb" 1.0 0.0 10.0 0.1
+#pragma parameter SIGNAL_SCALE_U "Signal Scale Chroma I/U/Pb/Cb" 1.0 0.0 10.0 0.01
 #define SIGNAL_SCALE_U config.SIGNAL_SCALE_U
-#pragma parameter SIGNAL_SCALE_V "Signal Scale Chroma Q/V/Pr/Cr" 1.0 0.0 10.0 0.1
+#pragma parameter SIGNAL_SCALE_V "Signal Scale Chroma Q/V/Pr/Cr" 1.0 0.0 10.0 0.01
 #define SIGNAL_SCALE_V config.SIGNAL_SCALE_V
 
 #pragma parameter SIGNAL_OFFSET_Y "Signal Offset Luma" 0.0 -1.0 1.0 0.01
