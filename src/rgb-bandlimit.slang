@@ -97,8 +97,6 @@ layout(set = 0, binding = 2) uniform sampler2D Source;
 #define OutputSize config.OutputSize
 #define SourceSize config.SourceSize
 
-const vec3 TEN = vec3(10.0, 10.0, 10.0);
-
 void main()
 {
     vec3 color = vec3(0.0);
@@ -112,7 +110,7 @@ void main()
         TEN, vec3(
             -FILTER_CUTOFF_ATTEN_R,
             -FILTER_CUTOFF_ATTEN_G,
-            -FILTER_CUTOFF_ATTEN_B) / TEN);
+            -FILTER_CUTOFF_ATTEN_B) / TWENTY);
     vec3 sigma = vec3(
         sqrt(log(c.r)) / (res.x / OutputSize.x),
         sqrt(log(c.g)) / (res.y / OutputSize.x),

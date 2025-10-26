@@ -99,8 +99,6 @@ layout(location = 0) in vec2 vTexCoord;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
-const vec3 TEN = vec3(10.0, 10.0, 10.0);
-
 void main()
 {
     // Get all values needed for t:

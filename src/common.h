@@ -15,6 +15,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <https://www.gnu.org/licenses/>. */ 
 
+const vec3 TEN = vec3(10.0, 10.0, 10.0);
+const vec3 TWENTY = vec3(20.0, 20.0, 20.0);
 const float EPS = 1.19209289551e-7;
 const float PI = 3.14159265359;
 const vec3 BLACK = vec3(0.0, 0.0, 0.0);

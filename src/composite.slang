@@ -130,8 +130,6 @@ layout(location = 0) in vec2 vTexCoord;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
-const vec3 TEN = vec3(10.0, 10.0, 10.0);
-
 vec3 prefilter(vec2 tex, vec2 dx, float f, vec3 sigma, int N)
 {
     vec3 color = vec3(0.0);
