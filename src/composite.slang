@@ -83,9 +83,9 @@ layout(push_constant) uniform Push
 #pragma parameter COLOR_FILTER_MODE "Color Filter Mode (0=BS, 1=Comb, 2=0·1, 3=Feedback, 4=Off)" 0.0 0.0 4.0 1.0
 #define COLOR_FILTER_MODE config.COLOR_FILTER_MODE
 
-#pragma parameter NOTCH_OFFSET_L "Notch Filter Left Cutoff Offset" 1.3 -10.0 10.0 0.1
+#pragma parameter NOTCH_OFFSET_L "Notch Filter Left Cutoff Offset" 0.6 -10.0 10.0 0.1
 #define NOTCH_OFFSET_L config.NOTCH_OFFSET_L
-#pragma parameter NOTCH_OFFSET_R "Notch Filter Right Cutoff Offset" 1.3 -10.0 10.0 0.1
+#pragma parameter NOTCH_OFFSET_R "Notch Filter Right Cutoff Offset" 0.6 -10.0 10.0 0.1
 #define NOTCH_OFFSET_R config.NOTCH_OFFSET_R
 
 #pragma parameter COMB_FILTER_TAPS "Comb Filter Taps" 1 1 3 1
@@ -149,6 +149,11 @@ vec3 prefilter(vec2 tex, vec2 dx, float f, vec3 sigma, int N)
 
 void main()
 {
+    vec3 color = vec3(0.0); // texture(Source, vTexCoord).rgb;
+    vec3 color_notch = vec3(0.0);
+    vec3 color_comb = vec3(0.0);
+    vec3 color_raw = vec3(0.0);
+
     // Get all values needed for t:
     // field * FIELD_TIME + line * LINE_TIME + x * pixel_time
     float field = float(config.FrameCount % 2u);
@@ -167,11 +172,7 @@ void main()
     float pixel_time = LINE_TIME / total_pixels;
     field_time -= pixel_time * field * SHORTEN_ODD_FIELD_TIME;
 
-    vec3 color = vec3(0.0); // texture(Source, vTexCoord).rgb;
-    vec3 color_notch = vec3(0.0);
-    vec3 color_comb = vec3(0.0);
-    vec3 color_raw = vec3(0.0);
-
+    // Filter characteristics
     vec3 c = 1.0 / pow(
         TEN, vec3(
             -FILTER_CUTOFF_ATTEN_Y,
@@ -202,9 +203,9 @@ void main()
     float composite;
     float chroma;
 
-    // Notch prefilter characteristics
+    // Notch filter characteristics
     vec2 notch_res = vec2(
-        720.0 / 6.75 * (SC_FREQ_HZ / 1.0e6 + NOTCH_OFFSET_L),
+        720.0 / 6.75 * (SC_FREQ_HZ / 1.0e6 - NOTCH_OFFSET_L),
         720.0 / 6.75 * (SC_FREQ_HZ / 1.0e6 - NOTCH_OFFSET_R));
     vec2 notch_sigma = vec2(
         sqrt(log(c.g)) / (notch_res.x / config.OutputSize.x),
@@ -214,7 +215,7 @@ void main()
     float luma_hp = 0.0;
     float wsum_hp = 0.0;
 
-    // Comb prefilter data
+    // Comb filter data
     vec2 comb_dy = vec2(0.0, -1.0 * config.SourceSize.w);
 
     // Modulation + Demodulation + Filtering
@@ -288,13 +289,11 @@ void main()
             chroma = 0.5 * (composite - comb_taps_composite.x);
             pixel.r = 0.5 * (composite + comb_taps_composite.x);
         } else if (COMB_FILTER_TAPS < 3) {
-            chroma = 0.5 * (0.5 * composite - comb_taps_composite.x - 0.5 * comb_taps_composite.y);
+            chroma = 0.5 * (0.5 * composite - comb_taps_composite.x + 0.5 * comb_taps_composite.y);
             pixel.r = 0.5 * (0.5 * composite + comb_taps_composite.x + 0.5 * comb_taps_composite.y);
-            chroma *= 2.0;
         } else {
-            chroma = 1.0 / 3.0 * (0.5 * composite - comb_taps_composite.x - comb_taps_composite.y - 0.5 * comb_taps_composite.z);
+            chroma = 1.0 / 3.0 * (0.5 * composite - comb_taps_composite.x + comb_taps_composite.y - 0.5 * comb_taps_composite.z);
             pixel.r = 1.0 / 3.0 * (0.5 * composite + comb_taps_composite.x + comb_taps_composite.y + 0.5 * comb_taps_composite.z);
-            chroma *= 3.0;
         }
         pixel.g = chroma * sin(2.0 * PI * SC_FREQ_HZ * t);
         pixel.b = chroma * cos(2.0 * PI * SC_FREQ_HZ * t);
