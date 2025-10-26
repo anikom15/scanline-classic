@@ -33,6 +33,10 @@ layout(push_constant) uniform Push
     float H_BLANK_INACTIVE_LEN;
     float H_BLANK_INACTIVE_UNIT;
     float FILTER_ENCODE;
+    float ENCODE_FILTER_BANDWIDTH_Y;
+    float ENCODE_FILTER_BANDWIDTH_C;
+    float ENCODE_CUTOFF_ATTEN_Y;
+    float ENCODE_CUTOFF_ATTEN_C;
     float SIGNAL_BANDWIDTH_Y;
     float SIGNAL_BANDWIDTH_C;
     float FILTER_CUTOFF_ATTEN_Y;
@@ -41,8 +45,6 @@ layout(push_constant) uniform Push
     float COLOR_FILTER_MODE;
     float NOTCH_OFFSET_L;
     float NOTCH_OFFSET_R;
-    float COMB_FILTER_TAPS;
-    float NOTCH_COMB_W;
 } config;
 
 #pragma parameter V_LINES_PER_FIELD "Video Lines per Field" 262.5 0.0 540.0 0.5
@@ -67,6 +69,16 @@ layout(push_constant) uniform Push
 #pragma parameter FILTER_ENCODE "Filter Encode (0=Off, 1=On)" 1.0 0.0 1.0 1.0
 #define FILTER_ENCODE config.FILTER_ENCODE
 
+#pragma parameter ENCODE_FILTER_BANDWIDTH_Y "Encode Filter Bandwidth Y (MHz)" 6.75 0.0 75.0 0.1
+#define ENCODE_FILTER_BANDWIDTH_Y config.ENCODE_FILTER_BANDWIDTH_Y
+#pragma parameter ENCODE_FILTER_BANDWIDTH_C "Encode Filter Bandwidth C (MHz)" 2.6 0.0 75.0 0.1
+#define ENCODE_FILTER_BANDWIDTH_C config.ENCODE_FILTER_BANDWIDTH_C
+
+#pragma parameter ENCODE_CUTOFF_ATTEN_Y "Encode Cutoff Attenuation Y (dB)" 3.0 0.0 30.0 1.0
+#define ENCODE_CUTOFF_ATTEN_Y config.ENCODE_CUTOFF_ATTEN_Y
+#pragma parameter ENCODE_CUTOFF_ATTEN_C "Encode Cutoff Attenuation C (dB)" 3.0 0.0 30.0 1.0
+#define ENCODE_CUTOFF_ATTEN_C config.ENCODE_CUTOFF_ATTEN_C
+
 #pragma parameter SIGNAL_BANDWIDTH_Y "Signal Bandwidth Y (MHz)" 6.75 0.0 75.0 0.1
 #define SIGNAL_BANDWIDTH_Y config.SIGNAL_BANDWIDTH_Y
 #pragma parameter SIGNAL_BANDWIDTH_C "Signal Bandwidth C (MHz)" 1.3 0.0 6.75 0.01
@@ -88,22 +100,24 @@ layout(push_constant) uniform Push
 #pragma parameter NOTCH_OFFSET_R "Notch Filter Right Cutoff Offset" 0.6 -10.0 10.0 0.1
 #define NOTCH_OFFSET_R config.NOTCH_OFFSET_R
 
-#pragma parameter COMB_FILTER_TAPS "Comb Filter Taps" 1 1 3 1
-#define COMB_FILTER_TAPS config.COMB_FILTER_TAPS
-
-#pragma parameter NOTCH_COMB_W "Notch-Comb Mixing Weight" 0.5 0.0 1.0 0.1
-#define NOTCH_COMB_W config.NOTCH_COMB_W
-
 #define LINE_TIME (1.0 / H_FREQ_HZ)
 #define FIELD_TIME (LINE_TIME * V_LINES_PER_FIELD)
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
     mat4 MVP;
+    float COMB_FILTER_TAPS;
+    float NOTCH_COMB_W;
     float BW_MODE;
     float NOTCH_TEST_LP;
     float NOTCH_TEST_HP;
 } global;
+
+#pragma parameter COMB_FILTER_TAPS "Comb Filter Taps" 1 1 3 1
+#define COMB_FILTER_TAPS global.COMB_FILTER_TAPS
+
+#pragma parameter NOTCH_COMB_W "Notch-Comb Mixing Weight" 0.5 0.0 1.0 0.1
+#define NOTCH_COMB_W global.NOTCH_COMB_W
 
 #pragma parameter BW_MODE "Monochrome Display (0=Off, 1=On)" 0 0 1 1
 #define BW_MODE global.BW_MODE
@@ -172,6 +186,22 @@ void main()
     float pixel_time = LINE_TIME / total_pixels;
     field_time -= pixel_time * field * SHORTEN_ODD_FIELD_TIME;
 
+    // Prefilter characteristics
+    vec3 c_encode = 1.0 / pow(
+        TEN, vec3(
+            -ENCODE_CUTOFF_ATTEN_Y,
+            -ENCODE_CUTOFF_ATTEN_C,
+            -ENCODE_CUTOFF_ATTEN_C)
+        / TWENTY);
+    vec3 res_encode = vec3(
+        720.0 / 6.75 * ENCODE_FILTER_BANDWIDTH_Y,
+        720.0 / 6.75 * ENCODE_FILTER_BANDWIDTH_C,
+        720.0 / 6.75 * ENCODE_FILTER_BANDWIDTH_C);
+    vec3 sigma_encode = vec3(
+        sqrt(log(c_encode.r)) / (res_encode.x / config.OutputSize.x),
+        sqrt(log(c_encode.g)) / (res_encode.y / config.OutputSize.x),
+        sqrt(log(c_encode.b)) / (res_encode.z / config.OutputSize.x));
+
     // Filter characteristics
     vec3 c = 1.0 / pow(
         TEN, vec3(
@@ -224,7 +254,7 @@ void main()
             * config.SourceSize.x;
         // Encode prefilter
         if (FILTER_ENCODE > 0.5) {
-            pixel = prefilter(tex + n * dx, dx, f, sigma, int(FILTER_SIZE_YC));
+            pixel = prefilter(tex + n * dx, dx, f, sigma_encode, int(FILTER_SIZE_YC));
         } else {
             pixel = texture(Source, tex + n * dx).rgb;
         }
