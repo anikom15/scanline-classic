@@ -177,7 +177,7 @@ void main()
             -FILTER_CUTOFF_ATTEN_Y,
             -FILTER_CUTOFF_ATTEN_C,
             -FILTER_CUTOFF_ATTEN_C)
-        / TEN);
+        / TWENTY);
     vec3 res = vec3(
         720.0 / 6.75 * SIGNAL_BANDWIDTH_Y,
         720.0 / 6.75 * SIGNAL_BANDWIDTH_C,
