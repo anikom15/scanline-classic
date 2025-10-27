@@ -19,6 +19,7 @@
    along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
 #include "common.h"
+#include "filter.h"
 
 layout(push_constant) uniform Push
 {
@@ -102,19 +103,16 @@ void main()
     vec3 color = vec3(0.0);
 
     // Filter parameters
-    vec3 res = vec3(
-        720.0 / 6.75 * SIGNAL_BANDWIDTH_R,
-        720.0 / 6.75 * SIGNAL_BANDWIDTH_G,
-        720.0 / 6.75 * SIGNAL_BANDWIDTH_B);
-    vec3 c = 1.0 / pow(
-        TEN, vec3(
-            -FILTER_CUTOFF_ATTEN_R,
-            -FILTER_CUTOFF_ATTEN_G,
-            -FILTER_CUTOFF_ATTEN_B) / TWENTY);
-    vec3 sigma = vec3(
-        sqrt(log(c.r)) / (res.x / OutputSize.x),
-        sqrt(log(c.g)) / (res.y / OutputSize.x),
-        sqrt(log(c.b)) / (res.z / OutputSize.x));
+    vec3 sigma = sigma601(
+        vec3(
+            SIGNAL_BANDWIDTH_R,
+            SIGNAL_BANDWIDTH_G,
+            SIGNAL_BANDWIDTH_B),
+        vec3(
+            FILTER_CUTOFF_ATTEN_R,
+            FILTER_CUTOFF_ATTEN_G,
+            FILTER_CUTOFF_ATTEN_B),
+        OutputSize.x);
 
     float f = 0.5 - fract(OutputSize.x * vTexCoord.x);
 

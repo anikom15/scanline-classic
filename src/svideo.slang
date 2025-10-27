@@ -19,6 +19,7 @@
 
 #include "common.h"
 #include "color.h"
+#include "filter.h"
 
 layout(push_constant) uniform Push
 {
@@ -64,7 +65,7 @@ layout(push_constant) uniform Push
 #pragma parameter H_BLANK_INACTIVE_UNIT "Horizontal Blank Inactive Unit (0=px, 1=µs, 2=%% active)" 0.0 0.0 2.0 1.0
 #define H_BLANK_INACTIVE_UNIT config.H_BLANK_INACTIVE_UNIT
 
-#pragma parameter FILTER_ENCODE "Enable Encode Prefilter (0=Off, 1=On)" 0.0 0.0 1.0 1.0
+#pragma parameter FILTER_ENCODE "Enable Encode Prefilter (0=Off, 1=On)" 1.0 0.0 1.0 1.0
 #define FILTER_ENCODE config.FILTER_ENCODE
 
 #pragma parameter ENCODE_FILTER_BANDWIDTH_Y "Encode Prefilter Bandwidth Y (MHz)" 5.4 0.0 75.0 0.1
@@ -140,37 +141,30 @@ void main()
     field_time -= pixel_time * field * SHORTEN_ODD_FIELD_TIME;
 
     // Prefilter characteristics
-    vec3 c_encode = 1.0 / pow(
-        TEN, vec3(
-            -ENCODE_CUTOFF_ATTEN_Y,
-            -ENCODE_CUTOFF_ATTEN_C,
-            -ENCODE_CUTOFF_ATTEN_C)
-        / TWENTY);
-    vec3 res_encode = vec3(
-        720.0 / 6.75 * ENCODE_FILTER_BANDWIDTH_Y,
-        720.0 / 6.75 * ENCODE_FILTER_BANDWIDTH_C,
-        720.0 / 6.75 * ENCODE_FILTER_BANDWIDTH_C);
-    vec3 sigma_encode = vec3(
-        sqrt(log(c_encode.r)) / (res_encode.x / config.OutputSize.x),
-        sqrt(log(c_encode.g)) / (res_encode.y / config.OutputSize.x),
-        sqrt(log(c_encode.b)) / (res_encode.z / config.OutputSize.x));
+    vec3 sigma_encode = sigma601(
+        vec3(
+            ENCODE_FILTER_BANDWIDTH_Y,
+            ENCODE_FILTER_BANDWIDTH_C,
+            ENCODE_FILTER_BANDWIDTH_C),
+        vec3(
+            ENCODE_CUTOFF_ATTEN_Y,
+            ENCODE_CUTOFF_ATTEN_C,
+            ENCODE_CUTOFF_ATTEN_C),
+        config.OutputSize.x);
+
     sigma_encode = mix(sigma_encode, vec3(0.0), 1.0 - FILTER_ENCODE);
 
     // Modulation + Filter + Demodulation
-    vec3 c = 1.0 / pow(
-        TEN, vec3(
-            -FILTER_CUTOFF_ATTEN_Y,
-            -FILTER_CUTOFF_ATTEN_C,
-            -FILTER_CUTOFF_ATTEN_C)
-        / TWENTY);
-    vec3 res = vec3(
-        720.0 / 6.75 * SIGNAL_BANDWIDTH_Y,
-        720.0 / 6.75 * SIGNAL_BANDWIDTH_C,
-        720.0 / 6.75 * SIGNAL_BANDWIDTH_C);
-    vec3 sigma = vec3(
-        sqrt(log(c.r)) / (res.x / config.OutputSize.x),
-        sqrt(log(c.g)) / (res.y / config.OutputSize.x),
-        sqrt(log(c.b)) / (res.z / config.OutputSize.x));
+    vec3 sigma = sigma601(
+        vec3(
+            SIGNAL_BANDWIDTH_Y,
+            SIGNAL_BANDWIDTH_C,
+            SIGNAL_BANDWIDTH_C),
+        vec3(
+            FILTER_CUTOFF_ATTEN_Y,
+            FILTER_CUTOFF_ATTEN_C,
+            FILTER_CUTOFF_ATTEN_C),
+        config.OutputSize.x);
 
     float f = 0.5 - fract(config.OutputSize.x * vTexCoord.x);
     vec2 tex = floor(config.OutputSize.xy * vTexCoord)

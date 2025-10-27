@@ -19,6 +19,7 @@
 
 #include "common.h"
 #include "color.h"
+#include "filter.h"
 
 layout(push_constant) uniform Push
 {
@@ -71,7 +72,7 @@ layout(push_constant) uniform Push
 
 #pragma parameter ENCODE_FILTER_BANDWIDTH_Y "Encode Filter Bandwidth Y (MHz)" 6.75 0.0 75.0 0.1
 #define ENCODE_FILTER_BANDWIDTH_Y config.ENCODE_FILTER_BANDWIDTH_Y
-#pragma parameter ENCODE_FILTER_BANDWIDTH_C "Encode Filter Bandwidth C (MHz)" 2.6 0.0 75.0 0.1
+#pragma parameter ENCODE_FILTER_BANDWIDTH_C "Encode Filter Bandwidth C (MHz)" 1.3 0.0 75.0 0.1
 #define ENCODE_FILTER_BANDWIDTH_C config.ENCODE_FILTER_BANDWIDTH_C
 
 #pragma parameter ENCODE_CUTOFF_ATTEN_Y "Encode Cutoff Attenuation Y (dB)" 3.0 0.0 30.0 1.0
@@ -81,12 +82,12 @@ layout(push_constant) uniform Push
 
 #pragma parameter SIGNAL_BANDWIDTH_Y "Signal Bandwidth Y (MHz)" 6.75 0.0 75.0 0.1
 #define SIGNAL_BANDWIDTH_Y config.SIGNAL_BANDWIDTH_Y
-#pragma parameter SIGNAL_BANDWIDTH_C "Signal Bandwidth C (MHz)" 1.3 0.0 6.75 0.01
+#pragma parameter SIGNAL_BANDWIDTH_C "Signal Bandwidth C (MHz)" 1.79 0.0 6.75 0.01
 #define SIGNAL_BANDWIDTH_C config.SIGNAL_BANDWIDTH_C
 
 #pragma parameter FILTER_CUTOFF_ATTEN_Y "Filter Cutoff Attenuation Y (dB)" 3.0 0.0 30.0 1.0
 #define FILTER_CUTOFF_ATTEN_Y config.FILTER_CUTOFF_ATTEN_Y
-#pragma parameter FILTER_CUTOFF_ATTEN_C "Filter Cutoff Attenuation C (dB)" 2.0 0.0 30.0 1.0
+#pragma parameter FILTER_CUTOFF_ATTEN_C "Filter Cutoff Attenuation C (dB)" 3.0 0.0 30.0 1.0
 #define FILTER_CUTOFF_ATTEN_C config.FILTER_CUTOFF_ATTEN_C
 
 #pragma parameter FILTER_SIZE_YC "Gaussian Filter Radius Y/C" 14.0 0.0 40.0 1.0
@@ -95,9 +96,9 @@ layout(push_constant) uniform Push
 #pragma parameter COLOR_FILTER_MODE "Color Filter Mode (0=BS, 1=Comb, 2=0·1, 3=Feedback, 4=Off)" 0.0 0.0 4.0 1.0
 #define COLOR_FILTER_MODE config.COLOR_FILTER_MODE
 
-#pragma parameter NOTCH_OFFSET_L "Notch Filter Left Cutoff Offset" 0.6 -10.0 10.0 0.1
+#pragma parameter NOTCH_OFFSET_L "Notch Filter Left Cutoff Offset" 1.3 -10.0 10.0 0.1
 #define NOTCH_OFFSET_L config.NOTCH_OFFSET_L
-#pragma parameter NOTCH_OFFSET_R "Notch Filter Right Cutoff Offset" 0.6 -10.0 10.0 0.1
+#pragma parameter NOTCH_OFFSET_R "Notch Filter Right Cutoff Offset" 1.3 -10.0 10.0 0.1
 #define NOTCH_OFFSET_R config.NOTCH_OFFSET_R
 
 #define LINE_TIME (1.0 / H_FREQ_HZ)
@@ -187,36 +188,28 @@ void main()
     field_time -= pixel_time * field * SHORTEN_ODD_FIELD_TIME;
 
     // Prefilter characteristics
-    vec3 c_encode = 1.0 / pow(
-        TEN, vec3(
-            -ENCODE_CUTOFF_ATTEN_Y,
-            -ENCODE_CUTOFF_ATTEN_C,
-            -ENCODE_CUTOFF_ATTEN_C)
-        / TWENTY);
-    vec3 res_encode = vec3(
-        720.0 / 6.75 * ENCODE_FILTER_BANDWIDTH_Y,
-        720.0 / 6.75 * ENCODE_FILTER_BANDWIDTH_C,
-        720.0 / 6.75 * ENCODE_FILTER_BANDWIDTH_C);
-    vec3 sigma_encode = vec3(
-        sqrt(log(c_encode.r)) / (res_encode.x / config.OutputSize.x),
-        sqrt(log(c_encode.g)) / (res_encode.y / config.OutputSize.x),
-        sqrt(log(c_encode.b)) / (res_encode.z / config.OutputSize.x));
+    vec3 sigma_encode = sigma601(
+        vec3(
+            ENCODE_FILTER_BANDWIDTH_Y,
+            ENCODE_FILTER_BANDWIDTH_C,
+            ENCODE_FILTER_BANDWIDTH_C),
+        vec3(
+            ENCODE_CUTOFF_ATTEN_Y,
+            ENCODE_CUTOFF_ATTEN_C,
+            ENCODE_CUTOFF_ATTEN_C),
+        config.OutputSize.x);
 
     // Filter characteristics
-    vec3 c = 1.0 / pow(
-        TEN, vec3(
-            -FILTER_CUTOFF_ATTEN_Y,
-            -FILTER_CUTOFF_ATTEN_C,
-            -FILTER_CUTOFF_ATTEN_C)
-        / TWENTY);
-    vec3 res = vec3(
-        720.0 / 6.75 * SIGNAL_BANDWIDTH_Y,
-        720.0 / 6.75 * SIGNAL_BANDWIDTH_C,
-        720.0 / 6.75 * SIGNAL_BANDWIDTH_C);
-    vec3 sigma = vec3(
-        sqrt(log(c.r)) / (res.x / config.OutputSize.x),
-        sqrt(log(c.g)) / (res.y / config.OutputSize.x),
-        sqrt(log(c.b)) / (res.z / config.OutputSize.x));
+    vec3 sigma = sigma601(
+        vec3(
+            SIGNAL_BANDWIDTH_Y,
+            SIGNAL_BANDWIDTH_C,
+            SIGNAL_BANDWIDTH_C),
+        vec3(
+            FILTER_CUTOFF_ATTEN_Y,
+            FILTER_CUTOFF_ATTEN_C,
+            FILTER_CUTOFF_ATTEN_C),
+        config.OutputSize.x);
 
     float f = 0.5 - fract(config.OutputSize.x * vTexCoord.x);
     vec2 tex = floor(config.OutputSize.xy * vTexCoord)
@@ -234,6 +227,10 @@ void main()
     float chroma;
 
     // Notch filter characteristics
+    vec2 c = 1.0 / pow(
+        vec2(10.0, 10.0), vec2(
+            -2.0 / 20.0,
+            -2.0 / 20.0));
     vec2 notch_res = vec2(
         720.0 / 6.75 * (SC_FREQ_HZ / 1.0e6 - NOTCH_OFFSET_L),
         720.0 / 6.75 * (SC_FREQ_HZ / 1.0e6 - NOTCH_OFFSET_R));
