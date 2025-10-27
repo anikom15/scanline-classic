@@ -32,12 +32,17 @@ layout(push_constant) uniform Push
     float H_FREQ;
     float H_BLANK_INACTIVE_LEN;
     float H_BLANK_INACTIVE_UNIT;
-    float BW_MODE;
+    float FILTER_ENCODE;
+    float ENCODE_FILTER_BANDWIDTH_Y;
+    float ENCODE_FILTER_BANDWIDTH_C;
+    float ENCODE_CUTOFF_ATTEN_Y;
+    float ENCODE_CUTOFF_ATTEN_C;
     float SIGNAL_BANDWIDTH_Y;
     float SIGNAL_BANDWIDTH_C;
     float FILTER_CUTOFF_ATTEN_Y;
     float FILTER_CUTOFF_ATTEN_C;
     float FILTER_SIZE_YC;
+    float BW_MODE;
 } config;
 
 #pragma parameter V_LINES_PER_FIELD "Video Lines per Field" 262.5 0.0 540.0 0.5
@@ -59,21 +64,34 @@ layout(push_constant) uniform Push
 #pragma parameter H_BLANK_INACTIVE_UNIT "Horizontal Blank Inactive Unit (0=px, 1=µs, 2=%% active)" 0.0 0.0 2.0 1.0
 #define H_BLANK_INACTIVE_UNIT config.H_BLANK_INACTIVE_UNIT
 
-#pragma parameter BW_MODE "Black & White Mode (0=Off, 1=On)" 0 0 1 1
-#define BW_MODE config.BW_MODE
+#pragma parameter FILTER_ENCODE "Enable Encode Prefilter (0=Off, 1=On)" 0.0 0.0 1.0 1.0
+#define FILTER_ENCODE config.FILTER_ENCODE
 
-#pragma parameter SIGNAL_BANDWIDTH_Y "Signal Bandwidth Y (MHz)" 5.4 0.0 75.0 0.1
+#pragma parameter ENCODE_FILTER_BANDWIDTH_Y "Encode Prefilter Bandwidth Y (MHz)" 5.4 0.0 75.0 0.1
+#define ENCODE_FILTER_BANDWIDTH_Y config.ENCODE_FILTER_BANDWIDTH_Y
+#pragma parameter ENCODE_FILTER_BANDWIDTH_C "Encode Prefilter Bandwidth C (MHz)" 1.3 0.0 3.0 0.01
+#define ENCODE_FILTER_BANDWIDTH_C config.ENCODE_FILTER_BANDWIDTH_C
+
+#pragma parameter ENCODE_CUTOFF_ATTEN_Y "Encode Cutoff Attenuation Y (dB)" 3.0 0.0 30.0 1.0
+#define ENCODE_CUTOFF_ATTEN_Y config.ENCODE_CUTOFF_ATTEN_Y
+#pragma parameter ENCODE_CUTOFF_ATTEN_C "Encode Cutoff Attenuation C (dB)" 2.0 0.0 30.0 1.0
+#define ENCODE_CUTOFF_ATTEN_C config.ENCODE_CUTOFF_ATTEN_C
+
+#pragma parameter SIGNAL_BANDWIDTH_Y "Signal Bandwidth Y (MHz)" 6.75 0.0 75.0 0.1
 #define SIGNAL_BANDWIDTH_Y config.SIGNAL_BANDWIDTH_Y
-#pragma parameter SIGNAL_BANDWIDTH_C "Signal Bandwidth C (MHz)" 1.3 0.0 6.75 0.01
+#pragma parameter SIGNAL_BANDWIDTH_C "Signal Bandwidth C (MHz)" 1.79 0.0 3.0 0.01
 #define SIGNAL_BANDWIDTH_C config.SIGNAL_BANDWIDTH_C
 
 #pragma parameter FILTER_CUTOFF_ATTEN_Y "Filter Cutoff Attenuation Y (dB)" 3.0 0.0 30.0 1.0
 #define FILTER_CUTOFF_ATTEN_Y config.FILTER_CUTOFF_ATTEN_Y
-#pragma parameter FILTER_CUTOFF_ATTEN_C "Filter Cutoff Attenuation C (dB)" 2.0 0.0 30.0 1.0
+#pragma parameter FILTER_CUTOFF_ATTEN_C "Filter Cutoff Attenuation C (dB)" 3.0 0.0 30.0 1.0
 #define FILTER_CUTOFF_ATTEN_C config.FILTER_CUTOFF_ATTEN_C
 
 #pragma parameter FILTER_SIZE_YC "Gaussian Filter Radius Y/C" 14.0 0.0 40.0 1.0
 #define FILTER_SIZE_YC config.FILTER_SIZE_YC
+
+#pragma parameter BW_MODE "Black & White Mode (0=Off, 1=On)" 0 0 1 1
+#define BW_MODE config.BW_MODE
 
 #define LINE_TIME (1.0 / H_FREQ_HZ)
 #define FIELD_TIME (LINE_TIME * V_LINES_PER_FIELD)
@@ -101,6 +119,8 @@ layout(set = 0, binding = 2) uniform sampler2D Source;
 
 void main()
 {
+    vec3 color = vec3(0.0); // texture(Source, vTexCoord).rgb;
+
     // Get all values needed for t:
     // field * FIELD_TIME + line * LINE_TIME + x * pixel_time
     float field = float(config.FrameCount % 2u);
@@ -119,9 +139,24 @@ void main()
     float pixel_time = LINE_TIME / total_pixels;
     field_time -= pixel_time * field * SHORTEN_ODD_FIELD_TIME;
 
-    // Modulation + Filter + Demodulation
-    vec3 color = vec3(0.0); //texture(Source, vTexCoord).rgb;
+    // Prefilter characteristics
+    vec3 c_encode = 1.0 / pow(
+        TEN, vec3(
+            -ENCODE_CUTOFF_ATTEN_Y,
+            -ENCODE_CUTOFF_ATTEN_C,
+            -ENCODE_CUTOFF_ATTEN_C)
+        / TWENTY);
+    vec3 res_encode = vec3(
+        720.0 / 6.75 * ENCODE_FILTER_BANDWIDTH_Y,
+        720.0 / 6.75 * ENCODE_FILTER_BANDWIDTH_C,
+        720.0 / 6.75 * ENCODE_FILTER_BANDWIDTH_C);
+    vec3 sigma_encode = vec3(
+        sqrt(log(c_encode.r)) / (res_encode.x / config.OutputSize.x),
+        sqrt(log(c_encode.g)) / (res_encode.y / config.OutputSize.x),
+        sqrt(log(c_encode.b)) / (res_encode.z / config.OutputSize.x));
+    sigma_encode = mix(sigma_encode, vec3(0.0), 1.0 - FILTER_ENCODE);
 
+    // Modulation + Filter + Demodulation
     vec3 c = 1.0 / pow(
         TEN, vec3(
             -FILTER_CUTOFF_ATTEN_Y,
@@ -162,9 +197,9 @@ void main()
         pixel.b = chroma * cos(2.0 * PI * SC_FREQ_HZ * t)
             * (1.0 - BW_MODE);
         w = vec3(
-            gaussian(n + f, sigma.x),
-            gaussian(n + f, sigma.y),
-            gaussian(n + f, sigma.z));
+            gaussian(n + f, sigma.x + sigma_encode.x),
+            gaussian(n + f, sigma.y + sigma_encode.y),
+            gaussian(n + f, sigma.z + sigma_encode.z));
         color = color + w * pixel;
         wsum = wsum + w;
         n = n + 1.0;
