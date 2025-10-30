@@ -1,4 +1,7 @@
 #reference "../trinitron-ntsc.slangp"
+SIGNAL_BANDWIDTH_R = 5.2
+SIGNAL_BANDWIDTH_G = 5.2
+SIGNAL_BANDWIDTH_B = 5.2
 V_FREQ = "60.098"
 H_FRONT = "20.000000"
 H_BACK = "40.000000"

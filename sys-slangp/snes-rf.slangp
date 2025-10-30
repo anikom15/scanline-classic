@@ -1,39 +1,55 @@
-# Color NTSC television, aperture grille focus, cylindrical curvature
-# max 480i lines
+shaders = "6"
 
-shaders = "4"
-
-shader0 = "src/rgb-bandlimit.slang"
+shader0 = "../src/video-encode.slang"
 filter_linear0 = "false"
 float_framebuffer0 = "true"
 scale_type0 = "source"
-scale_x0 = "2.0"
-scale_y0 = "1.0"
+scale0 = "1.0"
 
-shader1 = "src/phosphor-luma.slang"
+shader1 = "../src/rf-ntsc.slang"
 filter_linear1 = "false"
 float_framebuffer1 = "true"
 scale_type1 = "source"
-scale1 = "1.0"
+scale_x1 = "2.0"
+scale_y1 = "1.0"
 
-shader2 = "src/phosphor-chroma.slang"
+shader2 = "../src/video-decode.slang"
 filter_linear2 = "false"
-float_framebuffer2 = "true"
+float_framebuffer2 = true"
 scale_type2 = "source"
 scale2 = "1.0"
 
-shader3 = "src/scanline-advanced.slang"
+shader3 = "../src/phosphor-luma.slang"
 filter_linear3 = "false"
-scale_type3 = "viewport"
+float_framebuffer3 = "true"
+scale_type3 = "source"
 scale3 = "1.0"
 
-V_FREQ = "59.94"
+shader4 = "../src/phosphor-chroma.slang"
+filter_linear4 = "false"
+float_framebuffer4 = "true"
+scale_type4 = "source"
+scale4 = "1.0"
+
+shader5 = "../src/scanline-advanced.slang"
+filter_linear5 = "false"
+scale_type5 = "viewport"
+scale5 = "1.0"
+
+V_LINES_PER_FIELD = 262
+SHORTEN_ODD_FIELD_TIME = 1
+H_FREQ = 15.73427
+H_BLANK_INACTIVE_LEN = 170
+ENCODE_FILTER_BANDWIDTH_Y = 5.2
+ENCODE_FILTER_BANDWIDTH_C = 2.6
+FILTER_SIZE_YC = 10.0
+V_FREQ = "60.098"
+H_FRONT = "20.000000"
+H_BACK = "40.000000"
+V_FRONT = "9.000000"
+V_BACK = "14.000000"
 ON_PIXELS = "1.0"
 OFF_PIXELS = "1.0"
-H_FRONT = "19.0"
-H_BACK = "57.0"
-V_FRONT = "3.0"
-V_BACK = "13.0"
 TRANSFER_FUNCTION = "1.0"
 COLOR_MODE = "3.0"
 LUMINANCE_WEIGHT_R = "0.2124"
@@ -57,7 +73,7 @@ CHROMA_C_Y = "0.070"
 CHROMA_A_WEIGHT = "0.2124"
 CHROMA_B_WEIGHT = "0.7011"
 CHROMA_C_WEIGHT = "0.0866"
-SCALE_W = "0.0"
+SCALE_W = "1.0"
 SCAN_TYPE = "1.0"
 MAX_SCAN_RATE = "480.0"
 LINE_DOUBLER = "0.0"

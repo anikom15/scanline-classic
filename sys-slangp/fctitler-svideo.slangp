@@ -6,11 +6,12 @@ float_framebuffer0 = "true"
 scale_type0 = "source"
 scale0 = "1.0"
 
-shader1 = "../src/composite.slang"
+shader1 = "../src/svideo.slang"
 filter_linear1 = "false"
 float_framebuffer1 = "true"
 scale_type1 = "source"
-scale1 = "3.0"
+scale_x1 = "3.0"
+scale_y1 = "1.0"
 
 shader2 = "../src/video-decode.slang"
 filter_linear2 = "false"
@@ -20,9 +21,9 @@ scale2 = "1.0"
 
 shader3 = "../src/phosphor-luma.slang"
 filter_linear3 = "false"
-float_framebuffer3 = "true"
-scale_type3 = "source"
-scale3 = "1.0"
+float_framebuffer4 = "true"
+scale_type4 = "source"
+scale4 = "1.0"
 
 shader4 = "../src/phosphor-chroma.slang"
 filter_linear4 = "false"
@@ -35,11 +36,13 @@ filter_linear5 = "false"
 scale_type5 = "viewport"
 scale5 = "1.0"
 
+SIGNAL_SCALE_U = 0.5
+SIGNAL_SCALE_V = 0.5
 V_LINES_PER_FIELD = 262
-SHORTEN_ODD_FIELD_TIME = 1
 H_FREQ = 15.73427
 H_BLANK_INACTIVE_LEN = 170
 FILTER_SIZE_YC = 10.0
+OVERSAMPLE_FACTOR = 3
 V_FREQ = "60.098"
 H_FRONT = "20.000000"
 H_BACK = "40.000000"

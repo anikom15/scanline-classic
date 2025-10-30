@@ -1,6 +1,3 @@
-# S-Video, high quality YPbPr signal, NTSC SFC/SNES timing
-# Assumes 512px wide input
-
 shaders = "6"
 
 shader0 = "../src/video-encode.slang"
@@ -9,11 +6,12 @@ float_framebuffer0 = "true"
 scale_type0 = "source"
 scale0 = "1.0"
 
-shader1 = "../src/svideo.slang"
+shader1 = "../src/composite.slang"
 filter_linear1 = "false"
 float_framebuffer1 = "true"
 scale_type1 = "source"
-scale1 = "2.0"
+scale_x1 = "2.0"
+scale_y1 = "1.0"
 
 shader2 = "../src/video-decode.slang"
 filter_linear2 = "false"
@@ -42,7 +40,9 @@ V_LINES_PER_FIELD = 262
 SHORTEN_ODD_FIELD_TIME = 1
 H_FREQ = 15.73427
 H_BLANK_INACTIVE_LEN = 170
-FILTER_SIZE_YC = 19.0
+ENCODE_FILTER_BANDWIDTH_Y = 5.2
+ENCODE_FILTER_BANDWIDTH_C = 2.6
+FILTER_SIZE_YC = 10.0
 V_FREQ = "60.098"
 H_FRONT = "20.000000"
 H_BACK = "40.000000"

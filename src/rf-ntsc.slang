@@ -1,6 +1,6 @@
 #version 450
 
-/* Filename: composite.slang
+/* Filename: rf-ntsc.slang
 
    Copyright (C) 2025 W. M. Martinez
 
@@ -70,14 +70,14 @@ layout(push_constant) uniform Push
 #pragma parameter FILTER_ENCODE "Filter Encode (0=Off, 1=On)" 1.0 0.0 1.0 1.0
 #define FILTER_ENCODE config.FILTER_ENCODE
 
-#pragma parameter ENCODE_FILTER_BANDWIDTH_Y "Encode Filter Bandwidth Y (MHz)" 6.75 0.0 75.0 0.1
+#pragma parameter ENCODE_FILTER_BANDWIDTH_Y "Encode Filter Bandwidth Y (MHz)" 4.2 0.0 75.0 0.1
 #define ENCODE_FILTER_BANDWIDTH_Y config.ENCODE_FILTER_BANDWIDTH_Y
-#pragma parameter ENCODE_FILTER_BANDWIDTH_C "Encode Filter Bandwidth C (MHz)" 1.3 0.0 75.0 0.1
+#pragma parameter ENCODE_FILTER_BANDWIDTH_C "Encode Filter Bandwidth C (MHz)" 0.6 0.0 75.0 0.1
 #define ENCODE_FILTER_BANDWIDTH_C config.ENCODE_FILTER_BANDWIDTH_C
 
 #pragma parameter ENCODE_CUTOFF_ATTEN_Y "Encode Cutoff Attenuation Y (dB)" 3.0 0.0 30.0 1.0
 #define ENCODE_CUTOFF_ATTEN_Y config.ENCODE_CUTOFF_ATTEN_Y
-#pragma parameter ENCODE_CUTOFF_ATTEN_C "Encode Cutoff Attenuation C (dB)" 2.0 0.0 30.0 1.0
+#pragma parameter ENCODE_CUTOFF_ATTEN_C "Encode Cutoff Attenuation C (dB)" 6.0 0.0 30.0 1.0
 #define ENCODE_CUTOFF_ATTEN_C config.ENCODE_CUTOFF_ATTEN_C
 
 #pragma parameter SIGNAL_BANDWIDTH_Y "Signal Bandwidth Y (MHz)" 6.75 0.0 75.0 0.1
@@ -264,6 +264,10 @@ void main()
             identity = composite;
             t_identity = t;
         }
+
+        // RF Modulation + Demodulation
+        float rf = composite * cos(2.0 * PI * 61.25e6 * t - 33.0 * PI / 180.0);
+        composite = rf * 2.0 * cos(2.0 * PI * 61.25e6 * t - 33.0 * PI / 180.0);
 
         pixel.r = composite;
         pixel.g = composite * sin(2.0 * PI * SC_FREQ_HZ * t);
