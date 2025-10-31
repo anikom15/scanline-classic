@@ -27,10 +27,10 @@ layout(push_constant) uniform Push
     vec4 OriginalSize;
     vec4 OutputSize;
     uint FrameCount;
+    float V_FREQ;
     float V_LINES_PER_FIELD;
     float SHORTEN_ODD_FIELD_TIME;
     float SC_FREQ;
-    float H_FREQ;
     float H_BLANK_INACTIVE_LEN;
     float H_BLANK_INACTIVE_UNIT;
     float FILTER_ENCODE;
@@ -46,6 +46,9 @@ layout(push_constant) uniform Push
     float BW_MODE;
 } config;
 
+#pragma parameter V_FREQ "Vertical Frequency (Hz)" 59.94 1.0 240.0 0.01
+#define V_FREQ config.V_FREQ
+
 #pragma parameter V_LINES_PER_FIELD "Video Lines per Field" 262.5 0.0 540.0 0.5
 #define V_LINES_PER_FIELD config.V_LINES_PER_FIELD
 
@@ -56,9 +59,7 @@ layout(push_constant) uniform Push
 #define SC_FREQ config.SC_FREQ
 #define SC_FREQ_HZ mix(NTSC_FSC, PAL_FSC, SC_FREQ)
 
-#pragma parameter H_FREQ "Horizontal Frequency (kHz)" 15.73426 1.0 100.0 0.001
-#define H_FREQ config.H_FREQ
-#define H_FREQ_HZ (H_FREQ * 1.0e3)
+#define H_FREQ_HZ (V_FREQ * V_LINES_PER_FIELD)
 
 #pragma parameter H_BLANK_INACTIVE_LEN "Horizontal Blank Inactive Length" 138.0 0.0 1000.0 0.1
 #define H_BLANK_INACTIVE_LEN config.H_BLANK_INACTIVE_LEN

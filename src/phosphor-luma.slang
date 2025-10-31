@@ -47,7 +47,7 @@ layout(push_constant) uniform Push
 	float PHOS_TRAP_C;
 } config;
 
-#pragma parameter V_FREQ "Vertical Frequency (Hz)" 59.94 0.0 240.0 0.01
+#pragma parameter V_FREQ "Vertical Frequency (Hz)" 59.94 1.0 240.0 0.01
 #pragma parameter TRANSFER_FUNCTION "Transfer function" 1.0 1.0 2.0 1.0
 #pragma parameter COLOR_MODE "Chromaticity mode" 3.0 1.0 3.0 1.0
 #pragma parameter LUMINANCE_WEIGHT_R "Red channel luminance weight" 0.2124 0.0 1.0 0.01
