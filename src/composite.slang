@@ -30,7 +30,6 @@ layout(push_constant) uniform Push
     float V_FREQ;
     float V_LINES_PER_FIELD;
     float SHORTEN_ODD_FIELD_TIME;
-    float SC_FREQ;
     float H_BLANK_INACTIVE_LEN;
     float H_BLANK_INACTIVE_UNIT;
     float FILTER_ENCODE;
@@ -46,6 +45,7 @@ layout(push_constant) uniform Push
     float COLOR_FILTER_MODE;
     float NOTCH_OFFSET_L;
     float NOTCH_OFFSET_R;
+    float COMB_FILTER_TAPS;
 } config;
 
 #pragma parameter V_FREQ "Vertical Frequency (Hz)" 59.94 1.0 240.0 0.01
@@ -57,9 +57,7 @@ layout(push_constant) uniform Push
 #pragma parameter SHORTEN_ODD_FIELD_TIME "Shorten Odd Field Time (0=Off, 1=On)" 0.0 0.0 1.0 1.0
 #define SHORTEN_ODD_FIELD_TIME config.SHORTEN_ODD_FIELD_TIME
 
-#pragma parameter SC_FREQ "Subcarrier Frequency (0=3.58 MHz, 1=4.43 MHz)" 0.0 0.0 1.0 1.0
-#define SC_FREQ config.SC_FREQ
-#define SC_FREQ_HZ mix(NTSC_FSC, PAL_FSC, SC_FREQ)
+#define SC_FREQ_HZ NTSC_FSC
 
 #define H_FREQ_HZ (V_FREQ * V_LINES_PER_FIELD)
 
@@ -102,21 +100,20 @@ layout(push_constant) uniform Push
 #pragma parameter NOTCH_OFFSET_R "Notch Filter Right Cutoff Offset" 1.3 -10.0 10.0 0.1
 #define NOTCH_OFFSET_R config.NOTCH_OFFSET_R
 
+#pragma parameter COMB_FILTER_TAPS "Comb Filter Taps" 1 1 3 1
+#define COMB_FILTER_TAPS config.COMB_FILTER_TAPS
+
 #define LINE_TIME (1.0 / H_FREQ_HZ)
 #define FIELD_TIME (LINE_TIME * V_LINES_PER_FIELD)
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
     mat4 MVP;
-    float COMB_FILTER_TAPS;
     float NOTCH_COMB_W;
     float BW_MODE;
     float NOTCH_TEST_LP;
     float NOTCH_TEST_HP;
 } global;
-
-#pragma parameter COMB_FILTER_TAPS "Comb Filter Taps" 1 1 3 1
-#define COMB_FILTER_TAPS global.COMB_FILTER_TAPS
 
 #pragma parameter NOTCH_COMB_W "Notch-Comb Mixing Weight" 0.5 0.0 1.0 0.1
 #define NOTCH_COMB_W global.NOTCH_COMB_W
