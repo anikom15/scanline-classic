@@ -1,4 +1,4 @@
-#reference ":/shaders/shaders_slang/scanline-classic/sys-slangp/snes-composite.slangp"
+#reference ":/shaders/shaders_slang/scanline-classic/sys-slangp/sfc-snes-composite.slangp"
 
 V_FREQ = 50.0070
 V_LINES_PER_FIELD = 312

@@ -355,8 +355,8 @@ void main()
     } else if (COLOR_FILTER_MODE < 3.5) {
         chroma = 2.0 * color_raw.g * sin(2.0 * PI * SC_FREQ_HZ * t_identity)
             + 2.0 * color_raw.b * cos(2.0 * PI * SC_FREQ_HZ * t_identity);
-        color_raw.r = identity - chroma;
-        color = color_raw;
+        color.r = identity - chroma;
+        color.gb = color_raw.gb;
     } else {
         color = color_raw;
     }
