@@ -2,7 +2,6 @@
 
 /* Filename: bandlimit.slang
 
-   Copyright (C) 2020 guest(r) - guest.r@gmail.com
    Copyright (C) 2025 W. M. Martinez
 
    This program is free software: you can redistribute it and/or modify
