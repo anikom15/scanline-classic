@@ -57,8 +57,6 @@ layout(push_constant) uniform Push
 #pragma parameter SHORTEN_ODD_FIELD_TIME "Shorten Odd Field Time (0=Off, 1=On)" 0.0 0.0 1.0 1.0
 #define SHORTEN_ODD_FIELD_TIME config.SHORTEN_ODD_FIELD_TIME
 
-#define SC_FREQ_HZ NTSC_FSC
-
 #define H_FREQ_HZ (V_FREQ * V_LINES_PER_FIELD)
 
 #pragma parameter H_BLANK_INACTIVE_LEN "Horizontal Blank Inactive Length" 138.0 0.0 1000.0 0.1
@@ -104,7 +102,7 @@ layout(push_constant) uniform Push
 #define COMB_FILTER_TAPS config.COMB_FILTER_TAPS
 
 #define LINE_TIME (1.0 / H_FREQ_HZ)
-#define FIELD_TIME (LINE_TIME * V_LINES_PER_FIELD)
+#define FIELD_TIME (1.0 / V_FREQ)
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
@@ -169,8 +167,7 @@ void main()
 
     // Get all values needed for t:
     // field * FIELD_TIME + line * LINE_TIME + x * pixel_time
-    float field = float(config.FrameCount % 2u);
-    float field_time = FIELD_TIME * field;
+    float field = float(config.FrameCount % 12u);
     float line = floor(vTexCoord.y * config.SourceSize.y);
     float inactive_pixels;
     if (H_BLANK_INACTIVE_UNIT < 0.5)
@@ -182,8 +179,16 @@ void main()
         inactive_pixels = H_BLANK_INACTIVE_LEN / 100.0
             * config.SourceSize.x;
     float total_pixels = config.SourceSize.x + inactive_pixels;
+    float subcarrier_div = round(H_FREQ_HZ * total_pixels / NTSC_FSC * 100.0) / 100.0;
+    float SC_FREQ_HZ = H_FREQ_HZ * total_pixels / subcarrier_div;
     float pixel_time = LINE_TIME / total_pixels;
-    field_time -= pixel_time * field * SHORTEN_ODD_FIELD_TIME;
+    float field_phase = FIELD_TIME * field * 2.0 * PI * SC_FREQ_HZ;
+    float odd_time_adjust = pixel_time;
+    if (config.SourceSize.x > 320.0)
+        odd_time_adjust = 2.0 * pixel_time;
+    field_phase -= ceil(field / 2.0) * odd_time_adjust * SHORTEN_ODD_FIELD_TIME
+        * 2.0 * PI * SC_FREQ_HZ;
+    field_phase = mod(field_phase, 2.0 * PI) - PI;
 
     // Prefilter characteristics
     vec3 sigma_encode = sigma601(
@@ -253,9 +258,9 @@ void main()
         } else {
             pixel = texture(Source, tex + n * dx).rgb;
         }
-        float t = field_time + line * LINE_TIME + offset * pixel_time;
-        chroma = pixel.g * sin(2.0 * PI * SC_FREQ_HZ * t)
-            + pixel.b * cos(2.0 * PI * SC_FREQ_HZ * t);
+        float t = line * LINE_TIME + offset * pixel_time;
+        chroma = pixel.g * sin(mod(2.0 * PI * SC_FREQ_HZ * t, 2.0 * PI) + field_phase)
+            + pixel.b * cos(mod(2.0 * PI * SC_FREQ_HZ * t, 2.0 * PI) + field_phase);
         composite = pixel.r + chroma;
 
         if (n >= -0.5 && n <= 0.5) {
@@ -264,8 +269,8 @@ void main()
         }
 
         pixel.r = composite;
-        pixel.g = composite * sin(2.0 * PI * SC_FREQ_HZ * t);
-        pixel.b = composite * cos(2.0 * PI * SC_FREQ_HZ * t);
+        pixel.g = composite * sin(mod(2.0 * PI * SC_FREQ_HZ * t, 2.0 * PI) + field_phase);
+        pixel.b = composite * cos(mod(2.0 * PI * SC_FREQ_HZ * t, 2.0 * PI) + field_phase);
 
         // Raw unfiltered portion
         w = vec3(
@@ -276,7 +281,7 @@ void main()
         color_raw += w * pixel;
         wsum_raw += w;
 
-        // Notch prefilter portion
+        // Notch filter portion
         w = vec3(
             gaussian(n + f, sigma.x + notch_sigma.x),
             gaussian(n + f, sigma.y),
@@ -286,25 +291,24 @@ void main()
 
         // Notch high-pass portion
         w.x = gaussian(n + f, notch_sigma.y);
-        luma_hp += composite * w.x;
+        luma_hp += pixel.r * w.x;
         wsum_hp += w.x;
 
         // Comb prefilter portion
         mat3 comb_taps_yuv = mat3(
             texture(Source, tex + n * dx + comb_dy).rgb,
             texture(Source, tex + n * dx + 2.0 * comb_dy).rgb,
-            texture(Source, tex + n * dx + 3.0 * comb_dy).rgb
-        );
+            texture(Source, tex + n * dx + 3.0 * comb_dy).rgb);
         mat3 comb_vectors = mat3(
             vec3(1.0,
-                sin(2.0 * PI * SC_FREQ_HZ * (t - LINE_TIME)),
-                cos(2.0 * PI * SC_FREQ_HZ * (t - LINE_TIME))),
+                sin(mod(2.0 * PI * SC_FREQ_HZ * (t - LINE_TIME), 2.0 * PI) + field_phase),
+                cos(mod(2.0 * PI * SC_FREQ_HZ * (t - LINE_TIME), 2.0 * PI) + field_phase)),
             vec3(1.0,
-                sin(2.0 * PI * SC_FREQ_HZ * (t - 2.0 * LINE_TIME)),
-                cos(2.0 * PI * SC_FREQ_HZ * (t - 2.0 * LINE_TIME))),
+                sin(mod(2.0 * PI * SC_FREQ_HZ * (t - 2.0 * LINE_TIME), 2.0 * PI) + field_phase),
+                cos(mod(2.0 * PI * SC_FREQ_HZ * (t - 2.0 * LINE_TIME), 2.0 * PI) + field_phase)),
             vec3(1.0,
-                sin(2.0 * PI * SC_FREQ_HZ * (t - 3.0 * LINE_TIME)),
-                cos(2.0 * PI * SC_FREQ_HZ * (t - 3.0 * LINE_TIME))));
+                sin(mod(2.0 * PI * SC_FREQ_HZ * (t - 3.0 * LINE_TIME), 2.0 * PI) + field_phase),
+                cos(mod(2.0 * PI * SC_FREQ_HZ * (t - 3.0 * LINE_TIME), 2.0 * PI) + field_phase)));
         vec3 comb_taps_composite = vec3(
             dot(comb_taps_yuv[0], comb_vectors[0]),
             dot(comb_taps_yuv[1], comb_vectors[1]),
@@ -320,8 +324,8 @@ void main()
             chroma = 1.0 / 3.0 * (0.5 * composite - comb_taps_composite.x + comb_taps_composite.y - 0.5 * comb_taps_composite.z);
             pixel.r = 1.0 / 3.0 * (0.5 * composite + comb_taps_composite.x + comb_taps_composite.y + 0.5 * comb_taps_composite.z);
         }
-        pixel.g = chroma * sin(2.0 * PI * SC_FREQ_HZ * t);
-        pixel.b = chroma * cos(2.0 * PI * SC_FREQ_HZ * t);
+        pixel.g = chroma * sin(mod(2.0 * PI * SC_FREQ_HZ * t, 2.0 * PI) + field_phase);
+        pixel.b = chroma * cos(mod(2.0 * PI * SC_FREQ_HZ * t, 2.0 * PI) + field_phase);
 
         w = vec3(
             gaussian(n + f, sigma.x),
@@ -350,8 +354,8 @@ void main()
     } else if (COLOR_FILTER_MODE < 2.5) {
         color = mix(color_notch, color_comb, NOTCH_COMB_W);
     } else if (COLOR_FILTER_MODE < 3.5) {
-        chroma = 2.0 * color_raw.g * sin(2.0 * PI * SC_FREQ_HZ * t_identity)
-            + 2.0 * color_raw.b * cos(2.0 * PI * SC_FREQ_HZ * t_identity);
+        chroma = 2.0 * color_raw.g * sin(mod(2.0 * PI * SC_FREQ_HZ * t_identity, 2.0 * PI) + field_phase)
+            + 2.0 * color_raw.b * cos(mod(2.0 * PI * SC_FREQ_HZ * t_identity, 2.0 * PI) + field_phase);
         color.r = identity - chroma;
         color.gb = color_raw.gb;
     } else {

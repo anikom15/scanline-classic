@@ -15,7 +15,7 @@ scale_y1 = "1.0"
 
 shader2 = "../src/video-decode.slang"
 filter_linear2 = "false"
-float_framebuffer2 = true"
+float_framebuffer2 = "true"
 scale_type2 = "source"
 scale2 = "1.0"
 
@@ -39,8 +39,7 @@ scale5 = "1.0"
 V_LINES_PER_FIELD = 262
 V_FREQ = 60.0988
 SHORTEN_ODD_FIELD_TIME = 1
-H_FREQ = 15.745800
-H_BLANK_INACTIVE_LEN = 170
+H_BLANK_INACTIVE_LEN = 85
 FILTER_ENCODE = 0
 FILTER_SIZE_YC = 10.0
 H_FRONT = "20.000000"
