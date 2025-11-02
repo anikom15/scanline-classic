@@ -246,7 +246,40 @@ void main()
     float wsum_hp = 0.0;
 
     // Comb filter data
-    vec2 comb_dy = vec2(0.0, -1.0 * config.SourceSize.w);
+    // Calculate the phase shift per line
+    float phase_per_line = mod(2.0 * PI * SC_FREQ_HZ * LINE_TIME, 2.0 * PI);
+    
+    // Calculate how many lines needed for 180° phase shift
+    // We want to find where phase = π (mod 2π)
+    float lines_per_180deg = PI / phase_per_line;
+    
+    // Calculate phase shift per pixel horizontally
+    float phase_per_pixel = 2.0 * PI * SC_FREQ_HZ * pixel_time;
+    
+    // For comb filter, we need taps that are 180° apart
+    // Calculate the vertical line offset needed
+    float line_offset_for_180deg = lines_per_180deg;
+    
+    // If the phase doesn't align perfectly with line boundaries,
+    // we need to compensate with horizontal pixel offset
+    float fractional_line = fract(lines_per_180deg);
+    float horizontal_pixel_offset = (fractional_line * phase_per_line) / phase_per_pixel;
+    
+    // Create offset vectors for comb filter taps
+    vec2 comb_dy_1 = vec2(horizontal_pixel_offset * config.SourceSize.z, 
+                          -floor(line_offset_for_180deg) * config.SourceSize.w);
+    vec2 comb_dy_2 = vec2(2.0 * horizontal_pixel_offset * config.SourceSize.z, 
+                          -floor(2.0 * line_offset_for_180deg) * config.SourceSize.w);
+    vec2 comb_dy_3 = vec2(3.0 * horizontal_pixel_offset * config.SourceSize.z, 
+                          -floor(3.0 * line_offset_for_180deg) * config.SourceSize.w);
+
+    // Calculate the actual time offset for each tap (constant for all loop iterations)
+    float t_offset_1 = floor(line_offset_for_180deg) * LINE_TIME 
+                      + horizontal_pixel_offset * pixel_time;
+    float t_offset_2 = floor(2.0 * line_offset_for_180deg) * LINE_TIME 
+                      + 2.0 * horizontal_pixel_offset * pixel_time;
+    float t_offset_3 = floor(3.0 * line_offset_for_180deg) * LINE_TIME 
+                      + 3.0 * horizontal_pixel_offset * pixel_time;
 
     // Modulation + Demodulation + Filtering
     do {
@@ -296,19 +329,21 @@ void main()
 
         // Comb prefilter portion
         mat3 comb_taps_yuv = mat3(
-            texture(Source, tex + n * dx + comb_dy).rgb,
-            texture(Source, tex + n * dx + 2.0 * comb_dy).rgb,
-            texture(Source, tex + n * dx + 3.0 * comb_dy).rgb);
+            texture(Source, tex + n * dx + comb_dy_1).rgb,
+            texture(Source, tex + n * dx + comb_dy_2).rgb,
+            texture(Source, tex + n * dx + comb_dy_3).rgb);
+        
         mat3 comb_vectors = mat3(
             vec3(1.0,
-                sin(mod(2.0 * PI * SC_FREQ_HZ * (t - LINE_TIME), 2.0 * PI) + field_phase),
-                cos(mod(2.0 * PI * SC_FREQ_HZ * (t - LINE_TIME), 2.0 * PI) + field_phase)),
+                sin(mod(2.0 * PI * SC_FREQ_HZ * (t - t_offset_1), 2.0 * PI) + field_phase),
+                cos(mod(2.0 * PI * SC_FREQ_HZ * (t - t_offset_1), 2.0 * PI) + field_phase)),
             vec3(1.0,
-                sin(mod(2.0 * PI * SC_FREQ_HZ * (t - 2.0 * LINE_TIME), 2.0 * PI) + field_phase),
-                cos(mod(2.0 * PI * SC_FREQ_HZ * (t - 2.0 * LINE_TIME), 2.0 * PI) + field_phase)),
+                sin(mod(2.0 * PI * SC_FREQ_HZ * (t - t_offset_2), 2.0 * PI) + field_phase),
+                cos(mod(2.0 * PI * SC_FREQ_HZ * (t - t_offset_2), 2.0 * PI) + field_phase)),
             vec3(1.0,
-                sin(mod(2.0 * PI * SC_FREQ_HZ * (t - 3.0 * LINE_TIME), 2.0 * PI) + field_phase),
-                cos(mod(2.0 * PI * SC_FREQ_HZ * (t - 3.0 * LINE_TIME), 2.0 * PI) + field_phase)));
+                sin(mod(2.0 * PI * SC_FREQ_HZ * (t - t_offset_3), 2.0 * PI) + field_phase),
+                cos(mod(2.0 * PI * SC_FREQ_HZ * (t - t_offset_3), 2.0 * PI) + field_phase)));
+
         vec3 comb_taps_composite = vec3(
             dot(comb_taps_yuv[0], comb_vectors[0]),
             dot(comb_taps_yuv[1], comb_vectors[1]),
