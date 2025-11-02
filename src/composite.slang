@@ -30,6 +30,7 @@ layout(push_constant) uniform Push
     float V_FREQ;
     float V_LINES_PER_FIELD;
     float SHORTEN_ODD_FIELD_TIME;
+    float SC_FREQ_MODE;
     float H_BLANK_INACTIVE_LEN;
     float H_BLANK_INACTIVE_UNIT;
     float FILTER_ENCODE;
@@ -45,7 +46,6 @@ layout(push_constant) uniform Push
     float COLOR_FILTER_MODE;
     float NOTCH_OFFSET_L;
     float NOTCH_OFFSET_R;
-    float COMB_FILTER_TAPS;
 } config;
 
 #pragma parameter V_FREQ "Vertical Frequency (Hz)" 59.94 1.0 240.0 0.01
@@ -56,6 +56,9 @@ layout(push_constant) uniform Push
 
 #pragma parameter SHORTEN_ODD_FIELD_TIME "Shorten Odd Field Time (0=Off, 1=On)" 0.0 0.0 1.0 1.0
 #define SHORTEN_ODD_FIELD_TIME config.SHORTEN_ODD_FIELD_TIME
+
+#pragma parameter SC_FREQ_MODE "Subcarrier Frequency Mode (0=Auto, 1=NTSC, 2=Custom)" 1.0 0.0 2.0 1.0
+#define SC_FREQ_MODE config.SC_FREQ_MODE
 
 #define H_FREQ_HZ (V_FREQ * V_LINES_PER_FIELD)
 
@@ -98,20 +101,25 @@ layout(push_constant) uniform Push
 #pragma parameter NOTCH_OFFSET_R "Notch Filter Right Cutoff Offset" 1.3 -10.0 10.0 0.1
 #define NOTCH_OFFSET_R config.NOTCH_OFFSET_R
 
-#pragma parameter COMB_FILTER_TAPS "Comb Filter Taps" 1 1 3 1
-#define COMB_FILTER_TAPS config.COMB_FILTER_TAPS
-
 #define LINE_TIME (1.0 / H_FREQ_HZ)
 #define FIELD_TIME (1.0 / V_FREQ)
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
     mat4 MVP;
+    float COMB_FILTER_TAPS;
     float NOTCH_COMB_W;
     float BW_MODE;
     float NOTCH_TEST_LP;
     float NOTCH_TEST_HP;
+    float SC_FREQ;
 } global;
+
+#pragma parameter COMB_FILTER_TAPS "Comb Filter Taps" 1 1 3 1
+#define COMB_FILTER_TAPS global.COMB_FILTER_TAPS
+
+#pragma parameter SC_FREQ "Custom Subcarrier Frequency (MHz)" 3.579545 0.0 10.0 0.000001
+#define SC_FREQ global.SC_FREQ
 
 #pragma parameter NOTCH_COMB_W "Notch-Comb Mixing Weight" 0.5 0.0 1.0 0.1
 #define NOTCH_COMB_W global.NOTCH_COMB_W
@@ -180,14 +188,20 @@ void main()
             * config.SourceSize.x;
     float total_pixels = config.SourceSize.x + inactive_pixels;
     float subcarrier_div = round(H_FREQ_HZ * total_pixels / NTSC_FSC * 100.0) / 100.0;
-    float SC_FREQ_HZ = H_FREQ_HZ * total_pixels / subcarrier_div;
+    float sc_freq_hz;
+    if (SC_FREQ_MODE < 0.5)
+        sc_freq_hz = H_FREQ_HZ * total_pixels / subcarrier_div;
+    else if (SC_FREQ_MODE < 1.5)
+        sc_freq_hz = NTSC_FSC;
+    else
+        sc_freq_hz = SC_FREQ * 1.0e6;
     float pixel_time = LINE_TIME / total_pixels;
-    float field_phase = FIELD_TIME * field * 2.0 * PI * SC_FREQ_HZ;
+    float field_phase = FIELD_TIME * field * 2.0 * PI * sc_freq_hz;
     float odd_time_adjust = pixel_time;
     if (config.SourceSize.x > 320.0)
         odd_time_adjust = 2.0 * pixel_time;
     field_phase -= ceil(field / 2.0) * odd_time_adjust * SHORTEN_ODD_FIELD_TIME
-        * 2.0 * PI * SC_FREQ_HZ;
+        * 2.0 * PI * sc_freq_hz;
     field_phase = mod(field_phase, 2.0 * PI) - PI;
 
     // Prefilter characteristics
@@ -235,8 +249,8 @@ void main()
             -2.0 / 20.0,
             -2.0 / 20.0));
     vec2 notch_res = vec2(
-        720.0 / 6.75 * (SC_FREQ_HZ / 1.0e6 - NOTCH_OFFSET_L),
-        720.0 / 6.75 * (SC_FREQ_HZ / 1.0e6 - NOTCH_OFFSET_R));
+        720.0 / 6.75 * (sc_freq_hz / 1.0e6 - NOTCH_OFFSET_L),
+        720.0 / 6.75 * (sc_freq_hz / 1.0e6 - NOTCH_OFFSET_R));
     vec2 notch_sigma = vec2(
         sqrt(log(c.g)) / (notch_res.x / config.OutputSize.x),
         sqrt(log(c.g)) / (config.OutputSize.x / notch_res.y));
@@ -247,14 +261,14 @@ void main()
 
     // Comb filter data
     // Calculate the phase shift per line
-    float phase_per_line = mod(2.0 * PI * SC_FREQ_HZ * LINE_TIME, 2.0 * PI);
+    float phase_per_line = mod(2.0 * PI * sc_freq_hz * LINE_TIME, 2.0 * PI);
     
     // Calculate how many lines needed for 180° phase shift
     // We want to find where phase = π (mod 2π)
     float lines_per_180deg = PI / phase_per_line;
     
     // Calculate phase shift per pixel horizontally
-    float phase_per_pixel = 2.0 * PI * SC_FREQ_HZ * pixel_time;
+    float phase_per_pixel = 2.0 * PI * sc_freq_hz * pixel_time;
     
     // For comb filter, we need taps that are 180° apart
     // Calculate the vertical line offset needed
@@ -292,8 +306,8 @@ void main()
             pixel = texture(Source, tex + n * dx).rgb;
         }
         float t = line * LINE_TIME + offset * pixel_time;
-        chroma = pixel.g * sin(mod(2.0 * PI * SC_FREQ_HZ * t, 2.0 * PI) + field_phase)
-            + pixel.b * cos(mod(2.0 * PI * SC_FREQ_HZ * t, 2.0 * PI) + field_phase);
+        chroma = pixel.g * sin(mod(2.0 * PI * sc_freq_hz * t, 2.0 * PI) + field_phase)
+            + pixel.b * cos(mod(2.0 * PI * sc_freq_hz * t, 2.0 * PI) + field_phase);
         composite = pixel.r + chroma;
 
         if (n >= -0.5 && n <= 0.5) {
@@ -302,8 +316,8 @@ void main()
         }
 
         pixel.r = composite;
-        pixel.g = composite * sin(mod(2.0 * PI * SC_FREQ_HZ * t, 2.0 * PI) + field_phase);
-        pixel.b = composite * cos(mod(2.0 * PI * SC_FREQ_HZ * t, 2.0 * PI) + field_phase);
+        pixel.g = composite * sin(mod(2.0 * PI * sc_freq_hz * t, 2.0 * PI) + field_phase);
+        pixel.b = composite * cos(mod(2.0 * PI * sc_freq_hz * t, 2.0 * PI) + field_phase);
 
         // Raw unfiltered portion
         w = vec3(
@@ -335,14 +349,14 @@ void main()
         
         mat3 comb_vectors = mat3(
             vec3(1.0,
-                sin(mod(2.0 * PI * SC_FREQ_HZ * (t - t_offset_1), 2.0 * PI) + field_phase),
-                cos(mod(2.0 * PI * SC_FREQ_HZ * (t - t_offset_1), 2.0 * PI) + field_phase)),
+                sin(mod(2.0 * PI * sc_freq_hz * (t - t_offset_1), 2.0 * PI) + field_phase),
+                cos(mod(2.0 * PI * sc_freq_hz * (t - t_offset_1), 2.0 * PI) + field_phase)),
             vec3(1.0,
-                sin(mod(2.0 * PI * SC_FREQ_HZ * (t - t_offset_2), 2.0 * PI) + field_phase),
-                cos(mod(2.0 * PI * SC_FREQ_HZ * (t - t_offset_2), 2.0 * PI) + field_phase)),
+                sin(mod(2.0 * PI * sc_freq_hz * (t - t_offset_2), 2.0 * PI) + field_phase),
+                cos(mod(2.0 * PI * sc_freq_hz * (t - t_offset_2), 2.0 * PI) + field_phase)),
             vec3(1.0,
-                sin(mod(2.0 * PI * SC_FREQ_HZ * (t - t_offset_3), 2.0 * PI) + field_phase),
-                cos(mod(2.0 * PI * SC_FREQ_HZ * (t - t_offset_3), 2.0 * PI) + field_phase)));
+                sin(mod(2.0 * PI * sc_freq_hz * (t - t_offset_3), 2.0 * PI) + field_phase),
+                cos(mod(2.0 * PI * sc_freq_hz * (t - t_offset_3), 2.0 * PI) + field_phase)));
 
         vec3 comb_taps_composite = vec3(
             dot(comb_taps_yuv[0], comb_vectors[0]),
@@ -359,8 +373,8 @@ void main()
             chroma = 1.0 / 3.0 * (0.5 * composite - comb_taps_composite.x + comb_taps_composite.y - 0.5 * comb_taps_composite.z);
             pixel.r = 1.0 / 3.0 * (0.5 * composite + comb_taps_composite.x + comb_taps_composite.y + 0.5 * comb_taps_composite.z);
         }
-        pixel.g = chroma * sin(mod(2.0 * PI * SC_FREQ_HZ * t, 2.0 * PI) + field_phase);
-        pixel.b = chroma * cos(mod(2.0 * PI * SC_FREQ_HZ * t, 2.0 * PI) + field_phase);
+        pixel.g = chroma * sin(mod(2.0 * PI * sc_freq_hz * t, 2.0 * PI) + field_phase);
+        pixel.b = chroma * cos(mod(2.0 * PI * sc_freq_hz * t, 2.0 * PI) + field_phase);
 
         w = vec3(
             gaussian(n + f, sigma.x),
@@ -389,8 +403,8 @@ void main()
     } else if (COLOR_FILTER_MODE < 2.5) {
         color = mix(color_notch, color_comb, NOTCH_COMB_W);
     } else if (COLOR_FILTER_MODE < 3.5) {
-        chroma = 2.0 * color_raw.g * sin(mod(2.0 * PI * SC_FREQ_HZ * t_identity, 2.0 * PI) + field_phase)
-            + 2.0 * color_raw.b * cos(mod(2.0 * PI * SC_FREQ_HZ * t_identity, 2.0 * PI) + field_phase);
+        chroma = 2.0 * color_raw.g * sin(mod(2.0 * PI * sc_freq_hz * t_identity, 2.0 * PI) + field_phase)
+            + 2.0 * color_raw.b * cos(mod(2.0 * PI * sc_freq_hz * t_identity, 2.0 * PI) + field_phase);
         color.r = identity - chroma;
         color.gb = color_raw.gb;
     } else {
