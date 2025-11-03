@@ -26,13 +26,13 @@ layout(push_constant) uniform Push
     vec4 OriginalSize;
     vec4 OutputSize;
     uint FrameCount;
+    float RGB_BANDLIMIT_BYPASS;
     float SIGNAL_BANDWIDTH_R;
     float SIGNAL_BANDWIDTH_G;
     float SIGNAL_BANDWIDTH_B;
     float FILTER_CUTOFF_ATTEN_R;
     float FILTER_CUTOFF_ATTEN_G;
     float FILTER_CUTOFF_ATTEN_B;
-    float FILTER_SIZE_RGB;
     float SIGNAL_GAIN_R;
     float SIGNAL_GAIN_G;
     float SIGNAL_GAIN_B;
@@ -40,6 +40,9 @@ layout(push_constant) uniform Push
     float SIGNAL_OFFSET_G;
     float SIGNAL_OFFSET_B;
 } config;
+
+#pragma parameter RGB_BANDLIMIT_BYPASS "RGB Bandlimit Bypass" 0.0 0.0 1.0 1.0
+#define RGB_BANDLIMIT_BYPASS config.RGB_BANDLIMIT_BYPASS
 
 #pragma parameter SIGNAL_BANDWIDTH_R "Signal Bandwidth R (MHz)" 6.75 0.0 75.0 0.01
 #define SIGNAL_BANDWIDTH_R config.SIGNAL_BANDWIDTH_R
@@ -54,9 +57,6 @@ layout(push_constant) uniform Push
 #define FILTER_CUTOFF_ATTEN_G config.FILTER_CUTOFF_ATTEN_G
 #pragma parameter FILTER_CUTOFF_ATTEN_B "Filter Cutoff Attenuation B (dB)" 3.0 0.0 30.0 1.0
 #define FILTER_CUTOFF_ATTEN_B config.FILTER_CUTOFF_ATTEN_B
-
-#pragma parameter FILTER_SIZE_RGB "Gaussian Filter Radius" 5.0 0.0 40.0 1.0
-#define FILTER_SIZE_RGB config.FILTER_SIZE_RGB
 
 #pragma parameter SIGNAL_GAIN_R "Signal Gain R" 1.0 0.0 10.0 0.1
 #define SIGNAL_GAIN_R config.SIGNAL_GAIN_R
@@ -77,6 +77,13 @@ layout(std140, set = 0, binding = 0) uniform UBO
     mat4 MVP;
 } global;
 
+vec3 gaussian3(float x, vec3 sigma)
+{
+    float x2 = sq(x);
+    vec3 k = -0.5 / (sigma * sigma);
+    return exp(k * x2);
+}
+
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
@@ -84,8 +91,8 @@ layout(location = 0) out vec2 vTexCoord;
 
 void main()
 {
-   gl_Position = global.MVP * Position;
-   vTexCoord = TexCoord;
+    gl_Position = global.MVP * Position;
+    vTexCoord = TexCoord;
 }
 
 #pragma stage fragment
@@ -93,13 +100,19 @@ layout(location = 0) in vec2 vTexCoord;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
-#define COMPAT_TEXTURE(c,d) texture(c,d)
-#define OutputSize config.OutputSize
-#define SourceSize config.SourceSize
-
 void main()
 {
+    // Standard texturing coordinates (source pixel grid)
+    vec2 UV = vTexCoord * config.OutputSize.xy;
+    vec2 A = fract(UV);
+    vec2 Tex = (floor(UV) + 0.5) * config.OutputSize.zw;
+
+    // Accumulated color
     vec3 color = vec3(0.0);
+    vec3 wsum = vec3(0.0);
+
+    // Step size in texture coordinates
+    vec2 dx = vec2(config.OutputSize.z, 0.0);
 
     // Filter parameters
     vec3 sigma = sigma601(
@@ -111,33 +124,40 @@ void main()
             FILTER_CUTOFF_ATTEN_R,
             FILTER_CUTOFF_ATTEN_G,
             FILTER_CUTOFF_ATTEN_B),
-        OutputSize.x);
+        config.OutputSize.x);
 
-    float f = 0.5 - fract(OutputSize.x * vTexCoord.x);
+    // Center point (n = 0)
+    vec3 pixel = texture(Source, Tex).rgb;
+    vec3 w = gaussian3(A.x, sigma);
+    color = w * pixel;
+    wsum  = w;
 
-    vec2 tex = floor(OutputSize.xy * vTexCoord)
-        * OutputSize.zw + 0.5 * OutputSize.zw;
-    vec2 dx  = vec2(OutputSize.z, 0.0);
+    // Gaussian right and left lobes
+    const float THRESHOLD = 1.0 / 510.0;
 
-    vec3 w;
-    vec3 wsum = vec3(0.0);
-    vec3 pixel;
-    float n = -FILTER_SIZE_RGB;
+    for (int n = 1; n <= 128; ++n) {
+        float nf = float(n) + A.x;
+        w = gaussian3(nf, sigma);
 
-    do
-    {
-        pixel = COMPAT_TEXTURE(Source, tex + n * dx).rgb;
-        w = vec3(gaussian(n+f, sigma.x),
-                 gaussian(n+f, sigma.y),
-                 gaussian(n+f, sigma.z));
-        color = color + w * pixel;
-        wsum = wsum + w;
-        n = n + 1.0;
-    } while (n <= FILTER_SIZE_RGB);
-    color = color / wsum;
+        vec3 pr = texture(Source, Tex + float(n) * dx).rgb;
+        vec3 pl = texture(Source, Tex - float(n) * dx).rgb;
+
+        vec3 wpr = w * pr;
+        vec3 wpl = w * pl;
+
+        // stop when both sides are negligible
+        if (all(lessThan(w, vec3(THRESHOLD))))
+            break;
+
+        color += wpr + wpl;
+        wsum  += w + w;
+    }
+    color /= wsum;
 
     color.r = color.r * SIGNAL_GAIN_R + SIGNAL_OFFSET_R;
     color.g = color.g * SIGNAL_GAIN_G + SIGNAL_OFFSET_G;
     color.b = color.b * SIGNAL_GAIN_B + SIGNAL_OFFSET_B;
+
+    color = mix(color, texture(Source, vTexCoord).rgb, RGB_BANDLIMIT_BYPASS);
     FragColor = vec4(color, 1.0);
 }
