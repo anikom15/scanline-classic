@@ -1,8 +1,8 @@
 #version 450
 
-/* Filename: scanline-luma.slang
+/* Filename: phosphor-luma.slang
 
-   Copyright (C) 2023 W. M. Martinez
+   Copyright (C) 2023, 2025 W. M. Martinez
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -20,75 +20,85 @@
 #include "common.h"
 #include "color.h"
 
-#pragma name Luma
+#pragma name PhosphorLuma
+#pragma format R16G16B16A16_SFLOAT
 
 layout(std140, set = 0, binding = 0) uniform UBO {
-	mat4 MVP;
-	vec4 SourceSize;
-	vec4 LumaFeedbackSize;
+    mat4 MVP;
 } global;
 
 layout(push_constant) uniform Push
 {
-	float V_FREQ;
-	float TRANSFER_FUNCTION;
-	float COLOR_MODE;
-	float LUMINANCE_WEIGHT_R;
-	float LUMINANCE_WEIGHT_G;
-	float LUMINANCE_WEIGHT_B;
-	float PHOSPHORESCENSE_A;
-	float PHOSPHORESCENSE_B;
-	float PHOSPHORESCENSE_C; 
-	float PHOS_EXP_A;
-	float PHOS_EXP_B;
-	float PHOS_EXP_C;
-	float PHOS_TRAP_A;
-	float PHOS_TRAP_B;
-	float PHOS_TRAP_C;
+    vec4 SourceSize;
+    vec4 PhosphorLumaFeedbackSize;
+    float SYS_V_FREQ;
+    float COLOR_MODE;
+    float TO_GRAY_WEIGHT_R;
+    float TO_GRAY_WEIGHT_G;
+    float TO_GRAY_WEIGHT_B;
+    float PHOSPHORESCENSE_A;
+    float PHOSPHORESCENSE_B;
+    float PHOSPHORESCENSE_C; 
+    float PHOS_EXP_A;
+    float PHOS_EXP_B;
+    float PHOS_EXP_C;
+    float PHOS_TRAP_A;
+    float PHOS_TRAP_B;
+    float PHOS_TRAP_C;
+    float PHOSPHOR_LUMA_BYPASS;
 } config;
 
-#pragma parameter V_FREQ "Vertical Frequency (Hz)" 59.94 1.0 240.0 0.01
-#pragma parameter TRANSFER_FUNCTION "Transfer function" 1.0 1.0 2.0 1.0
-#pragma parameter COLOR_MODE "Chromaticity mode" 3.0 1.0 3.0 1.0
-#pragma parameter LUMINANCE_WEIGHT_R "Red channel luminance weight" 0.2124 0.0 1.0 0.01
-#pragma parameter LUMINANCE_WEIGHT_G "Green channel luminance weight" 0.7011 0.0 1.0 0.01
-#pragma parameter LUMINANCE_WEIGHT_B "Blue channel luminance weight" 0.0866 0.0 1.0 0.01
-#pragma parameter PHOSPHORESCENSE_A "Phosphorescense decay rate A (1/s)" 9.0 0.0 100.0 1.0
-#pragma parameter PHOSPHORESCENSE_B "Phosphorescense decay rate B (1/s)" 9.0 0.0 100.0 1.0
-#pragma parameter PHOSPHORESCENSE_C "Phosphorescense decay rate C (1/s)" 9.0 0.0 100.0 1.0
-#pragma parameter PHOS_EXP_A "Decay rate EE A" 5.0 0.0 10.0 1.0
-#pragma parameter PHOS_EXP_B "Decay rate EE B" 5.0 0.0 10.0 1.0
-#pragma parameter PHOS_EXP_C "Decay rate EE C" 5.0 0.0 10.0 1.0
-#pragma parameter PHOS_TRAP_A "Decay escape degree A" 1.25 0.5 2.0 0.01
-#pragma parameter PHOS_TRAP_B "Decay escape degree B" 1.25 0.5 2.0 0.01
-#pragma parameter PHOS_TRAP_C "Decay escape degree C" 1.25 0.5 2.0 0.01
+#pragma parameter PHOSPHOR_HEADER " ==== Phosphor Parameters ==== " 0.0 0.0 0.0 0.0
 
-#define V_FREQ config.V_FREQ
-#define TRANSFER_FUNCTION config.TRANSFER_FUNCTION
+#pragma parameter PHOSPHOR_LUMA_BYPASS "Phosphor luma bypass" 0.0 0.0 1.0 1.0
+#define PHOSPHOR_LUMA_BYPASS config.PHOSPHOR_LUMA_BYPASS
+
+#pragma parameter SYS_V_FREQ "System vertical frequency (Hz)" 59.94 1.0 240.0 0.01
+#define SYS_V_FREQ config.SYS_V_FREQ
+
+#pragma parameter COLOR_MODE "Chromaticity mode" 3.0 1.0 3.0 1.0
 #define COLOR_MODE config.COLOR_MODE
-#define LUMINANCE_WEIGHT_R config.LUMINANCE_WEIGHT_R
-#define LUMINANCE_WEIGHT_G config.LUMINANCE_WEIGHT_G
-#define LUMINANCE_WEIGHT_B config.LUMINANCE_WEIGHT_B
+
+#pragma parameter TO_GRAY_WEIGHT_R "Red channel to gray weight" 0.2124 0.0 1.0 0.01
+#define TO_GRAY_WEIGHT_R config.TO_GRAY_WEIGHT_R
+#pragma parameter TO_GRAY_WEIGHT_G "Green channel to gray weight" 0.7011 0.0 1.0 0.01
+#define TO_GRAY_WEIGHT_G config.TO_GRAY_WEIGHT_G
+#pragma parameter TO_GRAY_WEIGHT_B "Blue channel to gray weight" 0.0866 0.0 1.0 0.01
+#define TO_GRAY_WEIGHT_B config.TO_GRAY_WEIGHT_B
+
+#pragma parameter PHOSPHORESCENSE_A "Phosphorescense decay rate A (1/s)" 9.0 0.0 100.0 1.0
 #define PHOSPHORESCENSE_A config.PHOSPHORESCENSE_A
+#pragma parameter PHOSPHORESCENSE_B "Phosphorescense decay rate B (1/s)" 9.0 0.0 100.0 1.0
 #define PHOSPHORESCENSE_B config.PHOSPHORESCENSE_B
+#pragma parameter PHOSPHORESCENSE_C "Phosphorescense decay rate C (1/s)" 9.0 0.0 100.0 1.0
 #define PHOSPHORESCENSE_C config.PHOSPHORESCENSE_C
+
+#pragma parameter PHOS_EXP_A "Decay rate EE A" 5.0 0.0 10.0 1.0
 #define PHOS_EXP_A config.PHOS_EXP_A
+#pragma parameter PHOS_EXP_B "Decay rate EE B" 5.0 0.0 10.0 1.0
 #define PHOS_EXP_B config.PHOS_EXP_B
+#pragma parameter PHOS_EXP_C "Decay rate EE C" 5.0 0.0 10.0 1.0
 #define PHOS_EXP_C config.PHOS_EXP_C
+
+#pragma parameter PHOS_TRAP_A "Decay escape degree A" 1.25 0.5 2.0 0.01
 #define PHOS_TRAP_A config.PHOS_TRAP_A
+#pragma parameter PHOS_TRAP_B "Decay escape degree B" 1.25 0.5 2.0 0.01
 #define PHOS_TRAP_B config.PHOS_TRAP_B
+#pragma parameter PHOS_TRAP_C "Decay escape degree C" 1.25 0.5 2.0 0.01
 #define PHOS_TRAP_C config.PHOS_TRAP_C
 
 vec3 blend(vec3 col1, vec3 col2)
 {
-	return vec3(max(col1.r, col2.r), max(col1.g, col2.g), max(col1.b, col2.b));
+    return vec3(max(col1.r, col2.r), max(col1.g, col2.g), max(col1.b, col2.b));
 }
 
-float phosphor_inv_pow(float col, float gamma, float n)
+vec3 phosphor_inv_pow3(vec3 col, vec3 gamma, vec3 n)
 {
-	float y = pow(gamma * 1.0 / V_FREQ + pow(1.0 / col, 1.0 / n), -n);
-
-	return max(0.0, min(y, col - EPS));
+    vec3 mask = step(vec3(EPS), col);
+    vec3 safe_col = max(col, vec3(EPS));
+    vec3 y = pow(gamma / SYS_V_FREQ + pow(1.0 / safe_col, 1.0 / n), -n);
+    
+    return mask * min(y, col - EPS);
 }
 
 #pragma stage vertex
@@ -98,59 +108,57 @@ layout(location = 0) out vec2 vTexCoord;
 
 void main()
 {
-	gl_Position = global.MVP * Position;
-	vTexCoord = TexCoord;
+    gl_Position = global.MVP * Position;
+    vTexCoord = TexCoord;
 }
 
 #pragma stage fragment
 layout(location = 0) in vec2 vTexCoord;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 1) uniform sampler2D Source;
-layout(set = 0, binding = 2) uniform sampler2D LumaFeedback;
+layout(set = 0, binding = 2) uniform sampler2D PhosphorLumaFeedback;
 
 void main()
 {
-	vec2 uv = floor(global.LumaFeedbackSize.xy * vTexCoord);
-	vec3 rgb;
-	vec3 Yrgb;
+    vec2 uv = floor(config.PhosphorLumaFeedbackSize.xy * vTexCoord);
+    uv = (uv + 0.5) * config.PhosphorLumaFeedbackSize.zw;
+    
+    vec3 rgb = crt_linear(texture(Source, uv).rgb);
+    
+    // Early exit for full bypass
+    if (PHOSPHOR_LUMA_BYPASS >= 1.0) {
+        FragColor = vec4(rgb, 1.0);
+        return;
+    }
+    
+    vec3 Yrgb;
+    vec3 Wrgb = vec3(
+        TO_GRAY_WEIGHT_R,
+        TO_GRAY_WEIGHT_G,
+        TO_GRAY_WEIGHT_B);
+    
+    if (COLOR_MODE < 2.0) {
+        Yrgb = vec3(dot(Wrgb, rgb), 0.0, 0.0);
+    } else if (COLOR_MODE < 3.0) {
+        float gray = dot(Wrgb, rgb);
+        Yrgb = vec3(gray, gray, 0.0);
+    } else {
+        Yrgb = rgb;
+    }
 
-	uv = (uv + 0.5) * global.LumaFeedbackSize.zw;
-	if (TRANSFER_FUNCTION < 2.0)
-		rgb = crt_linear(texture(Source, uv).rgb);
-	else
-		rgb = srgb_linear(texture(Source, uv).rgb);
-	if (COLOR_MODE < 2.0) {
-		vec3 Wrgb = vec3(LUMINANCE_WEIGHT_R,
-		                 LUMINANCE_WEIGHT_G,
-		                 LUMINANCE_WEIGHT_B);
+    // Sample feedback
+    vec3 Yrgb1 = texture(PhosphorLumaFeedback, uv).rgb;
+    
+    // Precompute gamma values
+    float gamma_a = PHOSPHORESCENSE_A * pow(10.0, PHOS_EXP_A);
+    float gamma_b = PHOSPHORESCENSE_B * pow(10.0, PHOS_EXP_B);
+    float gamma_c = PHOSPHORESCENSE_C * pow(10.0, PHOS_EXP_C);
 
-		Yrgb.r = dot(Wrgb, rgb);
-		Yrgb.g = 0.0;
-		Yrgb.b = 0.0;
-	} else if (COLOR_MODE < 3.0) {
-		vec3 Wrgb = vec3(LUMINANCE_WEIGHT_R,
-		                 LUMINANCE_WEIGHT_G,
-		                 LUMINANCE_WEIGHT_B);
-		Yrgb.r = dot(Wrgb, rgb);
-		Yrgb.g = Yrgb.r;
-		Yrgb.b = 0.0;
-	} else {
-		Yrgb.r = rgb.r;
-		Yrgb.g = rgb.g;
-		Yrgb.b = rgb.b;
-	}
-
-	vec3 Yrgb1 = texture(LumaFeedback, uv).rgb;
-
-	Yrgb1.r = phosphor_inv_pow(Yrgb1.r,
-	                           PHOSPHORESCENSE_A * pow(10.0, PHOS_EXP_A),
-	                           PHOS_TRAP_A);
-	Yrgb1.g = phosphor_inv_pow(Yrgb1.g,
-	                           PHOSPHORESCENSE_B * pow(10.0, PHOS_EXP_B),
-	                           PHOS_TRAP_B);
-	Yrgb1.b = phosphor_inv_pow(Yrgb1.b,
-	                           PHOSPHORESCENSE_C * pow(10.0, PHOS_EXP_C),
-	                           PHOS_TRAP_C);
-	Yrgb = blend(Yrgb, Yrgb1);
-	FragColor = vec4(Yrgb, 1.0);
-} 
+    Yrgb1 = phosphor_inv_pow3(Yrgb1,
+        vec3(gamma_a, gamma_b, gamma_c),
+        vec3(PHOS_TRAP_A, PHOS_TRAP_B, PHOS_TRAP_C));
+    
+    Yrgb = blend(Yrgb, Yrgb1);
+    
+    FragColor = vec4(Yrgb, 1.0);
+}

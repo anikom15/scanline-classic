@@ -43,6 +43,13 @@ float gaussian(float x, float sigma)
     return exp(-sq(x) * 1.0 / (2.0 * sq(sigma)));
 }
 
+vec3 gaussian3(float x, vec3 sigma)
+{
+    float x2 = sq(x);
+    vec3 k = -0.5 / (sigma * sigma);
+    return exp(k * x2);
+}
+
 float crt_linear(const float x)
 {
 	return pow(x, 2.4);

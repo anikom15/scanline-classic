@@ -1,8 +1,65 @@
-#reference "../trinitron-ntsc.slangp"
-V_FREQ = 60.098814
-SIGNAL_BANDWIDTH_R = 4.8
-SIGNAL_BANDWIDTH_G = 4.8
-SIGNAL_BANDWIDTH_B = 4.8
+# SFC/SNES RGB shader set
+#
+# All standard models, but not the Jr. and Mini models, have an RGB
+# output available without modification. However, its use was only
+# officially supported in Japan with the OEM JP-21 connector.
+
+shaders = 6
+
+shader0 = "../src/sys-rgb-bandlimit.slang"
+filter_linear0 = "false"
+scale_type0 = "source"
+scale_x0 = 2.0
+scale_y0 = 1.0
+
+shader1 = "../src/display-rgb-bandlimit.slang"
+filter_linear1 = "false"
+scale_type1 = "source"
+scale_x1 = 1.0
+scale_y1 = 1.0
+
+shader2 = "../src/phosphor-luma.slang"
+filter_linear2 = "false"
+scale_type2 = "source"
+scale_x2 = 1.0
+scale_y2 = 1.0
+
+shader3 = "../src/phosphor-chroma.slang"
+filter_linear3 = "false"
+scale_type3 = "source"
+scale_x3 = 1.0
+scale_x3 = 1.0
+
+shader4 = "../src/scanline-advanced.slang"
+filter_linear4 = "false"
+scale_type4 = "viewport"
+scale_x4 = 1.0
+scale_y4 = 1.0
+
+shader5 = "../src/bezel.slang"
+filter_linear5 = "false"
+scale_type5 = "viewport"
+scale_x5 = 1.0
+scale_y5 = 1.0
+
+# sys-rgb-bandlimit parameters
+SYS_BANDWIDTH_R = 4.8
+SYS_BANDWIDTH_G = 4.8
+SYS_BANDWIDTH_B = 4.8
+
+# phosphor parameters
+SYS_V_FREQ = 60.0988
+PHOSPHORESCENSE_A = "3.0"
+PHOSPHORESCENSE_B = "100.0"
+PHOSPHORESCENSE_C = "100.0"
+PHOS_EXP_A = "4.0"
+PHOS_EXP_B = "4.0"
+PHOS_EXP_C = "4.0"
+PHOS_TRAP_A = "1.2"
+PHOS_TRAP_B = "0.75"
+PHOS_TRAP_C = "0.75"
+
+# Scanline Advanced parameters
 H_FRONT = "20.000000"
 H_BACK = "40.000000"
 V_FRONT = "9.000000"
