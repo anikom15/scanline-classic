@@ -31,7 +31,7 @@ layout(push_constant) uniform Push
 {
     vec4 SourceSize;
     vec4 PhosphorLumaFeedbackSize;
-    float SYS_V_FREQ;
+    float V_FREQ;
     float COLOR_MODE;
     float TO_GRAY_WEIGHT_R;
     float TO_GRAY_WEIGHT_G;
@@ -53,8 +53,8 @@ layout(push_constant) uniform Push
 #pragma parameter PHOSPHOR_LUMA_BYPASS "Phosphor luma bypass" 0.0 0.0 1.0 1.0
 #define PHOSPHOR_LUMA_BYPASS config.PHOSPHOR_LUMA_BYPASS
 
-#pragma parameter SYS_V_FREQ "System vertical frequency (Hz)" 59.94 1.0 240.0 0.01
-#define SYS_V_FREQ config.SYS_V_FREQ
+#pragma parameter V_FREQ "Vertical frequency (Hz)" 59.94 1.0 240.0 0.01
+#define V_FREQ config.V_FREQ
 
 #pragma parameter COLOR_MODE "Chromaticity mode" 3.0 1.0 3.0 1.0
 #define COLOR_MODE config.COLOR_MODE
@@ -96,7 +96,7 @@ vec3 phosphor_inv_pow3(vec3 col, vec3 gamma, vec3 n)
 {
     vec3 mask = step(vec3(EPS), col);
     vec3 safe_col = max(col, vec3(EPS));
-    vec3 y = pow(gamma / SYS_V_FREQ + pow(1.0 / safe_col, 1.0 / n), -n);
+    vec3 y = pow(gamma / V_FREQ + pow(1.0 / safe_col, 1.0 / n), -n);
     
     return mask * min(y, col - EPS);
 }
