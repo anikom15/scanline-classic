@@ -219,7 +219,7 @@ layout(push_constant) uniform Push {
 // ==== Helper Functions ====
 
 /**
- * Apply subpixel mask weights based on screen position
+ * Apply subpixel mask weights based on screen position with bilinear filtering
  * @param uv Screen-space coordinates (in output pixels)
  * @return RGB mask weights (0.0-1.0 per channel)
  */
@@ -229,12 +229,15 @@ vec3 mask(vec2 uv)
     // MASK_SCALE = 1.0: native output pixel resolution (very fine)
     // MASK_SCALE = 2.0: 2x larger mask pattern (half the frequency)
     // MASK_SCALE = 3.0: 3x larger mask pattern (1/3 the frequency)
-    return mask_weights(uv / MASK_SCALE, 1.0, int(MASK_TYPE - 1.0));
+    // Use filtered mask with bilinear interpolation for smoother results
+    return mask_weights_filtered(uv / MASK_SCALE, 1.0, int(MASK_TYPE - 1.0));
 }
 
 /**
  * Apply subpixel mask with anisotropic filtering to reduce aliasing
  * Uses box filtering based on the local anisotropy of the coordinate transform
+ * The base mask now uses bilinear interpolation, so this only adds extra filtering
+ * for extreme distortion cases
  * @param uv Screen-space coordinates
  * @param ddx_uv Partial derivative in X direction (horizontal screen-space gradient)
  * @param ddy_uv Partial derivative in Y direction (vertical screen-space gradient)
@@ -248,16 +251,16 @@ vec3 mask_anisotropic(vec2 uv, vec2 ddx_uv, vec2 ddy_uv)
     float dy = length(ddy_uv);
     
     // Determine filter kernel size based on maximum stretching
-    // If stretching > 1 pixel, we need to filter multiple mask samples
     float max_aniso = max(dx, dy);
     
-    // Use point sampling if anisotropy is small (< 1.5 pixels)
-    if (max_aniso < 1.5)
+    // Use basic filtered mask if anisotropy is low
+    // The base bilinear interpolation handles mild distortion well
+    if (max_aniso < 2.5)
         return mask(uv);
     
-    // Calculate number of samples needed (clamped to reasonable range)
-    // We use sqrt to reduce sample count while maintaining quality
-    int samples = int(clamp(ceil(sqrt(max_aniso)), 2.0, 16.0));
+    // For extreme anisotropy, apply additional box filtering
+    // We use sqrt and divide by 2 since base mask already provides some filtering
+    int samples = int(clamp(ceil(sqrt(max_aniso / 2.0)), 2.0, 12.0));
     
     // Determine dominant stretch direction
     vec2 filter_dir;
@@ -283,7 +286,7 @@ vec3 mask_anisotropic(vec2 uv, vec2 ddx_uv, vec2 ddy_uv)
     
     for (int i = 0; i < samples; i++) {
         vec2 sample_pos = uv + start_offset + step_vec * (float(i) + 0.5);
-        filtered += mask(sample_pos);
+        filtered += mask(sample_pos);  // Now uses interpolated mask
     }
     
     return filtered / float(samples);

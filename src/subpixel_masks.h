@@ -20,6 +20,36 @@ Many of these mask arrays are adapted from cgwg's crt-geom-deluxe LUTs, and
 those have their filenames included for easy identification
 */
 
+// Forward declaration
+vec3 mask_weights(vec2 coord, float mask_intensity, int phosphor_layout);
+
+/**
+ * Interpolated mask weights with bilinear filtering
+ * Samples 4 neighboring mask positions and interpolates between them
+ * This reduces aliasing from the discrete mask pattern
+ * @param coord Screen-space coordinates (fractional pixels allowed)
+ * @param mask_intensity Strength of mask effect (0.0-1.0)
+ * @param phosphor_layout Which phosphor pattern to use (0-24)
+ * @return RGB mask weights with bilinear interpolation applied
+ */
+vec3 mask_weights_filtered(vec2 coord, float mask_intensity, int phosphor_layout){
+    // Extract fractional part for interpolation
+    vec2 fract_coord = fract(coord);
+    vec2 floor_coord = floor(coord);
+    
+    // Sample 4 neighboring mask positions
+    vec3 m00 = mask_weights(floor_coord, mask_intensity, phosphor_layout);
+    vec3 m10 = mask_weights(floor_coord + vec2(1.0, 0.0), mask_intensity, phosphor_layout);
+    vec3 m01 = mask_weights(floor_coord + vec2(0.0, 1.0), mask_intensity, phosphor_layout);
+    vec3 m11 = mask_weights(floor_coord + vec2(1.0, 1.0), mask_intensity, phosphor_layout);
+    
+    // Bilinear interpolation
+    vec3 m_x0 = mix(m00, m10, fract_coord.x);
+    vec3 m_x1 = mix(m01, m11, fract_coord.x);
+    
+    return mix(m_x0, m_x1, fract_coord.y);
+}
+
 vec3 mask_weights(vec2 coord, float mask_intensity, int phosphor_layout){
    vec3 weights = vec3(1.,1.,1.);
    float on = 1.;
