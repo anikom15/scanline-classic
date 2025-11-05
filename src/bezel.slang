@@ -29,6 +29,7 @@ layout(push_constant) uniform Push
     vec4 OriginalSize;
     vec4 SourceSize;
     uint FrameCount;
+    float BEZEL_BYPASS;
     float ZOOM;
     float ASPECT_RATIO_NUM;
     float ASPECT_RATIO_DEN;
@@ -45,10 +46,13 @@ layout(push_constant) uniform Push
     float GLOW_U_SCALE;
     float GLOW_V_SCALE;
     float GLOW_FALLOFF;
+    float GLOW_TEMPERATURE;
 } config;
 
 #pragma parameter BEZEL_HEADER " ==== Bezel Parameters ==== " 0.0 0.0 0.0 0.0
-#pragma parameter ZOOM "Viewport zoom" 1.0 0.0 10.0 0.01
+#pragma parameter BEZEL_BYPASS "Bypass bezel effect" 0.0 0.0 1.0 1.0
+#define BEZEL_BYPASS config.BEZEL_BYPASS
+#pragma parameter ZOOM "Viewport zoom" 1.0 0.0 10.0 0.001
 #define ZOOM config.ZOOM
 #pragma parameter ASPECT_RATIO_NUM "Aspect ratio numerator" 4.0 1.0 10.0 0.1
 #define ASPECT_RATIO_NUM config.ASPECT_RATIO_NUM
@@ -83,6 +87,9 @@ layout(push_constant) uniform Push
 
 #pragma parameter GLOW_FALLOFF "Glow radial falloff" 1.0 0.5 10.0 0.1
 #define GLOW_FALLOFF config.GLOW_FALLOFF
+
+#pragma parameter GLOW_TEMPERATURE "Glow color temperature" 0.20 -0.5 0.5 0.01
+#define GLOW_TEMPERATURE config.GLOW_TEMPERATURE
 
 #pragma parameter GLOW_U_OFFSET "Glow coord U offset" 0.0 -0.5 0.5 0.01
 #define GLOW_U_OFFSET config.GLOW_U_OFFSET
@@ -164,6 +171,42 @@ vec3 compress_color(vec3 color, float compression)
     // Lower exponents compress bright values more aggressively
     float power = mix(0.3, 1.0, compression);
     return pow(color, vec3(power));
+}
+
+/**
+ * Shifts color temperature of the input color.
+ * Negative values make colors warmer, positive values make them cooler.
+ * This simulates the psychological perception of CRT glow which appears bluish due to
+ * reflections and the contrast between the bright screen and darker surroundings.
+ * 
+ * @param color Input color in linear RGB space
+ * @param temperature Temperature shift [-0.5 to 0.5]: negative=warmer, positive=cooler
+ * @return Color with shifted temperature
+ */
+vec3 shift_temperature(vec3 color, float temperature)
+{
+    // Color temperature matrix coefficients
+    // Cooler (positive): reduce red, boost blue
+    // Warmer (negative): boost red, reduce blue
+    
+    // Calculate RGB multipliers based on temperature
+    // This uses a simplified approximation of blackbody radiation color shifts
+    float red_shift = 1.0 - temperature * 0.8;   // Red decreases when cooling
+    float green_shift = 1.0 - abs(temperature) * 0.2;  // Green slightly affected
+    float blue_shift = 1.0 + temperature * 1.2;  // Blue increases when cooling
+    
+    vec3 shifted = color * vec3(red_shift, green_shift, blue_shift);
+    
+    // Preserve overall luminance by normalizing to maintain perceived brightness
+    float original_luma = dot(color, vec3(0.2126, 0.7152, 0.0722));
+    float shifted_luma = dot(shifted, vec3(0.2126, 0.7152, 0.0722));
+    
+    if (shifted_luma > 0.0001)
+    {
+        shifted *= original_luma / shifted_luma;
+    }
+    
+    return shifted;
 }
 
 /**
@@ -295,11 +338,13 @@ vec3 calculate_glow(vec2 coord, float radius, float diffusion_steps)
  * 
  * Pipeline:
  * 1. Sample screen content (with viewport bounds checking)
- * 2. Sample background/bezel texture
- * 3. Calculate glow effect from screen content
- * 4. Apply radial falloff to glow based on distance from viewport
- * 5. Blend glow with background
- * 6. Composite screen over glowing background
+ * 2. If bypass is enabled, return screen content directly
+ * 3. Sample background/bezel texture
+ * 4. Calculate glow effect from screen content
+ * 5. Shift glow color temperature (cooler/bluer for realistic CRT reflection)
+ * 6. Apply radial falloff to glow based on distance from viewport
+ * 7. Blend glow with background
+ * 8. Composite screen over glowing background
  */
 void main()
 {
@@ -314,6 +359,13 @@ void main()
     }
     screen.a = max(screen.a, 1.0);  // Ensure opaque screen
     
+    // Bypass mode: pass through screen content without bezel/glow processing
+    if (BEZEL_BYPASS > 0.5)
+    {
+        FragColor = vec4(crt_gamma(clamp(screen.rgb, 0.0, 1.0)), 1.0);
+        return;
+    }
+    
     // Sample background/bezel texture
     vec4 background = texture(BORDER, vTexCoord);
     
@@ -324,6 +376,10 @@ void main()
     
     // Calculate glow effect
     vec3 glow = calculate_glow(glow_coord, GLOW_RADIUS, GLOW_DIFFUSION);
+    
+    // Shift glow color temperature to simulate bluish CRT reflection
+    // This mimics the psychological perception of screen glow appearing cooler
+    glow = shift_temperature(glow, GLOW_TEMPERATURE);
     
     // === Calculate radial falloff for glow intensity ===
     

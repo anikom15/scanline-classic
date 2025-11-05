@@ -189,7 +189,7 @@ layout(push_constant) uniform Push {
 #pragma parameter S_CORRECTION_V "S-correction vertical strength" 0.0 -1.0 1.0 0.01
 
 #pragma parameter UNDERSCAN "Underscan (%)" 0.0 0.0 100.0 1.0
-#pragma parameter ZOOM "Viewport zoom" 1.0 0.0 10.0 0.01
+#pragma parameter ZOOM "Viewport zoom" 1.0 0.0 10.0 0.001
 
 #define V_LINES_PER_FIELD config.V_LINES_PER_FIELD
 #define H_BLANK_INACTIVE_LEN config.H_BLANK_INACTIVE_LEN
