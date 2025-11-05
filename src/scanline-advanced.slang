@@ -78,7 +78,7 @@
 #include "subpixel_masks.h"
 
 #pragma name ScanlineAdvanced
-#pragma format A2B10G10R10_UNORM_PACK32
+#pragma format R16G16B16A16_SFLOAT
 
 layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 MVP;
@@ -510,6 +510,28 @@ void main()
     // Prevent horizontal over-blur for low-resolution content
     if (stepxy.y < stepxy.x)
         stepxy.x /= 2.0;
+
+    // --- Anisotropic footprint: widen kernel when the pixel covers multiple source texels ---
+    // Measure the local mapping footprint in texture space (uv is in 0..1 after all distortions)
+    vec2 dudx = dFdx(uv);
+    vec2 dudy = dFdy(uv);
+
+    // Per-axis footprint in uv units per screen pixel
+    float rho_u = length(vec2(dudx.x, dudy.x)); // footprint along source U
+    float rho_v = length(vec2(dudx.y, dudy.y)); // footprint along source V
+
+    // Base texel size in uv units
+    vec2 texel_uv = 1.0 / global.SourceSize.xy;
+
+    // Scale the kernel footprint when minifying (rho > texel size).
+    // Clamp to avoid over-blur and runaway costs; 8.0 is a conservative cap.
+    vec2 aniso_scale = clamp(vec2(rho_u, rho_v) / texel_uv, vec2(1.0), vec2(8.0));
+
+    // Apply per-axis widening; keeps 4x4 taps but covers a larger area where needed
+    stepxy *= aniso_scale;
+
+    // Optional: keep the previous over-blur guard after widening if you want to preserve horizontal sharpness on low-res
+    // if (stepxy.y < stepxy.x) stepxy.x = max(stepxy.x * 0.5, stepxy.y);
 
     // Calculate fractional position within pixel grid
     vec2 pos = uv + stepxy / 2.0;
