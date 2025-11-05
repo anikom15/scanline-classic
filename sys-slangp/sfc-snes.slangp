@@ -37,10 +37,14 @@ scale_x4 = 1.0
 scale_y4 = 1.0
 
 shader5 = "../src/bezel.slang"
-filter_linear5 = "false"
+filter_linear5 = "true"
+wrap_mode5 = "mirrored_repeat"
 scale_type5 = "viewport"
 scale_x5 = 1.0
 scale_y5 = 1.0
+
+textures = BORDER
+BORDER = "../share/bezel-tv.png"
 
 # sys-rgb-bandlimit parameters
 SYS_BANDWIDTH_R = 4.8
@@ -60,7 +64,11 @@ PHOS_TRAP_B = "0.75"
 PHOS_TRAP_C = "0.75"
 
 # Scanline Advanced parameters
-H_FRONT = "20.000000"
-H_BACK = "40.000000"
-V_FRONT = "9.000000"
-V_BACK = "14.000000"
+V_FREQ = 60.0988
+V_LINES_PER_FIELD = 262
+H_BLANK_INACTIVE_LEN = 170
+ZOOM = 1.05
+
+# Bezel parameters
+ASPECT_RATIO_NUM = 8
+ASPECT_RATIO_DEN = 7

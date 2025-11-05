@@ -160,7 +160,7 @@ layout(push_constant) uniform Push {
 #pragma parameter SCAN_TYPE "Scan type" 1.0 1.0 2.0 1.0
 #pragma parameter MAX_SCAN_RATE "Maximum active lines" 480.0 1.0 1200.0 1.0
 #pragma parameter LINE_DOUBLER "Enable line-doubler" 0.0 0.0 1.0 1.0
-#pragma parameter FOCUS "Focus (%)" 0.50 0.0 1.0 0.01
+#pragma parameter FOCUS "Focus (%)" 0.25 0.0 1.0 0.01
 
 // Subpixel mask parameter
 #pragma parameter MASK_TYPE "Subpixel layout" 1.0 1.0 25.0 1.0
@@ -505,12 +505,6 @@ void main()
     // Apply subpixel mask if color mode enables it
     if (COLOR_MODE > 2.0)
         col *= mask(vTexCoord.xy * global.OutputSize.xy);
-
-    // Clamp to valid color range
-    col = clamp(col, 0.0, 1.0);
-    
-    // Apply CRT gamma correction for proper brightness
-    col = crt_gamma(col);
 
     FragColor = vec4(col, 1.0);
 }

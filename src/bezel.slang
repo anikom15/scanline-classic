@@ -16,326 +16,370 @@
 
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <https://www.gnu.org/licenses/>.
-   
-   ==== SHADER OVERVIEW === =
-   
-   This shader provides a bezel frame effect for CRT simulation:
-   
-   1. BEZEL FRAME: Curved rectangular frame that masks the image edges
-   2. SLOPED EDGES: Gradient shading simulates inward-sloping bezel surface
-   3. AMBIENT LIGHT: Blurred reflection/glow effect from screen content onto bezel
-   
-   The bezel covers approximately:
-   - 3.33% at the midpoint of each edge (top, bottom, left, right)
-   - 6.67% at each corner (diagonal coverage)
-   
-   ==== COORDINATE SYSTEM === =
-   
-   The bezel operates in normalized coordinates (-1 to 1) for symmetric
-   shaping. The curved frame uses distance fields to create smooth,
-   natural-looking edges with corner rounding.
-   
-*/ 
+*/
 
 #include "common.h"
 
 #pragma name Bezel
-#pragma format R8G8B8A8_UNORM
+#pragma format A2B10G10R10_UNORM_PACK32
 
-layout(std140, set = 0, binding = 0) uniform UBO {
-    mat4 MVP;
+layout(push_constant) uniform Push
+{
     vec4 OutputSize;
     vec4 OriginalSize;
     vec4 SourceSize;
     uint FrameCount;
-} global;
-
-layout(push_constant) uniform Push {
-    float BEZEL_WIDTH_MID;
-    float BEZEL_WIDTH_CORNER;
-    float BEZEL_CURVE_STRENGTH;
-    float BEZEL_EDGE_SOFTNESS;
-    float BEZEL_COLOR_R;
-    float BEZEL_COLOR_G;
-    float BEZEL_COLOR_B;
-    float BEZEL_SLOPE_GRADIENT;
-    float BEZEL_AMBIENT_STRENGTH;
-    float BEZEL_AMBIENT_SAMPLES;
-    float BEZEL_AMBIENT_BLUR;
+    float ZOOM;
+    float ASPECT_RATIO_NUM;
+    float ASPECT_RATIO_DEN;
+    float BEZEL_GAIN;
+    float BEZEL_BIAS;
+    float GLOW_RADIUS;
+    float GLOW_WEIGHT;
+    float GLOW_DIFFUSION;
+    float GLOW_VERTICAL_BIAS;
+    float GLOW_COMPRESSION;
+    float GLOW_JITTER;
+    float GLOW_U_OFFSET;
+    float GLOW_V_OFFSET;
+    float GLOW_U_SCALE;
+    float GLOW_V_SCALE;
+    float GLOW_FALLOFF;
 } config;
 
-// ==== Shader Parameters === =
-
 #pragma parameter BEZEL_HEADER " ==== Bezel Parameters ==== " 0.0 0.0 0.0 0.0
+#pragma parameter ZOOM "Viewport zoom" 1.0 0.0 10.0 0.01
+#define ZOOM config.ZOOM
+#pragma parameter ASPECT_RATIO_NUM "Aspect ratio numerator" 4.0 1.0 10.0 0.1
+#define ASPECT_RATIO_NUM config.ASPECT_RATIO_NUM
+#pragma parameter ASPECT_RATIO_DEN "Aspect ratio denominator" 3.0 1.0 10.0 0.1
+#define ASPECT_RATIO_DEN config.ASPECT_RATIO_DEN
 
-#pragma parameter BEZEL_WIDTH_MID "Bezel width at edges (%%)" 3.33 0.0 20.0 0.1
-#define BEZEL_WIDTH_MID config.BEZEL_WIDTH_MID
+#define ASPECT_RATIO (ASPECT_RATIO_NUM / ASPECT_RATIO_DEN)
 
-#pragma parameter BEZEL_WIDTH_CORNER "Bezel width at corners (%%)" 6.67 0.0 20.0 0.1
-#define BEZEL_WIDTH_CORNER config.BEZEL_WIDTH_CORNER
+#pragma parameter BEZEL_GAIN "Bezel gain" 1.0 0.0 5.0 0.01
+#define BEZEL_GAIN config.BEZEL_GAIN
 
-#pragma parameter BEZEL_CURVE_STRENGTH "Bezel curve strength" 0.5 0.0 2.0 0.05
-#define BEZEL_CURVE_STRENGTH config.BEZEL_CURVE_STRENGTH
+#pragma parameter BEZEL_BIAS "Bezel bias" 0.0 -1.0 1.0 0.01
+#define BEZEL_BIAS config.BEZEL_BIAS
 
-#pragma parameter BEZEL_EDGE_SOFTNESS "Bezel edge softness" 0.5 0.0 2.0 0.05
-#define BEZEL_EDGE_SOFTNESS config.BEZEL_EDGE_SOFTNESS
+#pragma parameter GLOW_RADIUS "Glow radius" 0.06 0.0 0.1 0.01
+#define GLOW_RADIUS config.GLOW_RADIUS
 
-#pragma parameter BEZEL_COLOR_R "Bezel color R" 0.1 0.0 1.0 0.01
-#define BEZEL_COLOR_R config.BEZEL_COLOR_R
+#pragma parameter GLOW_WEIGHT "Glow weight" 1.0 0.0 1.0 0.01
+#define GLOW_WEIGHT config.GLOW_WEIGHT
 
-#pragma parameter BEZEL_COLOR_G "Bezel color G" 0.1 0.0 1.0 0.01
-#define BEZEL_COLOR_G config.BEZEL_COLOR_G
+#pragma parameter GLOW_DIFFUSION "Glow diffusion" 3.0 1.0 10.0 1.0
+#define GLOW_DIFFUSION config.GLOW_DIFFUSION
 
-#pragma parameter BEZEL_COLOR_B "Bezel color B" 0.1 0.0 1.0 0.01
-#define BEZEL_COLOR_B config.BEZEL_COLOR_B
+#pragma parameter GLOW_VERTICAL_BIAS "Glow vertical bias" 2.0 1.0 5.0 0.1
+#define GLOW_VERTICAL_BIAS config.GLOW_VERTICAL_BIAS
 
-#pragma parameter BEZEL_SLOPE_GRADIENT "Bezel slope gradient strength" 0.6 0.0 2.0 0.05
-#define BEZEL_SLOPE_GRADIENT config.BEZEL_SLOPE_GRADIENT
+#pragma parameter GLOW_COMPRESSION "Glow compression" 0.5 0.0 1.0 0.01
+#define GLOW_COMPRESSION config.GLOW_COMPRESSION
 
-#pragma parameter BEZEL_AMBIENT_STRENGTH "Ambient light strength" 0.5 0.0 2.0 0.05
-#define BEZEL_AMBIENT_STRENGTH config.BEZEL_AMBIENT_STRENGTH
+#pragma parameter GLOW_JITTER "Glow jitter" 0.3 0.0 1.0 0.01
+#define GLOW_JITTER config.GLOW_JITTER
 
-#pragma parameter BEZEL_AMBIENT_SAMPLES "Ambient light samples" 12.0 4.0 32.0 1.0
-#define BEZEL_AMBIENT_SAMPLES config.BEZEL_AMBIENT_SAMPLES
+#pragma parameter GLOW_FALLOFF "Glow radial falloff" 1.0 0.5 10.0 0.1
+#define GLOW_FALLOFF config.GLOW_FALLOFF
 
-#pragma parameter BEZEL_AMBIENT_BLUR "Ambient light blur radius" 0.8 0.1 2.0 0.05
-#define BEZEL_AMBIENT_BLUR config.BEZEL_AMBIENT_BLUR
+#pragma parameter GLOW_U_OFFSET "Glow coord U offset" 0.0 -0.5 0.5 0.01
+#define GLOW_U_OFFSET config.GLOW_U_OFFSET
+#pragma parameter GLOW_V_OFFSET "Glow coord V offset" 0.0 -0.5 0.5 0.01
+#define GLOW_V_OFFSET config.GLOW_V_OFFSET
+#pragma parameter GLOW_U_SCALE  "Glow coord U scale"  1.0  0.5  2.0 0.01
+#define GLOW_U_SCALE  config.GLOW_U_SCALE
+#pragma parameter GLOW_V_SCALE  "Glow coord V scale"  1.0  0.5  2.0 0.01
+#define GLOW_V_SCALE  config.GLOW_V_SCALE
 
-// ==== Helper Functions === =
-
-/**
- * Calculate distance to bezel edge with four trapezoid segments and mitered corners
- * Returns: smooth distance field and segment ID
- * @param uv Normalized coordinates (-1 to 1)
- * @return vec2(distance, segment_id) where segment_id: 0=top, 1=right, 2=bottom, 3=left
- */
-vec2 bezelDistanceSegmented(vec2 uv)
+layout(std140, set = 0, binding = 0) uniform UBO
 {
-    float mid_width = BEZEL_WIDTH_MID / 100.0;
-    float corner_width = BEZEL_WIDTH_CORNER / 100.0;
-    vec2 abs_uv = abs(uv);
-    
-    // Determine which segment we're in based on dominant axis and sign
-    // Use 45-degree mitered corners
-    float segment_id = 0.0;
-    float dist = 0.0;
-    
-    // Calculate distances to each edge
-    float dist_top = 1.0 - mid_width - uv.y;
-    float dist_bottom = 1.0 - mid_width + uv.y;
-    float dist_left = 1.0 - mid_width + uv.x;
-    float dist_right = 1.0 - mid_width - uv.x;
-    
-    // Miter joints at 45 degrees: use abs(x) + abs(y) distance at corners
-    // Determine which bezel segment this pixel belongs to
-    bool in_corner_region = (abs_uv.x > (1.0 - corner_width)) && (abs_uv.y > (1.0 - corner_width));
-    
-    if (in_corner_region) {
-        // In corner: use diagonal miter (45-degree cut)
-        // The miter line is at abs(x) + abs(y) = constant
-        float miter_dist = 1.0 - corner_width - (abs_uv.x + abs_uv.y) * 0.5;
-        dist = miter_dist;
-        
-        // Assign segment based on which edge is closer
-        if (abs_uv.x > abs_uv.y) {
-            segment_id = (uv.x > 0.0) ? 1.0 : 3.0; // Right or Left
-        } else {
-            segment_id = (uv.y > 0.0) ? 0.0 : 2.0; // Top or Bottom
-        }
-    } else {
-        // Not in corner: assign to closest edge
-        float min_dist = min(min(dist_top, dist_bottom), min(dist_left, dist_right));
-        dist = min_dist;
-        
-        if (min_dist == dist_top) {
-            segment_id = 0.0; // Top
-        } else if (min_dist == dist_right) {
-            segment_id = 1.0; // Right
-        } else if (min_dist == dist_bottom) {
-            segment_id = 2.0; // Bottom
-        } else {
-            segment_id = 3.0; // Left
-        }
-    }
-    
-    float softness = BEZEL_EDGE_SOFTNESS * 0.01;
-    float smoothed_dist = smoothstep(-softness, softness, dist);
-    
-    return vec2(smoothed_dist, segment_id);
-}
-
-/**
- * Calculate slope gradient for bezel shading per segment
- * Each trapezoid has lighting based on its surface orientation
- * @param bezel_mask Distance to bezel (0.0 = outer, 1.0 = viewport)
- * @param segment_id Which bezel segment (0=top, 1=right, 2=bottom, 3=left)
- * @param uv_normalized Normalized coordinates for position calculation
- * @return Gradient factor for shading
- */
-float bezelSlopeGradient(float bezel_mask, float segment_id, vec2 uv_normalized)
-{
-    if (bezel_mask >= 0.999) return 1.0; // No gradient in visible area
-    
-    // Distance from outer edge (0.0 = outer edge, 1.0 = inner edge/viewport)
-    float slope_position = bezel_mask;
-    
-    // Define light direction (from top-left)
-    vec3 light_dir = normalize(vec3(-0.5, -0.5, -1.0));
-    
-    // Calculate surface normal based on segment
-    // Each trapezoid slopes inward, so normal points outward and upward
-    vec3 surface_normal;
-    
-    int seg = int(segment_id + 0.5);
-    if (seg == 0) {
-        // Top segment: normal points up and outward
-        surface_normal = normalize(vec3(0.0, -1.0, 0.7));
-    } else if (seg == 1) {
-        // Right segment: normal points right and outward
-        surface_normal = normalize(vec3(1.0, 0.0, 0.7));
-    } else if (seg == 2) {
-        // Bottom segment: normal points down and outward
-        surface_normal = normalize(vec3(0.0, 1.0, 0.7));
-    } else {
-        // Left segment: normal points left and outward
-        surface_normal = normalize(vec3(-1.0, 0.0, 0.7));
-    }
-    
-    // Calculate directional lighting
-    float directional = max(dot(surface_normal, -light_dir), 0.0);
-    
-    // Combine slope position with directional lighting
-    // Outer edge is darker, inner edge is lighter
-    float base_gradient = slope_position; // Linear gradient across slope
-    float lighting = mix(0.3, 1.0, base_gradient); // Darker at outer edge
-    lighting *= mix(0.6, 1.0, directional); // Modulate by directional lighting
-    
-    return clamp(lighting, 0.0, 1.0);
-}
-
-/**
- * Sample ambient light from screen content with blur
- * Combines reflection and glow into a single chaotic, diffuse effect
- * @param uv Current texture coordinate
- * @param edge_uv Coordinate at the edge
- * @param tex Source texture
- * @return Blurred ambient light color
- */
-vec3 sampleAmbientLight(vec2 uv, vec2 edge_uv, sampler2D tex)
-{
-    if (BEZEL_AMBIENT_STRENGTH <= 0.0)
-        return vec3(0.0);
-
-    int samples = int(clamp(BEZEL_AMBIENT_SAMPLES, 4.0, 16.0));
-    float blur_radius = BEZEL_AMBIENT_BLUR;
-    vec3 ambient = vec3(0.0);
-    float total_weight = 0.0;
-
-    // Calculate direction from current position to edge
-    vec2 to_edge = edge_uv - uv;
-    vec2 edge_tangent = vec2(-to_edge.y, to_edge.x); // Perpendicular to edge direction
-
-    // Sample in a large chaotic pattern around the edge area
-    for (int i = 0; i < 16; i++) {
-        if (i >= samples) break;
-        for (int j = 0; j < 16; j++) {
-            if (j >= samples) break;
-            
-            // Create grid coordinates centered at (0, 0)
-            float tx = (float(i) / float(samples - 1)) - 0.5;
-            float ty = (float(j) / float(samples - 1)) - 0.5;
-            
-            // Apply large blur radius for chaotic scattered sampling
-            vec2 offset = (to_edge * tx + edge_tangent * ty) * blur_radius;
-            vec2 sample_uv = edge_uv + offset;
-            sample_uv = clamp(sample_uv, 0.0, 1.0);
-            
-            // Sample color and calculate brightness
-            vec3 sample_col = texture(tex, sample_uv).rgb;
-            float brightness = dot(sample_col, vec3(0.299, 0.587, 0.114));
-            
-            // Weight by distance (Gaussian-like falloff for blur)
-            float dist = length(vec2(tx, ty));
-            float weight = exp(-dist * dist * 3.0); // Gaussian blur kernel
-            
-            // Emphasize bright areas more (glow-like behavior)
-            weight *= 1.0 + brightness * 0.5;
-            
-            ambient += sample_col * weight;
-            total_weight += weight;
-        }
-    }
-    
-    return total_weight > 0.0 ? ambient / total_weight : vec3(0.0);
-}
-
-// ==== Vertex Shader === =
+    mat4 MVP;
+} global;
 
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
+layout(location = 1) out vec2 screen_coord;
 
+/**
+ * Vertex shader: Transforms the vertex position and calculates texture coordinates
+ * for both the full output and the aspect-corrected screen viewport.
+ */
 void main()
 {
     gl_Position = global.MVP * Position;
-    vTexCoord = TexCoord;
+    
+    // Calculate aspect-corrected viewport size
+    // For landscape (ratio > 1): constrain by height, expand width
+    // For portrait (ratio < 1): constrain by width, expand height
+    vec2 corrected_size = ASPECT_RATIO > 1.0 ?
+        vec2(config.OutputSize.y * ASPECT_RATIO, config.OutputSize.y):
+        vec2(config.OutputSize.x, config.OutputSize.x / ASPECT_RATIO);
+    
+    // Calculate scale factor and centering offset for the zoomed viewport
+    vec2 scale = config.OutputSize.xy / corrected_size / ZOOM;
+    vec2 offset = (1.0 - scale) * 0.5;  // Center the viewport
+    
+    // Map texture coordinates to the scaled and centered screen viewport
+    screen_coord = TexCoord.xy * scale + offset;
+    vTexCoord = TexCoord.xy;  // Unmodified coords for background/border sampling
 }
-
-// ==== Fragment Shader === =
 
 #pragma stage fragment
 layout(location = 0) in vec2 vTexCoord;
+layout(location = 1) in vec2 screen_coord;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
+layout(set = 0, binding = 3) uniform sampler2D Original;
+layout(set = 0, binding = 4) uniform sampler2D BORDER;
+layout(set = 0, binding = 5) uniform sampler2D PassOutput3;
 
+/**
+ * Blends two colors using multiply blend mode.
+ * This creates a darkening effect where overlapping colors become darker.
+ * 
+ * @param col1 Base color
+ * @param col2 Blend color
+ * @return Multiplied color (col1 * col2)
+ */
+vec3 blend(vec3 col1, vec3 col2)
+{
+    return col1 * col2;
+}
+
+/**
+ * Compresses color dynamic range to reduce extreme highlights and shadows.
+ * Uses a power curve to soften the visual impact of bright/dark areas in the glow effect.
+ * 
+ * @param color Input color to compress
+ * @param compression Compression amount [0-1]: 0=maximum compression, 1=no compression
+ * @return Compressed color with reduced dynamic range
+ */
+vec3 compress_color(vec3 color, float compression)
+{
+    // Map compression [0,1] to power curve exponent [0.3, 1.0]
+    // Lower exponents compress bright values more aggressively
+    float power = mix(0.3, 1.0, compression);
+    return pow(color, vec3(power));
+}
+
+/**
+ * Hash function for generating pseudo-random values from 2D coordinates.
+ * Uses a simple but effective fractional pattern to generate deterministic randomness.
+ * 
+ * @param p Input 2D coordinate
+ * @return Pseudo-random value in range [0, 1)
+ */
+float hash(vec2 p)
+{
+    vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
+}
+
+/**
+ * Generates a random 2D offset vector for jittering.
+ * Uses the hash function to create a random direction and distance.
+ * 
+ * @param seed Input coordinate used as random seed
+ * @param magnitude Maximum offset distance
+ * @return Random 2D offset vector
+ */
+vec2 random_offset(vec2 seed, float magnitude)
+{
+    float angle = hash(seed) * 2.0 * PI;
+    float distance = hash(seed + vec2(1.0)) * magnitude;
+    return vec2(cos(angle), sin(angle)) * distance;
+}
+
+/**
+ * Calculates a glow effect by sampling surrounding pixels in multiple directions.
+ * Uses an 8-directional sampling pattern with configurable diffusion steps.
+ * Supports anisotropic scaling and vertical bias for more natural-looking CRT glow.
+ * 
+ * Features:
+ * - Multi-step diffusion: samples at varying distances for smooth falloff
+ * - Anisotropic scaling: more perpendicular spread (mimics phosphor bloom)
+ * - Vertical bias: emphasizes vertical glow (CRT scanline characteristic)
+ * - Jitter: randomized offsets to eliminate banding artifacts
+ * - Color compression: reduces extreme brightness impact
+ * 
+ * @param coord Base texture coordinate to sample around
+ * @param radius Maximum sampling radius in texture space
+ * @param diffusion_steps Number of distance steps per direction (higher = smoother)
+ * @return Accumulated glow color
+ */
+vec3 calculate_glow(vec2 coord, float radius, float diffusion_steps)
+{
+    // Define 8 cardinal and intercardinal directions (N, NE, E, SE, S, SW, W, NW)
+    const vec2 directions[8] = vec2[8](
+        vec2(0.0, 1.0),       // North
+        vec2(0.707, 0.707),   // Northeast
+        vec2(1.0, 0.0),       // East
+        vec2(0.707, -0.707),  // Southeast
+        vec2(0.0, -1.0),      // South
+        vec2(-0.707, -0.707), // Southwest
+        vec2(-1.0, 0.0),      // West
+        vec2(-0.707, 0.707)   // Northwest
+    );
+    
+    vec3 glow = vec3(0.0);
+    float total_weight = 0.0;
+    int num_steps = int(diffusion_steps);
+    
+    // Sample in each direction with multiple distance steps for smooth diffusion
+    for (int step = 1; step <= num_steps; step++)
+    {
+        float distance_factor = float(step) / float(num_steps);
+        
+        // Closer samples contribute more (linear falloff)
+        float diffusion_weight = 1.0 - (distance_factor - 1.0 / float(num_steps));
+        
+        for (int i = 0; i < 8; i++)
+        {
+            vec2 dir = directions[i];
+            
+            // Decompose direction into horizontal and vertical components
+            float horizontal_component = abs(dir.x);
+            float vertical_component = abs(dir.y);
+            
+            // Anisotropic scaling: increase perpendicular diffusion
+            // Horizontal rays spread vertically, vertical rays spread horizontally
+            // This mimics phosphor bloom on CRTs
+            vec2 anisotropic_scale = vec2(
+                1.0 + vertical_component * 2.0,    // Expand X when moving vertically
+                1.0 + horizontal_component * 2.0   // Expand Y when moving horizontally
+            );
+            
+            // Calculate sample offset with anisotropic scaling
+            float step_radius = radius * distance_factor;
+            vec2 base_offset = dir * step_radius * anisotropic_scale;
+            
+            // Add jitter to eliminate banding and shadow line artifacts
+            vec2 jitter = random_offset(coord * 100.0 + vec2(float(step), float(i)), GLOW_JITTER * radius);
+            vec2 offset = base_offset + jitter;
+            
+            // Sample and compress color to reduce extreme brightness impact
+            vec3 sample_color = compress_color(
+                texture(PassOutput3, coord + offset).rgb,
+                GLOW_COMPRESSION
+            );
+            
+            // Apply vertical bias to emphasize vertical glow (CRT scanline characteristic)
+            float vertical_boost = 1.0;
+            if (abs(dir.x) < 0.1)  // Pure vertical (N/S)
+            {
+                vertical_boost = GLOW_VERTICAL_BIAS;
+            }
+            else if (abs(dir.y) > abs(dir.x))  // Mostly vertical diagonals (NE/NW/SE/SW)
+            {
+                vertical_boost = mix(1.0, GLOW_VERTICAL_BIAS, 0.5);
+            }
+            
+            // Combine weights and accumulate
+            float weight = diffusion_weight * vertical_boost;
+            glow += sample_color * weight;
+            total_weight += weight;
+        }
+    }
+    
+    // Normalize to maintain consistent brightness regardless of sample count
+    return total_weight > 0.0 ? glow / total_weight : glow;
+}
+
+/**
+ * Fragment shader: Composites the CRT screen with bezel/background and glow effect.
+ * 
+ * Pipeline:
+ * 1. Sample screen content (with viewport bounds checking)
+ * 2. Sample background/bezel texture
+ * 3. Calculate glow effect from screen content
+ * 4. Apply radial falloff to glow based on distance from viewport
+ * 5. Blend glow with background
+ * 6. Composite screen over glowing background
+ */
 void main()
 {
-    // Convert to normalized coordinates for bezel calculation
-    vec2 uv_normalized = vTexCoord * 2.0 - 1.0;
-
-    // Calculate distance to bezel and segment ID
-    vec2 bezel_data = bezelDistanceSegmented(uv_normalized);
-    float bezel_mask = bezel_data.x;
-    float segment_id = bezel_data.y;
-
-    // Sample the source image
-    vec3 image_color = texture(Source, vTexCoord).rgb;
-
-    // If fully in visible area, just return the image
-    if (bezel_mask >= 0.999) {
-        FragColor = vec4(image_color, 1.0);
-        return;
+    // Sample the main CRT screen content
+    vec4 screen = texture(Source, screen_coord);
+    
+    // Black out pixels outside the viewport bounds
+    if (screen_coord.x < 0.0 || screen_coord.x > 1.0 ||
+        screen_coord.y < 0.0 || screen_coord.y > 1.0)
+    {
+        screen.rgb = vec3(0.0);
     }
-
-    // Base bezel color
-    vec3 bezel_color = vec3(BEZEL_COLOR_R, BEZEL_COLOR_G, BEZEL_COLOR_B);
-
-    // Apply slope gradient based on segment orientation
-    float slope_gradient = bezelSlopeGradient(bezel_mask, segment_id, uv_normalized);
-    vec3 shaded_bezel = bezel_color * mix(1.0, slope_gradient, BEZEL_SLOPE_GRADIENT);
-
-    // Calculate edge UV for ambient light sampling
-    vec2 edge_uv = vTexCoord;
-    vec2 centered = vTexCoord - 0.5;
-    vec2 abs_centered = abs(centered);
-    if (abs_centered.x / abs_centered.y > (global.OutputSize.x / global.OutputSize.y)) {
-        float edge_x = centered.x > 0.0 ? (1.0 - BEZEL_WIDTH_MID / 100.0) : (BEZEL_WIDTH_MID / 100.0);
-        edge_uv.x = edge_x;
-    } else {
-        float edge_y = centered.y > 0.0 ? (1.0 - BEZEL_WIDTH_MID / 100.0) : (BEZEL_WIDTH_MID / 100.0);
-        edge_uv.y = edge_y;
-    }
-
-    // Sample ambient light (combined reflection/glow with blur)
-    vec3 ambient = sampleAmbientLight(vTexCoord, edge_uv, Source);
-
-    // Add ambient light to bezel with proper strength
-    float effect_strength = pow(1.0 - bezel_mask, 0.5);
-    shaded_bezel += ambient * BEZEL_AMBIENT_STRENGTH * effect_strength;
-
-    // Blend bezel and image based on mask
-    vec3 final_color = mix(shaded_bezel, image_color, bezel_mask);
-
+    screen.a = max(screen.a, 1.0);  // Ensure opaque screen
+    
+    // Sample background/bezel texture
+    vec4 background = texture(BORDER, vTexCoord);
+    
+    // Transform glow sampling coordinates (allows user to adjust glow position/scale)
+    vec2 glow_coord =
+        (screen_coord - vec2(0.5)) * vec2(GLOW_U_SCALE, GLOW_V_SCALE) +
+        vec2(0.5) + vec2(GLOW_U_OFFSET, GLOW_V_OFFSET);
+    
+    // Calculate glow effect
+    vec3 glow = calculate_glow(glow_coord, GLOW_RADIUS, GLOW_DIFFUSION);
+    
+    // === Calculate radial falloff for glow intensity ===
+    
+    // Recalculate viewport parameters (match vertex shader)
+    vec2 corrected_size = ASPECT_RATIO > 1.0 ?
+        vec2(config.OutputSize.y * ASPECT_RATIO, config.OutputSize.y):
+        vec2(config.OutputSize.x, config.OutputSize.x / ASPECT_RATIO);
+    vec2 scale = config.OutputSize.xy / corrected_size / ZOOM;
+    vec2 offset = (1.0 - scale) * 0.5;
+    
+    // Transform to viewport-relative coordinates
+    vec2 viewport_pos = (vTexCoord - offset) / scale;
+    
+    // Measure distance outside viewport [0,1] bounds
+    vec2 clamped_pos = clamp(viewport_pos, 0.0, 1.0);
+    vec2 outside_dist = abs(viewport_pos - clamped_pos);
+    
+    // Calculate maximum possible distances per axis (from viewport edge to screen edge)
+    vec2 max_dist = vec2(
+        max(offset.x / scale.x, (1.0 - offset.x - scale.x) / scale.x),
+        max(offset.y / scale.y, (1.0 - offset.y - scale.y) / scale.y)
+    );
+    
+    // Normalize distance to [0,1] range per axis
+    vec2 normalized_dist = outside_dist / max(max_dist, vec2(0.0001));
+    
+    // Calculate smooth radial distance from viewport
+    float radial_dist = length(normalized_dist);
+    
+    // Apply exponential falloff: glow diminishes with distance from viewport
+    float falloff = exp(-radial_dist * GLOW_FALLOFF);
+    float effective_glow_weight = GLOW_WEIGHT * falloff;
+    
+    // === Blend glow with background ===
+    
+    // Apply user-adjustable gain and bias to background
+    vec3 background_adjusted = background.rgb * BEZEL_GAIN + BEZEL_BIAS;
+    
+    // Blend background with glow in linear space, then convert back to gamma
+    vec3 background_with_glow = srgb_gamma(
+        blend(srgb_linear(background_adjusted), glow)
+    );
+    
+    // Interpolate between plain and glowing background based on falloff
+    background.rgb = mix(background_adjusted, background_with_glow, effective_glow_weight);
+    
+    // DEBUG: Force show background to verify it's loading
+    // Uncomment the next line to test:
+    // FragColor = vec4(background.rgb, 1.0); return;
+    
+    // Final composite: blend CRT screen over background using alpha
+    vec3 final_color = mix(
+        crt_gamma(clamp(screen.rgb, 0.0, 1.0)),
+        background.rgb,
+        background.a
+    );
+    
     FragColor = vec4(final_color, 1.0);
 }
