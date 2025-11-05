@@ -111,6 +111,7 @@ layout(push_constant) uniform Push {
     float UNDERSCAN;
     float ZOOM;
     float SCANLINE_ADVANCED_BYPASS;
+    float MASK_SCALE;
 } config;
 
 // ==== Shader Parameters ====
@@ -191,6 +192,8 @@ layout(push_constant) uniform Push {
 #pragma parameter UNDERSCAN "Underscan (%)" 0.0 0.0 100.0 1.0
 #pragma parameter ZOOM "Viewport zoom" 1.0 0.0 10.0 0.001
 
+#pragma parameter MASK_SCALE "Subpixel mask scale" 1.0 0.1 4.0 0.1
+
 #define V_LINES_PER_FIELD config.V_LINES_PER_FIELD
 #define H_BLANK_INACTIVE_LEN config.H_BLANK_INACTIVE_LEN
 #define H_BLANK_INACTIVE_UNIT config.H_BLANK_INACTIVE_UNIT
@@ -211,17 +214,79 @@ layout(push_constant) uniform Push {
 #define S_CORRECTION_V config.S_CORRECTION_V
 #define UNDERSCAN config.UNDERSCAN
 #define ZOOM config.ZOOM
+#define MASK_SCALE config.MASK_SCALE
 
 // ==== Helper Functions ====
 
 /**
  * Apply subpixel mask weights based on screen position
- * @param uv Screen-space coordinates
+ * @param uv Screen-space coordinates (in output pixels)
  * @return RGB mask weights (0.0-1.0 per channel)
  */
 vec3 mask(vec2 uv)
 {
-    return mask_weights(uv, 1.0, int(MASK_TYPE - 1.0));
+    // Scale down the coordinates to make the mask pattern larger
+    // MASK_SCALE = 1.0: native output pixel resolution (very fine)
+    // MASK_SCALE = 2.0: 2x larger mask pattern (half the frequency)
+    // MASK_SCALE = 3.0: 3x larger mask pattern (1/3 the frequency)
+    return mask_weights(uv / MASK_SCALE, 1.0, int(MASK_TYPE - 1.0));
+}
+
+/**
+ * Apply subpixel mask with anisotropic filtering to reduce aliasing
+ * Uses box filtering based on the local anisotropy of the coordinate transform
+ * @param uv Screen-space coordinates
+ * @param ddx_uv Partial derivative in X direction (horizontal screen-space gradient)
+ * @param ddy_uv Partial derivative in Y direction (vertical screen-space gradient)
+ * @return RGB mask weights (0.0-1.0 per channel) with filtering applied
+ */
+vec3 mask_anisotropic(vec2 uv, vec2 ddx_uv, vec2 ddy_uv)
+{
+    // Calculate anisotropic stretching factors
+    // These tell us how much the mask is stretched per output pixel
+    float dx = length(ddx_uv);
+    float dy = length(ddy_uv);
+    
+    // Determine filter kernel size based on maximum stretching
+    // If stretching > 1 pixel, we need to filter multiple mask samples
+    float max_aniso = max(dx, dy);
+    
+    // Use point sampling if anisotropy is small (< 1.5 pixels)
+    if (max_aniso < 1.5)
+        return mask(uv);
+    
+    // Calculate number of samples needed (clamped to reasonable range)
+    // We use sqrt to reduce sample count while maintaining quality
+    int samples = int(clamp(ceil(sqrt(max_aniso)), 2.0, 16.0));
+    
+    // Determine dominant stretch direction
+    vec2 filter_dir;
+    float filter_extent;
+    
+    if (dx > dy) {
+        // Horizontal stretching dominates
+        filter_dir = ddx_uv / dx;  // Normalize to unit vector
+        filter_extent = dx;
+    } else {
+        // Vertical stretching dominates
+        filter_dir = ddy_uv / dy;
+        filter_extent = dy;
+    }
+    
+    // Apply box filter along dominant direction
+    vec3 filtered = vec3(0.0);
+    float step_size = filter_extent / float(samples);
+    vec2 step_vec = filter_dir * step_size;
+    
+    // Start offset to center the filter kernel
+    vec2 start_offset = -filter_dir * filter_extent * 0.5;
+    
+    for (int i = 0; i < samples; i++) {
+        vec2 sample_pos = uv + start_offset + step_vec * (float(i) + 0.5);
+        filtered += mask(sample_pos);
+    }
+    
+    return filtered / float(samples);
 }
 
 /**
@@ -503,8 +568,78 @@ void main()
             pixel(x.a, y3, Source) * xtaps.a) * ytaps.a;
 
     // Apply subpixel mask if color mode enables it
-    if (COLOR_MODE > 2.0)
-        col *= mask(vTexCoord.xy * global.OutputSize.xy);
+    if (COLOR_MODE > 2.0) {
+        // Calculate mask coordinates with barrel distortion applied
+        // This makes the mask follow the curved CRT screen
+        vec2 mask_coord = vTexCoord.xy;
+        
+        // Convert to normalized coordinates (-1.0 to 1.0)
+        mask_coord = 2.0 * (mask_coord - 0.5);
+        
+        // Reverse underscan
+        mask_coord /= 1.0 + tan(PI * UNDERSCAN / 200.0);
+        
+        // Apply scaling from blanking intervals
+        mask_coord.x *= hscale;
+        mask_coord.y *= vscale;
+        
+        // Aspect ratio pre-compensation for distortion
+        if (hsize > vsize)
+            mask_coord.y /= ar;
+        else
+            mask_coord.x *= ar;
+        
+        // Transform to normalized square space with zoom
+        vec2 mask_normalized = mask_coord * dist_scale_zoom;
+        
+        // Apply barrel distortion (same as image content)
+        float screen_theta_x = SCREEN_ANGLE_H / 2.0 * (PI / 180.0);
+        float screen_theta_y = SCREEN_ANGLE_V / 2.0 * (PI / 180.0);
+        
+        bool has_h = SCREEN_ANGLE_H > 0.0;
+        bool has_v = SCREEN_ANGLE_V > 0.0;
+        
+        if (has_h && has_v) {
+            mask_normalized = barrel(mask_normalized * vec2(screen_theta_x, screen_theta_y));
+            mask_normalized /= vec2(screen_theta_x, screen_theta_y);
+        } else if (has_h && !has_v) {
+            mask_normalized = barrel(mask_normalized * vec2(screen_theta_x, 0.001));
+            mask_normalized /= vec2(screen_theta_x, 0.001);
+        } else if (!has_h && has_v) {
+            mask_normalized = barrel(mask_normalized * vec2(0.001, screen_theta_y));
+            mask_normalized /= vec2(0.001, screen_theta_y);
+        }
+        
+        // Transform back from normalized square space
+        mask_coord = mask_normalized / dist_scale_zoom;
+        
+        // Aspect ratio post-compensation
+        if (hsize > vsize)
+            mask_coord.y *= ar;
+        else
+            mask_coord.x /= ar;
+        
+        // Reverse blanking interval scaling
+        mask_coord.x /= hscale;
+        mask_coord.y /= vscale;
+        
+        // Back to texture coordinates (0-1)
+        mask_coord = mask_coord / 2.0 + 0.5;
+        
+        // Convert to screen pixel coordinates for mask lookup
+        vec2 mask_uv = mask_coord * global.OutputSize.xy;
+        
+        // ==== Calculate anisotropy for filtered mask sampling ====
+        // Compute partial derivatives to determine how much the mask is stretched
+        // This is essential for reducing aliasing from the barrel distortion
+        
+        // Use automatic derivatives (dFdx/dFdy) to measure coordinate stretching
+        vec2 ddx_mask = dFdx(mask_uv);
+        vec2 ddy_mask = dFdy(mask_uv);
+        
+        // Apply anisotropic filtering to reduce aliasing
+        col *= mask_anisotropic(mask_uv, ddx_mask, ddy_mask);
+    }
 
     FragColor = vec4(col, 1.0);
 }
