@@ -142,7 +142,7 @@ layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 layout(set = 0, binding = 3) uniform sampler2D Original;
 layout(set = 0, binding = 4) uniform sampler2D BORDER;
-layout(set = 0, binding = 5) uniform sampler2D PassOutput3;
+layout(set = 0, binding = 5) uniform sampler2D PHOSPHOR;
 
 /**
  * Blends two colors using multiply blend mode.
@@ -307,7 +307,7 @@ vec3 calculate_glow(vec2 coord, float radius, float diffusion_steps)
             
             // Sample and compress color to reduce extreme brightness impact
             vec3 sample_color = compress_color(
-                texture(PassOutput3, coord + offset).rgb,
+                texture(PHOSPHOR, coord + offset).rgb,
                 GLOW_COMPRESSION
             );
             

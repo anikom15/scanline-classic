@@ -43,20 +43,3 @@ vec4 bicubic4(const float x, const float B, const float C)
 	            bicubic(x, B, C),
 	            bicubic(x + 1.0, B, C));
 }
-
-vec3 sigma601(const vec3 bandwidth, const vec3 cutoff_atten, const float x)
-{
-	vec3 c = 1.0 / pow(
-	vec3(10.0, 10.0, 10.0), vec3(
-		-cutoff_atten.r / 20.0,
-		-cutoff_atten.g / 20.0,
-		-cutoff_atten.b / 20.0));
-	vec3 res = vec3(
-		720.0 / 6.75 * bandwidth.r,
-		720.0 / 6.75 * bandwidth.g,
-		720.0 / 6.75 * bandwidth.b);
-	return vec3(
-		sqrt(log(c.r)) / (res.x / x),
-		sqrt(log(c.g)) / (res.y / x),
-		sqrt(log(c.b)) / (res.z / x));
-}

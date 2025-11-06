@@ -20,6 +20,7 @@
 #include "common.h"
 #include "color.h"
 #include "filter.h"
+#include "modulation.inc"
 
 layout(push_constant) uniform Push
 {
@@ -306,8 +307,12 @@ void main()
             pixel = texture(Source, tex + n * dx).rgb;
         }
         float t = line * LINE_TIME + offset * pixel_time;
-        chroma = pixel.g * sin(mod(2.0 * PI * sc_freq_hz * t, 2.0 * PI) + field_phase)
-            + pixel.b * cos(mod(2.0 * PI * sc_freq_hz * t, 2.0 * PI) + field_phase);
+        
+        // Optimized: compute carrier phase once, use sincos_phase
+        float phase = compute_carrier_phase(t, sc_freq_hz, field_phase);
+        vec2 carrier = sincos_phase(phase);
+        
+        chroma = pixel.g * carrier.x + pixel.b * carrier.y;
         composite = pixel.r + chroma;
 
         if (n >= -0.5 && n <= 0.5) {
@@ -316,8 +321,8 @@ void main()
         }
 
         pixel.r = composite;
-        pixel.g = composite * sin(mod(2.0 * PI * sc_freq_hz * t, 2.0 * PI) + field_phase);
-        pixel.b = composite * cos(mod(2.0 * PI * sc_freq_hz * t, 2.0 * PI) + field_phase);
+        pixel.g = composite * carrier.x;
+        pixel.b = composite * carrier.y;
 
         // Raw unfiltered portion
         w = vec3(
@@ -347,16 +352,18 @@ void main()
             texture(Source, tex + n * dx + comb_dy_2).rgb,
             texture(Source, tex + n * dx + comb_dy_3).rgb);
         
+        // Optimized: compute comb carrier phases once
+        float phase_1 = compute_carrier_phase(t - t_offset_1, sc_freq_hz, field_phase);
+        float phase_2 = compute_carrier_phase(t - t_offset_2, sc_freq_hz, field_phase);
+        float phase_3 = compute_carrier_phase(t - t_offset_3, sc_freq_hz, field_phase);
+        vec2 carrier_1 = sincos_phase(phase_1);
+        vec2 carrier_2 = sincos_phase(phase_2);
+        vec2 carrier_3 = sincos_phase(phase_3);
+        
         mat3 comb_vectors = mat3(
-            vec3(1.0,
-                sin(mod(2.0 * PI * sc_freq_hz * (t - t_offset_1), 2.0 * PI) + field_phase),
-                cos(mod(2.0 * PI * sc_freq_hz * (t - t_offset_1), 2.0 * PI) + field_phase)),
-            vec3(1.0,
-                sin(mod(2.0 * PI * sc_freq_hz * (t - t_offset_2), 2.0 * PI) + field_phase),
-                cos(mod(2.0 * PI * sc_freq_hz * (t - t_offset_2), 2.0 * PI) + field_phase)),
-            vec3(1.0,
-                sin(mod(2.0 * PI * sc_freq_hz * (t - t_offset_3), 2.0 * PI) + field_phase),
-                cos(mod(2.0 * PI * sc_freq_hz * (t - t_offset_3), 2.0 * PI) + field_phase)));
+            vec3(1.0, carrier_1.x, carrier_1.y),
+            vec3(1.0, carrier_2.x, carrier_2.y),
+            vec3(1.0, carrier_3.x, carrier_3.y));
 
         vec3 comb_taps_composite = vec3(
             dot(comb_taps_yuv[0], comb_vectors[0]),
@@ -373,8 +380,8 @@ void main()
             chroma = 1.0 / 3.0 * (0.5 * composite - comb_taps_composite.x + comb_taps_composite.y - 0.5 * comb_taps_composite.z);
             pixel.r = 1.0 / 3.0 * (0.5 * composite + comb_taps_composite.x + comb_taps_composite.y + 0.5 * comb_taps_composite.z);
         }
-        pixel.g = chroma * sin(mod(2.0 * PI * sc_freq_hz * t, 2.0 * PI) + field_phase);
-        pixel.b = chroma * cos(mod(2.0 * PI * sc_freq_hz * t, 2.0 * PI) + field_phase);
+        pixel.g = chroma * carrier.x;
+        pixel.b = chroma * carrier.y;
 
         w = vec3(
             gaussian(n + f, sigma.x),
@@ -403,8 +410,11 @@ void main()
     } else if (COLOR_FILTER_MODE < 2.5) {
         color = mix(color_notch, color_comb, NOTCH_COMB_W);
     } else if (COLOR_FILTER_MODE < 3.5) {
-        chroma = 2.0 * color_raw.g * sin(mod(2.0 * PI * sc_freq_hz * t_identity, 2.0 * PI) + field_phase)
-            + 2.0 * color_raw.b * cos(mod(2.0 * PI * sc_freq_hz * t_identity, 2.0 * PI) + field_phase);
+        // Optimized: reuse carrier computation for t_identity
+        float phase_identity = compute_carrier_phase(t_identity, sc_freq_hz, field_phase);
+        vec2 carrier_identity = sincos_phase(phase_identity);
+        chroma = 2.0 * color_raw.g * carrier_identity.x
+            + 2.0 * color_raw.b * carrier_identity.y;
         color.r = identity - chroma;
         color.gb = color_raw.gb;
     } else {

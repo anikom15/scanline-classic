@@ -154,7 +154,7 @@ layout(push_constant) uniform Push {
 #define V_FREQ config.V_FREQ
 #pragma parameter V_LINES_PER_FIELD "Video lines per field" 262.5 0.0 540.0 0.5
 #pragma parameter H_BLANK_INACTIVE_LEN "Horizontal blank inactive length" 138.0 0.0 1000.0 0.1
-#pragma parameter H_BLANK_INACTIVE_UNIT "Horizontal blank inactive unit (0=px, 1=µs, 2=%% active)" 0.0 0.0 2.0 1.0
+#pragma parameter H_BLANK_INACTIVE_UNIT "Horizontal blank inactive unit (0=px, 1=µs, 2=% active)" 0.0 0.0 2.0 1.0
 
 // Display mode parameters
 #pragma parameter COLOR_MODE "Chromaticity mode" 3.0 1.0 3.0 1.0
@@ -260,7 +260,8 @@ vec3 mask_anisotropic(vec2 uv, vec2 ddx_uv, vec2 ddy_uv)
     
     // For extreme anisotropy, apply additional box filtering
     // We use sqrt and divide by 2 since base mask already provides some filtering
-    int samples = int(clamp(ceil(sqrt(max_aniso / 2.0)), 2.0, 12.0));
+    // Limited to 4 samples for faster shader compilation while maintaining quality
+    int samples = int(clamp(ceil(sqrt(max_aniso / 2.0)), 2.0, 4.0));
     
     // Determine dominant stretch direction
     vec2 filter_dir;
@@ -365,7 +366,7 @@ void main()
 
     // Bypass: skip all processing and return gamma-corrected source
     if (SCANLINE_ADVANCED_BYPASS >= 1.0) {
-        FragColor = vec4(crt_gamma(src), 1.0);
+        FragColor = vec4(src, 1.0);
         return;
     }
 

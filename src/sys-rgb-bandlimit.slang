@@ -19,6 +19,7 @@
 
 #include "common.h"
 #include "filter.h"
+#include "bandlimit.inc"
 
 #pragma name SysRGBBandlimit
 #pragma format R16G16B16A16_SFLOAT
@@ -100,19 +101,7 @@ layout(set = 0, binding = 2) uniform sampler2D Source;
 
 void main()
 {
-    // Standard texturing coordinates (source pixel grid)
-    vec2 UV = vTexCoord * config.OutputSize.xy;
-    vec2 A = fract(UV);
-    vec2 Tex = (floor(UV) + 0.5) * config.OutputSize.zw;
-
-    // Accumulated color
-    vec3 color = vec3(0.0);
-    vec3 wsum = vec3(0.0);
-
-    // Step size in texture coordinates
-    vec2 dx = vec2(config.OutputSize.z, 0.0);
-
-    // Filter parameters
+    // Compute Gaussian sigma in uv-texel units via Rec.601 scaling
     vec3 sigma = sigma601(
         vec3(
             SYS_BANDWIDTH_R,
@@ -124,38 +113,15 @@ void main()
             SYS_CUTOFF_ATTEN_B),
         config.OutputSize.x);
 
-    // Center point (n = 0)
-    vec3 pixel = texture(Source, Tex).rgb;
-    vec3 w = gaussian3(A.x, sigma);
-    color = w * pixel;
-    wsum  = w;
+    // Single-pass lobe-based horizontal Gaussian convolution
+    vec3 color = bandlimit_convolve_gaussian_x(vTexCoord, config.OutputSize, Source, sigma);
 
-    // Gaussian right and left lobes
-    const float THRESHOLD = 1.0 / 510.0;
-
-    for (int n = 1; n <= 128; ++n) {
-        float nf = float(n) + A.x;
-        w = gaussian3(nf, sigma);
-
-        vec3 pr = texture(Source, Tex + float(n) * dx).rgb;
-        vec3 pl = texture(Source, Tex - float(n) * dx).rgb;
-
-        vec3 wpr = w * pr;
-        vec3 wpl = w * pl;
-
-        // stop when both sides are negligible
-        if (all(lessThan(w, vec3(THRESHOLD))))
-            break;
-
-        color += wpr + wpl;
-        wsum  += w + w;
-    }
-    color /= wsum;
-
+    // Apply per-channel gain and bias
     color.r = color.r * SYS_GAIN_R + SYS_BIAS_R;
     color.g = color.g * SYS_GAIN_G + SYS_BIAS_G;
     color.b = color.b * SYS_GAIN_B + SYS_BIAS_B;
 
+    // Bypass mix
     color = mix(color, texture(Source, vTexCoord).rgb, SYS_RGB_BANDLIMIT_BYPASS);
     FragColor = vec4(color, 1.0);
 }
