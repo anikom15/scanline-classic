@@ -31,21 +31,26 @@ layout(push_constant) uniform Push
     vec4 OriginalSize;
     vec4 OutputSize;
     uint FrameCount;
+    float BYPASS_COMPOSITE;
     float V_FREQ;
     float V_LINES_PER_FIELD;
     float SHORTEN_ODD_FIELD_TIME;
     float SC_FREQ_MODE;
     float H_BLANK_INACTIVE_LEN;
     float H_BLANK_INACTIVE_UNIT;
-    float SIGNAL_BANDWIDTH_Y;
-    float SIGNAL_BANDWIDTH_C;
-    float FILTER_CUTOFF_ATTEN_Y;
-    float FILTER_CUTOFF_ATTEN_C;
-    float FILTER_SIZE_YC;
+    float DISPLAY_BANDWIDTH_Y;
+    float DISPLAY_BANDWIDTH_C;
+    float DISPLAY_CUTOFF_ATTEN_Y;
+    float DISPLAY_CUTOFF_ATTEN_C;
     float COLOR_FILTER_MODE;
     float NOTCH_OFFSET_L;
     float NOTCH_OFFSET_R;
 } config;
+
+#pragma parameter COMPOSITE_HEADER " ==== Composite Video Parameters ==== " 0.0 0.0 0.0 0.0
+
+#pragma parameter BYPASS_COMPOSITE "Bypass Composite processing (0=Off, 1=On)" 0.0 0.0 1.0 1.0
+#define BYPASS_COMPOSITE config.BYPASS_COMPOSITE
 
 #pragma parameter V_FREQ "Vertical frequency (Hz)" 59.94 1.0 240.0 0.01
 #define V_FREQ config.V_FREQ
@@ -66,18 +71,15 @@ layout(push_constant) uniform Push
 #pragma parameter H_BLANK_INACTIVE_UNIT "Horizontal blank inactive unit (0=px, 1=µs, 2=% active)" 0.0 0.0 2.0 1.0
 #define H_BLANK_INACTIVE_UNIT config.H_BLANK_INACTIVE_UNIT
 
-#pragma parameter SIGNAL_BANDWIDTH_Y "Signal bandwidth Y (MHz)" 6.75 0.0 75.0 0.1
-#define SIGNAL_BANDWIDTH_Y config.SIGNAL_BANDWIDTH_Y
-#pragma parameter SIGNAL_BANDWIDTH_C "Signal bandwidth C (MHz)" 1.79 0.0 6.75 0.01
-#define SIGNAL_BANDWIDTH_C config.SIGNAL_BANDWIDTH_C
+#pragma parameter DISPLAY_BANDWIDTH_Y "Display bandwidth Y (MHz)" 6.75 0.0 75.0 0.1
+#define DISPLAY_BANDWIDTH_Y config.DISPLAY_BANDWIDTH_Y
+#pragma parameter DISPLAY_BANDWIDTH_C "Display bandwidth C (MHz)" 1.79 0.0 6.75 0.01
+#define DISPLAY_BANDWIDTH_C config.DISPLAY_BANDWIDTH_C
 
-#pragma parameter FILTER_CUTOFF_ATTEN_Y "Filter cutoff attenuation Y (dB)" 3.0 0.0 30.0 1.0
-#define FILTER_CUTOFF_ATTEN_Y config.FILTER_CUTOFF_ATTEN_Y
-#pragma parameter FILTER_CUTOFF_ATTEN_C "Filter cutoff attenuation C (dB)" 3.0 0.0 30.0 1.0
-#define FILTER_CUTOFF_ATTEN_C config.FILTER_CUTOFF_ATTEN_C
-
-#pragma parameter FILTER_SIZE_YC "Gaussian filter radius Y/C" 14.0 0.0 40.0 1.0
-#define FILTER_SIZE_YC config.FILTER_SIZE_YC
+#pragma parameter DISPLAY_CUTOFF_ATTEN_Y "Display cutoff attenuation Y (dB)" 3.0 0.0 30.0 1.0
+#define DISPLAY_CUTOFF_ATTEN_Y config.DISPLAY_CUTOFF_ATTEN_Y
+#pragma parameter DISPLAY_CUTOFF_ATTEN_C "Display cutoff attenuation C (dB)" 3.0 0.0 30.0 1.0
+#define DISPLAY_CUTOFF_ATTEN_C config.DISPLAY_CUTOFF_ATTEN_C
 
 #pragma parameter COLOR_FILTER_MODE "Color filter mode (0=BS, 1=Comb, 2=0·1, 3=Feedback, 4=Off)" 0.0 0.0 4.0 1.0
 #define COLOR_FILTER_MODE config.COLOR_FILTER_MODE
@@ -137,6 +139,11 @@ layout(set = 0, binding = 2) uniform sampler2D Source;
 
 void main()
 {
+    if (BYPASS_COMPOSITE >= 1.0) {
+        FragColor = vec4(texture(Source, vTexCoord).rgb, 1.0);
+        return;
+    }
+
     // Use consolidated timebase helper
     TimebaseConfig tb = compute_timebase(
         float(config.FrameCount),
@@ -152,8 +159,8 @@ void main()
 
     // Filter characteristics
     vec3 sigma = sigma601(
-        vec3(SIGNAL_BANDWIDTH_Y, SIGNAL_BANDWIDTH_C, SIGNAL_BANDWIDTH_C),
-        vec3(FILTER_CUTOFF_ATTEN_Y, FILTER_CUTOFF_ATTEN_C, FILTER_CUTOFF_ATTEN_C),
+        vec3(DISPLAY_BANDWIDTH_Y, DISPLAY_BANDWIDTH_C, DISPLAY_BANDWIDTH_C),
+        vec3(DISPLAY_CUTOFF_ATTEN_Y, DISPLAY_CUTOFF_ATTEN_C, DISPLAY_CUTOFF_ATTEN_C),
         config.OutputSize.x);
 
     // Notch filter characteristics
