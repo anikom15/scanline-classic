@@ -267,39 +267,18 @@ void main()
         return;
     }
 
-    // Time base and subcarrier derivation (aligned with composite.slang)
-    float field = float(config.FrameCount % 12u);
-    float line = floor(vTexCoord.y * config.OriginalSize.y);
-
-    float inactive_pixels;
-    if (H_BLANK_INACTIVE_UNIT < 0.5)
-        inactive_pixels = H_BLANK_INACTIVE_LEN;
-    else if (H_BLANK_INACTIVE_UNIT < 1.5)
-        inactive_pixels = H_BLANK_INACTIVE_LEN * 1.0e-6
-            * H_FREQ_HZ * config.OriginalSize.x;
-    else
-        inactive_pixels = H_BLANK_INACTIVE_LEN / 100.0
-            * config.OriginalSize.x;
-
-    float total_pixels = config.OriginalSize.x + inactive_pixels;
-    float subcarrier_div = round(H_FREQ_HZ * total_pixels / NTSC_FSC * 100.0) / 100.0;
-    float sc_freq_hz;
-    if (SC_FREQ_MODE < 0.5)
-        sc_freq_hz = H_FREQ_HZ * total_pixels / subcarrier_div;
-    else if (SC_FREQ_MODE < 1.5)
-        sc_freq_hz = NTSC_FSC;
-    else if (SC_FREQ_MODE < 2.5)
-        sc_freq_hz = PAL_FSC;
-    else
-        sc_freq_hz = SC_FREQ * 1.0e6;
-
-    float pixel_time = LINE_TIME / total_pixels;
-    float field_phase = FIELD_TIME * field * 2.0 * PI * sc_freq_hz;
-    float odd_time_adjust = pixel_time;
-    odd_time_adjust = config.OriginalSize.x / 256.0 * pixel_time;
-    field_phase -= ceil(field / 2.0) * odd_time_adjust * SHORTEN_ODD_FIELD_TIME
-        * 2.0 * PI * sc_freq_hz;
-    field_phase = mod(field_phase, 2.0 * PI) - PI;
+    // Use consolidated timebase helper
+    TimebaseConfig tb = compute_timebase(
+        float(config.FrameCount),
+        vTexCoord,
+        config.OriginalSize.xy,
+        V_FREQ,
+        V_LINES_PER_FIELD,
+        SHORTEN_ODD_FIELD_TIME,
+        SC_FREQ_MODE,
+        SC_FREQ,
+        H_BLANK_INACTIVE_LEN,
+        H_BLANK_INACTIVE_UNIT);
 
     // Per-component sigmas (Y, C, C)
     vec3 sigma = sigma601(
@@ -320,7 +299,7 @@ void main()
 
     // Center sample
     float offset0 = Tex.x * config.SourceSize.x;
-    float t0 = line * LINE_TIME + offset0 * pixel_time;
+    float t0 = tb.line * LINE_TIME + offset0 * tb.pixel_time;
 
     float y_gain = 2.0 * USER_PICTURE;
     float y_bias = 0.2 * USER_BRIGHTNESS - 0.1;
@@ -328,7 +307,7 @@ void main()
     float c_phase = 2.0 * PI * (USER_TINT - 0.5);
 
     vec3 pixel0 = texture(Source, Tex).rgb;
-    float phase0 = compute_carrier_phase(t0, sc_freq_hz, field_phase);
+    float phase0 = compute_carrier_phase(t0, tb.sc_freq_hz, tb.field_phase);
     vec2 carrier0 = sincos_phase(phase0);
     vec2 carrier0_user = sincos_phase(phase0 + c_phase);
     float chroma0 = pixel0.g * carrier0.x + pixel0.b * carrier0.y;
@@ -387,9 +366,9 @@ void main()
 
         // Right sample
         float offsetR = (Tex.x + float(n) * dx.x) * config.SourceSize.x;
-        float tR = line * LINE_TIME + offsetR * pixel_time;
+        float tR = tb.line * LINE_TIME + offsetR * tb.pixel_time;
         vec3 pixelR = texture(Source, Tex + float(n) * dx).rgb;
-        float phaseR = compute_carrier_phase(tR, sc_freq_hz, field_phase);
+        float phaseR = compute_carrier_phase(tR, tb.sc_freq_hz, tb.field_phase);
         vec2 carrierR = sincos_phase(phaseR);
         vec2 carrierR_user = sincos_phase(phaseR + c_phase);
         float chromaR = pixelR.g * carrierR.x + pixelR.b * carrierR.y;
@@ -400,9 +379,9 @@ void main()
 
         // Left sample
         float offsetL = (Tex.x - float(n) * dx.x) * config.SourceSize.x;
-        float tL = line * LINE_TIME + offsetL * pixel_time;
+        float tL = tb.line * LINE_TIME + offsetL * tb.pixel_time;
         vec3 pixelL = texture(Source, Tex - float(n) * dx).rgb;
-        float phaseL = compute_carrier_phase(tL, sc_freq_hz, field_phase);
+        float phaseL = compute_carrier_phase(tL, tb.sc_freq_hz, tb.field_phase);
         vec2 carrierL = sincos_phase(phaseL);
         vec2 carrierL_user = sincos_phase(phaseL + c_phase);
         float chromaL = pixelL.g * carrierL.x + pixelL.b * carrierL.y;
