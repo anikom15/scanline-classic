@@ -30,9 +30,12 @@ layout(push_constant) uniform Push
     vec4 SourceSize;
     uint FrameCount;
     float BEZEL_BYPASS;
-    float ZOOM;
+    float H_SIZE;
+    float V_SIZE;
     float ASPECT_RATIO_NUM;
     float ASPECT_RATIO_DEN;
+    float H_POS;
+    float V_POS;
     float BEZEL_GAIN;
     float BEZEL_BIAS;
     float GLOW_RADIUS;
@@ -41,10 +44,6 @@ layout(push_constant) uniform Push
     float GLOW_VERTICAL_BIAS;
     float GLOW_COMPRESSION;
     float GLOW_JITTER;
-    float GLOW_U_OFFSET;
-    float GLOW_V_OFFSET;
-    float GLOW_U_SCALE;
-    float GLOW_V_SCALE;
     float GLOW_FALLOFF;
     float GLOW_TEMPERATURE;
 } config;
@@ -52,8 +51,14 @@ layout(push_constant) uniform Push
 #pragma parameter BEZEL_HEADER " ==== Bezel Parameters ==== " 0.0 0.0 0.0 0.0
 #pragma parameter BEZEL_BYPASS "Bypass bezel effect" 0.0 0.0 1.0 1.0
 #define BEZEL_BYPASS config.BEZEL_BYPASS
-#pragma parameter ZOOM "Viewport zoom" 1.0 0.0 10.0 0.001
-#define ZOOM config.ZOOM
+#pragma parameter H_SIZE "Viewport horizontal size" 1.0 0.0 10.0 0.001
+#define H_SIZE config.H_SIZE
+#pragma parameter V_SIZE "Viewport vertical size" 1.0 0.0 10.0 0.001
+#define V_SIZE config.V_SIZE
+#pragma parameter H_POS "Viewport horizontal position" 0.0 -1.0 1.0 0.001
+#define H_POS config.H_POS
+#pragma parameter V_POS "Viewport vertical position" 0.0 -1.0 1.0 0.001
+#define V_POS config.V_POS
 #pragma parameter ASPECT_RATIO_NUM "Aspect ratio numerator" 4.0 1.0 10.0 0.1
 #define ASPECT_RATIO_NUM config.ASPECT_RATIO_NUM
 #pragma parameter ASPECT_RATIO_DEN "Aspect ratio denominator" 3.0 1.0 10.0 0.1
@@ -91,14 +96,6 @@ layout(push_constant) uniform Push
 #pragma parameter GLOW_TEMPERATURE "Glow color temperature" 0.20 -0.5 0.5 0.01
 #define GLOW_TEMPERATURE config.GLOW_TEMPERATURE
 
-#pragma parameter GLOW_U_OFFSET "Glow coord U offset" 0.0 -0.5 0.5 0.01
-#define GLOW_U_OFFSET config.GLOW_U_OFFSET
-#pragma parameter GLOW_V_OFFSET "Glow coord V offset" 0.0 -0.5 0.5 0.01
-#define GLOW_V_OFFSET config.GLOW_V_OFFSET
-#pragma parameter GLOW_U_SCALE  "Glow coord U scale"  1.0  0.5  2.0 0.01
-#define GLOW_U_SCALE  config.GLOW_U_SCALE
-#pragma parameter GLOW_V_SCALE  "Glow coord V scale"  1.0  0.5  2.0 0.01
-#define GLOW_V_SCALE  config.GLOW_V_SCALE
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
@@ -114,6 +111,7 @@ layout(location = 1) out vec2 screen_coord;
 /**
  * Vertex shader: Transforms the vertex position and calculates texture coordinates
  * for both the full output and the aspect-corrected screen viewport.
+ * Supports independent horizontal and vertical sizing.
  */
 void main()
 {
@@ -126,11 +124,11 @@ void main()
         vec2(config.OutputSize.y * ASPECT_RATIO, config.OutputSize.y):
         vec2(config.OutputSize.x, config.OutputSize.x / ASPECT_RATIO);
     
-    // Calculate scale factor and centering offset for the zoomed viewport
-    vec2 scale = config.OutputSize.xy / corrected_size / ZOOM;
-    vec2 offset = (1.0 - scale) * 0.5;  // Center the viewport
-    
-    // Map texture coordinates to the scaled and centered screen viewport
+    // Calculate scale factor and centering offset for the independently-sized viewport
+    vec2 scale = config.OutputSize.xy / corrected_size / vec2(H_SIZE, V_SIZE);
+    // Center the viewport, then apply user shift
+    vec2 offset = (1.0 - scale) * 0.5 + vec2(-H_POS, V_POS) * scale;
+    // Map texture coordinates to the scaled and shifted screen viewport
     screen_coord = TexCoord.xy * scale + offset;
     vTexCoord = TexCoord.xy;  // Unmodified coords for background/border sampling
 }
@@ -369,10 +367,8 @@ void main()
     // Sample background/bezel texture
     vec4 background = texture(BORDER, vTexCoord);
     
-    // Transform glow sampling coordinates (allows user to adjust glow position/scale)
-    vec2 glow_coord =
-        (screen_coord - vec2(0.5)) * vec2(GLOW_U_SCALE, GLOW_V_SCALE) +
-        vec2(0.5) + vec2(GLOW_U_OFFSET, GLOW_V_OFFSET);
+    // Transform glow sampling coordinates (centered on screen viewport)
+    vec2 glow_coord = screen_coord;
     
     // Calculate glow effect
     vec3 glow = calculate_glow(glow_coord, GLOW_RADIUS, GLOW_DIFFUSION);
@@ -387,7 +383,7 @@ void main()
     vec2 corrected_size = ASPECT_RATIO > 1.0 ?
         vec2(config.OutputSize.y * ASPECT_RATIO, config.OutputSize.y):
         vec2(config.OutputSize.x, config.OutputSize.x / ASPECT_RATIO);
-    vec2 scale = config.OutputSize.xy / corrected_size / ZOOM;
+    vec2 scale = config.OutputSize.xy / corrected_size / vec2(H_SIZE, V_SIZE);
     vec2 offset = (1.0 - scale) * 0.5;
     
     // Transform to viewport-relative coordinates

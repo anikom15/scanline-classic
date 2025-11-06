@@ -49,7 +49,7 @@
    - Bypass functionality with early exit for performance testing
    - Bicubic filter unrolled to 16 explicit taps (4x4 kernel) for clarity
    - All distortions consolidated to single normalized space transform
-   - ZOOM integrated into distortion scale for viewport-only zoom
+   - H_SIZE and V_SIZE integrated into distortion scale for independent viewport sizing
    - Electronic corrections called directly for efficiency
    
    ==== PHYSICAL ACCURACY ====
@@ -109,7 +109,10 @@ layout(push_constant) uniform Push {
     float S_CORRECTION_H;
     float S_CORRECTION_V;
     float UNDERSCAN;
-    float ZOOM;
+    float H_SIZE;
+    float V_SIZE;
+    float H_POS;
+    float V_POS;
     float SCANLINE_ADVANCED_BYPASS;
     float MASK_SCALE;
 } config;
@@ -190,7 +193,10 @@ layout(push_constant) uniform Push {
 #pragma parameter S_CORRECTION_V "S-correction vertical strength" 0.0 -1.0 1.0 0.01
 
 #pragma parameter UNDERSCAN "Underscan (%)" 0.0 0.0 100.0 1.0
-#pragma parameter ZOOM "Viewport zoom" 1.0 0.0 10.0 0.001
+#pragma parameter H_SIZE "Viewport horizontal size" 1.0 0.0 10.0 0.001
+#pragma parameter V_SIZE "Viewport vertical size" 1.0 0.0 10.0 0.001
+#pragma parameter H_POS "Viewport horizontal position" 0.0 -1.0 1.0 0.001
+#pragma parameter V_POS "Viewport vertical position" 0.0 -1.0 1.0 0.001
 
 #pragma parameter MASK_SCALE "Subpixel mask scale" 1.0 0.1 4.0 0.1
 
@@ -213,7 +219,10 @@ layout(push_constant) uniform Push {
 #define S_CORRECTION_H config.S_CORRECTION_H
 #define S_CORRECTION_V config.S_CORRECTION_V
 #define UNDERSCAN config.UNDERSCAN
-#define ZOOM config.ZOOM
+#define H_SIZE config.H_SIZE
+#define V_SIZE config.V_SIZE
+#define H_POS config.H_POS
+#define V_POS config.V_POS
 #define MASK_SCALE config.MASK_SCALE
 
 // ==== Helper Functions ====
@@ -377,7 +386,7 @@ void main()
     float sar = global.OriginalSize.x / global.OriginalSize.y; // Source aspect ratio
     float par = ar / sar;  // Pixel aspect ratio correction
 
-    // Convert to normalized coordinates (-1.0 to 1.0)
+    // Convert to normalized coordinates (-1.0 to 1.0), then apply viewport shift
     uv = 2.0 * (uv - 0.5);
 
     // ==== Add blanking interval padding ====
@@ -412,9 +421,9 @@ void main()
     uv = corner_correction(uv, CORNER_STRENGTH);
     uv = s_correction(uv, S_CORRECTION_H, S_CORRECTION_V);
 
-    // Define viewport: larger ZOOM => larger viewport (zoom out).
+    // Define viewport: larger H_SIZE/V_SIZE => larger viewport (zoom out).
     // Keep distortions invariant by compensating inside square-space normalization.
-    float zoom = max(ZOOM, 1e-6);
+    vec2 zoom = max(vec2(H_SIZE, V_SIZE), vec2(1e-6));
     uv /= zoom;
 
     // Aspect ratio pre-compensation for distortion
@@ -427,9 +436,15 @@ void main()
     // This keeps the distortion domain normalized regardless of zoom.
     vec2 dist_scale = (hsize > vsize) ? vec2(1.0, ar) : vec2(1.0 / ar, 1.0);
     vec2 dist_scale_zoom = dist_scale * zoom;
-    
+
     // Transform to normalized square space for entire distortion pipeline
     vec2 uv_normalized = uv * dist_scale_zoom;
+
+    // ==== DISTORTION CENTER OFFSET ====
+    // Shift the distortion center by H_POS and V_POS
+    // This allows the CRT distortions to be centered anywhere on screen
+    vec2 distortion_offset = vec2(H_POS, V_POS) * 2.0; // Scale to normalized space
+    uv_normalized += distortion_offset;
 
     // ==== CRT GEOMETRY PIPELINE ====
     // All distortions and corrections operate in normalized square space
@@ -477,8 +492,12 @@ void main()
         uv_normalized /= vec2(0.001, screen_theta_y);
     }
 
+    // ==== RESTORE DISTORTION CENTER ====
+    // Shift back to original position after distortion
+    uv_normalized -= distortion_offset;
+
     // Transform back from normalized square space to aspect-corrected space
-    uv = uv_normalized / dist_scale_zoom;
+    uv = (uv_normalized / dist_scale_zoom);
 
     // Aspect ratio post-compensation
     if (hsize > vsize)
@@ -595,36 +614,25 @@ void main()
 
     // Apply subpixel mask if color mode enables it
     if (COLOR_MODE > 2.0) {
-        // Calculate mask coordinates with barrel distortion applied
-        // This makes the mask follow the curved CRT screen
         vec2 mask_coord = vTexCoord.xy;
-        
-        // Convert to normalized coordinates (-1.0 to 1.0)
         mask_coord = 2.0 * (mask_coord - 0.5);
-        
-        // Reverse underscan
         mask_coord /= 1.0 + tan(PI * UNDERSCAN / 200.0);
-        
-        // Apply scaling from blanking intervals
         mask_coord.x *= hscale;
         mask_coord.y *= vscale;
-        
-        // Aspect ratio pre-compensation for distortion
         if (hsize > vsize)
             mask_coord.y /= ar;
         else
             mask_coord.x *= ar;
-        
-        // Transform to normalized square space with zoom
         vec2 mask_normalized = mask_coord * dist_scale_zoom;
         
-        // Apply barrel distortion (same as image content)
+        // Apply same distortion center offset for mask
+        vec2 distortion_offset = vec2(H_POS, V_POS) * 2.0;
+        mask_normalized += distortion_offset;
+        
         float screen_theta_x = SCREEN_ANGLE_H / 2.0 * (PI / 180.0);
         float screen_theta_y = SCREEN_ANGLE_V / 2.0 * (PI / 180.0);
-        
         bool has_h = SCREEN_ANGLE_H > 0.0;
         bool has_v = SCREEN_ANGLE_V > 0.0;
-        
         if (has_h && has_v) {
             mask_normalized = barrel(mask_normalized * vec2(screen_theta_x, screen_theta_y));
             mask_normalized /= vec2(screen_theta_x, screen_theta_y);
@@ -636,34 +644,20 @@ void main()
             mask_normalized /= vec2(0.001, screen_theta_y);
         }
         
-        // Transform back from normalized square space
-        mask_coord = mask_normalized / dist_scale_zoom;
+        // Restore distortion center
+        mask_normalized -= distortion_offset;
         
-        // Aspect ratio post-compensation
+        mask_coord = mask_normalized / dist_scale_zoom;
         if (hsize > vsize)
             mask_coord.y *= ar;
         else
             mask_coord.x /= ar;
-        
-        // Reverse blanking interval scaling
         mask_coord.x /= hscale;
         mask_coord.y /= vscale;
-        
-        // Back to texture coordinates (0-1)
         mask_coord = mask_coord / 2.0 + 0.5;
-        
-        // Convert to screen pixel coordinates for mask lookup
         vec2 mask_uv = mask_coord * global.OutputSize.xy;
-        
-        // ==== Calculate anisotropy for filtered mask sampling ====
-        // Compute partial derivatives to determine how much the mask is stretched
-        // This is essential for reducing aliasing from the barrel distortion
-        
-        // Use automatic derivatives (dFdx/dFdy) to measure coordinate stretching
         vec2 ddx_mask = dFdx(mask_uv);
         vec2 ddy_mask = dFdy(mask_uv);
-        
-        // Apply anisotropic filtering to reduce aliasing
         col *= mask_anisotropic(mask_uv, ddx_mask, ddy_mask);
     }
 

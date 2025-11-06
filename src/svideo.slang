@@ -162,6 +162,11 @@ layout(push_constant) uniform Push
     vec4 OutputSize;
     uint FrameCount;
     float BYPASS_SVIDEO;
+    float USER_PICTURE;
+    float USER_BRIGHTNESS;
+    float USER_COLOR;
+    float USER_TINT;
+    float USER_SHARPNESS;
     float SVIDEO_FILTER_BYPASS;
     float V_FREQ;
     float V_LINES_PER_FIELD;
@@ -178,6 +183,17 @@ layout(push_constant) uniform Push
 } config;
 
 #pragma parameter S_VIDEO_HEADER " ==== S-Video Parameters ==== " 0.0 0.0 0.0 0.0
+
+#pragma parameter USER_PICTURE "User Settings: Picture" 0.5 0.0 1.0 0.01
+#define USER_PICTURE config.USER_PICTURE
+#pragma parameter USER_BRIGHTNESS "User Settings: Brightness" 0.5 0.0 1.0 0.01
+#define USER_BRIGHTNESS config.USER_BRIGHTNESS
+#pragma parameter USER_COLOR "User Settings: Color" 0.5 0.0 1.0 0.01
+#define USER_COLOR config.USER_COLOR
+#pragma parameter USER_TINT "User Settings: Tint" 0.5 0.0 1.0 0.01
+#define USER_TINT config.USER_TINT
+#pragma parameter USER_SHARPNESS "User Settings: Sharpness" 0.0 0.0 1.0 0.01
+#define USER_SHARPNESS config.USER_SHARPNESS
 
 #pragma parameter BYPASS_SVIDEO "Bypass S-Video processing (0=Off, 1=On)" 0.0 0.0 1.0 1.0
 #define BYPASS_SVIDEO config.BYPASS_SVIDEO
@@ -306,9 +322,15 @@ void main()
     float offset0 = Tex.x * config.SourceSize.x;
     float t0 = line * LINE_TIME + offset0 * pixel_time;
 
+    float y_gain = 2.0 * USER_PICTURE;
+    float y_bias = 0.2 * USER_BRIGHTNESS - 0.1;
+    float c_gain = 2.0 * USER_COLOR;
+    float c_phase = 2.0 * PI * (USER_TINT - 0.5);
+
     vec3 pixel0 = texture(Source, Tex).rgb;
     float phase0 = compute_carrier_phase(t0, sc_freq_hz, field_phase);
     vec2 carrier0 = sincos_phase(phase0);
+    vec2 carrier0_user = sincos_phase(phase0 + c_phase);
     float chroma0 = pixel0.g * carrier0.x + pixel0.b * carrier0.y;
 
     // Monitor mode: use center sample directly (bypass filter)
@@ -316,9 +338,9 @@ void main()
     float c_out = chroma0;
 
     vec3 yc0;
-    yc0.r = pixel0.r; // luma
-    yc0.g = chroma0 * 2.0 * carrier0.x;
-    yc0.b = chroma0 * 2.0 * carrier0.y;
+    yc0.r = y_gain * pixel0.r + y_bias; // luma
+    yc0.g = c_gain * chroma0 * 2.0 * carrier0_user.x;
+    yc0.b = c_gain * chroma0 * 2.0 * carrier0_user.y;
 
     // Optional filter bypass: use center-sample demodulated values directly
     if (SVIDEO_FILTER_BYPASS >= 1.0) {
@@ -369,11 +391,12 @@ void main()
         vec3 pixelR = texture(Source, Tex + float(n) * dx).rgb;
         float phaseR = compute_carrier_phase(tR, sc_freq_hz, field_phase);
         vec2 carrierR = sincos_phase(phaseR);
+        vec2 carrierR_user = sincos_phase(phaseR + c_phase);
         float chromaR = pixelR.g * carrierR.x + pixelR.b * carrierR.y;
         vec3 ycR;
-        ycR.r = pixelR.r;
-        ycR.g = 2.0 * chromaR * carrierR.x;
-        ycR.b = 2.0 * chromaR * carrierR.y;
+        ycR.r = y_gain * pixelR.r + y_bias; // luma
+        ycR.g = c_gain * chromaR * 2.0 * carrierR_user.x;
+        ycR.b = c_gain * chromaR * 2.0 * carrierR_user.y;
 
         // Left sample
         float offsetL = (Tex.x - float(n) * dx.x) * config.SourceSize.x;
@@ -381,11 +404,12 @@ void main()
         vec3 pixelL = texture(Source, Tex - float(n) * dx).rgb;
         float phaseL = compute_carrier_phase(tL, sc_freq_hz, field_phase);
         vec2 carrierL = sincos_phase(phaseL);
+        vec2 carrierL_user = sincos_phase(phaseL + c_phase);
         float chromaL = pixelL.g * carrierL.x + pixelL.b * carrierL.y;
         vec3 ycL;
-        ycL.r = pixelL.r;
-        ycL.g = 2.0 * chromaL * carrierL.x;
-        ycL.b = 2.0 * chromaL * carrierL.y;
+        ycL.r = y_gain * pixelL.r + y_bias; // luma
+        ycL.g = c_gain * chromaL * 2.0 * carrierL_user.x;
+        ycL.b = c_gain * chromaL * 2.0 * carrierL_user.y;
 
         // Accumulate symmetric samples (vector path)
         accum.x += wy_n * (ycR.x + ycL.x);
