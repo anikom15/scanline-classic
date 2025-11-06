@@ -66,9 +66,9 @@ layout(push_constant) uniform Push
 #pragma parameter SYS_BANDWIDTH_U "System Chroma (U) bandwidth (MHz)" 1.30 0.0 15.0 0.01
 #pragma parameter SYS_BANDWIDTH_V "System Chroma (V) bandwidth (MHz)" 1.30 0.0 15.0 0.01
 
-#pragma parameter SYS_CUTOFF_ATTEN_Y "System Y cutoff attenuation (dB)" 3.0 0.0 30.0 0.1
-#pragma parameter SYS_CUTOFF_ATTEN_U "System U cutoff attenuation (dB)" 2.0 0.0 30.0 0.1
-#pragma parameter SYS_CUTOFF_ATTEN_V "System V cutoff attenuation (dB)" 2.0 0.0 30.0 0.1
+#pragma parameter SYS_CUTOFF_ATTEN_Y "System Y cutoff attenuation (dB)" 3.0 0.0 30.0 1.0
+#pragma parameter SYS_CUTOFF_ATTEN_U "System U cutoff attenuation (dB)" 2.0 0.0 30.0 1.0
+#pragma parameter SYS_CUTOFF_ATTEN_V "System V cutoff attenuation (dB)" 2.0 0.0 30.0 1.0
 
 #pragma parameter SYS_GAIN_Y "System Gain Y" 1.0 0.0 10.0 0.01
 #pragma parameter SYS_GAIN_U "System Gain U" 1.0 0.0 10.0 0.01
