@@ -112,7 +112,7 @@ void main()
     
     // Early exit for full bypass
     if (PHOSPHOR_CHROMA_BYPASS >= 1.0) {
-        FragColor = vec4(Yrgb, 1.0);
+        FragColor = vec4(clamp(Yrgb, 0.0, 1.0), 1.0);
         return;
     }
     

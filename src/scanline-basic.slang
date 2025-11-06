@@ -23,6 +23,9 @@
 #include "color.h"
 #include "filter.h"
 
+#pragma name ScanlineBasic
+#pragma format R8G8B8A8_UNORM
+
 layout(std140, set = 0, binding = 0) uniform UBO {
 	mat4 MVP;
 	vec4 OutputSize;
