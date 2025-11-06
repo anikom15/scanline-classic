@@ -48,7 +48,7 @@ layout(push_constant) uniform Push
     float PHOSPHOR_LUMA_BYPASS;
 } config;
 
-#pragma parameter PHOSPHOR_HEADER " ==== Phosphor Parameters ==== " 0.0 0.0 0.0 0.0
+#pragma parameter PHOSPHOR_HEADER " ==== Phosphor Luma Parameters ==== " 0.0 0.0 0.0 0.0
 
 #pragma parameter PHOSPHOR_LUMA_BYPASS "Phosphor luma bypass" 0.0 0.0 1.0 1.0
 #define PHOSPHOR_LUMA_BYPASS config.PHOSPHOR_LUMA_BYPASS
@@ -66,25 +66,25 @@ layout(push_constant) uniform Push
 #pragma parameter TO_GRAY_WEIGHT_B "Blue channel to gray weight" 0.0866 0.0 1.0 0.01
 #define TO_GRAY_WEIGHT_B config.TO_GRAY_WEIGHT_B
 
-#pragma parameter PHOSPHORESCENSE_A "Phosphorescense decay rate A (1/s)" 9.0 0.0 100.0 1.0
+#pragma parameter PHOSPHORESCENSE_A "Phosphorescense decay A (1/s)" 9.0 0.0 100.0 1.0
 #define PHOSPHORESCENSE_A config.PHOSPHORESCENSE_A
-#pragma parameter PHOSPHORESCENSE_B "Phosphorescense decay rate B (1/s)" 9.0 0.0 100.0 1.0
+#pragma parameter PHOSPHORESCENSE_B "Phosphorescense decay B (1/s)" 9.0 0.0 100.0 1.0
 #define PHOSPHORESCENSE_B config.PHOSPHORESCENSE_B
-#pragma parameter PHOSPHORESCENSE_C "Phosphorescense decay rate C (1/s)" 9.0 0.0 100.0 1.0
+#pragma parameter PHOSPHORESCENSE_C "Phosphorescense decay C (1/s)" 9.0 0.0 100.0 1.0
 #define PHOSPHORESCENSE_C config.PHOSPHORESCENSE_C
 
-#pragma parameter PHOS_EXP_A "Decay rate EE A" 5.0 0.0 10.0 1.0
+#pragma parameter PHOS_EXP_A "Decay rate A (EE)" 5.0 0.0 10.0 1.0
 #define PHOS_EXP_A config.PHOS_EXP_A
-#pragma parameter PHOS_EXP_B "Decay rate EE B" 5.0 0.0 10.0 1.0
+#pragma parameter PHOS_EXP_B "Decay rate B (EE)" 5.0 0.0 10.0 1.0
 #define PHOS_EXP_B config.PHOS_EXP_B
-#pragma parameter PHOS_EXP_C "Decay rate EE C" 5.0 0.0 10.0 1.0
+#pragma parameter PHOS_EXP_C "Decay rate C (EE)" 5.0 0.0 10.0 1.0
 #define PHOS_EXP_C config.PHOS_EXP_C
 
-#pragma parameter PHOS_TRAP_A "Decay escape degree A" 1.25 0.5 2.0 0.01
+#pragma parameter PHOS_TRAP_A "Decay escape A (order)" 1.25 0.5 2.0 0.01
 #define PHOS_TRAP_A config.PHOS_TRAP_A
-#pragma parameter PHOS_TRAP_B "Decay escape degree B" 1.25 0.5 2.0 0.01
+#pragma parameter PHOS_TRAP_B "Decay escape B (order)" 1.25 0.5 2.0 0.01
 #define PHOS_TRAP_B config.PHOS_TRAP_B
-#pragma parameter PHOS_TRAP_C "Decay escape degree C" 1.25 0.5 2.0 0.01
+#pragma parameter PHOS_TRAP_C "Decay escape C (order)" 1.25 0.5 2.0 0.01
 #define PHOS_TRAP_C config.PHOS_TRAP_C
 
 vec3 blend(vec3 col1, vec3 col2)

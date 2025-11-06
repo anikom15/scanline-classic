@@ -21,7 +21,12 @@
 #include "common.h"
 
 #pragma name Bezel
-#pragma format A2B10G10R10_UNORM_PACK32
+
+// Uncomment for SDR, comment for HDR
+#pragma format R8G8B8A8_UNORM
+
+// Comment for SDR, uncomment for HDR
+//#pragma format A2B10G10R10_UNORM_PACK32
 
 layout(push_constant) uniform Push
 {

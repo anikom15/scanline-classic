@@ -19,7 +19,7 @@
 
 #include "common.h"
 #include "color.h"
-#include "filter.h"
+#include "bandlimit.inc"
 #include "modulation.inc"
 
 #pragma name Composite
@@ -37,11 +37,6 @@ layout(push_constant) uniform Push
     float SC_FREQ_MODE;
     float H_BLANK_INACTIVE_LEN;
     float H_BLANK_INACTIVE_UNIT;
-    float FILTER_ENCODE;
-    float ENCODE_FILTER_BANDWIDTH_Y;
-    float ENCODE_FILTER_BANDWIDTH_C;
-    float ENCODE_CUTOFF_ATTEN_Y;
-    float ENCODE_CUTOFF_ATTEN_C;
     float SIGNAL_BANDWIDTH_Y;
     float SIGNAL_BANDWIDTH_C;
     float FILTER_CUTOFF_ATTEN_Y;
@@ -52,57 +47,44 @@ layout(push_constant) uniform Push
     float NOTCH_OFFSET_R;
 } config;
 
-#pragma parameter V_FREQ "Vertical Frequency (Hz)" 59.94 1.0 240.0 0.01
+#pragma parameter V_FREQ "Vertical frequency (Hz)" 59.94 1.0 240.0 0.01
 #define V_FREQ config.V_FREQ
 
-#pragma parameter V_LINES_PER_FIELD "Video Lines per Field" 262.5 0.0 540.0 0.5
+#pragma parameter V_LINES_PER_FIELD "Video lines per field" 262.5 0.0 540.0 0.5
 #define V_LINES_PER_FIELD config.V_LINES_PER_FIELD
 
-#pragma parameter SHORTEN_ODD_FIELD_TIME "Shorten Odd Field Time (0=Off, 1=On)" 0.0 0.0 1.0 1.0
+#pragma parameter SHORTEN_ODD_FIELD_TIME "Shorten odd field time (0=Off, 1=On)" 0.0 0.0 1.0 1.0
 #define SHORTEN_ODD_FIELD_TIME config.SHORTEN_ODD_FIELD_TIME
 
-#pragma parameter SC_FREQ_MODE "Subcarrier Frequency Mode (0=Auto, 1=NTSC, 2=Custom)" 1.0 0.0 2.0 1.0
+#pragma parameter SC_FREQ_MODE "Subcarrier frequency mode (0=Auto, 1=NTSC, 2=PAL, 3=Custom)" 1.0 0.0 3.0 1.0
 #define SC_FREQ_MODE config.SC_FREQ_MODE
 
 #define H_FREQ_HZ (V_FREQ * V_LINES_PER_FIELD)
 
-#pragma parameter H_BLANK_INACTIVE_LEN "Horizontal Blank Inactive Length" 138.0 0.0 1000.0 0.1
+#pragma parameter H_BLANK_INACTIVE_LEN "Horizontal blank inactive length" 138.0 0.0 1000.0 0.1
 #define H_BLANK_INACTIVE_LEN config.H_BLANK_INACTIVE_LEN
-#pragma parameter H_BLANK_INACTIVE_UNIT "Horizontal Blank Inactive Unit (0=px, 1=µs, 2=% active)" 0.0 0.0 2.0 1.0
+#pragma parameter H_BLANK_INACTIVE_UNIT "Horizontal blank inactive unit (0=px, 1=µs, 2=% active)" 0.0 0.0 2.0 1.0
 #define H_BLANK_INACTIVE_UNIT config.H_BLANK_INACTIVE_UNIT
 
-#pragma parameter FILTER_ENCODE "Filter Encode (0=Off, 1=On)" 1.0 0.0 1.0 1.0
-#define FILTER_ENCODE config.FILTER_ENCODE
-
-#pragma parameter ENCODE_FILTER_BANDWIDTH_Y "Encode Filter Bandwidth Y (MHz)" 6.75 0.0 75.0 0.1
-#define ENCODE_FILTER_BANDWIDTH_Y config.ENCODE_FILTER_BANDWIDTH_Y
-#pragma parameter ENCODE_FILTER_BANDWIDTH_C "Encode Filter Bandwidth C (MHz)" 1.3 0.0 75.0 0.1
-#define ENCODE_FILTER_BANDWIDTH_C config.ENCODE_FILTER_BANDWIDTH_C
-
-#pragma parameter ENCODE_CUTOFF_ATTEN_Y "Encode Cutoff Attenuation Y (dB)" 3.0 0.0 30.0 1.0
-#define ENCODE_CUTOFF_ATTEN_Y config.ENCODE_CUTOFF_ATTEN_Y
-#pragma parameter ENCODE_CUTOFF_ATTEN_C "Encode Cutoff Attenuation C (dB)" 2.0 0.0 30.0 1.0
-#define ENCODE_CUTOFF_ATTEN_C config.ENCODE_CUTOFF_ATTEN_C
-
-#pragma parameter SIGNAL_BANDWIDTH_Y "Signal Bandwidth Y (MHz)" 6.75 0.0 75.0 0.1
+#pragma parameter SIGNAL_BANDWIDTH_Y "Signal bandwidth Y (MHz)" 6.75 0.0 75.0 0.1
 #define SIGNAL_BANDWIDTH_Y config.SIGNAL_BANDWIDTH_Y
-#pragma parameter SIGNAL_BANDWIDTH_C "Signal Bandwidth C (MHz)" 1.79 0.0 6.75 0.01
+#pragma parameter SIGNAL_BANDWIDTH_C "Signal bandwidth C (MHz)" 1.79 0.0 6.75 0.01
 #define SIGNAL_BANDWIDTH_C config.SIGNAL_BANDWIDTH_C
 
-#pragma parameter FILTER_CUTOFF_ATTEN_Y "Filter Cutoff Attenuation Y (dB)" 3.0 0.0 30.0 1.0
+#pragma parameter FILTER_CUTOFF_ATTEN_Y "Filter cutoff attenuation Y (dB)" 3.0 0.0 30.0 1.0
 #define FILTER_CUTOFF_ATTEN_Y config.FILTER_CUTOFF_ATTEN_Y
-#pragma parameter FILTER_CUTOFF_ATTEN_C "Filter Cutoff Attenuation C (dB)" 3.0 0.0 30.0 1.0
+#pragma parameter FILTER_CUTOFF_ATTEN_C "Filter cutoff attenuation C (dB)" 3.0 0.0 30.0 1.0
 #define FILTER_CUTOFF_ATTEN_C config.FILTER_CUTOFF_ATTEN_C
 
-#pragma parameter FILTER_SIZE_YC "Gaussian Filter Radius Y/C" 14.0 0.0 40.0 1.0
+#pragma parameter FILTER_SIZE_YC "Gaussian filter radius Y/C" 14.0 0.0 40.0 1.0
 #define FILTER_SIZE_YC config.FILTER_SIZE_YC
 
-#pragma parameter COLOR_FILTER_MODE "Color Filter Mode (0=BS, 1=Comb, 2=0·1, 3=Feedback, 4=Off)" 0.0 0.0 4.0 1.0
+#pragma parameter COLOR_FILTER_MODE "Color filter mode (0=BS, 1=Comb, 2=0·1, 3=Feedback, 4=Off)" 0.0 0.0 4.0 1.0
 #define COLOR_FILTER_MODE config.COLOR_FILTER_MODE
 
-#pragma parameter NOTCH_OFFSET_L "Notch Filter Left Cutoff Offset" 1.3 -10.0 10.0 0.1
+#pragma parameter NOTCH_OFFSET_L "Notch filter left cutoff offset" 1.3 -10.0 10.0 0.1
 #define NOTCH_OFFSET_L config.NOTCH_OFFSET_L
-#pragma parameter NOTCH_OFFSET_R "Notch Filter Right Cutoff Offset" 1.3 -10.0 10.0 0.1
+#pragma parameter NOTCH_OFFSET_R "Notch filter right cutoff offset" 1.3 -10.0 10.0 0.1
 #define NOTCH_OFFSET_R config.NOTCH_OFFSET_R
 
 #define LINE_TIME (1.0 / H_FREQ_HZ)
@@ -153,23 +135,6 @@ layout(location = 0) in vec2 vTexCoord;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
-vec3 prefilter(vec2 tex, vec2 dx, float f, vec3 sigma, int N)
-{
-    vec3 color = vec3(0.0);
-    vec3 wsum = vec3(0.0);
-
-    for (int n = -N; n <= FILTER_SIZE_YC; ++n) {
-        vec3 pixel = texture(Source, tex + n * dx).rgb;
-        vec3 w = vec3(
-            gaussian(n + f, sigma.x),
-            gaussian(n + f, sigma.y),
-            gaussian(n + f, sigma.z));
-        color = color + w * pixel;
-        wsum = wsum + w;
-    }
-    return color / wsum;
-}
-
 void main()
 {
     vec3 color = vec3(0.0); // texture(Source, vTexCoord).rgb;
@@ -180,45 +145,36 @@ void main()
     // Get all values needed for t:
     // field * FIELD_TIME + line * LINE_TIME + x * pixel_time
     float field = float(config.FrameCount % 12u);
-    float line = floor(vTexCoord.y * config.SourceSize.y);
+    float line = floor(vTexCoord.y * config.OriginalSize.y);
+
     float inactive_pixels;
     if (H_BLANK_INACTIVE_UNIT < 0.5)
         inactive_pixels = H_BLANK_INACTIVE_LEN;
     else if (H_BLANK_INACTIVE_UNIT < 1.5)
         inactive_pixels = H_BLANK_INACTIVE_LEN * 1.0e-6
-            * H_FREQ_HZ * config.SourceSize.x;
+            * H_FREQ_HZ * config.OriginalSize.x;
     else
         inactive_pixels = H_BLANK_INACTIVE_LEN / 100.0
-            * config.SourceSize.x;
-    float total_pixels = config.SourceSize.x + inactive_pixels;
+            * config.OriginalSize.x;
+
+    float total_pixels = config.OriginalSize.x + inactive_pixels;
     float subcarrier_div = round(H_FREQ_HZ * total_pixels / NTSC_FSC * 100.0) / 100.0;
     float sc_freq_hz;
     if (SC_FREQ_MODE < 0.5)
         sc_freq_hz = H_FREQ_HZ * total_pixels / subcarrier_div;
     else if (SC_FREQ_MODE < 1.5)
         sc_freq_hz = NTSC_FSC;
+    else if (SC_FREQ_MODE < 2.5)
+        sc_freq_hz = PAL_FSC;
     else
         sc_freq_hz = SC_FREQ * 1.0e6;
     float pixel_time = LINE_TIME / total_pixels;
     float field_phase = FIELD_TIME * field * 2.0 * PI * sc_freq_hz;
     float odd_time_adjust = pixel_time;
-    if (config.SourceSize.x > 320.0)
-        odd_time_adjust = 2.0 * pixel_time;
+    odd_time_adjust = config.OriginalSize.x / 256.0 * pixel_time;
     field_phase -= ceil(field / 2.0) * odd_time_adjust * SHORTEN_ODD_FIELD_TIME
         * 2.0 * PI * sc_freq_hz;
     field_phase = mod(field_phase, 2.0 * PI) - PI;
-
-    // Prefilter characteristics
-    vec3 sigma_encode = sigma601(
-        vec3(
-            ENCODE_FILTER_BANDWIDTH_Y,
-            ENCODE_FILTER_BANDWIDTH_C,
-            ENCODE_FILTER_BANDWIDTH_C),
-        vec3(
-            ENCODE_CUTOFF_ATTEN_Y,
-            ENCODE_CUTOFF_ATTEN_C,
-            ENCODE_CUTOFF_ATTEN_C),
-        config.OutputSize.x);
 
     // Filter characteristics
     vec3 sigma = sigma601(
@@ -302,13 +258,10 @@ void main()
     // Modulation + Demodulation + Filtering
     do {
         float offset = (tex.x + n * dx.x)
-            * config.SourceSize.x;
-        // Encode prefilter
-        if (FILTER_ENCODE > 0.5) {
-            pixel = prefilter(tex + n * dx, dx, f, sigma_encode, int(FILTER_SIZE_YC));
-        } else {
-            pixel = texture(Source, tex + n * dx).rgb;
-        }
+            * config.OriginalSize.x;
+
+        pixel = texture(Source, tex + n * dx).rgb;
+
         float t = line * LINE_TIME + offset * pixel_time;
         
         // Optimized: compute carrier phase once, use sincos_phase
@@ -338,7 +291,7 @@ void main()
 
         // Notch filter portion
         w = vec3(
-            gaussian(n + f, sigma.x + notch_sigma.x),
+            gaussian(n + f, sqrt(sq(sigma.x) + sq(notch_sigma.x))),
             gaussian(n + f, sigma.y),
             gaussian(n + f, sigma.z));
         color_notch += w * pixel;

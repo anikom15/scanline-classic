@@ -44,6 +44,8 @@ layout(push_constant) uniform Push
     float PHOSPHOR_CHROMA_BYPASS;
 } config;
 
+#pragma parameter PHOSPHOR_CHROMA_HEADER " ==== Phosphor Chroma Parameters ==== " 0.0 0.0 0.0 0.0
+
 #pragma parameter PHOSPHOR_CHROMA_BYPASS "Phosphor chroma bypass" 0.0 0.0 1.0 1.0
 #define PHOSPHOR_CHROMA_BYPASS config.PHOSPHOR_CHROMA_BYPASS
 
