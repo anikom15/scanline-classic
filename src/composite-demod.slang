@@ -87,7 +87,7 @@ layout(push_constant) uniform Push
 #pragma parameter FEEDBACK_FILTER_MODE "Enable feedback filter (0=Off, 1=On)" 0.0 0.0 1.0 1.0
 #define FEEDBACK_FILTER_MODE config.FEEDBACK_FILTER_MODE
 
-#pragma parameter BW_MODE "Monochrome Display (0=Off, 1=On)" 0 0 1 1
+#pragma parameter BW_MODE "Monitor mode (0=Off, 1=BW, 2=Y, 3=C, 4=Y+C)" 0 0 4 1
 #define BW_MODE config.BW_MODE
 
 #define LINE_TIME (1.0 / H_FREQ_HZ)
@@ -162,6 +162,10 @@ void main()
 
     float composite0 = pixel0.r;
     float chroma0 = pixel0.g;
+
+    // Monitor mode: use center sample directly (bypass filter)
+    float y_out = pixel0.r;
+    float c_out = chroma0;
     
     vec3 demod0;
 
@@ -250,8 +254,16 @@ void main()
     // Normalize
     color /= max(wsum, vec3(EPS));
 
-    if (BW_MODE > 0.5) {
-        color = vec3(color.r);
+    if (BW_MODE < 0.5) {
+        ;
+    } else if (BW_MODE < 1.5) {
+        color = vec3(y_out + c_out, 0.0, 0.0);
+    } else if (BW_MODE < 2.5) {
+        color = vec3(y_out, 0.0, 0.0);
+    } else if (BW_MODE < 3.5) {
+        color = vec3(c_out, 0.0, 0.0);
+    } else {
+        color = vec3(y_out, 0.0, c_out);
     }
 
     FragColor = vec4(color, 1.0);

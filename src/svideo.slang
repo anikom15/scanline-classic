@@ -403,22 +403,18 @@ void main()
     // Normalized outputs
     vec3 color_vec = accum / max(wsum, vec3(EPS));
 
-    // BW mode routing:
-    // 0: normal Y in R, modulated C split to G/B
-    // 1: Y-only to all channels
-    // 2: C-only (modulated chroma scalar) to all channels
     vec3 color;
     if (BW_MODE < 0.5) {
         color = color_vec;
     } else if (BW_MODE < 1.5) {
-        // BW mode: Y + C to all channels
-        color = vec3(y_out + c_out);
+        // BW mode: Y + C to Y channel
+        color = vec3(y_out + c_out, 0.0, 0.0);
     } else if (BW_MODE < 2.5) {
         // Y mode
-        color = vec3(y_out);
+        color = vec3(y_out, 0.0, 0.0);
     } else if (BW_MODE < 3.5) {
         // C mode
-        color = vec3(c_out);
+        color = vec3(c_out, 0.0, 0.0);
     } else {
         // YC mode
         color.r = y_out;

@@ -40,12 +40,14 @@ layout(push_constant) uniform Push
     float H_BLANK_INACTIVE_LEN;
     float H_BLANK_INACTIVE_UNIT;
     float COLOR_FILTER_MODE;
-    float NOTCH_OFFSET_L;
-    float NOTCH_OFFSET_R;
+    float NOTCH_WIDTH; // Band-stop width in MHz (symmetric)
+    float BANDPASS_WIDTH; // Chroma band-pass width in MHz (symmetric)
     float COMB_FILTER_TAPS;
     float NOTCH_COMB_W;
-    float NOTCH_TEST_LP;
-    float NOTCH_TEST_HP;
+    float BW_MODE;
+    // New: notch design controls
+    float NOTCH_CENTER_ATTEN_DB;
+    float NOTCH_EDGE_ATTEN_DB;
 } config;
 
 #pragma parameter COMPOSITE_HEADER " ==== Composite Video Mod. Parameters ==== " 0.0 0.0 0.0 0.0
@@ -78,10 +80,11 @@ layout(push_constant) uniform Push
 #pragma parameter COLOR_FILTER_MODE "Filter mode (0=Notch,1=Comb,2=Notch+Comb,3=Off)" 0.0 0.0 3.0 1.0
 #define COLOR_FILTER_MODE config.COLOR_FILTER_MODE
 
-#pragma parameter NOTCH_OFFSET_L "Notch filter left cutoff offset" 1.3 -10.0 10.0 0.1
-#define NOTCH_OFFSET_L config.NOTCH_OFFSET_L
-#pragma parameter NOTCH_OFFSET_R "Notch filter right cutoff offset" 1.3 -10.0 10.0 0.1
-#define NOTCH_OFFSET_R config.NOTCH_OFFSET_R
+#pragma parameter NOTCH_WIDTH "Notch band-stop width (MHz, symmetric)" 2.6 0.01 10.0 0.01
+#define NOTCH_WIDTH config.NOTCH_WIDTH
+
+#pragma parameter BANDPASS_WIDTH "Chroma band-pass width (MHz, symmetric)" 2.6 0.01 10.0 0.01
+#define BANDPASS_WIDTH config.BANDPASS_WIDTH
 
 #pragma parameter COMB_FILTER_TAPS "Comb Filter Taps" 1 1 3 1
 #define COMB_FILTER_TAPS config.COMB_FILTER_TAPS
@@ -89,11 +92,14 @@ layout(push_constant) uniform Push
 #pragma parameter NOTCH_COMB_W "Notch-Comb Mixing Weight" 0.5 0.0 1.0 0.1
 #define NOTCH_COMB_W config.NOTCH_COMB_W
 
-#pragma parameter NOTCH_TEST_LP "Notch Filter Test Lowpass (0=Off, 1=On)" 0.0 0.0 1.0 1.0
-#define NOTCH_TEST_LP config.NOTCH_TEST_LP
+#pragma parameter BW_MODE "Monitor mode (0=Off, 1=BW, 2=Y, 3=C, 4=Y+C)" 0 0 4 1
+#define BW_MODE config.BW_MODE
 
-#pragma parameter NOTCH_TEST_HP "Notch Filter Test Highpass (0=Off, 1=On)" 0.0 0.0 1.0 1.0
-#define NOTCH_TEST_HP config.NOTCH_TEST_HP
+// Notch design parameters
+#pragma parameter NOTCH_CENTER_ATTEN_DB "Notch center attenuation (dB)" 60.0 0.0 120.0 0.5
+#define NOTCH_CENTER_ATTEN_DB config.NOTCH_CENTER_ATTEN_DB
+#pragma parameter NOTCH_EDGE_ATTEN_DB "Notch edge attenuation at ±offset (dB)" 3.0 0.0 20.0 0.1
+#define NOTCH_EDGE_ATTEN_DB config.NOTCH_EDGE_ATTEN_DB
 
 #define LINE_TIME (1.0 / H_FREQ_HZ)
 #define FIELD_TIME (1.0 / V_FREQ)
@@ -139,18 +145,35 @@ void main()
         H_BLANK_INACTIVE_LEN,
         H_BLANK_INACTIVE_UNIT);
 
-    // Notch filter characteristics
-    vec4 c = 1.0 / pow(vec4(10.0), vec4(-2.0 / 20.0));
-    vec4 notch_res = vec4(
-        720.0 / 6.75 * (tb.sc_freq_hz / 1.0e6 - NOTCH_OFFSET_L),
-        720.0 / 6.75 * (tb.sc_freq_hz / 1.0e6 - NOTCH_OFFSET_R),
-        720.0 / 6.75 * (tb.sc_freq_hz / 1.0e6 + NOTCH_OFFSET_L),
-        720.0 / 6.75 * (tb.sc_freq_hz / 1.0e6 + NOTCH_OFFSET_R));
-    vec4 notch_sigma = vec4(
-        sqrt(log(c.g)) / (notch_res.x / config.OutputSize.x),
-        sqrt(log(c.g)) / (config.OutputSize.x / notch_res.y),
-        sqrt(log(c.b)) / (notch_res.z / config.OutputSize.x),
-        sqrt(log(c.b)) / (config.OutputSize.x / notch_res.w));
+    // Notch design targets
+    float pixel_time_px = tb.pixel_time * (config.OriginalSize.x * config.OutputSize.z);
+
+    float A_center_dB = NOTCH_CENTER_ATTEN_DB; // center notch depth
+    float A_edge_dB = NOTCH_EDGE_ATTEN_DB;     // attenuation at f0 ± Δ
+
+    float a_center = pow(10.0, -A_center_dB / 20.0); // linear
+    float a_edge = pow(10.0, -A_edge_dB / 20.0);     // linear
+    float alpha = clamp(2.0 * (1.0 - a_center), 0.0, 2.0);
+
+    // Δ (cycles per output pixel) from band-stop width in MHz
+    float d_px = max(NOTCH_WIDTH * 1.0e6 * pixel_time_px, 1e-6); // always symmetric, avoid zero
+
+    // σ for band-stop (Gaussian envelope multiplied by cos at f_sc)
+    // Band-stop width is symmetric about subcarrier, so only one width parameter
+    float arg = clamp(2.0 * (1.0 - a_edge) / max(alpha, 1e-6), EPS, 1.0); // 0<arg<=1
+    float sigma_bs = sqrt(-log(arg)) / (sqrt(2.0) * PI * d_px);
+
+    // Chroma band-pass: modulated Gaussian centered at f_sc
+    // Use same design philosophy as the notch: Gaussian envelope with width set by BANDPASS_WIDTH
+    float f_sc_px = tb.sc_freq_hz * pixel_time_px; // subcarrier cycles per pixel
+
+    // Convert BANDPASS_WIDTH to cycles/pixel (defines the −3dB width of the passband)
+    float bw_px = max(BANDPASS_WIDTH * 1.0e6 * pixel_time_px, 1e-6);
+    
+    // σ for chroma band-pass envelope (Gaussian with width parameter bw_px)
+    // This creates a band-pass when modulated to f_sc, with passband width ≈ bw_px
+    float a_bp = pow(10.0, -NOTCH_EDGE_ATTEN_DB / 20.0);
+    float sigma_bp = sqrt(-log(a_bp)) / (sqrt(2.0) * PI * (bw_px * 0.5));
 
     // Optimized symmetric lobed approach with early exit
     vec2 UV = vTexCoord * config.OutputSize.xy;
@@ -160,13 +183,12 @@ void main()
 
     const float THRESHOLD = 1.0 / 510.0;
     
-    vec2 color_notch = vec2(0.0);
-    vec2 color_comb = vec2(0.0);
-    vec2 wsum_notch = vec2(0.0);
-    vec2 wsum_comb = vec2(0.0);
-    
-    float luma_hp = 0.0;
-    float wsum_hp = 0.0;
+    // Accumulators: band-stop notch for luma, modulated band-pass for chroma
+    float conv_gcos = 0.0; // Luma notch: Σ g(n)*cos(2π f_sc_px n)*x(n)
+    float sum_g    = 0.0;  // Luma notch: Σ g(n)
+
+    float c_bp_accum = 0.0; // Chroma band-pass: Σ g_bp(n)*cos(2π f_sc_px n)*x(n)
+    float sum_bp = 0.0;     // Chroma envelope sum: Σ g_bp(n)
 
     // Process center sample
     float offset0 = Tex.x * config.OriginalSize.x;
@@ -179,44 +201,34 @@ void main()
     float chroma0 = pixel0.g * carrier0.x + pixel0.b * carrier0.y;
     float composite0 = pixel0.r + chroma0;
     
-    // Center weights for Notch Filter
-    float w_notch_lp_y0 = gaussian(A.x, notch_sigma.x);
-    float w_notch_hp_y0 = gaussian(A.x, notch_sigma.y);
-    float w_notch_lp_c0 = gaussian(A.x, notch_sigma.z);
-    float w_notch_hp_c0 = gaussian(A.x, notch_sigma.w);
+    // Center weights for luma band-stop notch
+    float g_env0 = gaussian(A.x, sigma_bs);
+    sum_g += g_env0;
+    float w_cos0 = g_env0 * cos(2.0 * PI * f_sc_px * A.x);
 
-    if (NOTCH_TEST_HP < 0.5) {
-        color_notch += vec2(
-        w_notch_lp_y0 * composite0,
-        w_notch_lp_c0 * composite0);
-        wsum_notch += vec2(
-            w_notch_lp_y0,
-            w_notch_lp_c0);
-    }
+    // Center weights for chroma band-pass: modulated Gaussian envelope
+    float g_bp0 = gaussian(A.x, sigma_bp);
+    float w_bp0 = g_bp0 * cos(2.0 * PI * f_sc_px * A.x);
 
-    if (NOTCH_TEST_LP < 0.5) {
-        color_notch += vec2(
-            (1.0 - w_notch_hp_y0) * composite0,
-            (1.0 - w_notch_hp_c0) * composite0);
-        wsum_notch += vec2(
-            (1.0 - w_notch_hp_y0),
-            (1.0 - w_notch_hp_c0));
-    }
+    // Accumulate center sample
+    conv_gcos += w_cos0 * composite0;
+    c_bp_accum += w_bp0 * composite0;
+    sum_bp += g_bp0;
     
     // Symmetric lobed processing with early exit
     for (int n = 1; n <= 32; ++n) {
         float nf = float(n) + A.x;
-        float nmf = float(n) - A.x;
+
+        // Luma band-stop weights: Gaussian * cos(2π f_sc_px n)
+        float g_env = gaussian(nf, sigma_bs);
+        float w_notch_y = g_env * cos(2.0 * PI * f_sc_px * nf);
+
+        // Chroma band-pass: Gaussian envelope modulated to f_sc
+        float g_bp = gaussian(nf, sigma_bp);
+        float w_bp = g_bp * cos(2.0 * PI * f_sc_px * nf);
         
-        // Compute weights for notch filter (matching center sample approach)
-        float w_notch_lp_y = gaussian(nf, notch_sigma.x);
-        float w_notch_hp_y = gaussian(nf, notch_sigma.y);
-        float w_notch_lp_c = gaussian(nf, notch_sigma.z);
-        float w_notch_hp_c = gaussian(nf, notch_sigma.w);
-        
-        // Early exit if all weights negligible
-        if (w_notch_lp_y < THRESHOLD && w_notch_hp_y < THRESHOLD && 
-            w_notch_lp_c < THRESHOLD && w_notch_hp_c < THRESHOLD)
+        // Early exit if both envelopes negligible
+        if (g_env < THRESHOLD && g_bp < THRESHOLD)
             break;
         
         // Right sample
@@ -241,88 +253,105 @@ void main()
         float chromaL = pixelL.g * carrierL.x + pixelL.b * carrierL.y;
         float compositeL = pixelL.r + chromaL;
         
-        // Accumulate notch filter (matching center sample structure)
-        if (NOTCH_TEST_HP < 0.5) {
-            color_notch += vec2(
-                w_notch_lp_y * (compositeR + compositeL),
-                w_notch_lp_c * (compositeR + compositeL));
-            wsum_notch += vec2(
-                2.0 * w_notch_lp_y,
-                2.0 * w_notch_lp_c);
-        }
-        if (NOTCH_TEST_LP < 0.5) {
-            color_notch += vec2(
-                (1.0 - w_notch_hp_y) * (compositeR + compositeL),
-                (1.0 - w_notch_hp_c) * (compositeR + compositeL));
-            wsum_notch += vec2(
-                2.0 * (1.0 - w_notch_hp_y),
-                2.0 * (1.0 - w_notch_hp_c));
-        }
+        // Accumulate luma band-stop components
+        conv_gcos += w_notch_y * (compositeR + compositeL);
+        sum_g     += 2.0 * g_env;
+
+        // Accumulate chroma band-pass (modulated at f_sc)
+        c_bp_accum += w_bp * (compositeR + compositeL);
+        sum_bp += 2.0 * g_bp;
     }
-    
-    // Normalize
-    color_notch /= max(wsum_notch, vec2(EPS));
 
-    // Comb filter setup
-    float phase_per_line = mod(2.0 * PI * tb.sc_freq_hz * LINE_TIME, 2.0 * PI);
-    float lines_per_180deg = PI / phase_per_line;
-    float phase_per_pixel = 2.0 * PI * tb.sc_freq_hz * tb.pixel_time;
-    float fractional_line = fract(lines_per_180deg);
-    float horizontal_pixel_offset = (fractional_line * phase_per_line) / phase_per_pixel;
+    // Normalize luma band-stop notch
+    float notch_response = conv_gcos / max(sum_g, EPS);
+    float y_out = composite0 - alpha * notch_response;
 
-    vec2 comb_dy_1 = vec2(horizontal_pixel_offset * config.OriginalSize.z,
-                          -floor(lines_per_180deg) * config.OriginalSize.w);
-    vec2 comb_dy_2 = vec2(2.0 * horizontal_pixel_offset * config.OriginalSize.z,
-                          -floor(2.0 * lines_per_180deg) * config.OriginalSize.w);
-    vec2 comb_dy_3 = vec2(3.0 * horizontal_pixel_offset * config.OriginalSize.z,
-                          -floor(3.0 * lines_per_180deg) * config.OriginalSize.w);
+    // Reconstruct chroma with modulated Gaussian band-pass (centered at f_sc)
+    float c_bp = 2.0 * c_bp_accum / max(sum_bp, EPS);  // Scale by 2.0 to compensate for modulation gain loss (cos^2 average = 0.5)
 
-    float t_offset_1 = floor(lines_per_180deg) * LINE_TIME 
-                      + horizontal_pixel_offset * tb.pixel_time;
-    float t_offset_2 = floor(2.0 * lines_per_180deg) * LINE_TIME 
-                      + 2.0 * horizontal_pixel_offset * tb.pixel_time;
-    float t_offset_3 = floor(3.0 * lines_per_180deg) * LINE_TIME 
-                      + 3.0 * horizontal_pixel_offset * tb.pixel_time;
+    // Performance note: very wide/narrow BANDPASS_WIDTH values increase tap count and cost.
+    // For best performance, keep BANDPASS_WIDTH moderate (e.g. 1–4 MHz).
 
-    // Comb filter for center sample
-    mat3 comb_taps_yuv = mat3(
-        texture(Source, Tex + comb_dy_1).rgb,
-        texture(Source, Tex + comb_dy_2).rgb,
-        texture(Source, Tex + comb_dy_3).rgb);
+    // Comb filter path (compute only when needed)
+    vec2 color_comb = vec2(0.0);
+    if (COLOR_FILTER_MODE >= 0.5 && COLOR_FILTER_MODE < 3.5) {
+        float phase_per_line = mod(2.0 * PI * tb.sc_freq_hz * LINE_TIME, 2.0 * PI);
+        float lines_per_180deg = PI / max(phase_per_line, 1e-6);
+        float phase_per_pixel = 2.0 * PI * tb.sc_freq_hz * tb.pixel_time;
+        float fractional_line = fract(lines_per_180deg);
+        float horizontal_pixel_offset = (fractional_line * phase_per_line) / max(phase_per_pixel, 1e-6);
 
-    float phase_1 = compute_carrier_phase(t0 - t_offset_1, tb.sc_freq_hz, tb.field_phase);
-    float phase_2 = compute_carrier_phase(t0 - t_offset_2, tb.sc_freq_hz, tb.field_phase);
-    float phase_3 = compute_carrier_phase(t0 - t_offset_3, tb.sc_freq_hz, tb.field_phase);
-    vec2 carrier_1 = sincos_phase(phase_1);
-    vec2 carrier_2 = sincos_phase(phase_2);
-    vec2 carrier_3 = sincos_phase(phase_3);
+        vec2 comb_dy_1 = vec2(horizontal_pixel_offset * config.OriginalSize.z,
+                              -floor(lines_per_180deg) * config.OriginalSize.w);
+        vec2 comb_dy_2 = vec2(2.0 * horizontal_pixel_offset * config.OriginalSize.z,
+                              -floor(2.0 * lines_per_180deg) * config.OriginalSize.w);
+        vec2 comb_dy_3 = vec2(3.0 * horizontal_pixel_offset * config.OriginalSize.z,
+                              -floor(3.0 * lines_per_180deg) * config.OriginalSize.w);
 
-    vec3 comb_taps_composite0 = vec3(
-        dot(comb_taps_yuv[0], vec3(1.0, carrier_1.x, carrier_1.y)),
-        dot(comb_taps_yuv[1], vec3(1.0, carrier_2.x, carrier_2.y)),
-        dot(comb_taps_yuv[2], vec3(1.0, carrier_3.x, carrier_3.y)));
+        float t_offset_1 = floor(lines_per_180deg) * LINE_TIME 
+                          + horizontal_pixel_offset * tb.pixel_time;
+        float t_offset_2 = floor(2.0 * lines_per_180deg) * LINE_TIME 
+                          + 2.0 * horizontal_pixel_offset * tb.pixel_time;
+        float t_offset_3 = floor(3.0 * lines_per_180deg) * LINE_TIME 
+                          + 3.0 * horizontal_pixel_offset * tb.pixel_time;
 
-    if (COMB_FILTER_TAPS < 2) {
-        color_comb.r = 0.5 * (composite0 + comb_taps_composite0.x);
-        color_comb.g = 0.5 * (composite0 - comb_taps_composite0.x);
-    } else if (COMB_FILTER_TAPS < 3) {
-        color_comb.r = 0.5 * (0.5 * composite0 + comb_taps_composite0.x + 0.5 * comb_taps_composite0.y);
-        color_comb.g = 0.5 * (0.5 * composite0 - comb_taps_composite0.x + 0.5 * comb_taps_composite0.y);
-    } else {
-        color_comb.r = 1.0 / 3.0 * (0.5 * composite0 + comb_taps_composite0.x + comb_taps_composite0.y + 0.5 * comb_taps_composite0.z);
-        color_comb.g = 1.0 / 3.0 * (0.5 * composite0 - comb_taps_composite0.x + comb_taps_composite0.y - 0.5 * comb_taps_composite0.z);
+        // Comb filter taps sampled around the current pixel
+        mat3 comb_taps_yuv = mat3(
+            texture(Source, Tex + comb_dy_1).rgb,
+            texture(Source, Tex + comb_dy_2).rgb,
+            texture(Source, Tex + comb_dy_3).rgb);
+
+        float phase_1 = compute_carrier_phase(t0 - t_offset_1, tb.sc_freq_hz, tb.field_phase);
+        float phase_2 = compute_carrier_phase(t0 - t_offset_2, tb.sc_freq_hz, tb.field_phase);
+        float phase_3 = compute_carrier_phase(t0 - t_offset_3, tb.sc_freq_hz, tb.field_phase);
+        vec2 carrier_1 = sincos_phase(phase_1);
+        vec2 carrier_2 = sincos_phase(phase_2);
+        vec2 carrier_3 = sincos_phase(phase_3);
+
+        vec3 comb_taps_composite0 = vec3(
+            dot(comb_taps_yuv[0], vec3(1.0, carrier_1.x, carrier_1.y)),
+            dot(comb_taps_yuv[1], vec3(1.0, carrier_2.x, carrier_2.y)),
+            dot(comb_taps_yuv[2], vec3(1.0, carrier_3.x, carrier_3.y)));
+
+        if (COMB_FILTER_TAPS < 2) {
+            color_comb.r = 0.5 * (composite0 + comb_taps_composite0.x);
+            color_comb.g = 0.5 * (composite0 - comb_taps_composite0.x);
+        } else if (COMB_FILTER_TAPS < 3) {
+            color_comb.r = 0.5 * (0.5 * composite0 + comb_taps_composite0.x + 0.5 * comb_taps_composite0.y);
+            color_comb.g = 0.5 * (0.5 * composite0 - comb_taps_composite0.x + 0.5 * comb_taps_composite0.y);
+        } else {
+            color_comb.r = 1.0 / 3.0 * (0.5 * composite0 + comb_taps_composite0.x + comb_taps_composite0.y + 0.5 * comb_taps_composite0.z);
+            color_comb.g = 1.0 / 3.0 * (0.5 * composite0 - comb_taps_composite0.x + comb_taps_composite0.y - 0.5 * comb_taps_composite0.z);
+        }
     }
 
     // Select color filter mode
     vec3 color;
     if (COLOR_FILTER_MODE < 0.5) {
-        color = vec3(color_notch, 0.0);
+        // Notch: use band-stop luma and band-pass chroma (now centered at f_sc)
+        color = vec3(y_out, c_bp, 0.0);
     } else if (COLOR_FILTER_MODE < 1.5) {
         color = vec3(color_comb, 0.0);
     } else if (COLOR_FILTER_MODE < 2.5) {
-        color = vec3(mix(color_notch, color_comb, NOTCH_COMB_W), 0.0);
+        // Mix between the notch and comb outputs
+        vec2 mixed = mix(vec2(y_out, c_bp), color_comb, NOTCH_COMB_W);
+        color = vec3(mixed, 0.0);
     } else if (COLOR_FILTER_MODE < 3.5) {
         color = vec3(composite0, composite0, 0.0);
+    }
+
+    // BW monitor modes: route either luma-only or chroma-only to all channels
+    float c_out = color.g;
+    if (BW_MODE < 0.5) {
+        ;
+    } else if (BW_MODE < 1.5) {
+        color = vec3(composite0, 0.0, 0.0);
+    } else if (BW_MODE < 2.5) {
+        color = vec3(y_out, 0.0, 0.0);
+    } else if (BW_MODE < 3.5) {
+        color = vec3(0.0, c_out, 0.0);
+    } else if (BW_MODE < 4.5) {
+        color = vec3(y_out, c_out, 0.0);
     }
 
     FragColor = vec4(color, 1.0);
