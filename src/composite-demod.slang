@@ -39,6 +39,7 @@ layout(push_constant) uniform Push
     float SC_FREQ;
     float H_BLANK_INACTIVE_LEN;
     float H_BLANK_INACTIVE_UNIT;
+    float COLOR_FILTER_MODE;
     float DISPLAY_BANDWIDTH_Y;
     float DISPLAY_BANDWIDTH_C;
     float DISPLAY_CUTOFF_ATTEN_Y;
@@ -74,6 +75,9 @@ layout(push_constant) uniform Push
 #pragma parameter H_BLANK_INACTIVE_UNIT "Horizontal blank inactive unit (0=px, 1=µs, 2=% active)" 0.0 0.0 2.0 1.0
 #define H_BLANK_INACTIVE_UNIT config.H_BLANK_INACTIVE_UNIT
 
+#pragma parameter COLOR_FILTER_MODE "Filter mode (0=Notch,1=Comb,2=Notch+Comb,3=Off)" 0.0 0.0 3.0 1.0
+#define COLOR_FILTER_MODE config.COLOR_FILTER_MODE
+
 #pragma parameter DISPLAY_BANDWIDTH_Y "Display Luma (Y) bandwidth (MHz)" 6.75 0.0 75.0 0.01
 #define DISPLAY_BANDWIDTH_Y config.DISPLAY_BANDWIDTH_Y
 #pragma parameter DISPLAY_BANDWIDTH_C "Display Chroma (C) bandwidth (MHz)" 1.79 0.0 6.75 0.01
@@ -84,7 +88,7 @@ layout(push_constant) uniform Push
 #pragma parameter DISPLAY_CUTOFF_ATTEN_C "Display C cutoff attenuation (dB)" 3.0 0.0 30.0 1.0
 #define DISPLAY_CUTOFF_ATTEN_C config.DISPLAY_CUTOFF_ATTEN_C
 
-#pragma parameter FEEDBACK_FILTER_MODE "Enable feedback filter (0=Off, 1=On)" 0.0 0.0 1.0 1.0
+#pragma parameter FEEDBACK_FILTER_MODE "Feedback filter (0=Off, 1=On)" 0.0 0.0 1.0 1.0
 #define FEEDBACK_FILTER_MODE config.FEEDBACK_FILTER_MODE
 
 #pragma parameter BW_MODE "Monitor mode (0=Off, 1=BW, 2=Y, 3=C, 4=Y+C)" 0 0 4 1
@@ -176,12 +180,6 @@ void main()
     // Center weights for all filter modes
     float w_y0 = gaussian(A.x, sigma.x);
     float w_c0 = gaussian(A.x, sigma.y);
-
-    if (FEEDBACK_FILTER_MODE > 0.5) {
-        float remod = w_c0 * (demod0.g * carrier0.x + demod0.b * carrier0.y);
-
-        demod0.r = composite0 - remod;
-    }
     
     color += vec3(w_y0 * demod0.r, w_c0 * demod0.g, w_c0 * demod0.b);
     wsum += vec3(w_y0, w_c0, w_c0);
@@ -213,12 +211,6 @@ void main()
         demodR.r = compositeR;
         demodR.g = 2.0 * chromaR * carrierR.x;
         demodR.b = 2.0 * chromaR * carrierR.y;
-
-        if (FEEDBACK_FILTER_MODE > 0.5) {
-            float remod = w_c * (demodR.g * carrierR.x + demodR.b * carrierR.y);
-
-            demodR.r = compositeR - remod;
-        }
         
         // Left sample
         float offsetL = (Tex.x - float(n) * dx.x) * config.OriginalSize.x;
@@ -235,12 +227,6 @@ void main()
         demodL.r = compositeL;
         demodL.g = 2.0 * chromaL * carrierL.x;
         demodL.b = 2.0 * chromaL * carrierL.y;
-
-        if (FEEDBACK_FILTER_MODE > 0.5) {
-            float remod = w_c * (demodL.g * carrierL.x + demodL.b * carrierL.y);
-
-            demodL.r = compositeL - remod;
-        }
         
         // Accumulate raw filter
         color.r += w_y * (demodR.r + demodL.r);
@@ -253,6 +239,27 @@ void main()
 
     // Normalize
     color /= max(wsum, vec3(EPS));
+
+    if (FEEDBACK_FILTER_MODE >= 0.5) {
+        float chroma = color.g * carrier0.x + color.b * carrier0.y;
+
+        if (COLOR_FILTER_MODE < 0.5) {
+            // Notch filter
+            color.r = 1.27 * y_out + c_out - chroma;
+        } else if (COLOR_FILTER_MODE < 1.5) {
+            // Comb filter
+            color.r = y_out + c_out - chroma;
+        } else if (COLOR_FILTER_MODE < 2.5) {
+            // Notch + Comb
+            float y_notch = 1.27 * y_out + c_out - chroma;
+            float y_comb = (y_out + c_out) - chroma;
+
+            color.r = 0.5 * (y_notch + y_comb);
+        } else {
+            // No filter; use composite directly
+            color.r = 1.05 * color.r - chroma;
+        }
+    }
 
     if (BW_MODE < 0.5) {
         ;

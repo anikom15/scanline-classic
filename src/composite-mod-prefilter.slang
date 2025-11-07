@@ -23,7 +23,7 @@
 #include "modulation.inc"
 
 #pragma name CompositeMod
-#pragma format R16G16B16A16_SFLOAT
+#pragma format R16G16_SFLOAT
 
 layout(push_constant) uniform Push
 {

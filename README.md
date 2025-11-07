@@ -15,6 +15,50 @@ with no Invariant Sections, no Front-Cover Texts, and no Back-Cover Texts.
 A copy of the license is included in the section entitled "GNU
 Free Documentation License".
 
+## Quick start
+
+If you're new to Scanline Classic, start here. This gets you from zero to a great-looking image in a minute or two.
+
+1) Install
+- Copy this entire folder (all .slangp files plus the `src/` directory) into your RetroArch shaders directory. On Windows, a typical path is:
+  - `C:\Program Files\RetroArch\shaders\shaders_slang\scanline-classic` or your portable RetroArch install's `shaders\shaders_slang` folder.
+
+2) Load a preset
+- In RetroArch: Quick Menu -> Shaders -> Load -> navigate into `scanline-classic` and pick a preset that fits your content/display:
+  - For 240p NTSC consoles (curved): `trinitron-ntsc.slangp`
+  - For 240p NTSC consoles (flat): `flat-ntsc.slangp`
+  - For PAL 288p consoles: `trinitron-pal.slangp` or `flat-pal.slangp`
+  - For PC-style CRTs (480p–1200p): `svga.slangp`, `xga.slangp`, `xga2.slangp`, `sxga.slangp`, or `uga.slangp`
+  - For HDTV scanlines (720p/1080i/1080p): `hdtv.slangp` or `hdtv-projector.slangp`
+  - For monochrome looks: `green-monitor-*.slangp`, `amber-monitor-*.slangp`, or `bw-monitor-*.slangp`
+  - For system-specific signal simulation (composite/S-Video/RF): see `sys-slangp/` presets like `sfc-snes-composite.slangp`, `twinfc-nes.slangp`, etc.
+
+3) Recommended RetroArch video settings
+- Video -> Output:
+  - Use your display’s native resolution and refresh rate
+  - VSync: On
+- Video -> Scaling:
+  - Aspect Ratio: Core provided (or 4:3 for most 240p consoles)
+  - Integer Scale: Off (recommended with geometry/curvature); try On if you prefer pixel-perfect scaling
+  - Bilinear Filtering: Off (let the shader control filtering)
+- After loading a preset, select: Quick Menu -> Shaders -> Apply Changes
+
+4) Tune the look (optional, fast)
+- Quick Menu -> Shaders -> Parameters:
+  - FOCUS: Lower = softer (shadow/slot mask vibe), ~0.5 = Trinitron-like, 1.0 = very sharp (good for mono monitors)
+  - MASK_TYPE: 1.0 disables; try 24.0 on 4K+ displays for a Trinitron-style grille. Avoid masks on dim or <1080p panels.
+  - SCAN_TYPE / MAX_SCAN_RATE / LINE_DOUBLER: choose progressive vs interlaced behavior for your target system
+  - GEOMETRY: DEFLECTION_ANGLE and SCREEN_ANGLE_X/Y control curvature; set to 0 for a flat tube look
+
+5) Save for later
+- Quick Menu -> Shaders -> Save -> Save Game Preset (or Save Core Preset) so it auto-loads next time.
+
+Performance tips
+- Prefer the single-pass `scanline-basic.slangp` (via `basic/` preset) on very low-end GPUs.
+- Parameter cheatsheet: see [doc/PARAMETERS.md](doc/PARAMETERS.md) for common settings and quick guidance.
+- Compile-time analysis: see [doc/performance/COMPILE_TIME.md](doc/performance/COMPILE_TIME.md) for loop caps and optimization rationale.
+- For per-shader parameter impact and quality trade-offs see [`doc/performance/`](doc/performance/).
+
 ## Installation
 
 Simply copy all SLANGP files and the src/ directory to a folder in your
@@ -54,6 +98,12 @@ The following presets are provided:
   highest resolution standard computer monitor CRTs were capable of.
 
 Additional presets are provided for more esoteric use cases.
+
+Presets by folder
+- Root: General-purpose TV/monitor presets (NTSC/PAL, Trinitron/flat, HDTV, multi-scan PC CRTs)
+- `sys-slangp/`: System-centric presets (e.g., SNES composite/S-Video/RF) that set sensible signal parameters for those platforms
+- `tv-slangp/`: Additional TV-style presets, including BW phosphor variants
+- `basic/`: Lightweight presets around `scanline-basic`
 
 The following shaders are provided:
 
