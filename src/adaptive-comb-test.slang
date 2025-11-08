@@ -48,6 +48,8 @@ layout(push_constant) uniform Push
     float NOTCH_WIDTH;
     float BANDPASS_WIDTH;
     float COMB_FILTER_TAPS;
+    float NOTCH_CENTER_ATTEN_DB;
+    float NOTCH_EDGE_ATTEN_DB;
 } config;
 
 #pragma parameter ADAPTIVE_COMB_HEADER " ==== Adaptive Comb Filter Test ==== " 0.0 0.0 0.0 0.0
@@ -106,8 +108,6 @@ layout(std140, set = 0, binding = 0) uniform UBO
     float CHROMA_WEIGHT;
     float GRADIENT_WEIGHT;
     float DEBUG_MODE;
-    float NOTCH_CENTER_ATTEN_DB;
-    float NOTCH_EDGE_ATTEN_DB;
 } global;
 
 #pragma parameter ADAPTIVE_HEADER " === Adaptive Parameters === " 0.0 0.0 0.0 0.0
@@ -267,8 +267,8 @@ void main()
     }
 
     float notch_response = conv_gcos / max(sum_g, EPS);
-    float y_notch = composite0 - alpha * notch_response;
-    float c_notch = 2.0 * c_bp_accum / max(sum_bp, EPS);
+    float y_notch = 0.8 * (composite0 - alpha * notch_response);
+    float c_notch = 1.2 * 2.0 * c_bp_accum / max(sum_bp, EPS);
 
     // === COMB FILTER ===
     float phase_per_line = 2.0 * PI * tb.sc_freq_hz * LINE_TIME;

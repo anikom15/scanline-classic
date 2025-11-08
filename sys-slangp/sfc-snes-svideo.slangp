@@ -4,7 +4,7 @@
 # output available, and official cables were sold in the Japan and
 # America.
 
-shaders = 9
+shaders = 8
 
 shader0 = "../src/sys-rgb-bandlimit.slang"
 filter_linear0 = "false"
@@ -14,53 +14,27 @@ scale_y0 = 1.0
 
 shader1 = "../src/sys-component.slang"
 filter_linear1 = "false"
-scale_type1 = "source"
-scale_x0 = 1.0
-scale_y0 = 1.0
 
 shader2 = "../src/svideo.slang"
 filter_linear2 = "false"
-scale_type1 = "source"
-scale_x0 = 1.0
-scale_y0 = 1.0
 
-shader3 = "../src/display-component.slang"
+shader3 = "../src/display-rgb-bandlimit.slang"
 filter_linear3 = "false"
-scale_type2 = "source"
-scale_x0 = 1.0
-scale_y0 = 1.0
 
-shader4 = "../src/display-rgb-bandlimit.slang"
+shader4 = "../src/phosphor-luma.slang"
 filter_linear4 = "false"
-scale_type4 = "source"
-scale_x0 = 1.0
-scale_y0 = 1.0
 
-shader5 = "../src/phosphor-luma.slang"
+shader5 = "../src/phosphor-chroma.slang"
 filter_linear5 = "false"
-scale_type5 = "source"
-scale_x5 = 1.0
-scale_y5 = 1.0
+alias5 = "PHOSPHOR"
 
-shader6 = "../src/phosphor-chroma.slang"
+shader6 = "../src/scanline-advanced.slang"
 filter_linear6 = "false"
-scale_type6 = "source"
-alias6 = "PHOSPHOR"
-scale_x6 = 1.0
-scale_x6 = 1.0
+scale_type6 = "viewport"
 
-shader7 = "../src/scanline-advanced.slang"
-filter_linear7 = "false"
-scale_type7 = "viewport"
-scale_x7 = 1.0
-scale_y7 = 1.0
-
-shader8 = "../src/bezel.slang"
-filter_linear8 = "true"
-wrap_mode8 = "mirrored_repeat"
-scale_type8 = "viewport"
-scale_x8 = 1.0
-scale_y8 = 1.0
+shader7 = "../src/bezel.slang"
+filter_linear7 = "true"
+wrap_mode7 = "mirrored_repeat"
 
 textures = BORDER
 BORDER = "../share/bezel-trinitron.png"

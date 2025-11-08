@@ -153,7 +153,7 @@
 #include "modulation.inc"
 
 #pragma name SVideo
-#pragma format R16G16B16A16_SFLOAT
+#pragma format R8G8B8A8_UNORM
 
 layout(push_constant) uniform Push
 {
@@ -326,7 +326,7 @@ void main()
         vec3 color;
         if (BW_MODE < 0.5) {
             // Normal path without filtering
-            color = yc0;
+            color = YPbPr_TO_RGB * yc0;
         } else if (BW_MODE < 1.5) {
             // BW mode: Y + C to all channels
             color = vec3(y_out + c_out);
@@ -403,9 +403,11 @@ void main()
     // Normalized outputs
     vec3 color_vec = accum / max(wsum, vec3(EPS));
 
+    // Convert to RGB
     vec3 color;
+
     if (BW_MODE < 0.5) {
-        color = color_vec;
+        color = YPbPr_TO_RGB * color_vec;
     } else if (BW_MODE < 1.5) {
         // BW mode: Y + C to Y channel
         color = vec3(y_out + c_out, 0.0, 0.0);
@@ -422,5 +424,5 @@ void main()
         color.b = c_out;
     }
 
-    FragColor = vec4(color, 1.0);
+    FragColor = vec4(clamp(color, 0.0, 1.0), 1.0);
 }
