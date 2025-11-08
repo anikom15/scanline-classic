@@ -16,135 +16,134 @@
 
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <https://www.gnu.org/licenses/>.
- 
 
-   S-Video (Y/C) demodulation + low-pass reconstruction
 
-   Overview
-   --------
-   This shader simulates an S-Video (Y/C) signal path and reconstructs baseband
-   luma/chroma suitable for downstream display processing. The input texture is
-   interpreted as:
-     - R: Luma (Y)
-     - G: Quadrature chroma component (U-like, 90°)
-     - B: In-phase chroma component (V-like, 0°)
-   These baseband U/V components are modulated against a color subcarrier to
-   form a scalar chroma signal c(t) at the local carrier phase. The shader then
-   demodulates and low-pass filters chroma to reject 2·fSC images and recover
-   U′/V′, while luma is filtered independently with a higher bandwidth.
+    S-Video (Y/C) demodulation + low-pass reconstruction
 
-   Signal model
-   ------------
-   Let ω = 2π·fSC and φ = field_phase. For a given sample time t:
-     c(t) = U·sin(ωt + φ) + V·cos(ωt + φ)
-   We estimate baseband chroma via quadrature demod + low-pass:
-     U_est = 2·LPF{ c(t)·sin(ωt + φ) }
-     V_est = 2·LPF{ c(t)·cos(ωt + φ) }
-   In practice:
-     - Accumulate symmetric Gaussian taps horizontally.
-     - Use σY and σC to control bandwidth and roll-off independently.
-     - The factor 2 recovers correct baseband amplitude after LPF removes
-       double-frequency terms (cos/sin at 2·ω).
+    Overview
+    --------
+    This shader simulates an S-Video (Y/C) signal path and reconstructs baseband
+    luma/chroma suitable for downstream display processing. The input texture is
+    interpreted as:
+      - R: Luma (Y)
+      - G: Quadrature chroma component (U-like, 90°)
+      - B: In-phase chroma component (V-like, 0°)
+    These baseband U/V components are modulated against a color subcarrier to
+    form a scalar chroma signal c(t) at the local carrier phase. The shader then
+    demodulates and low-pass filters chroma to reject 2·fSC images and recover
+    U′/V′, while luma is filtered independently with a higher bandwidth.
 
-   Timebase and subcarrier
-   -----------------------
-   Time per pixel and carrier phase are derived to match composite.slang:
-     - H frequency: H_FREQ_HZ = V_FREQ · V_LINES_PER_FIELD
-     - Inactive (blank) pixels are estimated from H_BLANK_INACTIVE_* and added
-       to the active width to get total_pixels.
-     - Pixel time: pixel_time = LINE_TIME / total_pixels, where LINE_TIME = 1/H_FREQ_HZ
-     - Subcarrier frequency fSC:
-         SC_FREQ_MODE = 0 (Auto): fSC = H_FREQ_HZ · total_pixels / round(H_FREQ_HZ · total_pixels / NTSC_FSC · 100)/100
-         SC_FREQ_MODE = 1 (NTSC): fSC = NTSC_FSC
-         SC_FREQ_MODE = 2 (PAL):  fSC = PAL_FSC
-         SC_FREQ_MODE = 3 (Custom): fSC = SC_FREQ (MHz) · 1e6
-       Auto tries to keep a stable line-to-subcarrier relationship.
-     - Field phase:
-         field_phase = mod(FIELD_TIME · field · 2π·fSC - Δt_odd · 2π·fSC, 2π) - π
-       with FIELD_TIME = 1/V_FREQ and:
-         Δt_odd = ceil(field/2) · odd_time_adjust · SHORTEN_ODD_FIELD_TIME
-       Here odd_time_adjust = (OriginalSize.x / 256) · pixel_time, which approximates
-       the half-line offset behavior at common horizontal sizes.
+    Signal model
+    ------------
+    Let ω = 2π·fSC and φ = field_phase. For a given sample time t:
+      c(t) = U·sin(ωt + φ) + V·cos(ωt + φ)
+    We estimate baseband chroma via quadrature demod + low-pass:
+      U_est = 2·LPF{ c(t)·sin(ωt + φ) }
+      V_est = 2·LPF{ c(t)·cos(ωt + φ) }
+    In practice:
+      - Accumulate symmetric Gaussian taps horizontally.
+      - Use σY and σC to control bandwidth and roll-off independently.
+      - The factor 2 recovers correct baseband amplitude after LPF removes
+        double-frequency terms (cos/sin at 2·ω).
 
-   Demodulation and filtering
-   --------------------------
-   For each horizontal sample:
-     1) Compute per-sample carrier phase using precision-safe accumulation:
+    Timebase and subcarrier
+    -----------------------
+    Time per pixel and carrier phase are derived to match composite.slang:
+      - H frequency: H_FREQ_HZ = V_FREQ · V_LINES_PER_FIELD
+      - Inactive (blank) pixels are estimated from H_BLANK_INACTIVE_* and added
+        to the active width to get total_pixels.
+      - Pixel time: pixel_time = LINE_TIME / total_pixels, where LINE_TIME = 1/H_FREQ_HZ
+      - Subcarrier frequency fSC:
+          SC_FREQ_MODE = 0 (Auto): fSC = H_FREQ_HZ · total_pixels / round(H_FREQ_HZ · total_pixels / NTSC_FSC · 100)/100
+          SC_FREQ_MODE = 1 (NTSC): fSC = NTSC_FSC
+          SC_FREQ_MODE = 2 (PAL):  fSC = PAL_FSC
+          SC_FREQ_MODE = 3 (Custom): fSC = SC_FREQ (MHz) · 1e6
+        Auto tries to keep a stable line-to-subcarrier relationship.
+      - Field phase:
+          field_phase = mod(FIELD_TIME · field · 2π·fSC - Δt_odd · 2π·fSC, 2π) - π
+        with FIELD_TIME = 1/V_FREQ and:
+          Δt_odd = ceil(field/2) · odd_time_adjust · SHORTEN_ODD_FIELD_TIME
+        Here odd_time_adjust = (OriginalSize.x / 256) · pixel_time, which approximates
+        the half-line offset behavior at common horizontal sizes.
+
+    Demodulation and filtering
+    --------------------------
+    For each horizontal sample:
+      1) Compute per-sample carrier phase using precision-safe accumulation:
           phase = 2π · fract(fSC · t) + field_phase
         where t = line · LINE_TIME + x · pixel_time.
-     2) Form local sin/cos with a single paired call:
+      2) Form local sin/cos with a single paired call:
           carrier = (sin(phase), cos(phase))
-     3) Chroma projection:
+      3) Chroma projection:
           chroma = U · carrier.x + V · carrier.y
-     4) Remodulate for quadrature LP extraction (per sample):
+      4) Remodulate for quadrature LP extraction (per sample):
           U′_sample = 2 · chroma · carrier.x
           V′_sample = 2 · chroma · carrier.y
-     5) Accumulate symmetric Gaussian lobes horizontally with σY/σC.
+      5) Accumulate symmetric Gaussian lobes horizontally with σY/σC.
         Early exit once both weights fall below THRESHOLD.
 
-   Output mapping
-   --------------
-   - Normal: R = filtered Y, G = filtered U′, B = filtered V′
-   - BW modes:
-       1: Y-only to all channels
-       2: C-only (scalar chroma) to all channels
-       3: YC split (R=Y, B=C, G=0)
-     The center-sample fast path can be enabled with SVIDEO_FILTER_BYPASS.
+    Output mapping
+    --------------
+    - Normal: R = filtered Y, G = filtered U′, B = filtered V′
+    - BW modes:
+        1: Y-only to all channels
+        2: C-only (scalar chroma) to all channels
+        3: YC split (R=Y, B=C, G=0)
+      The center-sample fast path can be enabled with SVIDEO_FILTER_BYPASS.
 
-   Performance and precision
-   -------------------------
-   - Carrier math is optimized via:
-       • phase = 2π·fract(fSC·t) + field_phase  (keeps phase bounded)
-       • a single “sincos” pair (sincos_phase) per sample
-     This avoids large-argument trig loss and removes repeated mod() calls.
-   - Gaussian accumulation does up to 32 taps per side with early exit. σY/σC
-     and THRESHOLD control cost/quality.
+    Performance and precision
+    -------------------------
+    - Carrier math is optimized via:
+        • phase = 2π·fract(fSC·t) + field_phase  (keeps phase bounded)
+        • a single “sincos” pair (sincos_phase) per sample
+      This avoids large-argument trig loss and removes repeated mod() calls.
+    - Gaussian accumulation does up to 32 taps per side with early exit. σY/σC
+      and THRESHOLD control cost/quality.
 
-   Parameters (UI)
-   ---------------
-   - BYPASS_SVIDEO: Bypass shader
-   - SVIDEO_FILTER_BYPASS: Use center-sample demod (skip Gaussian)
-   - V_FREQ: Vertical frequency (Hz), e.g., 59.94 NTSC, 50 PAL
-   - V_LINES_PER_FIELD: Lines/field, e.g., 262.5 NTSC, 312.5 PAL
-   - SHORTEN_ODD_FIELD_TIME: Enable odd-field timing offset (interlaced behavior)
-   - SC_FREQ_MODE:
-       0 Auto   • derive from H rate and total pixels
-       1 NTSC   • fSC = 3.579545 MHz
-       2 PAL    • fSC = 4.43361875 MHz
-       3 Custom • fSC = SC_FREQ (MHz)
-   - SC_FREQ: Custom fSC in MHz when mode is Custom
-   - H_BLANK_INACTIVE_LEN: Horizontal blank length in selected units
-   - H_BLANK_INACTIVE_UNIT: 0=px, 1=µs, 2=% active width
-   - DISPLAY_BANDWIDTH_Y/C: Display bandwidth (MHz) for Y and C
-   - DISPLAY_CUTOFF_ATTEN_Y/C: Gaussian cutoff attenuation (dB)
-   - BW_MODE: 0=Normal, 1=BW (Y-only), 2=Y, 3=C, 4=Y+C split
+    Parameters (UI)
+    ---------------
+    - BYPASS_SVIDEO: Bypass shader
+    - SVIDEO_FILTER_BYPASS: Use center-sample demod (skip Gaussian)
+    - V_FREQ: Vertical frequency (Hz), e.g., 59.94 NTSC, 50 PAL
+    - V_LINES_PER_FIELD: Lines/field, e.g., 262.5 NTSC, 312.5 PAL
+    - SHORTEN_ODD_FIELD_TIME: Enable odd-field timing offset (interlaced behavior)
+    - SC_FREQ_MODE:
+        0 Auto   • derive from H rate and total pixels
+        1 NTSC   • fSC = 3.579545 MHz
+        2 PAL    • fSC = 4.43361875 MHz
+        3 Custom • fSC = SC_FREQ (MHz)
+    - SC_FREQ: Custom fSC in MHz when mode is Custom
+    - H_BLANK_INACTIVE_LEN: Horizontal blank length in selected units
+    - H_BLANK_INACTIVE_UNIT: 0=px, 1=µs, 2=% active width
+    - DISPLAY_BANDWIDTH_Y/C: Display bandwidth (MHz) for Y and C
+    - DISPLAY_CUTOFF_ATTEN_Y/C: Gaussian cutoff attenuation (dB)
+    - BW_MODE: 0=Normal, 1=BW (Y-only), 2=Y, 3=C, 4=Y+C split
 
-   Implementation notes
-   --------------------
-   - Dependencies:
-       • common.h: PI, EPS, helpers
-       • color.h: NTSC_FSC, PAL_FSC constants
-       • bandlimit.inc: sigma601() for bandwidth→σ mapping
-       • modulation.inc: sincos_phase(), compute_carrier_phase()
-   - Coordinates:
-       • Timing uses OriginalSize.{x,y} for subcarrier derivation and line index,
-         matching composite.slang’s behavior.
-       • Sampling uses OutputSize to locate the current pixel, then converts to Source space.
-   - Threshold:
-       • THRESHOLD = 1/510 controls early exit on both Y/C lobes.
-   - Odd field adjust:
-       • odd_time_adjust = (OriginalSize.x / 256) · pixel_time; scaled to approximate
-         half-line shortening for interlaced fields across common widths.
+    Implementation notes
+    --------------------
+    - Dependencies:
+        • common.h: PI, EPS, helpers
+        • color.h: NTSC_FSC, PAL_FSC constants
+        • bandlimit.inc: sigma601() for bandwidth→σ mapping
+        • modulation.inc: sincos_phase(), compute_carrier_phase()
+    - Coordinates:
+        • Timing uses OriginalSize.{x,y} for subcarrier derivation and line index,
+          matching composite.slang’s behavior.
+        • Sampling uses OutputSize to locate the current pixel, then converts to Source space.
+    - Threshold:
+        • THRESHOLD = 1/510 controls early exit on both Y/C lobes.
+    - Odd field adjust:
+        • odd_time_adjust = (OriginalSize.x / 256) · pixel_time; scaled to approximate
+          half-line shortening for interlaced fields across common widths.
 
-   Tuning tips
-   -----------
-   - NTSC: SC_FREQ_MODE=1, V_FREQ≈59.94, V_LINES_PER_FIELD=262.5
-   - PAL:  SC_FREQ_MODE=2, V_FREQ=50.00, V_LINES_PER_FIELD=312.5
-   - Reduce dot crawl/zipper: Increase DISPLAY_CUTOFF_ATTEN_C or reduce DISPLAY_BANDWIDTH_C
-   - Sharper luma: Increase DISPLAY_BANDWIDTH_Y, balance with C to avoid color bleeding
-   - If phase jitter appears over long runs, ensure V/H/blanking reflect the source
-     so Auto fSC aligns well; otherwise pick NTSC/PAL mode explicitly.
-
+    Tuning tips
+    -----------
+    - NTSC: SC_FREQ_MODE=1, V_FREQ≈59.94, V_LINES_PER_FIELD=262.5
+    - PAL:  SC_FREQ_MODE=2, V_FREQ=50.00, V_LINES_PER_FIELD=312.5
+    - Reduce dot crawl/zipper: Increase DISPLAY_CUTOFF_ATTEN_C or reduce DISPLAY_BANDWIDTH_C
+    - Sharper luma: Increase DISPLAY_BANDWIDTH_Y, balance with C to avoid color bleeding
+    - If phase jitter appears over long runs, ensure V/H/blanking reflect the source
+      so Auto fSC aligns well; otherwise pick NTSC/PAL mode explicitly.
 */
 
 #include "common.h"
@@ -268,18 +267,18 @@ void main()
     }
 
     // Use consolidated timebase helper
-  TimebaseConfig tb = compute_timebase(
-    float(config.FrameCount),
-    vTexCoord,
-    config.OriginalSize.xy,
-    config.OutputSize.x,
-    V_FREQ,
-    V_LINES_PER_FIELD,
-    SHORTEN_ODD_FIELD_TIME,
-    SC_FREQ_MODE,
-    SC_FREQ,
-    H_BLANK_INACTIVE_LEN,
-    H_BLANK_INACTIVE_UNIT);
+    TimebaseConfig tb = compute_timebase(
+        float(config.FrameCount),
+        vTexCoord,
+        config.OriginalSize.xy,
+        config.OutputSize.x,
+        V_FREQ,
+        V_LINES_PER_FIELD,
+        SHORTEN_ODD_FIELD_TIME,
+        SC_FREQ_MODE,
+        SC_FREQ,
+        H_BLANK_INACTIVE_LEN,
+        H_BLANK_INACTIVE_UNIT);
 
     // Per-component sigmas (Y, C, C)
     vec3 sigma;
@@ -289,20 +288,20 @@ void main()
 
     const float THRESHOLD = 1.0 / 510.0;
 
-  // Horizontal coordinate handling: shift X to edge, keep Y center
-  vec2 UV  = vTexCoord * config.OutputSize.xy;
-  float UX = UV.x - 0.5;
-  float Ax = fract(UX);
-  vec2 Tex = vec2((floor(UX) + 0.5) * config.OutputSize.z,
-          (floor(UV.y) + 0.5) * config.OutputSize.w);
-  vec2 dx  = vec2(config.OutputSize.z, 0.0);
+    // Horizontal coordinate handling: shift X to edge, keep Y center
+    vec2 UV  = vTexCoord * config.OutputSize.xy;
+    float UX = UV.x - 0.5;
+    float Ax = fract(UX);
+    vec2 Tex = vec2((floor(UX) + 0.5) * config.OutputSize.z,
+        (floor(UV.y) + 0.5) * config.OutputSize.w);
+    vec2 dx  = vec2(config.OutputSize.z, 0.0);
 
     // Accumulators: vector (normal path) + scalar luma/chroma for BW modes
     vec3 accum = vec3(0.0);
     vec3 wsum  = vec3(0.0);
 
     // Center sample
-    float offset0 = Tex.x * config.SourceSize.x;
+    float offset0 = Tex.x * config.OriginalSize.x;
     float t0 = tb.line * LINE_TIME + offset0 * tb.pixel_time;
 
     float y_gain = 2.0 * USER_PICTURE;
@@ -350,8 +349,8 @@ void main()
         return;
     }
 
-  float wy0 = gaussian(Ax, sigma.x);
-  float wc0 = gaussian(Ax, sigma.y); // sigma.y == sigma.z for chroma
+    float wy0 = gaussian(Ax, sigma.x);
+    float wc0 = gaussian(Ax, sigma.y); // sigma.y == sigma.z for chroma
 
     accum += vec3(wy0 * yc0.r, wc0 * yc0.g, wc0 * yc0.b);
     wsum  += vec3(wy0, wc0, wc0);
@@ -359,46 +358,46 @@ void main()
     // Symmetric lobes
     // Limited to 32 iterations for faster shader compilation
     // Gaussian weights fall off rapidly, so early exit handles quality
-  for (int n = 1; n <= 32; ++n) {
-    float nf = float(n);
-    float wy_r = gaussian(nf + Ax, sigma.x);
-    float wy_l = gaussian(nf - Ax, sigma.x);
-    float wc_r = gaussian(nf + Ax, sigma.y);
-    float wc_l = gaussian(nf - Ax, sigma.y);
-    if (wy_r < THRESHOLD && wy_l < THRESHOLD && wc_r < THRESHOLD && wc_l < THRESHOLD)
-      break;
+    for (int n = 1; n <= 32; ++n) {
+        float nf = float(n);
+        float wy_r = gaussian(nf + Ax, sigma.x);
+        float wy_l = gaussian(nf - Ax, sigma.x);
+        float wc_r = gaussian(nf + Ax, sigma.y);
+        float wc_l = gaussian(nf - Ax, sigma.y);
+        if (wy_r < THRESHOLD && wy_l < THRESHOLD && wc_r < THRESHOLD && wc_l < THRESHOLD)
+            break;
 
-    float offsetR = (Tex.x + nf * dx.x) * config.SourceSize.x;
-    float tR = tb.line * LINE_TIME + offsetR * tb.pixel_time;
-    vec3 pixelR = texture(Source, Tex + nf * dx).rgb;
-    float phaseR = compute_carrier_phase(tR, tb.sc_freq_hz, tb.field_phase);
-    vec2 carrierR = sincos_phase(phaseR);
-    vec2 carrierR_user = sincos_phase(phaseR + c_phase);
-    float chromaR = pixelR.g * carrierR.x + pixelR.b * carrierR.y;
-    vec3 ycR;
-    ycR.r = y_gain * pixelR.r + y_bias;
-    ycR.g = c_gain * chromaR * 2.0 * carrierR_user.x;
-    ycR.b = c_gain * chromaR * 2.0 * carrierR_user.y;
+        float offsetR = (Tex.x + nf * dx.x) * config.OriginalSize.x;
+        float tR = tb.line * LINE_TIME + offsetR * tb.pixel_time;
+        vec3 pixelR = texture(Source, Tex + nf * dx).rgb;
+        float phaseR = compute_carrier_phase(tR, tb.sc_freq_hz, tb.field_phase);
+        vec2 carrierR = sincos_phase(phaseR);
+        vec2 carrierR_user = sincos_phase(phaseR + c_phase);
+        float chromaR = pixelR.g * carrierR.x + pixelR.b * carrierR.y;
+        vec3 ycR;
+        ycR.r = y_gain * pixelR.r + y_bias;
+        ycR.g = c_gain * chromaR * 2.0 * carrierR_user.x;
+        ycR.b = c_gain * chromaR * 2.0 * carrierR_user.y;
 
-    float offsetL = (Tex.x - nf * dx.x) * config.SourceSize.x;
-    float tL = tb.line * LINE_TIME + offsetL * tb.pixel_time;
-    vec3 pixelL = texture(Source, Tex - nf * dx).rgb;
-    float phaseL = compute_carrier_phase(tL, tb.sc_freq_hz, tb.field_phase);
-    vec2 carrierL = sincos_phase(phaseL);
-    vec2 carrierL_user = sincos_phase(phaseL + c_phase);
-    float chromaL = pixelL.g * carrierL.x + pixelL.b * carrierL.y;
-    vec3 ycL;
-    ycL.r = y_gain * pixelL.r + y_bias;
-    ycL.g = c_gain * chromaL * 2.0 * carrierL_user.x;
-    ycL.b = c_gain * chromaL * 2.0 * carrierL_user.y;
+        float offsetL = (Tex.x - nf * dx.x) * config.OriginalSize.x;
+        float tL = tb.line * LINE_TIME + offsetL * tb.pixel_time;
+        vec3 pixelL = texture(Source, Tex - nf * dx).rgb;
+        float phaseL = compute_carrier_phase(tL, tb.sc_freq_hz, tb.field_phase);
+        vec2 carrierL = sincos_phase(phaseL);
+        vec2 carrierL_user = sincos_phase(phaseL + c_phase);
+        float chromaL = pixelL.g * carrierL.x + pixelL.b * carrierL.y;
+        vec3 ycL;
+        ycL.r = y_gain * pixelL.r + y_bias;
+        ycL.g = c_gain * chromaL * 2.0 * carrierL_user.x;
+        ycL.b = c_gain * chromaL * 2.0 * carrierL_user.y;
 
-    accum.x += wy_r * ycR.x + wy_l * ycL.x;
-    accum.y += wc_r * ycR.y + wc_l * ycL.y;
-    accum.z += wc_r * ycR.z + wc_l * ycL.z;
-    wsum.x  += wy_r + wy_l;
-    wsum.y  += wc_r + wc_l;
-    wsum.z  += wc_r + wc_l;
-  }
+        accum.x += wy_r * ycR.x + wy_l * ycL.x;
+        accum.y += wc_r * ycR.y + wc_l * ycL.y;
+        accum.z += wc_r * ycR.z + wc_l * ycL.z;
+        wsum.x  += wy_r + wy_l;
+        wsum.y  += wc_r + wc_l;
+        wsum.z  += wc_r + wc_l;
+    }
 
     // Normalized outputs
     vec3 color_vec = accum / max(wsum, vec3(EPS));
@@ -410,18 +409,16 @@ void main()
         color = YPbPr_TO_RGB * color_vec;
     } else if (BW_MODE < 1.5) {
         // BW mode: Y + C to Y channel
-        color = vec3(y_out + c_out, 0.0, 0.0);
+        color = vec3(y_out + c_out);
     } else if (BW_MODE < 2.5) {
         // Y mode
-        color = vec3(y_out, 0.0, 0.0);
+        color = vec3(y_out);
     } else if (BW_MODE < 3.5) {
         // C mode
-        color = vec3(c_out, 0.0, 0.0);
+        color = vec3(c_out);
     } else {
         // YC mode
-        color.r = y_out;
-        color.g = 0.0;
-        color.b = c_out;
+        color = vec3(y_out, c_out, c_out);
     }
 
     FragColor = vec4(clamp(color, 0.0, 1.0), 1.0);

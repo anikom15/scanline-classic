@@ -269,7 +269,7 @@ void main()
     } else if (BW_MODE < 3.5) {
         color = vec3(c_out);
     } else {
-        color = vec3(c_out, y_out, c_out);
+        color = vec3(y_out, c_out, c_out);
     }
 
     FragColor = vec4(clamp(color, 0.0, 1.0), 1.0);
