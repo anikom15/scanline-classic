@@ -23,7 +23,7 @@
 #include "modulation.inc"
 
 #pragma name CompositeDemod
-#pragma format R16G16B16A16_SFLOAT
+#pragma format R8G8B8A8_UNORM
 
 layout(push_constant) uniform Push
 {
@@ -78,14 +78,14 @@ layout(push_constant) uniform Push
 #pragma parameter COLOR_FILTER_MODE "Filter mode (0=Notch,1=Comb,2=Notch+Comb,3=Off)" 0.0 0.0 3.0 1.0
 #define COLOR_FILTER_MODE config.COLOR_FILTER_MODE
 
-#pragma parameter DISPLAY_BANDWIDTH_Y "Display Luma (Y) bandwidth (MHz)" 6.75 0.0 75.0 0.01
+#pragma parameter DISPLAY_BANDWIDTH_Y "Display Luma (Y) bandwidth (MHz)" 5.4 0.0 75.0 0.01
 #define DISPLAY_BANDWIDTH_Y config.DISPLAY_BANDWIDTH_Y
-#pragma parameter DISPLAY_BANDWIDTH_C "Display Chroma (C) bandwidth (MHz)" 1.79 0.0 6.75 0.01
+#pragma parameter DISPLAY_BANDWIDTH_C "Display Chroma (C) bandwidth (MHz)" 2.7 0.0 15.0 0.01
 #define DISPLAY_BANDWIDTH_C config.DISPLAY_BANDWIDTH_C
 
-#pragma parameter DISPLAY_CUTOFF_ATTEN_Y "Display Y cutoff attenuation (dB)" 3.0 0.0 30.0 1.0
+#pragma parameter DISPLAY_CUTOFF_ATTEN_Y "Display Y cutoff attenuation (dB)" 12.5 0.0 30.0 1.0
 #define DISPLAY_CUTOFF_ATTEN_Y config.DISPLAY_CUTOFF_ATTEN_Y
-#pragma parameter DISPLAY_CUTOFF_ATTEN_C "Display C cutoff attenuation (dB)" 3.0 0.0 30.0 1.0
+#pragma parameter DISPLAY_CUTOFF_ATTEN_C "Display C cutoff attenuation (dB)" 12.5 0.0 30.0 1.0
 #define DISPLAY_CUTOFF_ATTEN_C config.DISPLAY_CUTOFF_ATTEN_C
 
 #pragma parameter FEEDBACK_FILTER_MODE "Feedback filter (0=Off, 1=On)" 0.0 0.0 1.0 1.0
@@ -262,7 +262,7 @@ void main()
     }
 
     if (BW_MODE < 0.5) {
-        ;
+        color = YPbPr_TO_RGB * color;
     } else if (BW_MODE < 1.5) {
         color = vec3(y_out + c_out, 0.0, 0.0);
     } else if (BW_MODE < 2.5) {
@@ -273,5 +273,5 @@ void main()
         color = vec3(y_out, 0.0, c_out);
     }
 
-    FragColor = vec4(color, 1.0);
+    FragColor = vec4(clamp(color, 0.0, 1.0), 1.0);
 }

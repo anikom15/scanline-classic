@@ -3,7 +3,7 @@
 # For all NTSC models; Cables bundled with the console (along with an RF
 # box in North America)
 
-shaders = 10
+shaders = 9
 
 shader0 = "../src/sys-rgb-bandlimit.slang"
 filter_linear0 = "false"
@@ -20,26 +20,23 @@ filter_linear2 = "false"
 shader3 = "../src/composite-demod.slang"
 filter_linear3 = "false"
 
-shader4 = "../src/display-component.slang"
+shader4 = "../src/display-rgb-bandlimit.slang"
 filter_linear4 = "false"
 
-shader5 = "../src/display-rgb-bandlimit.slang"
+shader5 = "../src/phosphor-luma.slang"
 filter_linear5 = "false"
 
-shader6 = "../src/phosphor-luma.slang"
+shader6 = "../src/phosphor-chroma.slang"
 filter_linear6 = "false"
+alias6 = "PHOSPHOR"
 
-shader7 = "../src/phosphor-chroma.slang"
+shader7 = "../src/scanline-advanced.slang"
 filter_linear7 = "false"
-alias7 = "PHOSPHOR"
+scale_type7 = "viewport"
 
-shader8 = "../src/scanline-advanced.slang"
-filter_linear8 = "false"
-scale_type8 = "viewport"
-
-shader9 = "../src/bezel.slang"
-filter_linear9 = "true"
-wrap_mode9 = "mirrored_repeat"
+shader8 = "../src/bezel.slang"
+filter_linear8 = "true"
+wrap_mode8 = "mirrored_repeat"
 
 textures = BORDER
 BORDER = "../share/bezel-trinitron.png"
@@ -61,9 +58,6 @@ V_LINES_PER_FIELD = 262
 SC_FREQ_MODE = 0
 H_BLANK_INACTIVE_LEN = 170
 SHORTEN_ODD_FIELD_TIME = 1
-
-# display-component parameters
-DISPLAY_COMPONENT_FILTER_BYPASS = 1
 
 # phosphor parameters
 PHOSPHORESCENSE_A = "3.0"

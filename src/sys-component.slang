@@ -20,6 +20,7 @@
 #include "common.h"
 #include "color.h"
 #include "bandlimit.inc"
+#include "modulation.inc"
 
 #pragma name SysComponent
 #pragma format R16G16B16A16_SFLOAT
@@ -30,6 +31,15 @@ layout(push_constant) uniform Push
     vec4 OriginalSize;
     vec4 OutputSize;
     uint FrameCount;
+
+    // Timing parameters for timebase computation
+    float V_FREQ;
+    float V_LINES_PER_FIELD;
+    float SHORTEN_ODD_FIELD_TIME;
+    float SC_FREQ_MODE;
+    float SC_FREQ;
+    float H_BLANK_INACTIVE_LEN;
+    float H_BLANK_INACTIVE_UNIT;
 
     // Bypasses
     float SYS_COMPONENT_BYPASS;        // 0 or 1
@@ -50,9 +60,6 @@ layout(push_constant) uniform Push
     float SYS_GAIN_Y;
     float SYS_GAIN_U;
     float SYS_GAIN_V;
-    float SYS_BIAS_Y;
-    float SYS_BIAS_U;
-    float SYS_BIAS_V;
 } config;
 
 // UI parameters
@@ -62,13 +69,13 @@ layout(push_constant) uniform Push
 
 #pragma parameter YC_MODEL "YC color model (0=YIQ,1=YPbPr,2=YUV,3=YDbDr,4=YCbCr)" 1.0 0.0 4.0 1.0
 
-#pragma parameter SYS_BANDWIDTH_Y "System Luma (Y) bandwidth (MHz)" 6.75 0.0 75.0 0.01
-#pragma parameter SYS_BANDWIDTH_U "System Chroma (U) bandwidth (MHz)" 1.30 0.0 15.0 0.01
-#pragma parameter SYS_BANDWIDTH_V "System Chroma (V) bandwidth (MHz)" 1.30 0.0 15.0 0.01
+#pragma parameter SYS_BANDWIDTH_Y "System Luma (Y) bandwidth (MHz)" 5.4 0.0 75.0 0.01
+#pragma parameter SYS_BANDWIDTH_U "System Chroma (U) bandwidth (MHz)" 3.6 0.0 15.0 0.01
+#pragma parameter SYS_BANDWIDTH_V "System Chroma (V) bandwidth (MHz)" 3.6 0.0 15.0 0.01
 
-#pragma parameter SYS_CUTOFF_ATTEN_Y "System Y cutoff attenuation (dB)" 3.0 0.0 30.0 1.0
-#pragma parameter SYS_CUTOFF_ATTEN_U "System U cutoff attenuation (dB)" 2.0 0.0 30.0 1.0
-#pragma parameter SYS_CUTOFF_ATTEN_V "System V cutoff attenuation (dB)" 2.0 0.0 30.0 1.0
+#pragma parameter SYS_CUTOFF_ATTEN_Y "System Y cutoff attenuation (dB)" 12.5 0.0 30.0 1.0
+#pragma parameter SYS_CUTOFF_ATTEN_U "System U cutoff attenuation (dB)" 20.0 0.0 30.0 1.0
+#pragma parameter SYS_CUTOFF_ATTEN_V "System V cutoff attenuation (dB)" 20.0 0.0 30.0 1.0
 
 #pragma parameter SYS_GAIN_Y "System Gain Y" 1.0 0.0 10.0 0.01
 #pragma parameter SYS_GAIN_U "System Gain U" 1.0 0.0 10.0 0.01
@@ -77,6 +84,23 @@ layout(push_constant) uniform Push
 #pragma parameter SYS_BIAS_Y "System Bias Y" 0.0 -1.0 1.0 0.001
 #pragma parameter SYS_BIAS_U "System Bias U" 0.0 -1.0 1.0 0.001
 #pragma parameter SYS_BIAS_V "System Bias V" 0.0 -1.0 1.0 0.001
+
+// Timing UI parameters
+#pragma parameter V_FREQ "Vertical frequency (Hz)" 59.94 1.0 240.0 0.01
+#define V_FREQ config.V_FREQ
+#pragma parameter V_LINES_PER_FIELD "Video lines per field" 262.5 0.0 540.0 0.5
+#define V_LINES_PER_FIELD config.V_LINES_PER_FIELD
+#pragma parameter SHORTEN_ODD_FIELD_TIME "Shorten odd field time (0=Off, 1=On)" 0.0 0.0 1.0 1.0
+#define SHORTEN_ODD_FIELD_TIME config.SHORTEN_ODD_FIELD_TIME
+#pragma parameter SC_FREQ_MODE "Subcarrier frequency mode (0=Auto, 1=NTSC, 2=PAL, 3=Custom)" 1.0 0.0 3.0 1.0
+#define SC_FREQ_MODE config.SC_FREQ_MODE
+#pragma parameter SC_FREQ "Custom subcarrier frequency (MHz)" 3.579545 0.0 10.0 0.000001
+#define SC_FREQ config.SC_FREQ
+#define H_FREQ_HZ (V_FREQ * V_LINES_PER_FIELD)
+#pragma parameter H_BLANK_INACTIVE_LEN "Horizontal blank inactive length" 138.0 0.0 1000.0 0.1
+#define H_BLANK_INACTIVE_LEN config.H_BLANK_INACTIVE_LEN
+#pragma parameter H_BLANK_INACTIVE_UNIT "Horizontal blank inactive unit (0=px, 1=µs, 2=% active)" 0.0 0.0 2.0 1.0
+#define H_BLANK_INACTIVE_UNIT config.H_BLANK_INACTIVE_UNIT
 
 // Short-hand macros
 #define SYS_COMPONENT_BYPASS        config.SYS_COMPONENT_BYPASS
@@ -94,14 +118,18 @@ layout(push_constant) uniform Push
 #define G_Y config.SYS_GAIN_Y
 #define G_U config.SYS_GAIN_U
 #define G_V config.SYS_GAIN_V
-#define B_Y config.SYS_BIAS_Y
-#define B_U config.SYS_BIAS_U
-#define B_V config.SYS_BIAS_V
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
     mat4 MVP;
+    float SYS_BIAS_Y;
+    float SYS_BIAS_U;
+    float SYS_BIAS_V;
 } global;
+
+#define B_Y global.SYS_BIAS_Y
+#define B_U global.SYS_BIAS_U
+#define B_V global.SYS_BIAS_V
 
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
@@ -161,10 +189,23 @@ void main()
 
     // Precompute per-component sigmas (in texels) from MHz/dB specs.
     // We reuse the vec3 return as (Y, U/Db, V/Dr).
-    vec3 sigma = sigma601(
-        vec3(BW_Y, BW_U, BW_V),
-        vec3(ATN_Y, ATN_U, ATN_V),
-        config.OutputSize.x);
+    TimebaseConfig tb = compute_timebase(
+        float(config.FrameCount),
+        vTexCoord,
+        config.OriginalSize.x,
+        config.OutputSize.x,
+        V_FREQ,
+        V_LINES_PER_FIELD,
+        SHORTEN_ODD_FIELD_TIME,
+        SC_FREQ_MODE,
+        SC_FREQ,
+        H_BLANK_INACTIVE_LEN,
+        H_BLANK_INACTIVE_UNIT
+    );
+    vec3 sigma;
+    sigma.x = sigma_tb(tb, BW_Y, ATN_Y);
+    sigma.y = sigma_tb(tb, BW_U, ATN_U);
+    sigma.z = sigma_tb(tb, BW_V, ATN_V);
 
     // Horizontal Gaussian convolution in the chosen luma-chroma space.
     // Follows a lobe technique similar to bandlimit_convolve_gaussian_x,

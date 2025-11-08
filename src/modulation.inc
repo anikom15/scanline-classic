@@ -45,14 +45,22 @@ struct TimebaseConfig {
     float field_phase;
     float sc_freq_hz;
     float pixel_time;
+    // Time per output pixel in seconds (cycles-per-pixel scale):
+    // Derived internally: pixel_time_px = pixel_time * (original_width / output_width).
+    float pixel_time_px;
 };
 
 // Compute complete timebase configuration for composite/S-Video processing
-// This consolidates the timing calculations used across multiple shaders
+// Refactored: now accepts original_width (active horizontal samples) instead of vec2 original_size.
+// Assumptions:
+//   - Vertical line index derived from v_lines_per_field (includes blanking as needed).
+//   - tex_coord.y ∈ [0,1] spans the field; floor(tex_coord.y * v_lines_per_field) gives line number.
+// If you need active-only line indexing, reintroduce an original_height parameter or scale.
 TimebaseConfig compute_timebase(
     float frame_count,
     vec2 tex_coord,
-    vec2 original_size,
+    float original_width,       // was original_size.x
+    float output_width,         // OutputSize.x
     float v_freq,
     float v_lines_per_field,
     float shorten_odd_field_time,
@@ -62,30 +70,30 @@ TimebaseConfig compute_timebase(
     float h_blank_inactive_unit)
 {
     TimebaseConfig config;
-    
-    // Field and line computation
+
+    // Field number cycling (retain existing modulus behavior)
     config.field = float(uint(frame_count) % 12u);
-    config.line = floor(tex_coord.y * original_size.y);
-    
+
+    // Line index derived from total lines-per-field (includes blanking region)
+    config.line = floor(tex_coord.y * v_lines_per_field);
+
     // Horizontal timing
     float h_freq_hz = v_freq * v_lines_per_field;
     float line_time = 1.0 / h_freq_hz;
-    
-    // Calculate inactive pixels based on unit
+
+    // Inactive (blank) pixel span computation (horizontal)
     float inactive_pixels;
     if (h_blank_inactive_unit < 0.5)
         inactive_pixels = h_blank_inactive_len;
     else if (h_blank_inactive_unit < 1.5)
-        inactive_pixels = h_blank_inactive_len * 1.0e-6
-            * h_freq_hz * original_size.x;
+        inactive_pixels = h_blank_inactive_len * 1.0e-6 * h_freq_hz * original_width;
     else
-        inactive_pixels = h_blank_inactive_len / 100.0
-            * original_size.x;
-    
-    float total_pixels = original_size.x + inactive_pixels;
+        inactive_pixels = h_blank_inactive_len / 100.0 * original_width;
+
+    float total_pixels = original_width + inactive_pixels;
     config.pixel_time = line_time / total_pixels;
-    
-    // Subcarrier frequency derivation
+
+    // Subcarrier frequency derivation (preserves previous rounding scheme)
     float subcarrier_div = round(h_freq_hz * total_pixels / NTSC_FSC * 100.0) / 100.0;
     if (sc_freq_mode < 0.5)
         config.sc_freq_hz = h_freq_hz * total_pixels / subcarrier_div;
@@ -95,15 +103,57 @@ TimebaseConfig compute_timebase(
         config.sc_freq_hz = PAL_FSC;
     else
         config.sc_freq_hz = sc_freq_custom_mhz * 1.0e6;
-    
-    // Field phase computation with odd-field timing adjustment
+
+    // Field phase (odd-field timing tweak retained)
     float field_time = 1.0 / v_freq;
     config.field_phase = field_time * config.field * 2.0 * PI * config.sc_freq_hz;
-    
-    float odd_time_adjust = original_size.x / 256.0 * config.pixel_time;
-    config.field_phase -= ceil(config.field / 2.0) * odd_time_adjust 
+
+    float odd_time_adjust = original_width / 256.0 * config.pixel_time;
+    config.field_phase -= ceil(config.field / 2.0) * odd_time_adjust
         * shorten_odd_field_time * 2.0 * PI * config.sc_freq_hz;
     config.field_phase = mod(config.field_phase, 2.0 * PI) - PI;
-    
+
+    // Per-output-pixel time (cycles-per-pixel scaling)
+    if (output_width > 0.0)
+        config.pixel_time_px = config.pixel_time * (original_width / output_width);
+    else
+        config.pixel_time_px = 0.0;
+
     return config;
+}
+
+// Compute Gaussian low-pass sigma (in texels) from timebase and cutoff spec.
+// Inputs:
+//   tb                 - TimebaseConfig with pixel_time_px set
+//   cutoff_freq_mhz    - Desired cutoff frequency in MHz (analog domain)
+//   cutoff_atten_db    - Target attenuation at cutoff in dB (e.g., 3 dB)
+// Derivation:
+//   Time-domain Gaussian kernel: w(x) = exp(-x²/(2σ²))
+//   Frequency response magnitude:  |H(f)| = exp(-2π²σ²f²)
+//   Design constraint: |H(f_c)| = a = 10^(-A/20), where A = cutoff_atten_db
+//   Solving for σ:
+//     a = exp(-2π²σ²f_c²)
+//     ln a = -2π²σ²f_c²
+//     σ² = -ln a / (2π²f_c²)
+//     σ = sqrt(-ln a) / (√2 π f_c) = sqrt(-2 ln a) / (2π f_c)
+//   Equivalent forms:
+//     Original:   σ = sqrt(-2 ln(10^(-A/20))) / (2π f_c)
+//     Simplified: σ = sqrt((A/10) ln 10) / (2π f_c)
+//   where f_c is in cycles per pixel: f_c = cutoff_freq_hz * pixel_time_px
+float sigma_tb(TimebaseConfig tb, float cutoff_freq_mhz, float cutoff_atten_db)
+{
+    // Convert cutoff to cycles-per-pixel
+    float f_c_px = cutoff_freq_mhz * 1.0e6 * tb.pixel_time_px;
+
+    // Guard: require positive frequency scale and attenuation
+    if (f_c_px <= 0.0 || cutoff_atten_db <= 0.0)
+        return 0.0;
+
+    // Simplified stable form avoids pow/log on tiny values
+    const float LN10 = 2.3025850929940459; // ln(10) high-precision constant
+    float factor = (cutoff_atten_db * LN10) * 0.1; // (A/10)·ln(10) = -2·ln(a)
+
+    // σ in texels
+    float sigma = sqrt(factor) / (2.0 * PI * f_c_px);
+    return sigma;
 }

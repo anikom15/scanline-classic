@@ -18,8 +18,9 @@
    along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
 #include "common.h"
-#include "filter.h"
+#include "color.h"
 #include "bandlimit.inc"
+#include "modulation.inc"
 
 #pragma name DisplayRGBBandlimit
 #pragma format R16G16B16A16_SFLOAT
@@ -30,6 +31,13 @@ layout(push_constant) uniform Push
     vec4 OriginalSize;
     vec4 OutputSize;
     uint FrameCount;
+    float V_FREQ;
+    float V_LINES_PER_FIELD;
+    float SHORTEN_ODD_FIELD_TIME;
+    float SC_FREQ_MODE;
+    float SC_FREQ;
+    float H_BLANK_INACTIVE_LEN;
+    float H_BLANK_INACTIVE_UNIT;
     float DISPLAY_RGB_BANDLIMIT_BYPASS;
     float DISPLAY_BANDLIMIT_R;
     float DISPLAY_BANDLIMIT_G;
@@ -42,7 +50,6 @@ layout(push_constant) uniform Push
     float DISPLAY_GAIN_B;
     float DISPLAY_BIAS_R;
     float DISPLAY_BIAS_G;
-    float DISPLAY_BIAS_B;
 } config;
 
 #pragma parameter DISPLAY_RGB_BANDLIMIT_HEADER " ==== Display RGB Bandlimit Parameters ==== " 0.0 0.0 0.0 0.0
@@ -50,18 +57,40 @@ layout(push_constant) uniform Push
 #pragma parameter DISPLAY_RGB_BANDLIMIT_BYPASS "Display RGB bandlimit bypass" 0.0 0.0 1.0 1.0
 #define DISPLAY_RGB_BANDLIMIT_BYPASS config.DISPLAY_RGB_BANDLIMIT_BYPASS
 
-#pragma parameter DISPLAY_BANDLIMIT_R "Display bandwidth R (MHz)" 6.75 0.0 75.0 0.01
+#pragma parameter V_FREQ "Vertical frequency (Hz)" 59.94 1.0 240.0 0.01
+#define V_FREQ config.V_FREQ
+
+#pragma parameter V_LINES_PER_FIELD "Video lines per field" 262.5 0.0 540.0 0.5
+#define V_LINES_PER_FIELD config.V_LINES_PER_FIELD
+
+#pragma parameter SHORTEN_ODD_FIELD_TIME "Shorten odd field time (0=Off, 1=On)" 0.0 0.0 1.0 1.0
+#define SHORTEN_ODD_FIELD_TIME config.SHORTEN_ODD_FIELD_TIME
+
+#pragma parameter SC_FREQ_MODE "Subcarrier frequency mode (0=Auto, 1=NTSC, 2=PAL, 3=Custom)" 1.0 0.0 3.0 1.0
+#define SC_FREQ_MODE config.SC_FREQ_MODE
+
+#pragma parameter SC_FREQ "Custom subcarrier frequency (MHz)" 3.579545 0.0 10.0 0.000001
+#define SC_FREQ config.SC_FREQ
+
+#define H_FREQ_HZ (V_FREQ * V_LINES_PER_FIELD)
+
+#pragma parameter H_BLANK_INACTIVE_LEN "Horizontal blank inactive length" 138.0 0.0 1000.0 0.1
+#define H_BLANK_INACTIVE_LEN config.H_BLANK_INACTIVE_LEN
+#pragma parameter H_BLANK_INACTIVE_UNIT "Horizontal blank inactive unit (0=px, 1=µs, 2=% active)" 0.0 0.0 2.0 1.0
+#define H_BLANK_INACTIVE_UNIT config.H_BLANK_INACTIVE_UNIT
+
+#pragma parameter DISPLAY_BANDLIMIT_R "Display bandwidth R (MHz)" 5.4 0.0 75.0 0.01
 #define DISPLAY_BANDLIMIT_R config.DISPLAY_BANDLIMIT_R
-#pragma parameter DISPLAY_BANDLIMIT_G "Display bandwidth G (MHz)" 6.75 0.0 75.0 0.01
+#pragma parameter DISPLAY_BANDLIMIT_G "Display bandwidth G (MHz)" 5.4 0.0 75.0 0.01
 #define DISPLAY_BANDLIMIT_G config.DISPLAY_BANDLIMIT_G
-#pragma parameter DISPLAY_BANDLIMIT_B "Display bandwidth B (MHz)" 6.75 0.0 75.0 0.01
+#pragma parameter DISPLAY_BANDLIMIT_B "Display bandwidth B (MHz)" 5.4 0.0 75.0 0.01
 #define DISPLAY_BANDLIMIT_B config.DISPLAY_BANDLIMIT_B
 
-#pragma parameter DISPLAY_CUTOFF_ATTEN_R "Display cutoff attenuation R (dB)" 3.0 0.0 30.0 1.0
+#pragma parameter DISPLAY_CUTOFF_ATTEN_R "Display cutoff attenuation R (dB)" 12.5 0.0 30.0 1.0
 #define DISPLAY_CUTOFF_ATTEN_R config.DISPLAY_CUTOFF_ATTEN_R
-#pragma parameter DISPLAY_CUTOFF_ATTEN_G "Display cutoff attenuation G (dB)" 3.0 0.0 30.0 1.0
+#pragma parameter DISPLAY_CUTOFF_ATTEN_G "Display cutoff attenuation G (dB)" 12.5 0.0 30.0 1.0
 #define DISPLAY_CUTOFF_ATTEN_G config.DISPLAY_CUTOFF_ATTEN_G
-#pragma parameter DISPLAY_CUTOFF_ATTEN_B "Display cutoff attenuation B (dB)" 3.0 0.0 30.0 1.0
+#pragma parameter DISPLAY_CUTOFF_ATTEN_B "Display cutoff attenuation B (dB)" 12.5 0.0 30.0 1.0
 #define DISPLAY_CUTOFF_ATTEN_B config.DISPLAY_CUTOFF_ATTEN_B
 
 #pragma parameter DISPLAY_GAIN_R "Display gain R" 1.0 0.0 10.0 0.1
@@ -76,12 +105,14 @@ layout(push_constant) uniform Push
 #pragma parameter DISPLAY_BIAS_G "Display offset G" 0.0 -1.0 1.0 0.01
 #define DISPLAY_BIAS_G config.DISPLAY_BIAS_G
 #pragma parameter DISPLAY_BIAS_B "Display offset B" 0.0 -1.0 1.0 0.01
-#define DISPLAY_BIAS_B config.DISPLAY_BIAS_B
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
     mat4 MVP;
+    float DISPLAY_BIAS_B;
 } global;
+
+#define DISPLAY_BIAS_B global.DISPLAY_BIAS_B
 
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
@@ -102,16 +133,23 @@ layout(set = 0, binding = 2) uniform sampler2D Source;
 void main()
 {
     // Compute Gaussian sigma in uv-texel units via Rec.601 scaling
-    vec3 sigma = sigma601(
-        vec3(
-            DISPLAY_BANDLIMIT_R,
-            DISPLAY_BANDLIMIT_G,
-            DISPLAY_BANDLIMIT_B),
-        vec3(
-            DISPLAY_CUTOFF_ATTEN_R,
-            DISPLAY_CUTOFF_ATTEN_G,
-            DISPLAY_CUTOFF_ATTEN_B),
-        config.OutputSize.x);
+    TimebaseConfig tb = compute_timebase(
+        float(config.FrameCount),
+        vTexCoord,
+        config.OriginalSize.x,
+        config.OutputSize.x,
+        V_FREQ,
+        V_LINES_PER_FIELD,
+        SHORTEN_ODD_FIELD_TIME,
+        SC_FREQ_MODE,
+        SC_FREQ,
+        H_BLANK_INACTIVE_LEN,
+        H_BLANK_INACTIVE_UNIT
+    );
+    vec3 sigma;
+    sigma.x = sigma_tb(tb, DISPLAY_BANDLIMIT_R, DISPLAY_CUTOFF_ATTEN_R);
+    sigma.y = sigma_tb(tb, DISPLAY_BANDLIMIT_G, DISPLAY_CUTOFF_ATTEN_G);
+    sigma.z = sigma_tb(tb, DISPLAY_BANDLIMIT_B, DISPLAY_CUTOFF_ATTEN_B);
 
     // Single-pass lobe-based horizontal Gaussian convolution
     vec3 color = bandlimit_convolve_gaussian_x(vTexCoord, config.OutputSize, Source, sigma);

@@ -18,8 +18,9 @@
    along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
 #include "common.h"
-#include "filter.h"
+#include "color.h"
 #include "bandlimit.inc"
+#include "modulation.inc"
 
 #pragma name SysRGBBandlimit
 #pragma format R16G16B16A16_SFLOAT
@@ -30,6 +31,13 @@ layout(push_constant) uniform Push
     vec4 OriginalSize;
     vec4 OutputSize;
     uint FrameCount;
+    float V_FREQ;
+    float V_LINES_PER_FIELD;
+    float SHORTEN_ODD_FIELD_TIME;
+    float SC_FREQ_MODE;
+    float SC_FREQ;
+    float H_BLANK_INACTIVE_LEN;
+    float H_BLANK_INACTIVE_UNIT;
     float SYS_RGB_BANDLIMIT_BYPASS;
     float SYS_BANDWIDTH_R;
     float SYS_BANDWIDTH_G;
@@ -42,7 +50,6 @@ layout(push_constant) uniform Push
     float SYS_GAIN_B;
     float SYS_BIAS_R;
     float SYS_BIAS_G;
-    float SYS_BIAS_B;
 } config;
 
 #pragma parameter SYS_RGB_BANDLIMIT_HEADER " ==== System RGB Bandlimit Parameters ==== " 0.0 0.0 0.0 0.0
@@ -50,18 +57,40 @@ layout(push_constant) uniform Push
 #pragma parameter SYS_RGB_BANDLIMIT_BYPASS "System RGB bandlimit bypass" 0.0 0.0 1.0 1.0
 #define SYS_RGB_BANDLIMIT_BYPASS config.SYS_RGB_BANDLIMIT_BYPASS
 
-#pragma parameter SYS_BANDWIDTH_R "System bandwidth R (MHz)" 6.75 0.0 75.0 0.01
+#pragma parameter V_FREQ "Vertical frequency (Hz)" 59.94 1.0 240.0 0.01
+#define V_FREQ config.V_FREQ
+
+#pragma parameter V_LINES_PER_FIELD "Video lines per field" 262.5 0.0 540.0 0.5
+#define V_LINES_PER_FIELD config.V_LINES_PER_FIELD
+
+#pragma parameter SHORTEN_ODD_FIELD_TIME "Shorten odd field time (0=Off, 1=On)" 0.0 0.0 1.0 1.0
+#define SHORTEN_ODD_FIELD_TIME config.SHORTEN_ODD_FIELD_TIME
+
+#pragma parameter SC_FREQ_MODE "Subcarrier frequency mode (0=Auto, 1=NTSC, 2=PAL, 3=Custom)" 1.0 0.0 3.0 1.0
+#define SC_FREQ_MODE config.SC_FREQ_MODE
+
+#pragma parameter SC_FREQ "Custom subcarrier frequency (MHz)" 3.579545 0.0 10.0 0.000001
+#define SC_FREQ config.SC_FREQ
+
+#define H_FREQ_HZ (V_FREQ * V_LINES_PER_FIELD)
+
+#pragma parameter H_BLANK_INACTIVE_LEN "Horizontal blank inactive length" 138.0 0.0 1000.0 0.1
+#define H_BLANK_INACTIVE_LEN config.H_BLANK_INACTIVE_LEN
+#pragma parameter H_BLANK_INACTIVE_UNIT "Horizontal blank inactive unit (0=px, 1=µs, 2=% active)" 0.0 0.0 2.0 1.0
+#define H_BLANK_INACTIVE_UNIT config.H_BLANK_INACTIVE_UNIT
+
+#pragma parameter SYS_BANDWIDTH_R "System bandwidth R (MHz)" 5.4 0.0 75.0 0.01
 #define SYS_BANDWIDTH_R config.SYS_BANDWIDTH_R
-#pragma parameter SYS_BANDWIDTH_G "System bandwidth G (MHz)" 6.75 0.0 75.0 0.01
+#pragma parameter SYS_BANDWIDTH_G "System bandwidth G (MHz)" 5.4 0.0 75.0 0.01
 #define SYS_BANDWIDTH_G config.SYS_BANDWIDTH_G
-#pragma parameter SYS_BANDWIDTH_B "System bandwidth B (MHz)" 6.75 0.0 75.0 0.01
+#pragma parameter SYS_BANDWIDTH_B "System bandwidth B (MHz)" 5.4 0.0 75.0 0.01
 #define SYS_BANDWIDTH_B config.SYS_BANDWIDTH_B
 
-#pragma parameter SYS_CUTOFF_ATTEN_R "System cutoff attenuation R (dB)" 3.0 0.0 30.0 1.0
+#pragma parameter SYS_CUTOFF_ATTEN_R "System cutoff attenuation R (dB)" 12.5 0.0 30.0 1.0
 #define SYS_CUTOFF_ATTEN_R config.SYS_CUTOFF_ATTEN_R
-#pragma parameter SYS_CUTOFF_ATTEN_G "System cutoff attenuation G (dB)" 3.0 0.0 30.0 1.0
+#pragma parameter SYS_CUTOFF_ATTEN_G "System cutoff attenuation G (dB)" 12.5 0.0 30.0 1.0
 #define SYS_CUTOFF_ATTEN_G config.SYS_CUTOFF_ATTEN_G
-#pragma parameter SYS_CUTOFF_ATTEN_B "System cutoff attenuation B (dB)" 3.0 0.0 30.0 1.0
+#pragma parameter SYS_CUTOFF_ATTEN_B "System cutoff attenuation B (dB)" 12.5 0.0 30.0 1.0
 #define SYS_CUTOFF_ATTEN_B config.SYS_CUTOFF_ATTEN_B
 
 #pragma parameter SYS_GAIN_R "System gain R" 1.0 0.0 10.0 0.1
@@ -76,12 +105,14 @@ layout(push_constant) uniform Push
 #pragma parameter SYS_BIAS_G "System bias G" 0.0 -1.0 1.0 0.01
 #define SYS_BIAS_G config.SYS_BIAS_G
 #pragma parameter SYS_BIAS_B "System bias B" 0.0 -1.0 1.0 0.01
-#define SYS_BIAS_B config.SYS_BIAS_B
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
     mat4 MVP;
+    float SYS_BIAS_B;
 } global;
+
+#define SYS_BIAS_B global.SYS_BIAS_B
 
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
@@ -102,16 +133,23 @@ layout(set = 0, binding = 2) uniform sampler2D Source;
 void main()
 {
     // Compute Gaussian sigma in uv-texel units via Rec.601 scaling
-    vec3 sigma = sigma601(
-        vec3(
-            SYS_BANDWIDTH_R,
-            SYS_BANDWIDTH_G,
-            SYS_BANDWIDTH_B),
-        vec3(
-            SYS_CUTOFF_ATTEN_R,
-            SYS_CUTOFF_ATTEN_G,
-            SYS_CUTOFF_ATTEN_B),
-        config.OutputSize.x);
+    TimebaseConfig tb = compute_timebase(
+        float(config.FrameCount),
+        vTexCoord,
+        config.OriginalSize.x,
+        config.OutputSize.x,
+        V_FREQ,
+        V_LINES_PER_FIELD,
+        SHORTEN_ODD_FIELD_TIME,
+        SC_FREQ_MODE,
+        SC_FREQ,
+        H_BLANK_INACTIVE_LEN,
+        H_BLANK_INACTIVE_UNIT
+    );
+    vec3 sigma;
+    sigma.x = sigma_tb(tb, SYS_BANDWIDTH_R, SYS_CUTOFF_ATTEN_R);
+    sigma.y = sigma_tb(tb, SYS_BANDWIDTH_G, SYS_CUTOFF_ATTEN_G);
+    sigma.z = sigma_tb(tb, SYS_BANDWIDTH_B, SYS_CUTOFF_ATTEN_B);
 
     // Single-pass lobe-based horizontal Gaussian convolution
     vec3 color = bandlimit_convolve_gaussian_x(vTexCoord, config.OutputSize, Source, sigma);

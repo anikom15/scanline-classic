@@ -226,14 +226,14 @@ layout(push_constant) uniform Push
 #pragma parameter H_BLANK_INACTIVE_UNIT "Horizontal blank inactive unit (0=px, 1=µs, 2=% active)" 0.0 0.0 2.0 1.0
 #define H_BLANK_INACTIVE_UNIT config.H_BLANK_INACTIVE_UNIT
 
-#pragma parameter DISPLAY_BANDWIDTH_Y "Display bandwidth Y (MHz)" 6.75 0.0 75.0 0.1
+#pragma parameter DISPLAY_BANDWIDTH_Y "Display bandwidth Y (MHz)" 5.4 0.0 75.0 0.1
 #define DISPLAY_BANDWIDTH_Y config.DISPLAY_BANDWIDTH_Y
-#pragma parameter DISPLAY_BANDWIDTH_C "Display bandwidth C (MHz)" 1.79 0.0 3.0 0.01
+#pragma parameter DISPLAY_BANDWIDTH_C "Display bandwidth C (MHz)" 2.7 0.0 15.0 0.01
 #define DISPLAY_BANDWIDTH_C config.DISPLAY_BANDWIDTH_C
 
-#pragma parameter DISPLAY_CUTOFF_ATTEN_Y "Display cutoff attenuation Y (dB)" 3.0 0.0 30.0 1.0
+#pragma parameter DISPLAY_CUTOFF_ATTEN_Y "Display cutoff attenuation Y (dB)" 12.5 0.0 30.0 1.0
 #define DISPLAY_CUTOFF_ATTEN_Y config.DISPLAY_CUTOFF_ATTEN_Y
-#pragma parameter DISPLAY_CUTOFF_ATTEN_C "Display cutoff attenuation C (dB)" 3.0 0.0 30.0 1.0
+#pragma parameter DISPLAY_CUTOFF_ATTEN_C "Display cutoff attenuation C (dB)" 12.5 0.0 30.0 1.0
 #define DISPLAY_CUTOFF_ATTEN_C config.DISPLAY_CUTOFF_ATTEN_C
 
 #define LINE_TIME (1.0 / H_FREQ_HZ)
@@ -268,23 +268,24 @@ void main()
     }
 
     // Use consolidated timebase helper
-    TimebaseConfig tb = compute_timebase(
-        float(config.FrameCount),
-        vTexCoord,
-        config.OriginalSize.xy,
-        V_FREQ,
-        V_LINES_PER_FIELD,
-        SHORTEN_ODD_FIELD_TIME,
-        SC_FREQ_MODE,
-        SC_FREQ,
-        H_BLANK_INACTIVE_LEN,
-        H_BLANK_INACTIVE_UNIT);
+  TimebaseConfig tb = compute_timebase(
+    float(config.FrameCount),
+    vTexCoord,
+    config.OriginalSize.x,
+    config.OutputSize.x,
+    V_FREQ,
+    V_LINES_PER_FIELD,
+    SHORTEN_ODD_FIELD_TIME,
+    SC_FREQ_MODE,
+    SC_FREQ,
+    H_BLANK_INACTIVE_LEN,
+    H_BLANK_INACTIVE_UNIT);
 
     // Per-component sigmas (Y, C, C)
-    vec3 sigma = sigma601(
-        vec3(DISPLAY_BANDWIDTH_Y, DISPLAY_BANDWIDTH_C, DISPLAY_BANDWIDTH_C),
-        vec3(DISPLAY_CUTOFF_ATTEN_Y, DISPLAY_CUTOFF_ATTEN_C, DISPLAY_CUTOFF_ATTEN_C),
-        config.OutputSize.x);
+    vec3 sigma;
+    sigma.x = sigma_tb(tb, DISPLAY_BANDWIDTH_Y, DISPLAY_CUTOFF_ATTEN_Y);
+    sigma.y = sigma_tb(tb, DISPLAY_BANDWIDTH_C, DISPLAY_CUTOFF_ATTEN_C);
+    sigma.z = sigma_tb(tb, DISPLAY_BANDWIDTH_C, DISPLAY_CUTOFF_ATTEN_C);
 
     const float THRESHOLD = 1.0 / 510.0;
 

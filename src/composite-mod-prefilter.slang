@@ -155,7 +155,8 @@ void main()
     TimebaseConfig tb = compute_timebase(
         float(config.FrameCount),
         vTexCoord,
-        config.OriginalSize.xy,
+        config.OriginalSize.x,
+        config.OutputSize.x,
         V_FREQ,
         V_LINES_PER_FIELD,
         SHORTEN_ODD_FIELD_TIME,
@@ -170,7 +171,7 @@ void main()
     float c_gain = 2.0 * USER_COLOR;
 
     // Notch design targets
-    float pixel_time_px = tb.pixel_time * (config.OriginalSize.x * config.OutputSize.z);
+    float pixel_time_px = tb.pixel_time_px;
 
     float A_center_dB = NOTCH_CENTER_ATTEN_DB; // center notch depth
     float A_edge_dB = NOTCH_EDGE_ATTEN_DB;     // attenuation at f0 ± Δ

@@ -20,6 +20,7 @@
 #include "common.h"
 #include "color.h"
 #include "bandlimit.inc"
+#include "modulation.inc"
 
 #pragma name DisplayComponent
 #pragma format R16G16B16A16_SFLOAT
@@ -31,6 +32,14 @@ layout(push_constant) uniform Push
     vec4 OriginalSize;
     vec4 OutputSize;
     uint FrameCount;
+    // Timing parameters for timebase computation
+    float V_FREQ;
+    float V_LINES_PER_FIELD;
+    float SHORTEN_ODD_FIELD_TIME;
+    float SC_FREQ_MODE;
+    float SC_FREQ;
+    float H_BLANK_INACTIVE_LEN;
+    float H_BLANK_INACTIVE_UNIT;
     float DISPLAY_COMPONENT_BYPASS;
     float YC_MODEL; // 0=YIQ, 1=YPbPr, 2=YUV, 3=YDbDr, 4=YCbCr
     float DISPLAY_COMPONENT_FILTER_BYPASS;
@@ -46,16 +55,31 @@ layout(push_constant) uniform Push
 #pragma parameter DISPLAY_COMPONENT_HEADER " ==== Display Component Parameters ==== " 0.0 0.0 0.0 0.0
 #pragma parameter DISPLAY_COMPONENT_BYPASS "Display component bypass" 0.0 0.0 1.0 1.0
 #define DISPLAY_COMPONENT_BYPASS config.DISPLAY_COMPONENT_BYPASS
+#pragma parameter V_FREQ "Vertical frequency (Hz)" 59.94 1.0 240.0 0.01
+#define V_FREQ config.V_FREQ
+#pragma parameter V_LINES_PER_FIELD "Video lines per field" 262.5 0.0 540.0 0.5
+#define V_LINES_PER_FIELD config.V_LINES_PER_FIELD
+#pragma parameter SHORTEN_ODD_FIELD_TIME "Shorten odd field time (0=Off, 1=On)" 0.0 0.0 1.0 1.0
+#define SHORTEN_ODD_FIELD_TIME config.SHORTEN_ODD_FIELD_TIME
+#pragma parameter SC_FREQ_MODE "Subcarrier frequency mode (0=Auto, 1=NTSC, 2=PAL, 3=Custom)" 1.0 0.0 3.0 1.0
+#define SC_FREQ_MODE config.SC_FREQ_MODE
+#pragma parameter SC_FREQ "Custom Subcarrier Frequency (MHz)" 3.579545 0.0 10.0 0.000001
+#define SC_FREQ config.SC_FREQ
+#define H_FREQ_HZ (V_FREQ * V_LINES_PER_FIELD)
+#pragma parameter H_BLANK_INACTIVE_LEN "Horizontal blank inactive length" 138.0 0.0 1000.0 0.1
+#define H_BLANK_INACTIVE_LEN config.H_BLANK_INACTIVE_LEN
+#pragma parameter H_BLANK_INACTIVE_UNIT "Horizontal blank inactive unit (0=px, 1=µs, 2=% active)" 0.0 0.0 2.0 1.0
+#define H_BLANK_INACTIVE_UNIT config.H_BLANK_INACTIVE_UNIT
 #pragma parameter YC_MODEL "YC color model (0=YIQ,1=YPbPr,2=YUV,3=YDbDr,4=YCbCr)" 1.0 0.0 4.0 1.0
 #define YC_MODEL config.YC_MODEL
 #pragma parameter DISPLAY_COMPONENT_FILTER_BYPASS "Display component filter bypass" 0.0 0.0 1.0 1.0
 #define DISPLAY_COMPONENT_FILTER_BYPASS config.DISPLAY_COMPONENT_FILTER_BYPASS
-#pragma parameter DISPLAY_BANDWIDTH_Y "Display Luma (Y) bandwidth (MHz)" 6.75 0.0 75.0 0.01
-#pragma parameter DISPLAY_BANDWIDTH_U "Display Chroma (U) bandwidth (MHz)" 1.30 0.0 15.0 0.01
-#pragma parameter DISPLAY_BANDWIDTH_V "Display Chroma (V) bandwidth (MHz)" 1.30 0.0 15.0 0.01
-#pragma parameter DISPLAY_CUTOFF_ATTEN_Y "Display Y cutoff attenuation (dB)" 3.0 0.0 30.0 1.0
-#pragma parameter DISPLAY_CUTOFF_ATTEN_U "Display U cutoff attenuation (dB)" 2.0 0.0 30.0 1.0
-#pragma parameter DISPLAY_CUTOFF_ATTEN_V "Display V cutoff attenuation (dB)" 2.0 0.0 30.0 1.0
+#pragma parameter DISPLAY_BANDWIDTH_Y "Display Luma (Y) bandwidth (MHz)" 5.4 0.0 75.0 0.01
+#pragma parameter DISPLAY_BANDWIDTH_U "Display Chroma (U) bandwidth (MHz)" 2.7 0.0 15.0 0.01
+#pragma parameter DISPLAY_BANDWIDTH_V "Display Chroma (V) bandwidth (MHz)" 2.7 0.0 15.0 0.01
+#pragma parameter DISPLAY_CUTOFF_ATTEN_Y "Display Y cutoff attenuation (dB)" 12.5 0.0 30.0 1.0
+#pragma parameter DISPLAY_CUTOFF_ATTEN_U "Display U cutoff attenuation (dB)" 12.5 0.0 30.0 1.0
+#pragma parameter DISPLAY_CUTOFF_ATTEN_V "Display V cutoff attenuation (dB)" 12.5 0.0 30.0 1.0
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
@@ -114,10 +138,23 @@ void main()
     }
 
     // Precompute per-component sigmas (in texels) from MHz/dB specs.
-    vec3 sigma = sigma601(
-        vec3(config.DISPLAY_BANDWIDTH_Y, config.DISPLAY_BANDWIDTH_U, config.DISPLAY_BANDWIDTH_V),
-        vec3(config.DISPLAY_CUTOFF_ATTEN_Y, config.DISPLAY_CUTOFF_ATTEN_U, config.DISPLAY_CUTOFF_ATTEN_V),
-        config.OutputSize.x);
+    TimebaseConfig tb = compute_timebase(
+        float(config.FrameCount),
+        vTexCoord,
+        config.OriginalSize.x,
+        config.OutputSize.x,
+        V_FREQ,
+        V_LINES_PER_FIELD,
+        SHORTEN_ODD_FIELD_TIME,
+        SC_FREQ_MODE,
+        SC_FREQ,
+        H_BLANK_INACTIVE_LEN,
+        H_BLANK_INACTIVE_UNIT
+    );
+    vec3 sigma;
+    sigma.x = sigma_tb(tb, config.DISPLAY_BANDWIDTH_Y, config.DISPLAY_CUTOFF_ATTEN_Y);
+    sigma.y = sigma_tb(tb, config.DISPLAY_BANDWIDTH_U, config.DISPLAY_CUTOFF_ATTEN_U);
+    sigma.z = sigma_tb(tb, config.DISPLAY_BANDWIDTH_V, config.DISPLAY_CUTOFF_ATTEN_V);
 
     const float THRESHOLD = 1.0 / 510.0;
 

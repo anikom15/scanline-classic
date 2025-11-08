@@ -417,7 +417,7 @@ void main()
     // === Blend glow with background ===
     
     // Apply user-adjustable gain and bias to background
-    vec3 background_adjusted = background.rgb * BEZEL_GAIN + BEZEL_BIAS;
+    vec3 background_adjusted = background.rgb;
     
     // Blend background with glow in linear space, then convert back to gamma
     vec3 background_with_glow = srgb_gamma(
@@ -434,7 +434,7 @@ void main()
     // Final composite: blend CRT screen over background using alpha
     vec3 final_color = mix(
         crt_gamma(clamp(screen.rgb, 0.0, 1.0)),
-        background.rgb,
+        background.rgb * BEZEL_GAIN + BEZEL_BIAS,
         background.a
     );
     

@@ -42,9 +42,12 @@ textures = BORDER
 BORDER = "../share/bezel-trinitron.png"
 
 # rgb-bandlimit parameters
-SYS_BANDWIDTH_R = 4.8
-SYS_BANDWIDTH_G = 4.8
-SYS_BANDWIDTH_B = 4.8
+SYS_BANDWIDTH_R = 5.4
+SYS_BANDWIDTH_G = 5.4
+SYS_BANDWIDTH_B = 5.4
+SYS_CUTOFF_ATTEN_R = 16
+SYS_CUTOFF_ATTEN_G = 16
+SYS_CUTOFF_ATTEN_B = 16
 
 # phosphor parameters
 V_FREQ = 60.0988
