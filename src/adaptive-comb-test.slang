@@ -170,7 +170,9 @@ void main()
     TimebaseConfig tb = compute_timebase(
         float(config.FrameCount),
         vTexCoord,
-        config.OriginalSize.xy,
+        // Updated: pass original_width and output_width explicitly
+        config.OriginalSize.x,
+        config.OutputSize.x,
         V_FREQ,
         V_LINES_PER_FIELD,
         SHORTEN_ODD_FIELD_TIME,

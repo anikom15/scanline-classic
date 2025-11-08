@@ -67,7 +67,7 @@ layout(push_constant) uniform Push
 #pragma parameter SC_FREQ_MODE "Subcarrier frequency mode (0=Auto, 1=NTSC, 2=PAL, 3=Custom)" 1.0 0.0 3.0 1.0
 #define SC_FREQ_MODE config.SC_FREQ_MODE
 
-#pragma parameter SC_FREQ "Custom Subcarrier Frequency (MHz)" 3.579545 0.0 10.0 0.000001
+#pragma parameter SC_FREQ "Custom subcarrier frequency (MHz)" 3.579545 0.0 10.0 0.000001
 #define SC_FREQ config.SC_FREQ
 
 #define H_FREQ_HZ (V_FREQ * V_LINES_PER_FIELD)
