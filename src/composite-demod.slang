@@ -146,8 +146,10 @@ void main()
         sigma_tb(tb, DISPLAY_BANDWIDTH_C, DISPLAY_CUTOFF_ATTEN_C));
     // Optimized symmetric lobed approach with early exit
     vec2 UV = vTexCoord * config.OutputSize.xy;
-    vec2 A = fract(UV);
-    vec2 Tex = (floor(UV) + 0.5) * config.OutputSize.zw;
+    float UX = UV.x - 0.5;           // horizontal pixel edge shift
+    float Ax = fract(UX);            // fractional horizontal position
+    vec2 Tex = vec2((floor(UX) + 0.5) * config.OutputSize.z,
+                    (floor(UV.y) + 0.5) * config.OutputSize.w);
     vec2 dx = vec2(config.OutputSize.z, 0.0);
 
     const float THRESHOLD = 1.0 / 510.0;
@@ -178,63 +180,53 @@ void main()
     demod0.b = 2.0 * chroma0 * carrier0.y;
     
     // Center weights for all filter modes
-    float w_y0 = gaussian(A.x, sigma.x);
-    float w_c0 = gaussian(A.x, sigma.y);
+    float w_y0 = gaussian(Ax, sigma.x);
+    float w_c0 = gaussian(Ax, sigma.y);
     
     color += vec3(w_y0 * demod0.r, w_c0 * demod0.g, w_c0 * demod0.b);
     wsum += vec3(w_y0, w_c0, w_c0);
 
     // Symmetric lobed processing with early exit
     for (int n = 1; n <= 32; ++n) {
-        float nf = float(n) + A.x;
-        
-        // Compute weights for all filter modes
-        float w_y = gaussian(nf, sigma.x);
-        float w_c = gaussian(nf, sigma.y);
-         
-        // Early exit if all weights negligible
-        if (w_y < THRESHOLD && w_c < THRESHOLD)
+        float nf = float(n);
+        float w_y_r = gaussian(nf + Ax, sigma.x);
+        float w_y_l = gaussian(nf - Ax, sigma.x);
+        float w_c_r = gaussian(nf + Ax, sigma.y);
+        float w_c_l = gaussian(nf - Ax, sigma.y);
+        if (w_y_r < THRESHOLD && w_y_l < THRESHOLD &&
+            w_c_r < THRESHOLD && w_c_l < THRESHOLD)
             break;
-        
+
         // Right sample
-        float offsetR = (Tex.x + float(n) * dx.x) * config.OriginalSize.x;
+        float offsetR = (Tex.x + nf * dx.x) * config.OriginalSize.x;
         float tR = tb.line * LINE_TIME + offsetR * tb.pixel_time;
-        
-        vec3 pixelR = texture(Source, Tex + float(n) * dx).rgb;
+        vec3 pixelR = texture(Source, Tex + nf * dx).rgb;
         float phaseR = compute_carrier_phase(tR, tb.sc_freq_hz, tb.field_phase);
         vec2 carrierR = sincos_phase(phaseR);
-
         float compositeR = pixelR.r;
         float chromaR = pixelR.g;
-        
-        vec3 demodR;
-        demodR.r = compositeR;
-        demodR.g = 2.0 * chromaR * carrierR.x;
-        demodR.b = 2.0 * chromaR * carrierR.y;
-        
+        vec3 demodR = vec3(compositeR,
+                           2.0 * chromaR * carrierR.x,
+                           2.0 * chromaR * carrierR.y);
+
         // Left sample
-        float offsetL = (Tex.x - float(n) * dx.x) * config.OriginalSize.x;
+        float offsetL = (Tex.x - nf * dx.x) * config.OriginalSize.x;
         float tL = tb.line * LINE_TIME + offsetL * tb.pixel_time;
-        
-        vec3 pixelL = texture(Source, Tex - float(n) * dx).rgb;
+        vec3 pixelL = texture(Source, Tex - nf * dx).rgb;
         float phaseL = compute_carrier_phase(tL, tb.sc_freq_hz, tb.field_phase);
         vec2 carrierL = sincos_phase(phaseL);
-        
         float compositeL = pixelL.r;
         float chromaL = pixelL.g;
-        
-        vec3 demodL;
-        demodL.r = compositeL;
-        demodL.g = 2.0 * chromaL * carrierL.x;
-        demodL.b = 2.0 * chromaL * carrierL.y;
-        
-        // Accumulate raw filter
-        color.r += w_y * (demodR.r + demodL.r);
-        color.g += w_c * (demodR.g + demodL.g);
-        color.b += w_c * (demodR.b + demodL.b);
-        wsum.x += 2.0 * w_y;
-        wsum.y += 2.0 * w_c;
-        wsum.z += 2.0 * w_c;
+        vec3 demodL = vec3(compositeL,
+                           2.0 * chromaL * carrierL.x,
+                           2.0 * chromaL * carrierL.y);
+
+        color.r += w_y_r * demodR.r + w_y_l * demodL.r;
+        color.g += w_c_r * demodR.g + w_c_l * demodL.g;
+        color.b += w_c_r * demodR.b + w_c_l * demodL.b;
+        wsum.x += w_y_r + w_y_l;
+        wsum.y += w_c_r + w_c_l;
+        wsum.z += w_c_r + w_c_l;
     }
 
     // Normalize

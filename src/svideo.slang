@@ -289,10 +289,13 @@ void main()
 
     const float THRESHOLD = 1.0 / 510.0;
 
-    vec2 UV  = vTexCoord * config.OutputSize.xy;
-    vec2 A   = fract(UV);
-    vec2 Tex = (floor(UV) + 0.5) * config.OutputSize.zw;
-    vec2 dx  = vec2(config.OutputSize.z, 0.0);
+  // Horizontal coordinate handling: shift X to edge, keep Y center
+  vec2 UV  = vTexCoord * config.OutputSize.xy;
+  float UX = UV.x - 0.5;
+  float Ax = fract(UX);
+  vec2 Tex = vec2((floor(UX) + 0.5) * config.OutputSize.z,
+          (floor(UV.y) + 0.5) * config.OutputSize.w);
+  vec2 dx  = vec2(config.OutputSize.z, 0.0);
 
     // Accumulators: vector (normal path) + scalar luma/chroma for BW modes
     vec3 accum = vec3(0.0);
@@ -347,8 +350,8 @@ void main()
         return;
     }
 
-    float wy0 = gaussian(A.x, sigma.x);
-    float wc0 = gaussian(A.x, sigma.y); // sigma.y == sigma.z for chroma
+  float wy0 = gaussian(Ax, sigma.x);
+  float wc0 = gaussian(Ax, sigma.y); // sigma.y == sigma.z for chroma
 
     accum += vec3(wy0 * yc0.r, wc0 * yc0.g, wc0 * yc0.b);
     wsum  += vec3(wy0, wc0, wc0);
@@ -356,50 +359,46 @@ void main()
     // Symmetric lobes
     // Limited to 32 iterations for faster shader compilation
     // Gaussian weights fall off rapidly, so early exit handles quality
-    for (int n = 1; n <= 32; ++n) {
-        float nf = float(n) + A.x;
+  for (int n = 1; n <= 32; ++n) {
+    float nf = float(n);
+    float wy_r = gaussian(nf + Ax, sigma.x);
+    float wy_l = gaussian(nf - Ax, sigma.x);
+    float wc_r = gaussian(nf + Ax, sigma.y);
+    float wc_l = gaussian(nf - Ax, sigma.y);
+    if (wy_r < THRESHOLD && wy_l < THRESHOLD && wc_r < THRESHOLD && wc_l < THRESHOLD)
+      break;
 
-        float wy_n = gaussian(nf, sigma.x);
-        float wc_n = gaussian(nf, sigma.y);
+    float offsetR = (Tex.x + nf * dx.x) * config.SourceSize.x;
+    float tR = tb.line * LINE_TIME + offsetR * tb.pixel_time;
+    vec3 pixelR = texture(Source, Tex + nf * dx).rgb;
+    float phaseR = compute_carrier_phase(tR, tb.sc_freq_hz, tb.field_phase);
+    vec2 carrierR = sincos_phase(phaseR);
+    vec2 carrierR_user = sincos_phase(phaseR + c_phase);
+    float chromaR = pixelR.g * carrierR.x + pixelR.b * carrierR.y;
+    vec3 ycR;
+    ycR.r = y_gain * pixelR.r + y_bias;
+    ycR.g = c_gain * chromaR * 2.0 * carrierR_user.x;
+    ycR.b = c_gain * chromaR * 2.0 * carrierR_user.y;
 
-        if (wy_n < THRESHOLD && wc_n < THRESHOLD)
-            break;
+    float offsetL = (Tex.x - nf * dx.x) * config.SourceSize.x;
+    float tL = tb.line * LINE_TIME + offsetL * tb.pixel_time;
+    vec3 pixelL = texture(Source, Tex - nf * dx).rgb;
+    float phaseL = compute_carrier_phase(tL, tb.sc_freq_hz, tb.field_phase);
+    vec2 carrierL = sincos_phase(phaseL);
+    vec2 carrierL_user = sincos_phase(phaseL + c_phase);
+    float chromaL = pixelL.g * carrierL.x + pixelL.b * carrierL.y;
+    vec3 ycL;
+    ycL.r = y_gain * pixelL.r + y_bias;
+    ycL.g = c_gain * chromaL * 2.0 * carrierL_user.x;
+    ycL.b = c_gain * chromaL * 2.0 * carrierL_user.y;
 
-        // Right sample
-        float offsetR = (Tex.x + float(n) * dx.x) * config.SourceSize.x;
-        float tR = tb.line * LINE_TIME + offsetR * tb.pixel_time;
-        vec3 pixelR = texture(Source, Tex + float(n) * dx).rgb;
-        float phaseR = compute_carrier_phase(tR, tb.sc_freq_hz, tb.field_phase);
-        vec2 carrierR = sincos_phase(phaseR);
-        vec2 carrierR_user = sincos_phase(phaseR + c_phase);
-        float chromaR = pixelR.g * carrierR.x + pixelR.b * carrierR.y;
-        vec3 ycR;
-        ycR.r = y_gain * pixelR.r + y_bias; // luma
-        ycR.g = c_gain * chromaR * 2.0 * carrierR_user.x;
-        ycR.b = c_gain * chromaR * 2.0 * carrierR_user.y;
-
-        // Left sample
-        float offsetL = (Tex.x - float(n) * dx.x) * config.SourceSize.x;
-        float tL = tb.line * LINE_TIME + offsetL * tb.pixel_time;
-        vec3 pixelL = texture(Source, Tex - float(n) * dx).rgb;
-        float phaseL = compute_carrier_phase(tL, tb.sc_freq_hz, tb.field_phase);
-        vec2 carrierL = sincos_phase(phaseL);
-        vec2 carrierL_user = sincos_phase(phaseL + c_phase);
-        float chromaL = pixelL.g * carrierL.x + pixelL.b * carrierL.y;
-        vec3 ycL;
-        ycL.r = y_gain * pixelL.r + y_bias; // luma
-        ycL.g = c_gain * chromaL * 2.0 * carrierL_user.x;
-        ycL.b = c_gain * chromaL * 2.0 * carrierL_user.y;
-
-        // Accumulate symmetric samples (vector path)
-        accum.x += wy_n * (ycR.x + ycL.x);
-        accum.y += wc_n * (ycR.y + ycL.y);
-        accum.z += wc_n * (ycR.z + ycL.z);
-
-        wsum.x += 2.0 * wy_n;
-        wsum.y += 2.0 * wc_n;
-        wsum.z += 2.0 * wc_n;
-    }
+    accum.x += wy_r * ycR.x + wy_l * ycL.x;
+    accum.y += wc_r * ycR.y + wc_l * ycL.y;
+    accum.z += wc_r * ycR.z + wc_l * ycL.z;
+    wsum.x  += wy_r + wy_l;
+    wsum.y  += wc_r + wc_l;
+    wsum.z  += wc_r + wc_l;
+  }
 
     // Normalized outputs
     vec3 color_vec = accum / max(wsum, vec3(EPS));

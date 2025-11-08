@@ -200,8 +200,10 @@ void main()
 
     // Get current pixel coordinates
     vec2 UV = vTexCoord * config.OutputSize.xy;
-    vec2 A = fract(UV);
-    vec2 Tex = (floor(UV) + 0.5) * config.OutputSize.zw;
+    float UX = UV.x - 0.5;
+    float Ax = fract(UX);
+    vec2 Tex = vec2((floor(UX) + 0.5) * config.OutputSize.z,
+                    (floor(UV.y) + 0.5) * config.OutputSize.w);
     vec2 dx = vec2(config.OutputSize.z, 0.0);
 
     const float THRESHOLD = 1.0 / 510.0;
@@ -224,24 +226,24 @@ void main()
     float sum_bp = 0.0;
 
     // Center sample
-    float g_env0 = gaussian(A.x, sigma_bs);
+    float g_env0 = gaussian(Ax, sigma_bs);
     sum_g += g_env0;
-    float w_cos0 = g_env0 * cos(2.0 * PI * f_sc_px * A.x);
-    float g_bp0 = gaussian(A.x, sigma_bp);
-    float w_bp0 = g_bp0 * cos(2.0 * PI * f_sc_px * A.x);
+    float w_cos0 = g_env0 * cos(2.0 * PI * f_sc_px * Ax);
+    float g_bp0 = gaussian(Ax, sigma_bp);
+    float w_bp0 = g_bp0 * cos(2.0 * PI * f_sc_px * Ax);
     conv_gcos += w_cos0 * composite0;
     c_bp_accum += w_bp0 * composite0;
     sum_bp += g_bp0;
     
     // Symmetric lobes
     for (int n = 1; n <= 32; ++n) {
-        float nf = float(n) + A.x;
-        float g_env = gaussian(nf, sigma_bs);
-        float w_notch_y = g_env * cos(2.0 * PI * f_sc_px * nf);
-        float g_bp = gaussian(nf, sigma_bp);
-        float w_bp = g_bp * cos(2.0 * PI * f_sc_px * nf);
-        
-        if (g_env < THRESHOLD && g_bp < THRESHOLD)
+        float nf = float(n);
+        float g_env_r = gaussian(nf + Ax, sigma_bs);
+        float g_env_l = gaussian(nf - Ax, sigma_bs);
+        float g_bp_r  = gaussian(nf + Ax, sigma_bp);
+        float g_bp_l  = gaussian(nf - Ax, sigma_bp);
+
+        if (g_env_r < THRESHOLD && g_env_l < THRESHOLD && g_bp_r < THRESHOLD && g_bp_l < THRESHOLD)
             break;
         
         // Right sample
@@ -262,10 +264,14 @@ void main()
         float chromaL = pixelL.g * carrierL.x + pixelL.b * carrierL.y;
         float compositeL = pixelL.r + chromaL;
         
-        conv_gcos += w_notch_y * (compositeR + compositeL);
-        sum_g += 2.0 * g_env;
-        c_bp_accum += w_bp * (compositeR + compositeL);
-        sum_bp += 2.0 * g_bp;
+        float w_notch_r = g_env_r * cos(2.0 * PI * f_sc_px * (nf + Ax));
+        float w_notch_l = g_env_l * cos(2.0 * PI * f_sc_px * (nf - Ax));
+        conv_gcos += w_notch_r * compositeR + w_notch_l * compositeL;
+        sum_g += g_env_r + g_env_l;
+        float w_bp_r = g_bp_r * cos(2.0 * PI * f_sc_px * (nf + Ax));
+        float w_bp_l = g_bp_l * cos(2.0 * PI * f_sc_px * (nf - Ax));
+        c_bp_accum += w_bp_r * compositeR + w_bp_l * compositeL;
+        sum_bp += g_bp_r + g_bp_l;
     }
 
     float notch_response = conv_gcos / max(sum_g, EPS);

@@ -9,40 +9,52 @@
 // Returns filtered RGB color.
 vec3 bandlimit_convolve_gaussian_x(vec2 vTexCoord, vec4 OutputSize, sampler2D Source, vec3 sigma)
 {
-    // Standard texturing coordinates (source pixel grid)
+    // Convert to pixel space
     vec2 UV = vTexCoord * OutputSize.xy;
-    vec2 A = fract(UV);
-    vec2 Tex = (floor(UV) + 0.5) * OutputSize.zw;
 
-    // Accumulated color and weights
+    // Horizontal subpixel handling: shift only X by -0.5 to land on pixel edge
+    float UX = UV.x - 0.5;
+
+    // Fractional horizontal position relative to chosen base pixel
+    float Ax = fract(UX);
+
+    // Base texel center (X adjusted, Y unchanged)
+    float baseX = (floor(UX) + 0.5) * OutputSize.z;
+    float baseY = (floor(UV.y) + 0.5) * OutputSize.w;
+    vec2 Tex = vec2(baseX, baseY);
+
+    // Accumulators
     vec3 color = vec3(0.0);
     vec3 wsum  = vec3(0.0);
 
-    // Step size in texture coordinates (one texel to the right)
     vec2 dx = vec2(OutputSize.z, 0.0);
 
-    // Center lobe (n = 0)
+    // Center lobe (n = 0): Gaussian centered, Ax is residual offset
     vec3 pixel = texture(Source, Tex).rgb;
-    vec3 w = gaussian3(A.x, sigma);
-    color = w * pixel;
-    wsum  = w;
+    vec3 w0 = gaussian3(Ax, sigma);
+    color = w0 * pixel;
+    wsum  = w0;
 
-    // Gaussian right and left lobes
     const float THRESHOLD = 1.0 / 510.0;
 
+    // Symmetric lobes: use (n + Ax) for right, (n - Ax) for left
     for (int n = 1; n <= 32; ++n) {
-        float nf = float(n) + A.x;
-        w = gaussian3(nf, sigma);
+        float nf = float(n);
 
-        // Early out when contribution is negligible on all channels
-        if (all(lessThan(w, vec3(THRESHOLD))))
+        // Distances from true subpixel center
+        vec3 wr = gaussian3(nf + Ax, sigma);
+        vec3 wl = gaussian3(nf - Ax, sigma);
+
+        // Early out only if BOTH sides negligible
+        if (all(lessThan(wr, vec3(THRESHOLD))) &&
+            all(lessThan(wl, vec3(THRESHOLD))))
             break;
 
-        vec3 pr = texture(Source, Tex + float(n) * dx).rgb;
-        vec3 pl = texture(Source, Tex - float(n) * dx).rgb;
+        vec3 pr = texture(Source, Tex + nf * dx).rgb;
+        vec3 pl = texture(Source, Tex - nf * dx).rgb;
 
-        color += w * pr + w * pl;
-        wsum  += w + w;
+        color += wr * pr + wl * pl;
+        wsum  += wr + wl;
     }
 
     return color / wsum;

@@ -213,9 +213,12 @@ void main()
     // component-wise weights/sigmas.
     const float THRESHOLD = 1.0 / 510.0;
 
+    // Horizontal coordinate handling per bandlimit.inc (no vertical shift)
     vec2 UV  = vTexCoord * config.OutputSize.xy;
-    vec2 A   = fract(UV);
-    vec2 Tex = (floor(UV) + 0.5) * config.OutputSize.zw;
+    float UX = UV.x - 0.5;
+    float Ax = fract(UX);
+    vec2 Tex = vec2((floor(UX) + 0.5) * config.OutputSize.z,
+                    (floor(UV.y) + 0.5) * config.OutputSize.w);
     vec2 dx  = vec2(config.OutputSize.z, 0.0); // one texel to the right
 
     // Accumulators and weights for Y, U/Db, V/Dr
@@ -226,9 +229,9 @@ void main()
     vec3 rgb0 = texture(Source, Tex).rgb;
     vec3 yc_c = rgb_to_luma_chroma(rgb0, MODEL);
 
-    float wy = gaussian(A.x, sigma.x);
-    float wu = gaussian(A.x, sigma.y);
-    float wv = gaussian(A.x, sigma.z);
+    float wy = gaussian(Ax, sigma.x);
+    float wu = gaussian(Ax, sigma.y);
+    float wv = gaussian(Ax, sigma.z);
 
     accum += vec3(wy * yc_c.x, wu * yc_c.y, wv * yc_c.z);
     wsum  += vec3(wy, wu, wv);
@@ -237,30 +240,34 @@ void main()
     // Limited to 32 iterations for faster shader compilation
     // Gaussian weights fall off rapidly, so early exit handles quality
     for (int n = 1; n <= 32; ++n) {
-        float nf = float(n) + A.x;
+        float nf = float(n);
+        float wy_r = gaussian(nf + Ax, sigma.x);
+        float wy_l = gaussian(nf - Ax, sigma.x);
+        float wu_r = gaussian(nf + Ax, sigma.y);
+        float wu_l = gaussian(nf - Ax, sigma.y);
+        float wv_r = gaussian(nf + Ax, sigma.z);
+        float wv_l = gaussian(nf - Ax, sigma.z);
 
-        float wy_n = gaussian(nf, sigma.x);
-        float wu_n = gaussian(nf, sigma.y);
-        float wv_n = gaussian(nf, sigma.z);
-
-        // Early out if all components negligible
-        if (wy_n < THRESHOLD && wu_n < THRESHOLD && wv_n < THRESHOLD)
+        // Early out if all components negligible on both sides
+        if (wy_r < THRESHOLD && wy_l < THRESHOLD &&
+            wu_r < THRESHOLD && wu_l < THRESHOLD &&
+            wv_r < THRESHOLD && wv_l < THRESHOLD)
             break;
 
-        vec3 rgbr = texture(Source, Tex + float(n) * dx).rgb;
-        vec3 rgbl = texture(Source, Tex - float(n) * dx).rgb;
+        vec3 rgbr = texture(Source, Tex + nf * dx).rgb;
+        vec3 rgbl = texture(Source, Tex - nf * dx).rgb;
 
         vec3 yc_r = rgb_to_luma_chroma(rgbr, MODEL);
         vec3 yc_l = rgb_to_luma_chroma(rgbl, MODEL);
 
         // Accumulate right and left for each component
-        accum.x += wy_n * (yc_r.x + yc_l.x);
-        accum.y += wu_n * (yc_r.y + yc_l.y);
-        accum.z += wv_n * (yc_r.z + yc_l.z);
+        accum.x += wy_r * yc_r.x + wy_l * yc_l.x;
+        accum.y += wu_r * yc_r.y + wu_l * yc_l.y;
+        accum.z += wv_r * yc_r.z + wv_l * yc_l.z;
 
-        wsum.x  += 2.0 * wy_n;
-        wsum.y  += 2.0 * wu_n;
-        wsum.z  += 2.0 * wv_n;
+        wsum.x  += wy_r + wy_l;
+        wsum.y  += wu_r + wu_l;
+        wsum.z  += wv_r + wv_l;
     }
 
     // Normalize and apply per-component SYS_GAIN/SYS_BIAS

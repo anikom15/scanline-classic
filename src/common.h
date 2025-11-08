@@ -40,14 +40,35 @@ float cb(const float x)
 
 float gaussian(float x, float sigma)
 {
-    return exp(-sq(x) * 1.0 / (2.0 * sq(sigma)));
+    // Dirac-like impulse when sigma collapses: centered on [-0.5, 0.5)
+    if (sigma <= 0.0)
+        return (x >= -0.5 && x < 0.5) ? 1.0 : 0.0;
+
+    // Normal Gaussian: exp(-x^2 / (2 σ^2))
+    // Use EPS to avoid division by zero for tiny σ.
+    float s = max(sigma, EPS);
+    return exp(-sq(x) / (2.0 * sq(s)));
 }
 
 vec3 gaussian3(float x, vec3 sigma)
 {
-    float x2 = sq(x);
-    vec3 k = -0.5 / (sigma * sigma);
-    return exp(k * x2);
+    // Component-wise Dirac handling when any channel’s sigma <= 0.
+    float inSpan = (x >= -0.5 && x < 0.5) ? 1.0 : 0.0;
+
+    vec3 impulseMask = vec3(
+        sigma.r <= 0.0 ? 1.0 : 0.0,
+        sigma.g <= 0.0 ? 1.0 : 0.0,
+        sigma.b <= 0.0 ? 1.0 : 0.0
+    );
+    vec3 impulseVal = impulseMask * inSpan;
+
+    // Gaussian for non-impulse channels
+    vec3 s = max(sigma, vec3(EPS));
+    vec3 k = -0.5 / (s * s);
+    vec3 gaussVal = exp(k * x * x);
+
+    // Use impulse where sigma <= 0, Gaussian otherwise
+    return impulseVal + (vec3(1.0) - impulseMask) * gaussVal;
 }
 
 float crt_linear(const float x)

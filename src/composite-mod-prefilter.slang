@@ -115,6 +115,7 @@ layout(std140, set = 0, binding = 0) uniform UBO
     float USER_COLOR;
     float USER_TINT;
     float USER_SHARPNESS;
+    float NOTCH_Y_CORRECT;
 } global;
 
 #pragma parameter USER_PICTURE "User Settings: Picture" 0.5 0.0 1.0 0.01
@@ -127,6 +128,9 @@ layout(std140, set = 0, binding = 0) uniform UBO
 #define USER_TINT global.USER_TINT
 #pragma parameter USER_SHARPNESS "User Settings: Sharpness" 0.0 0.0 1.0 0.01
 #define USER_SHARPNESS global.USER_SHARPNESS
+
+#pragma parameter NOTCH_Y_CORRECT "Notch Y Correction" 1.18 0.0 10.0 0.01
+#define NOTCH_Y_CORRECT global.NOTCH_Y_CORRECT
 
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
@@ -180,30 +184,22 @@ void main()
     float a_edge = pow(10.0, -A_edge_dB / 20.0);     // linear
     float alpha = clamp(2.0 * (1.0 - a_center), 0.0, 2.0);
 
-    // Δ (cycles per output pixel) from band-stop width in MHz
-    float d_px = max(NOTCH_WIDTH * 1.0e6 * pixel_time_px, 1e-6); // always symmetric, avoid zero
+    // Sigma derivations via sigma_tb(): interpret NOTCH_WIDTH and BANDPASS_WIDTH as full
+    // symmetric widths, mapping to cutoff = width/2 with attenuation = NOTCH_EDGE_ATTEN_DB.
+    // This approach aligns with system-level usage and centralizes derivation logic.
+    float sigma_bs = sigma_tb(tb, max(NOTCH_WIDTH * 0.5, 1e-6), NOTCH_EDGE_ATTEN_DB);
+    float sigma_bp = sigma_tb(tb, max(BANDPASS_WIDTH * 0.5, 1e-6), NOTCH_EDGE_ATTEN_DB);
 
-    // σ for band-stop (Gaussian envelope multiplied by cos at f_sc)
-    // Band-stop width is symmetric about subcarrier, so only one width parameter
-    float arg = clamp(2.0 * (1.0 - a_edge) / max(alpha, 1e-6), EPS, 1.0); // 0<arg<=1
-    float sigma_bs = sqrt(-2.0 * log(arg)) / (sqrt(2.0) * PI * d_px);
-
-    // Chroma band-pass: modulated Gaussian centered at f_sc
-    // Use same design philosophy as the notch: Gaussian envelope with width set by BANDPASS_WIDTH
+    // Subcarrier cycles per pixel for modulation
     float f_sc_px = tb.sc_freq_hz * pixel_time_px; // subcarrier cycles per pixel
 
-    // Convert BANDPASS_WIDTH to cycles/pixel (defines the −3dB width of the passband)
-    float bw_px = max(BANDPASS_WIDTH * 1.0e6 * pixel_time_px, 1e-6);
-    
-    // σ for chroma band-pass envelope (Gaussian with width parameter bw_px)
-    // This creates a band-pass when modulated to f_sc, with passband width ≈ bw_px
-    float a_bp = pow(10.0, -NOTCH_EDGE_ATTEN_DB / 20.0);
-    float sigma_bp = sqrt(-2.0 * log(a_bp)) / (sqrt(2.0) * PI * (bw_px * 0.5));
-
     // Optimized symmetric lobed approach with early exit
+    // Horizontal coordinate handling: align with bandlimit.inc (no Y shift)
     vec2 UV = vTexCoord * config.OutputSize.xy;
-    vec2 A = fract(UV);
-    vec2 Tex = (floor(UV) + 0.5) * config.OutputSize.zw;
+    float UX = UV.x - 0.5;
+    float Ax = fract(UX);
+    vec2 Tex = vec2((floor(UX) + 0.5) * config.OutputSize.z,
+                    (floor(UV.y) + 0.5) * config.OutputSize.w);
     vec2 dx = vec2(config.OutputSize.z, 0.0);
 
     const float THRESHOLD = 1.0 / 510.0;
@@ -227,13 +223,13 @@ void main()
     float composite0 = pixel0.r + chroma0;
     
     // Center weights for luma band-stop notch
-    float g_env0 = gaussian(A.x, sigma_bs);
+    float g_env0 = gaussian(Ax, sigma_bs);
     sum_g += g_env0;
-    float w_cos0 = g_env0 * cos(2.0 * PI * f_sc_px * A.x);
+    float w_cos0 = g_env0 * cos(2.0 * PI * f_sc_px * Ax);
 
     // Center weights for chroma band-pass: modulated Gaussian envelope
-    float g_bp0 = gaussian(A.x, sigma_bp);
-    float w_bp0 = g_bp0 * cos(2.0 * PI * f_sc_px * A.x);
+    float g_bp0 = gaussian(Ax, sigma_bp);
+    float w_bp0 = g_bp0 * cos(2.0 * PI * f_sc_px * Ax);
 
     // Accumulate center sample
     conv_gcos += w_cos0 * composite0;
@@ -242,18 +238,18 @@ void main()
     
     // Symmetric lobed processing with early exit
     for (int n = 1; n <= 32; ++n) {
-        float nf = float(n) + A.x;
+        float nf = float(n);
 
-        // Luma band-stop weights: Gaussian * cos(2π f_sc_px n)
-        float g_env = gaussian(nf, sigma_bs);
-        float w_notch_y = g_env * cos(2.0 * PI * f_sc_px * nf);
+        // Luma band-stop: separate left/right weights at proper offsets
+        float g_env_r = gaussian(nf + Ax, sigma_bs);
+        float g_env_l = gaussian(nf - Ax, sigma_bs);
+        // Chroma band-pass: separate left/right
+        float g_bp_r  = gaussian(nf + Ax, sigma_bp);
+        float g_bp_l  = gaussian(nf - Ax, sigma_bp);
 
-        // Chroma band-pass: Gaussian envelope modulated to f_sc
-        float g_bp = gaussian(nf, sigma_bp);
-        float w_bp = g_bp * cos(2.0 * PI * f_sc_px * nf);
-        
-        // Early exit if both envelopes negligible
-        if (g_env < THRESHOLD && g_bp < THRESHOLD)
+        // Early exit if both envelopes negligible on both sides
+        if (g_env_r < THRESHOLD && g_env_l < THRESHOLD &&
+            g_bp_r  < THRESHOLD && g_bp_l  < THRESHOLD)
             break;
         
         // Right sample
@@ -278,23 +274,27 @@ void main()
         float chromaL = pixelL.g * carrierL.x + pixelL.b * carrierL.y;
         float compositeL = pixelL.r + chromaL;
         
-        // Accumulate luma band-stop components
-        conv_gcos += w_notch_y * (compositeR + compositeL);
-        sum_g     += 2.0 * g_env;
+        // Accumulate luma band-stop components (modulated weights per side)
+        float w_notch_r = g_env_r * cos(2.0 * PI * f_sc_px * (nf + Ax));
+        float w_notch_l = g_env_l * cos(2.0 * PI * f_sc_px * (nf - Ax));
+        conv_gcos += w_notch_r * compositeR + w_notch_l * compositeL;
+        sum_g     += g_env_r + g_env_l;
 
         // Accumulate chroma band-pass (modulated at f_sc)
-        c_bp_accum += w_bp * (compositeR + compositeL);
-        sum_bp += 2.0 * g_bp;
+        float w_bp_r = g_bp_r * cos(2.0 * PI * f_sc_px * (nf + Ax));
+        float w_bp_l = g_bp_l * cos(2.0 * PI * f_sc_px * (nf - Ax));
+        c_bp_accum += w_bp_r * compositeR + w_bp_l * compositeL;
+        sum_bp += g_bp_r + g_bp_l;
     }
 
     // Normalize luma band-stop notch
-    // Scale by 0.8 to reduce over-brightening (determined empirically)
+    // Scale to balance white-level (determined empirically)
     float notch_response = conv_gcos / max(sum_g, EPS);
-    float y_out = 0.8 * (composite0 - alpha * notch_response);
+    float y_out = NOTCH_Y_CORRECT * (composite0 - alpha * notch_response);
 
     // Reconstruct chroma with modulated Gaussian band-pass (centered at f_sc)
-    // Scale by 2.4 to compensate for modulation gain loss (cos^2 average = 0.5; determined empirically)
-    float c_bp = 1.2 * 2.0 * c_bp_accum / max(sum_bp, EPS);
+    // Scale to compensate for modulation gain loss (cos^2 average = 0.5; determined empirically)
+    float c_bp = 2.0 * c_bp_accum / max(sum_bp, EPS);
     // Comb filter path (compute only when needed)
     vec2 color_comb = vec2(0.0);
     if (COLOR_FILTER_MODE >= 0.5 && COLOR_FILTER_MODE < 3.5) {
