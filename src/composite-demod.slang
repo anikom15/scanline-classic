@@ -45,6 +45,8 @@ layout(push_constant) uniform Push
     float DISPLAY_CUTOFF_ATTEN_Y;
     float DISPLAY_CUTOFF_ATTEN_C;
     float FEEDBACK_FILTER_MODE;
+    float FEEDBACK_NOTCH_Y_CORRECT;
+    float FEEDBACK_RAW_Y_CORRECT;
     float BW_MODE;
 } config;
 
@@ -91,6 +93,12 @@ layout(push_constant) uniform Push
 #pragma parameter FEEDBACK_FILTER_MODE "Feedback filter (0=Off, 1=On)" 0.0 0.0 1.0 1.0
 #define FEEDBACK_FILTER_MODE config.FEEDBACK_FILTER_MODE
 
+#pragma parameter FEEDBACK_NOTCH_Y_CORRECT "Feedback Notch Y Correction" 0.86 0.0 10.0 0.01
+#define FEEDBACK_NOTCH_Y_CORRECT config.FEEDBACK_NOTCH_Y_CORRECT
+
+#pragma parameter FEEDBACK_RAW_Y_CORRECT "Feedback Raw Y Correction" 1.2 0.0 10.0 0.01
+#define FEEDBACK_RAW_Y_CORRECT config.FEEDBACK_RAW_Y_CORRECT
+
 #pragma parameter BW_MODE "Monitor mode (0=Off, 1=BW, 2=Y, 3=C, 4=Y+C)" 0 0 4 1
 #define BW_MODE config.BW_MODE
 
@@ -129,8 +137,7 @@ void main()
     TimebaseConfig tb = compute_timebase(
         float(config.FrameCount),
         vTexCoord,
-        // Updated: compute_timebase now expects (original_width, output_width) as separate floats
-        config.OriginalSize.x,
+        config.OriginalSize.xy,
         config.OutputSize.x,
         V_FREQ,
         V_LINES_PER_FIELD,
@@ -237,32 +244,32 @@ void main()
 
         if (COLOR_FILTER_MODE < 0.5) {
             // Notch filter
-            color.r = 1.27 * y_out + c_out - chroma;
+            color.r = FEEDBACK_NOTCH_Y_CORRECT * y_out + c_out - chroma;
         } else if (COLOR_FILTER_MODE < 1.5) {
             // Comb filter
             color.r = y_out + c_out - chroma;
         } else if (COLOR_FILTER_MODE < 2.5) {
             // Notch + Comb
-            float y_notch = 1.27 * y_out + c_out - chroma;
+            float y_notch = FEEDBACK_NOTCH_Y_CORRECT * y_out + c_out - chroma;
             float y_comb = (y_out + c_out) - chroma;
 
             color.r = 0.5 * (y_notch + y_comb);
         } else {
             // No filter; use composite directly
-            color.r = 1.05 * color.r - chroma;
+            color.r = FEEDBACK_RAW_Y_CORRECT * color.r - chroma;
         }
     }
 
     if (BW_MODE < 0.5) {
         color = YPbPr_TO_RGB * color;
     } else if (BW_MODE < 1.5) {
-        color = vec3(y_out + c_out, 0.0, 0.0);
+        color = vec3(y_out + c_out);
     } else if (BW_MODE < 2.5) {
-        color = vec3(y_out, 0.0, 0.0);
+        color = vec3(y_out);
     } else if (BW_MODE < 3.5) {
-        color = vec3(c_out, 0.0, 0.0);
+        color = vec3(c_out);
     } else {
-        color = vec3(y_out, 0.0, c_out);
+        color = vec3(c_out, y_out, c_out);
     }
 
     FragColor = vec4(clamp(color, 0.0, 1.0), 1.0);

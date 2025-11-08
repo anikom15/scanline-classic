@@ -116,6 +116,8 @@ layout(std140, set = 0, binding = 0) uniform UBO
     float USER_TINT;
     float USER_SHARPNESS;
     float NOTCH_Y_CORRECT;
+    float RAW_Y_CORRECT;
+    float RAW_C_CORRECT;
 } global;
 
 #pragma parameter USER_PICTURE "User Settings: Picture" 0.5 0.0 1.0 0.01
@@ -131,6 +133,11 @@ layout(std140, set = 0, binding = 0) uniform UBO
 
 #pragma parameter NOTCH_Y_CORRECT "Notch Y Correction" 1.18 0.0 10.0 0.01
 #define NOTCH_Y_CORRECT global.NOTCH_Y_CORRECT
+
+#pragma parameter RAW_Y_CORRECT "Raw Y Correction" 1.0 0.0 10.0 0.01
+#define RAW_Y_CORRECT global.RAW_Y_CORRECT
+#pragma parameter RAW_C_CORRECT "Raw C Correction" 1.0 0.0 10.0 0.01
+#define RAW_C_CORRECT global.RAW_C_CORRECT
 
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
@@ -159,7 +166,7 @@ void main()
     TimebaseConfig tb = compute_timebase(
         float(config.FrameCount),
         vTexCoord,
-        config.OriginalSize.x,
+        config.OriginalSize.xy,
         config.OutputSize.x,
         V_FREQ,
         V_LINES_PER_FIELD,
@@ -359,19 +366,18 @@ void main()
     }
 
     // Select color filter mode
-    vec3 color;
+    vec2 color;
     if (COLOR_FILTER_MODE < 0.5) {
         // Notch: use band-stop luma and band-pass chroma (now centered at f_sc)
-        color = vec3(y_out, c_bp, 0.0);
+        color = vec2(y_out, c_bp);
     } else if (COLOR_FILTER_MODE < 1.5) {
-        color = vec3(color_comb, 0.0);
+        color = vec2(color_comb);
         y_out = color_comb.r;
     } else if (COLOR_FILTER_MODE < 2.5) {
         // Mix between the notch and comb outputs
-        vec2 mixed = mix(vec2(y_out, c_bp), color_comb, NOTCH_COMB_W);
-        color = vec3(mixed, 0.0);
+        color = mix(vec2(y_out, c_bp), color_comb, NOTCH_COMB_W);
     } else if (COLOR_FILTER_MODE < 3.5) {
-        color = vec3(composite0, composite0, 0.0);
+        color = vec2(RAW_Y_CORRECT * composite0, RAW_C_CORRECT * composite0);
     }
 
     // BW monitor modes: route either luma-only or chroma-only to all channels
@@ -380,14 +386,14 @@ void main()
         color.r = color.r * y_gain + y_bias;
         color.g = color.g * c_gain;
     } else if (BW_MODE < 1.5) {
-        color = vec3(composite0, 0.0, 0.0);
+        color = vec2(composite0, 0.0);
     } else if (BW_MODE < 2.5) {
-        color = vec3(y_out, 0.0, 0.0);
+        color = vec2(y_out, 0.0);
     } else if (BW_MODE < 3.5) {
-        color = vec3(0.0, c_out, 0.0);
+        color = vec2(0.0, c_out);
     } else if (BW_MODE < 4.5) {
-        color = vec3(y_out, c_out, 0.0);
+        color = vec2(y_out, c_out);
     }
 
-    FragColor = vec4(color, 1.0);
+    FragColor = vec4(color, vec2(0.0, 1.0));
 }

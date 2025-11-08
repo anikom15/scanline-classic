@@ -45,13 +45,10 @@ struct TimebaseConfig {
     float field_phase;
     float sc_freq_hz;
     float pixel_time;
-    // Time per output pixel in seconds (cycles-per-pixel scale):
-    // Derived internally: pixel_time_px = pixel_time * (original_width / output_width).
     float pixel_time_px;
 };
 
 // Compute complete timebase configuration for composite/S-Video processing
-// Refactored: now accepts original_width (active horizontal samples) instead of vec2 original_size.
 // Assumptions:
 //   - Vertical line index derived from v_lines_per_field (includes blanking as needed).
 //   - tex_coord.y ∈ [0,1] spans the field; floor(tex_coord.y * v_lines_per_field) gives line number.
@@ -59,7 +56,7 @@ struct TimebaseConfig {
 TimebaseConfig compute_timebase(
     float frame_count,
     vec2 tex_coord,
-    float original_width,       // was original_size.x
+    vec2 original_size,
     float output_width,         // OutputSize.x
     float v_freq,
     float v_lines_per_field,
@@ -75,7 +72,7 @@ TimebaseConfig compute_timebase(
     config.field = float(uint(frame_count) % 12u);
 
     // Line index derived from total lines-per-field (includes blanking region)
-    config.line = floor(tex_coord.y * v_lines_per_field);
+    config.line = floor(tex_coord.y * original_size.y);
 
     // Horizontal timing
     float h_freq_hz = v_freq * v_lines_per_field;
@@ -86,11 +83,11 @@ TimebaseConfig compute_timebase(
     if (h_blank_inactive_unit < 0.5)
         inactive_pixels = h_blank_inactive_len;
     else if (h_blank_inactive_unit < 1.5)
-        inactive_pixels = h_blank_inactive_len * 1.0e-6 * h_freq_hz * original_width;
+        inactive_pixels = h_blank_inactive_len * 1.0e-6 * h_freq_hz * original_size.x;
     else
-        inactive_pixels = h_blank_inactive_len / 100.0 * original_width;
+        inactive_pixels = h_blank_inactive_len / 100.0 * original_size.x;
 
-    float total_pixels = original_width + inactive_pixels;
+    float total_pixels = original_size.x + inactive_pixels;
     config.pixel_time = line_time / total_pixels;
 
     // Subcarrier frequency derivation (preserves previous rounding scheme)
@@ -108,14 +105,14 @@ TimebaseConfig compute_timebase(
     float field_time = 1.0 / v_freq;
     config.field_phase = field_time * config.field * 2.0 * PI * config.sc_freq_hz;
 
-    float odd_time_adjust = original_width / 256.0 * config.pixel_time;
+    float odd_time_adjust = original_size.x / 256.0 * config.pixel_time;
     config.field_phase -= ceil(config.field / 2.0) * odd_time_adjust
         * shorten_odd_field_time * 2.0 * PI * config.sc_freq_hz;
     config.field_phase = mod(config.field_phase, 2.0 * PI) - PI;
 
     // Per-output-pixel time (cycles-per-pixel scaling)
     if (output_width > 0.0)
-        config.pixel_time_px = config.pixel_time * (original_width / output_width);
+        config.pixel_time_px = config.pixel_time * (original_size.x / output_width);
     else
         config.pixel_time_px = 0.0;
 
