@@ -398,12 +398,6 @@ void main()
     // Sample the main CRT screen content
     vec4 screen = texture(Source, screen_coord);
     
-    // Black out pixels outside the viewport bounds
-    if (screen_coord.x < 0.0 || screen_coord.x > 1.0 ||
-        screen_coord.y < 0.0 || screen_coord.y > 1.0)
-    {
-        screen.rgb = vec3(0.0);
-    }
     screen.a = max(screen.a, 1.0);  // Ensure opaque screen
     
     // Bypass mode: pass through screen content without bezel/glow processing

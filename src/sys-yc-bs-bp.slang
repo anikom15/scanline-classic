@@ -178,11 +178,12 @@ void main(){
     float pixel_time_px = tb.pixel_time_px;
     float f_sc_px = tb.sc_freq_hz * pixel_time_px; // cycles per output pixel
 
-    // Set up horizontal traversal (pixel-centered addressing, horizontal-only shift)
+    // Set up horizontal traversal with nearest pixel-center addressing (horizontal-only)
     vec2 UV  = vTexCoord * config.OutputSize.xy;
-    float UX = UV.x - 0.5;
-    float Ax = fract(UX);
-    vec2 Tex = vec2((floor(UX) + 0.5) * config.OutputSize.z,
+    float baseIndex = floor(UV.x + 0.5);       // round to nearest pixel index
+    float baseCenter = baseIndex + 0.5;        // center position in pixel units
+    float Ax = UV.x - baseCenter;              // offset from center in [-0.5, 0.5]
+    vec2 Tex = vec2(baseCenter * config.OutputSize.z,
                     (floor(UV.y) + 0.5) * config.OutputSize.w);
     vec2 dx  = vec2(config.OutputSize.z, 0.0);
 
@@ -228,10 +229,11 @@ void main(){
     // Symmetric lobes
     for(int n=1; n<=32; ++n){
         float nf = float(n);
-        float gN_r = gaussian(nf + Ax, sigma_notch);
-        float gN_l = gaussian(nf - Ax, sigma_notch);
-        float gB_r = gaussian(nf + Ax, sigma_bp);
-        float gB_l = gaussian(nf - Ax, sigma_bp);
+        // Symmetric distances from kernel center: right = n - Ax, left = n + Ax
+        float gN_r = gaussian(nf - Ax, sigma_notch);
+        float gN_l = gaussian(nf + Ax, sigma_notch);
+        float gB_r = gaussian(nf - Ax, sigma_bp);
+        float gB_l = gaussian(nf + Ax, sigma_bp);
         if((gN_r < THRESHOLD && gN_l < THRESHOLD) && (gB_r < THRESHOLD && gB_l < THRESHOLD)) break;
 
         vec2 ycR = texture(Source, Tex + float(n) * dx).rg;
@@ -239,13 +241,14 @@ void main(){
         float compositeR = ycR.x + ycR.y;
         float compositeL = ycL.x + ycL.y;
 
-        float w_notch_r = gN_r * cos(2.0 * PI * f_sc_px * (nf + Ax));
-        float w_notch_l = gN_l * cos(2.0 * PI * f_sc_px * (nf - Ax));
+        // Modulated Gaussian weights with correct distances
+        float w_notch_r = gN_r * cos(2.0 * PI * f_sc_px * (nf - Ax));
+        float w_notch_l = gN_l * cos(2.0 * PI * f_sc_px * (nf + Ax));
         conv_notch += w_notch_r * compositeR + w_notch_l * compositeL;
         sum_notch  += gN_r + gN_l;
 
-        float w_bp_r = gB_r * cos(2.0 * PI * f_sc_px * (nf + Ax));
-        float w_bp_l = gB_l * cos(2.0 * PI * f_sc_px * (nf - Ax));
+        float w_bp_r = gB_r * cos(2.0 * PI * f_sc_px * (nf - Ax));
+        float w_bp_l = gB_l * cos(2.0 * PI * f_sc_px * (nf + Ax));
         conv_bp    += w_bp_r * compositeR + w_bp_l * compositeL;
         sum_bp     += gB_r + gB_l;
     }

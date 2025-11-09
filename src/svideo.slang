@@ -288,11 +288,12 @@ void main()
 
     const float THRESHOLD = 1.0 / 510.0;
 
-    // Horizontal coordinate handling: shift X to edge, keep Y center
+    // Horizontal coordinate handling using nearest pixel center (keep Y center)
     vec2 UV  = vTexCoord * config.OutputSize.xy;
-    float UX = UV.x - 0.5;
-    float Ax = fract(UX);
-    vec2 Tex = vec2((floor(UX) + 0.5) * config.OutputSize.z,
+    float baseIndex = floor(UV.x + 0.5);   // nearest pixel index
+    float baseCenter = baseIndex + 0.5;    // pixel center coordinate
+    float Ax = UV.x - baseCenter;          // offset from center in [-0.5, 0.5]
+    vec2 Tex = vec2(baseCenter * config.OutputSize.z,
         (floor(UV.y) + 0.5) * config.OutputSize.w);
     vec2 dx  = vec2(config.OutputSize.z, 0.0);
 
@@ -360,10 +361,11 @@ void main()
     // Gaussian weights fall off rapidly, so early exit handles quality
     for (int n = 1; n <= 32; ++n) {
         float nf = float(n);
-        float wy_r = gaussian(nf + Ax, sigma.x);
-        float wy_l = gaussian(nf - Ax, sigma.x);
-        float wc_r = gaussian(nf + Ax, sigma.y);
-        float wc_l = gaussian(nf - Ax, sigma.y);
+        // Symmetric distances: right = n - Ax, left = n + Ax
+        float wy_r = gaussian(nf - Ax, sigma.x);
+        float wy_l = gaussian(nf + Ax, sigma.x);
+        float wc_r = gaussian(nf - Ax, sigma.y);
+        float wc_l = gaussian(nf + Ax, sigma.y);
         if (wy_r < THRESHOLD && wy_l < THRESHOLD && wc_r < THRESHOLD && wc_l < THRESHOLD)
             break;
 

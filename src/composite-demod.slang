@@ -48,7 +48,18 @@ layout(push_constant) uniform Push
     float FEEDBACK_NOTCH_Y_CORRECT;
     float FEEDBACK_RAW_Y_CORRECT;
     float BW_MODE;
+    float USER_TINT;
+    float USER_SHARPNESS;
 } config;
+
+#pragma parameter USER_PICTURE "User Settings: Picture" 0.5 0.0 1.0 0.01
+#pragma parameter USER_BRIGHTNESS "User Settings: Brightness" 0.5 0.0 1.0 0.01
+#pragma parameter USER_COLOR "User Settings: Color" 0.5 0.0 1.0 0.01
+#pragma parameter USER_TINT "User Settings: Tint" 0.5 0.0 1.0 0.01
+#pragma parameter USER_SHARPNESS "User Settings: Sharpness" 0.0 0.0 1.0 0.01
+
+#define USER_TINT config.USER_TINT
+#define USER_SHARPNESS config.USER_SHARPNESS
 
 #pragma parameter COMPOSITE_DEMOD_HEADER " ==== Composite Video Demod. Parameters ==== " 0.0 0.0 0.0 0.0
 
@@ -147,15 +158,20 @@ void main()
         H_BLANK_INACTIVE_LEN,
         H_BLANK_INACTIVE_UNIT);
 
+    // User settings
+    float c_phase = 2.0 * PI * (USER_TINT - 0.5);
+
     // Filter characteristics
     vec2 sigma = vec2(
         sigma_tb(tb, DISPLAY_BANDWIDTH_Y, DISPLAY_CUTOFF_ATTEN_Y),
         sigma_tb(tb, DISPLAY_BANDWIDTH_C, DISPLAY_CUTOFF_ATTEN_C));
     // Optimized symmetric lobed approach with early exit
+    // Horizontal coordinate handling: nearest pixel center (no Y shift)
     vec2 UV = vTexCoord * config.OutputSize.xy;
-    float UX = UV.x - 0.5;           // horizontal pixel edge shift
-    float Ax = fract(UX);            // fractional horizontal position
-    vec2 Tex = vec2((floor(UX) + 0.5) * config.OutputSize.z,
+    float baseIndex = floor(UV.x + 0.5); // nearest pixel index
+    float baseCenter = baseIndex + 0.5;  // pixel center coordinate
+    float Ax = UV.x - baseCenter;        // offset in [-0.5, 0.5]
+    vec2 Tex = vec2(baseCenter * config.OutputSize.z,
                     (floor(UV.y) + 0.5) * config.OutputSize.w);
     vec2 dx = vec2(config.OutputSize.z, 0.0);
 
@@ -171,7 +187,7 @@ void main()
     // R is Y, G is C
     vec3 pixel0 = texture(Source, Tex).rgb;
     float phase0 = compute_carrier_phase(t0, tb.sc_freq_hz, tb.field_phase);
-    vec2 carrier0 = sincos_phase(phase0);
+    vec2 carrier0 = sincos_phase(phase0 + c_phase);
 
     float composite0 = pixel0.r;
     float chroma0 = pixel0.g;
@@ -196,10 +212,11 @@ void main()
     // Symmetric lobed processing with early exit
     for (int n = 1; n <= 32; ++n) {
         float nf = float(n);
-        float w_y_r = gaussian(nf + Ax, sigma.x);
-        float w_y_l = gaussian(nf - Ax, sigma.x);
-        float w_c_r = gaussian(nf + Ax, sigma.y);
-        float w_c_l = gaussian(nf - Ax, sigma.y);
+        // Symmetric distances: right = n - Ax, left = n + Ax
+        float w_y_r = gaussian(nf - Ax, sigma.x);
+        float w_y_l = gaussian(nf + Ax, sigma.x);
+        float w_c_r = gaussian(nf - Ax, sigma.y);
+        float w_c_l = gaussian(nf + Ax, sigma.y);
         if (w_y_r < THRESHOLD && w_y_l < THRESHOLD &&
             w_c_r < THRESHOLD && w_c_l < THRESHOLD)
             break;
@@ -209,7 +226,7 @@ void main()
         float tR = tb.line * LINE_TIME + offsetR * tb.pixel_time;
         vec3 pixelR = texture(Source, Tex + nf * dx).rgb;
         float phaseR = compute_carrier_phase(tR, tb.sc_freq_hz, tb.field_phase);
-        vec2 carrierR = sincos_phase(phaseR);
+        vec2 carrierR = sincos_phase(phaseR + c_phase);
         float compositeR = pixelR.r;
         float chromaR = pixelR.g;
         vec3 demodR = vec3(compositeR,
@@ -221,7 +238,7 @@ void main()
         float tL = tb.line * LINE_TIME + offsetL * tb.pixel_time;
         vec3 pixelL = texture(Source, Tex - nf * dx).rgb;
         float phaseL = compute_carrier_phase(tL, tb.sc_freq_hz, tb.field_phase);
-        vec2 carrierL = sincos_phase(phaseL);
+        vec2 carrierL = sincos_phase(phaseL + c_phase);
         float compositeL = pixelL.r;
         float chromaL = pixelL.g;
         vec3 demodL = vec3(compositeL,

@@ -9,7 +9,7 @@ shaders = 8
 shader0 = "../src/sys-rgb-bandlimit.slang"
 filter_linear0 = "false"
 scale_type0 = "source"
-scale_x0 = 2.0
+scale_x0 = 3.0
 scale_y0 = 1.0
 
 shader1 = "../src/sys-component.slang"
@@ -34,7 +34,6 @@ scale_type6 = "viewport"
 
 shader7 = "../src/bezel.slang"
 filter_linear7 = "true"
-wrap_mode7 = "mirrored_repeat"
 
 textures = BORDER
 BORDER = "../share/bezel-trinitron.png"
@@ -54,7 +53,8 @@ SYS_CUTOFF_ATTEN_V = 3.0
 # svideo parameters
 V_FREQ = 60.0988
 V_LINES_PER_FIELD = 262
-H_BLANK_INACTIVE_LEN = 170
+H_BLANK_INACTIVE_LEN = 33.203125
+H_BLANK_INACTIVE_UNIT = 2
 SC_FREQ_MODE = 0
 SHORTEN_ODD_FIELD_TIME = 1
 
@@ -85,3 +85,4 @@ ASPECT_RATIO_NUM = 128
 ASPECT_RATIO_DEN = 105
 GLOW_DIFFUSION = 6.0
 GLOW_COMPRESSION = 0.7
+BEZEL_GAIN = 0.4

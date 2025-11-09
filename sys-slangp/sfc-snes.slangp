@@ -9,7 +9,7 @@ shaders = 5
 shader0 = "../src/sys-display-rgb-bandlimit.slang"
 filter_linear0 = "false"
 scale_type0 = "source"
-scale_x0 = 2.0
+scale_x0 = 3.0
 scale_y0 = 1.0
 
 shader1 = "../src/phosphor-luma.slang"
@@ -33,7 +33,6 @@ scale_y3 = 1.0
 
 shader4 = "../src/bezel.slang"
 filter_linear4 = "true"
-wrap_mode4 = "mirrored_repeat"
 scale_type4 = "viewport"
 scale_x4 = 1.0
 scale_y4 = 1.0

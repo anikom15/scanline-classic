@@ -213,11 +213,12 @@ void main()
     // component-wise weights/sigmas.
     const float THRESHOLD = 1.0 / 510.0;
 
-    // Horizontal coordinate handling per bandlimit.inc (no vertical shift)
+    // Horizontal coordinate handling using nearest pixel center (no vertical shift)
     vec2 UV  = vTexCoord * config.OutputSize.xy;
-    float UX = UV.x - 0.5;
-    float Ax = fract(UX);
-    vec2 Tex = vec2((floor(UX) + 0.5) * config.OutputSize.z,
+    float baseIndex = floor(UV.x + 0.5);       // round to nearest integer pixel index
+    float baseCenter = baseIndex + 0.5;        // pixel center in pixel units
+    float Ax = UV.x - baseCenter;              // offset from center in [-0.5, 0.5]
+    vec2 Tex = vec2(baseCenter * config.OutputSize.z,
                     (floor(UV.y) + 0.5) * config.OutputSize.w);
     vec2 dx  = vec2(config.OutputSize.z, 0.0); // one texel to the right
 
@@ -241,12 +242,13 @@ void main()
     // Gaussian weights fall off rapidly, so early exit handles quality
     for (int n = 1; n <= 32; ++n) {
         float nf = float(n);
-        float wy_r = gaussian(nf + Ax, sigma.x);
-        float wy_l = gaussian(nf - Ax, sigma.x);
-        float wu_r = gaussian(nf + Ax, sigma.y);
-        float wu_l = gaussian(nf - Ax, sigma.y);
-        float wv_r = gaussian(nf + Ax, sigma.z);
-        float wv_l = gaussian(nf - Ax, sigma.z);
+        // Symmetric distances: right = n - Ax, left = n + Ax
+        float wy_r = gaussian(nf - Ax, sigma.x);
+        float wy_l = gaussian(nf + Ax, sigma.x);
+        float wu_r = gaussian(nf - Ax, sigma.y);
+        float wu_l = gaussian(nf + Ax, sigma.y);
+        float wv_r = gaussian(nf - Ax, sigma.z);
+        float wv_l = gaussian(nf + Ax, sigma.z);
 
         // Early out if all components negligible on both sides
         if (wy_r < THRESHOLD && wy_l < THRESHOLD &&

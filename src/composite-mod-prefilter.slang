@@ -201,11 +201,12 @@ void main()
     float f_sc_px = tb.sc_freq_hz * pixel_time_px; // subcarrier cycles per pixel
 
     // Optimized symmetric lobed approach with early exit
-    // Horizontal coordinate handling: align with bandlimit.inc (no Y shift)
+    // Horizontal coordinate handling: nearest pixel center (no Y shift)
     vec2 UV = vTexCoord * config.OutputSize.xy;
-    float UX = UV.x - 0.5;
-    float Ax = fract(UX);
-    vec2 Tex = vec2((floor(UX) + 0.5) * config.OutputSize.z,
+    float baseIndex = floor(UV.x + 0.5);  // nearest pixel index
+    float baseCenter = baseIndex + 0.5;   // center in pixel units
+    float Ax = UV.x - baseCenter;         // offset from center in [-0.5, 0.5]
+    vec2 Tex = vec2(baseCenter * config.OutputSize.z,
                     (floor(UV.y) + 0.5) * config.OutputSize.w);
     vec2 dx = vec2(config.OutputSize.z, 0.0);
 
@@ -247,12 +248,11 @@ void main()
     for (int n = 1; n <= 32; ++n) {
         float nf = float(n);
 
-        // Luma band-stop: separate left/right weights at proper offsets
-        float g_env_r = gaussian(nf + Ax, sigma_bs);
-        float g_env_l = gaussian(nf - Ax, sigma_bs);
-        // Chroma band-pass: separate left/right
-        float g_bp_r  = gaussian(nf + Ax, sigma_bp);
-        float g_bp_l  = gaussian(nf - Ax, sigma_bp);
+        // Symmetric distances from kernel center: right = n - Ax, left = n + Ax
+        float g_env_r = gaussian(nf - Ax, sigma_bs);
+        float g_env_l = gaussian(nf + Ax, sigma_bs);
+        float g_bp_r  = gaussian(nf - Ax, sigma_bp);
+        float g_bp_l  = gaussian(nf + Ax, sigma_bp);
 
         // Early exit if both envelopes negligible on both sides
         if (g_env_r < THRESHOLD && g_env_l < THRESHOLD &&
@@ -282,14 +282,14 @@ void main()
         float compositeL = pixelL.r + chromaL;
         
         // Accumulate luma band-stop components (modulated weights per side)
-        float w_notch_r = g_env_r * cos(2.0 * PI * f_sc_px * (nf + Ax));
-        float w_notch_l = g_env_l * cos(2.0 * PI * f_sc_px * (nf - Ax));
+        float w_notch_r = g_env_r * cos(2.0 * PI * f_sc_px * (nf - Ax));
+        float w_notch_l = g_env_l * cos(2.0 * PI * f_sc_px * (nf + Ax));
         conv_gcos += w_notch_r * compositeR + w_notch_l * compositeL;
         sum_g     += g_env_r + g_env_l;
 
         // Accumulate chroma band-pass (modulated at f_sc)
-        float w_bp_r = g_bp_r * cos(2.0 * PI * f_sc_px * (nf + Ax));
-        float w_bp_l = g_bp_l * cos(2.0 * PI * f_sc_px * (nf - Ax));
+        float w_bp_r = g_bp_r * cos(2.0 * PI * f_sc_px * (nf - Ax));
+        float w_bp_l = g_bp_l * cos(2.0 * PI * f_sc_px * (nf + Ax));
         c_bp_accum += w_bp_r * compositeR + w_bp_l * compositeL;
         sum_bp += g_bp_r + g_bp_l;
     }

@@ -8,7 +8,7 @@ shaders = 9
 shader0 = "../src/sys-rgb-bandlimit.slang"
 filter_linear0 = "false"
 scale_type0 = "source"
-scale_x0 = 2.0
+scale_x0 = 6.0
 scale_y0 = 1.0
 
 shader1 = "../src/sys-component.slang"
@@ -36,7 +36,6 @@ scale_type7 = "viewport"
 
 shader8 = "../src/bezel.slang"
 filter_linear8 = "true"
-wrap_mode8 = "mirrored_repeat"
 
 textures = BORDER
 BORDER = "../share/bezel-trinitron.png"
@@ -57,7 +56,8 @@ SYS_CUTOFF_ATTEN_V = 3.0
 V_FREQ = 60.0988
 V_LINES_PER_FIELD = 262
 SC_FREQ_MODE = 0
-H_BLANK_INACTIVE_LEN = 170
+H_BLANK_INACTIVE_LEN = 33.203125
+H_BLANK_INACTIVE_UNIT = 2
 SHORTEN_ODD_FIELD_TIME = 1
 
 # phosphor parameters
