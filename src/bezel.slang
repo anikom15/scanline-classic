@@ -71,7 +71,7 @@ layout(push_constant) uniform Push
 
 #define ASPECT_RATIO (ASPECT_RATIO_NUM / ASPECT_RATIO_DEN)
 
-#pragma parameter BEZEL_GAIN "Bezel gain" 1.0 0.0 5.0 0.01
+#pragma parameter BEZEL_GAIN "Bezel gain" 0.4 0.0 5.0 0.01
 #define BEZEL_GAIN config.BEZEL_GAIN
 
 #pragma parameter BEZEL_BIAS "Bezel bias" 0.0 -1.0 1.0 0.01
@@ -241,6 +241,50 @@ vec2 random_offset(vec2 seed, float magnitude)
     return vec2(cos(angle), sin(angle)) * distance;
 }
 
+// ==== Mirrored sampling with soft edge guard ====
+// Tunables for edge protection (guard band and soft fade width)
+#define EDGE_MARGIN   0.06   // How far from 0/1 to keep samples (0..0.25 is sensible)
+#define EDGE_SOFTNESS 0.02   // Fade width into the margin (0 = hard, >0 = smooth)
+
+// Mirror a continuous UV into [0,1] using mirrored repeat, robust for negative UVs too
+vec2 mirror01(vec2 uv)
+{
+    vec2 t = mod(uv, 2.0);
+    return 1.0 - abs(t - 1.0);
+}
+
+// Smoothly keep mirrored UV away from edges by EDGE_MARGIN, with a soft ramp of EDGE_SOFTNESS
+vec2 soft_guard01(vec2 uv01, float margin, float softness)
+{
+    // Distance to nearest edge per axis
+    vec2 d = min(uv01, 1.0 - uv01);
+
+    // s = 0 near edges (d <= margin), s = 1 past margin+softness
+    vec2 s = smoothstep(vec2(margin), vec2(margin + max(softness, 1e-5)), d);
+
+    // Hard-clamped safe coordinate
+    vec2 clamped = clamp(uv01, margin, 1.0 - margin);
+
+    // Blend from clamped (near edges) to original (away from edges)
+    return mix(clamped, uv01, s);
+}
+
+// Optional: edge factor to fade contributions near mirrored seams
+float edge_guard_factor(vec2 uv01, float margin, float softness)
+{
+    vec2 d = min(uv01, 1.0 - uv01);
+    vec2 s = smoothstep(vec2(margin), vec2(margin + max(softness, 1e-5)), d);
+    return s.x * s.y;
+}
+
+// Convenience: safe mirrored sampling
+vec3 sample_mirror_safe(sampler2D tex, vec2 uv)
+{
+    vec2 m = mirror01(uv);
+    vec2 safe = soft_guard01(m, EDGE_MARGIN, EDGE_SOFTNESS);
+    return texture(tex, safe).rgb;
+}
+
 /**
  * Calculates a glow effect by sampling surrounding pixels in multiple directions.
  * Uses an 8-directional sampling pattern with configurable diffusion steps.
@@ -310,7 +354,7 @@ vec3 calculate_glow(vec2 coord, float radius, float diffusion_steps)
             
             // Sample and compress color to reduce extreme brightness impact
             vec3 sample_color = compress_color(
-                texture(PHOSPHOR, coord + offset).rgb,
+                sample_mirror_safe(PHOSPHOR, coord + offset),
                 GLOW_COMPRESSION
             );
             
@@ -371,10 +415,10 @@ void main()
     
     // Sample background/bezel texture
     vec4 background = texture(BORDER, vTexCoord);
-    
+
     // Transform glow sampling coordinates (centered on screen viewport)
     vec2 glow_coord = screen_coord;
-    
+
     // Calculate glow effect
     vec3 glow = calculate_glow(glow_coord, GLOW_RADIUS, GLOW_DIFFUSION);
     
