@@ -203,7 +203,7 @@ void main()
     // Optimized symmetric lobed approach with early exit
     // Horizontal coordinate handling: nearest pixel center (no Y shift)
     vec2 UV = vTexCoord * config.OutputSize.xy;
-    float baseIndex = floor(UV.x + 0.5);  // nearest pixel index
+    float baseIndex = floor(UV.x);  // nearest pixel index
     float baseCenter = baseIndex + 0.5;   // center in pixel units
     float Ax = UV.x - baseCenter;         // offset from center in [-0.5, 0.5]
     vec2 Tex = vec2(baseCenter * config.OutputSize.z,
@@ -220,8 +220,12 @@ void main()
     float sum_bp = 0.0;     // Chroma envelope sum: Σ g_bp(n)
 
     // Process center sample
-    float offset0 = Tex.x * config.OriginalSize.x;
-    float t0 = tb.line * LINE_TIME + offset0 * tb.pixel_time;
+    // Coordinate system fix: use output pixel lattice directly.
+    // Previously: offset0 = Tex.x * OriginalSize.x; t0 used tb.pixel_time (original-pixel time),
+    // which caused horizontal misalignment at scale factors (e.g., 2x). Now we anchor on
+    // baseCenter (already an output pixel index + 0.5) and use tb.pixel_time_px (time per output pixel).
+    float offset0 = baseCenter; // output pixel index (center)
+    float t0 = tb.line * LINE_TIME + offset0 * tb.pixel_time_px;
     
     vec3 pixel0 = texture(Source, Tex).rgb;
     float phase0 = compute_carrier_phase(t0, tb.sc_freq_hz, tb.field_phase);
@@ -259,9 +263,9 @@ void main()
             g_bp_r  < THRESHOLD && g_bp_l  < THRESHOLD)
             break;
         
-        // Right sample
-        float offsetR = (Tex.x + float(n) * dx.x) * config.OriginalSize.x;
-        float tR = tb.line * LINE_TIME + offsetR * tb.pixel_time;
+        // Right sample (output pixel lattice)
+        float offsetR = baseCenter + nf; // center + n output pixels
+        float tR = tb.line * LINE_TIME + offsetR * tb.pixel_time_px;
         
         vec3 pixelR = texture(Source, Tex + float(n) * dx).rgb;
         float phaseR = compute_carrier_phase(tR, tb.sc_freq_hz, tb.field_phase);
@@ -270,9 +274,9 @@ void main()
         float chromaR = pixelR.g * carrierR.x + pixelR.b * carrierR.y;
         float compositeR = pixelR.r + chromaR;
         
-        // Left sample
-        float offsetL = (Tex.x - float(n) * dx.x) * config.OriginalSize.x;
-        float tL = tb.line * LINE_TIME + offsetL * tb.pixel_time;
+        // Left sample (output pixel lattice)
+        float offsetL = baseCenter - nf; // center - n output pixels
+        float tL = tb.line * LINE_TIME + offsetL * tb.pixel_time_px;
         
         vec3 pixelL = texture(Source, Tex - float(n) * dx).rgb;
         float phaseL = compute_carrier_phase(tL, tb.sc_freq_hz, tb.field_phase);

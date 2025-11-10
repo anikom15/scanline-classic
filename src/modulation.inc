@@ -111,10 +111,7 @@ TimebaseConfig compute_timebase(
     config.field_phase = mod(config.field_phase, 2.0 * PI) - PI;
 
     // Per-output-pixel time (cycles-per-pixel scaling)
-    if (output_width > 0.0)
-        config.pixel_time_px = config.pixel_time * (original_size.x / output_width);
-    else
-        config.pixel_time_px = 0.0;
+    config.pixel_time_px = config.pixel_time * (original_size.x / output_width);
 
     return config;
 }

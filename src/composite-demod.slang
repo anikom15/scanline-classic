@@ -168,7 +168,7 @@ void main()
     // Optimized symmetric lobed approach with early exit
     // Horizontal coordinate handling: nearest pixel center (no Y shift)
     vec2 UV = vTexCoord * config.OutputSize.xy;
-    float baseIndex = floor(UV.x + 0.5); // nearest pixel index
+    float baseIndex = floor(UV.x); // nearest pixel index
     float baseCenter = baseIndex + 0.5;  // pixel center coordinate
     float Ax = UV.x - baseCenter;        // offset in [-0.5, 0.5]
     vec2 Tex = vec2(baseCenter * config.OutputSize.z,
@@ -181,8 +181,9 @@ void main()
     vec3 wsum = vec3(0.0);
 
     // Process center sample
-    float offset0 = Tex.x * config.OriginalSize.x;
-    float t0 = tb.line * LINE_TIME + offset0 * tb.pixel_time;
+    // Coordinate system fix: use output pixel lattice with tb.pixel_time_px to avoid scale-induced shifts
+    float offset0 = baseCenter; // output pixel center index
+    float t0 = tb.line * LINE_TIME + offset0 * tb.pixel_time_px;
 
     // R is Y, G is C
     vec3 pixel0 = texture(Source, Tex).rgb;
@@ -221,9 +222,9 @@ void main()
             w_c_r < THRESHOLD && w_c_l < THRESHOLD)
             break;
 
-        // Right sample
-        float offsetR = (Tex.x + nf * dx.x) * config.OriginalSize.x;
-        float tR = tb.line * LINE_TIME + offsetR * tb.pixel_time;
+    // Right sample (output pixel lattice)
+    float offsetR = baseCenter + nf;
+    float tR = tb.line * LINE_TIME + offsetR * tb.pixel_time_px;
         vec3 pixelR = texture(Source, Tex + nf * dx).rgb;
         float phaseR = compute_carrier_phase(tR, tb.sc_freq_hz, tb.field_phase);
         vec2 carrierR = sincos_phase(phaseR + c_phase);
@@ -233,9 +234,9 @@ void main()
                            2.0 * chromaR * carrierR.x,
                            2.0 * chromaR * carrierR.y);
 
-        // Left sample
-        float offsetL = (Tex.x - nf * dx.x) * config.OriginalSize.x;
-        float tL = tb.line * LINE_TIME + offsetL * tb.pixel_time;
+    // Left sample (output pixel lattice)
+    float offsetL = baseCenter - nf;
+    float tL = tb.line * LINE_TIME + offsetL * tb.pixel_time_px;
         vec3 pixelL = texture(Source, Tex - nf * dx).rgb;
         float phaseL = compute_carrier_phase(tL, tb.sc_freq_hz, tb.field_phase);
         vec2 carrierL = sincos_phase(phaseL + c_phase);

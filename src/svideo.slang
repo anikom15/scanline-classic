@@ -290,7 +290,7 @@ void main()
 
     // Horizontal coordinate handling using nearest pixel center (keep Y center)
     vec2 UV  = vTexCoord * config.OutputSize.xy;
-    float baseIndex = floor(UV.x + 0.5);   // nearest pixel index
+    float baseIndex = floor(UV.x);         // nearest pixel index
     float baseCenter = baseIndex + 0.5;    // pixel center coordinate
     float Ax = UV.x - baseCenter;          // offset from center in [-0.5, 0.5]
     vec2 Tex = vec2(baseCenter * config.OutputSize.z,

@@ -8,7 +8,7 @@ shaders = 9
 shader0 = "../src/sys-rgb-bandlimit.slang"
 filter_linear0 = "false"
 scale_type0 = "source"
-scale_x0 = 6.0
+scale_x0 = 3.0
 scale_y0 = 1.0
 
 shader1 = "../src/sys-component.slang"
