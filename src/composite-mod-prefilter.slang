@@ -56,7 +56,7 @@ layout(push_constant) uniform Push
 #pragma parameter USER_BRIGHTNESS "User: Brightness" 0.5 0.0 1.0 0.01
 #pragma parameter USER_COLOR "User: Color" 0.5 0.0 1.0 0.01
 #pragma parameter USER_TINT "User: Tint" 0.5 0.0 1.0 0.01
-#pragma parameter USER_SHARPNESS "User: Sharpness" 0.0 0.0 1.0 0.1
+#pragma parameter USER_SHARPNESS "User: Sharpness" 0.5 0.0 1.0 0.01
 
 #pragma parameter COMPOSITE_HEADER " ==== Composite Video Mod. Parameters ==== " 0.0 0.0 0.0 0.0
 

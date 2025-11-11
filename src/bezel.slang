@@ -69,7 +69,7 @@ layout(push_constant) uniform Push
 #pragma parameter BEZEL_BYPASS "Bypass bezel effect" 0.0 0.0 1.0 1.0
 #define BEZEL_BYPASS config.BEZEL_BYPASS
 
-#pragma parameter BEZEL_GAIN "Bezel gain" 0.4 0.0 5.0 0.01
+#pragma parameter BEZEL_GAIN "Bezel gain" 1.0 0.0 5.0 0.01
 #define BEZEL_GAIN config.BEZEL_GAIN
 
 #pragma parameter BEZEL_BIAS "Bezel bias" 0.0 -1.0 1.0 0.01
