@@ -56,11 +56,11 @@ layout(push_constant) uniform Push
 #pragma parameter USER_BRIGHTNESS "User: Brightness" 0.5 0.0 1.0 0.01
 #pragma parameter USER_COLOR "User: Color" 0.5 0.0 1.0 0.01
 #pragma parameter USER_TINT "User: Tint" 0.5 0.0 1.0 0.01
-#pragma parameter USER_SHARPNESS "User: Sharpness" 0.0 0.0 1.0 1.0
+#pragma parameter USER_SHARPNESS "User: Sharpness" 0.0 0.0 1.0 0.1
 
 #pragma parameter COMPOSITE_HEADER " ==== Composite Video Mod. Parameters ==== " 0.0 0.0 0.0 0.0
 
-#pragma parameter BYPASS_COMPOSITE_MOD "Bypass Composite modulation (0=Off, 1=On)" 0.0 0.0 1.0 1.0
+#pragma parameter BYPASS_COMPOSITE_MOD "Bypass Composite modulation (0=Off, 1=On)" 0.0 0.0 1.0 0.1
 #define BYPASS_COMPOSITE_MOD config.BYPASS_COMPOSITE_MOD
 
 //#pragma parameter V_FREQ "Vertical frequency (Hz)" 59.94 1.0 240.0 0.01

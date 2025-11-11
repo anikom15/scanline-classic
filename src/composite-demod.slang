@@ -58,7 +58,8 @@ layout(push_constant) uniform Push
 #pragma parameter USER_BRIGHTNESS "User: Brightness" 0.5 0.0 1.0 0.01
 #pragma parameter USER_COLOR "User: Color" 0.5 0.0 1.0 0.01
 #pragma parameter USER_TINT "User: Tint" 0.5 0.0 1.0 0.01
-#pragma parameter USER_SHARPNESS "User: Sharpness" 0.0 0.0 1.0 0.01
+#pragma parameter USER_SHARPNESS "User: Sharpness" 0.0 0.0 1.0 0.1
+#pragma parameter USER_SHARPNESS_HARMONIC "User: Sharpness Harmonic (0=Off, 1=On)" 0.0 0.0 1.0 1.0
 
 #define USER_TINT config.USER_TINT
 #define USER_SHARPNESS config.USER_SHARPNESS
@@ -123,7 +124,10 @@ layout(push_constant) uniform Push
 layout(std140, set = 0, binding = 0) uniform UBO
 {
     mat4 MVP;
+    float USER_SHARPNESS_HARMONIC;
 } global;
+
+#define USER_SHARPNESS_HARMONIC global.USER_SHARPNESS_HARMONIC
 
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
@@ -169,6 +173,20 @@ void main()
     vec2 sigma = vec2(
         sigma_tb(tb, DISPLAY_BANDWIDTH_Y, DISPLAY_CUTOFF_ATTEN_Y),
         sigma_tb(tb, DISPLAY_BANDWIDTH_C, DISPLAY_CUTOFF_ATTEN_C));
+    
+    // High frequency emphasis filter for sharpness
+    // Center frequency: 190 * H_FREQ_HZ with 1 MHz -3dB bandwidth
+    // Using Gaussian bandpass for smooth, artifact-free peaking
+    float emphasis_center_hz = 190.0 * H_FREQ_HZ;
+    float emphasis_bw_mhz = 1.0; // 1 MHz -3dB bandwidth
+    float emphasis_sigma = sigma_tb(tb, emphasis_bw_mhz, 3.0);
+    
+    // Second harmonic emphasis filter at 3x frequency (570 * H_FREQ_HZ)
+    // with 2 MHz -3dB bandwidth
+    float emphasis2_center_hz = 3.0 * emphasis_center_hz; // 570 * H_FREQ_HZ
+    float emphasis2_bw_mhz = 2.0; // 2 MHz -3dB bandwidth
+    float emphasis2_sigma = sigma_tb(tb, emphasis2_bw_mhz, 3.0);
+    
     // Optimized symmetric lobed approach with early exit
     // Horizontal coordinate handling: nearest pixel center (no Y shift)
     vec2 UV = vTexCoord * config.OutputSize.xy;
@@ -183,6 +201,14 @@ void main()
     
     vec3 color = vec3(0.0);
     vec3 wsum = vec3(0.0);
+    
+    // For emphasis filter (narrow bandpass around center frequency)
+    vec3 emphasis_color = vec3(0.0);
+    vec3 emphasis_wsum = vec3(0.0);
+    
+    // For second harmonic emphasis filter
+    vec3 emphasis2_color = vec3(0.0);
+    vec3 emphasis2_wsum = vec3(0.0);
 
     // Process center sample
     // Coordinate system fix: use output pixel lattice with tb.pixel_time_px to avoid scale-induced shifts
@@ -207,12 +233,30 @@ void main()
     demod0.g = 2.0 * chroma0 * carrier0.x;
     demod0.b = 2.0 * chroma0 * carrier0.y;
     
+    // Modulate by emphasis center frequency for bandpass effect
+    float emphasis_phase0 = 2.0 * PI * emphasis_center_hz * t0;
+    float emphasis_mod0 = cos(emphasis_phase0);
+    
+    // Second harmonic modulation
+    float emphasis2_phase0 = 2.0 * PI * emphasis2_center_hz * t0;
+    float emphasis2_mod0 = cos(emphasis2_phase0);
+    
     // Center weights for all filter modes
     float w_y0 = gaussian(Ax, sigma.x);
     float w_c0 = gaussian(Ax, sigma.y);
+    float w_emphasis0 = gaussian(Ax, emphasis_sigma);
+    float w_emphasis2_0 = gaussian(Ax, emphasis2_sigma);
     
     color += vec3(w_y0 * demod0.r, w_c0 * demod0.g, w_c0 * demod0.b);
     wsum += vec3(w_y0, w_c0, w_c0);
+    
+    // Modulated accumulation for bandpass
+    emphasis_color += w_emphasis0 * demod0 * emphasis_mod0;
+    emphasis_wsum += vec3(w_emphasis0);
+    
+    // Second harmonic modulated accumulation
+    emphasis2_color += w_emphasis2_0 * demod0 * emphasis2_mod0;
+    emphasis2_wsum += vec3(w_emphasis2_0);
 
     // Symmetric lobed processing with early exit
     for (int n = 1; n <= 32; ++n) {
@@ -222,13 +266,20 @@ void main()
         float w_y_l = gaussian(nf + Ax, sigma.x);
         float w_c_r = gaussian(nf - Ax, sigma.y);
         float w_c_l = gaussian(nf + Ax, sigma.y);
+        float w_emphasis_r = gaussian(nf - Ax, emphasis_sigma);
+        float w_emphasis_l = gaussian(nf + Ax, emphasis_sigma);
+        float w_emphasis2_r = gaussian(nf - Ax, emphasis2_sigma);
+        float w_emphasis2_l = gaussian(nf + Ax, emphasis2_sigma);
+        
         if (w_y_r < THRESHOLD && w_y_l < THRESHOLD &&
-            w_c_r < THRESHOLD && w_c_l < THRESHOLD)
+            w_c_r < THRESHOLD && w_c_l < THRESHOLD &&
+            w_emphasis_r < THRESHOLD && w_emphasis_l < THRESHOLD &&
+            w_emphasis2_r < THRESHOLD && w_emphasis2_l < THRESHOLD)
             break;
 
-    // Right sample (output pixel lattice)
-    float offsetR = baseCenter + nf;
-    float tR = tb.line * LINE_TIME + offsetR * tb.pixel_time_px;
+        // Right sample (output pixel lattice)
+        float offsetR = baseCenter + nf;
+        float tR = tb.line * LINE_TIME + offsetR * tb.pixel_time_px;
         vec3 pixelR = texture(Source, Tex + nf * dx).rgb;
         float phaseR = compute_carrier_phase(tR, tb.sc_freq_hz, tb.field_phase);
         vec2 carrierR = sincos_phase(phaseR + c_phase);
@@ -237,10 +288,16 @@ void main()
         vec3 demodR = vec3(compositeR,
                            2.0 * chromaR * carrierR.x,
                            2.0 * chromaR * carrierR.y);
+        
+        float emphasis_phaseR = 2.0 * PI * emphasis_center_hz * tR;
+        float emphasis_modR = cos(emphasis_phaseR);
+        
+        float emphasis2_phaseR = 2.0 * PI * emphasis2_center_hz * tR;
+        float emphasis2_modR = cos(emphasis2_phaseR);
 
-    // Left sample (output pixel lattice)
-    float offsetL = baseCenter - nf;
-    float tL = tb.line * LINE_TIME + offsetL * tb.pixel_time_px;
+        // Left sample (output pixel lattice)
+        float offsetL = baseCenter - nf;
+        float tL = tb.line * LINE_TIME + offsetL * tb.pixel_time_px;
         vec3 pixelL = texture(Source, Tex - nf * dx).rgb;
         float phaseL = compute_carrier_phase(tL, tb.sc_freq_hz, tb.field_phase);
         vec2 carrierL = sincos_phase(phaseL + c_phase);
@@ -249,6 +306,12 @@ void main()
         vec3 demodL = vec3(compositeL,
                            2.0 * chromaL * carrierL.x,
                            2.0 * chromaL * carrierL.y);
+        
+        float emphasis_phaseL = 2.0 * PI * emphasis_center_hz * tL;
+        float emphasis_modL = cos(emphasis_phaseL);
+        
+        float emphasis2_phaseL = 2.0 * PI * emphasis2_center_hz * tL;
+        float emphasis2_modL = cos(emphasis2_phaseL);
 
         color.r += w_y_r * demodR.r + w_y_l * demodL.r;
         color.g += w_c_r * demodR.g + w_c_l * demodL.g;
@@ -256,10 +319,39 @@ void main()
         wsum.x += w_y_r + w_y_l;
         wsum.y += w_c_r + w_c_l;
         wsum.z += w_c_r + w_c_l;
+        
+        // Modulated accumulation for bandpass
+        emphasis_color += w_emphasis_r * demodR * emphasis_modR + w_emphasis_l * demodL * emphasis_modL;
+        emphasis_wsum += vec3(w_emphasis_r + w_emphasis_l);
+        
+        // Second harmonic modulated accumulation
+        emphasis2_color += w_emphasis2_r * demodR * emphasis2_modR + w_emphasis2_l * demodL * emphasis2_modL;
+        emphasis2_wsum += vec3(w_emphasis2_r + w_emphasis2_l);
     }
 
     // Normalize
     color /= max(wsum, vec3(EPS));
+    emphasis_color /= max(emphasis_wsum, vec3(EPS));
+    emphasis2_color /= max(emphasis2_wsum, vec3(EPS));
+    
+    // Apply frequency emphasis when USER_SHARPNESS > 0
+    // Demodulate back to baseband by multiplying again
+    if (USER_SHARPNESS > 0.0) {
+        // Demodulate the bandpass output
+        float demod_mod = 2.0 * cos(emphasis_phase0);
+        vec3 emphasis_component = emphasis_color * demod_mod;
+        // Add scaled emphasis back to signal
+        color += USER_SHARPNESS * emphasis_component;
+        
+        // Apply second harmonic emphasis if enabled
+        if (USER_SHARPNESS_HARMONIC >= 0.5) {
+            float demod_mod2 = 2.0 * cos(emphasis2_phase0);
+            vec3 emphasis2_component = emphasis2_color * demod_mod2;
+            // Add scaled second harmonic emphasis
+            // The second harmonic is typically less pronounced, so use half the scaling
+            color += USER_SHARPNESS * 0.5 * emphasis2_component;
+        }
+    }
 
     if (FEEDBACK_FILTER_MODE >= 0.5) {
         float chroma = color.g * carrier0.x + color.b * carrier0.y;
