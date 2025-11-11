@@ -37,8 +37,8 @@ layout(push_constant) uniform Push
     vec4 OriginalSize;
     vec4 OutputSize;
     uint FrameCount;
+    float OriginalFPS;
     float BYPASS_ADAPTIVE_COMB;
-    float V_FREQ;
     float V_LINES_PER_FIELD;
     float SHORTEN_ODD_FIELD_TIME;
     float SC_FREQ_MODE;
@@ -57,8 +57,10 @@ layout(push_constant) uniform Push
 #pragma parameter BYPASS_ADAPTIVE_COMB "Bypass (0=Off, 1=On)" 0.0 0.0 1.0 1.0
 #define BYPASS_ADAPTIVE_COMB config.BYPASS_ADAPTIVE_COMB
 
-#pragma parameter V_FREQ "Vertical frequency (Hz)" 59.94 1.0 240.0 0.01
-#define V_FREQ config.V_FREQ
+//#pragma parameter V_FREQ "Vertical frequency (Hz)" 59.94 1.0 240.0 0.01
+//#define V_FREQ config.V_FREQ
+
+#define V_FREQ config.OriginalFPS
 
 #pragma parameter V_LINES_PER_FIELD "Video lines per field" 262.5 0.0 540.0 0.5
 #define V_LINES_PER_FIELD config.V_LINES_PER_FIELD

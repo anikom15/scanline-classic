@@ -33,14 +33,12 @@ layout(push_constant) uniform Push
     vec4 OutputSize;
     vec4 OriginalSize;
     vec4 SourceSize;
-    uint FrameCount;
+    float OriginalAspect;
+    float USER_H_SIZE;
+    float USER_V_SIZE;
+    float USER_H_POS;
+    float USER_V_POS;
     float BEZEL_BYPASS;
-    float H_SIZE;
-    float V_SIZE;
-    float ASPECT_RATIO_NUM;
-    float ASPECT_RATIO_DEN;
-    float H_POS;
-    float V_POS;
     float BEZEL_GAIN;
     float BEZEL_BIAS;
     float GLOW_RADIUS;
@@ -53,29 +51,31 @@ layout(push_constant) uniform Push
     float GLOW_TEMPERATURE;
 } config;
 
-#pragma parameter BEZEL_HEADER " ==== Bezel Parameters ==== " 0.0 0.0 0.0 0.0
+#define ASPECT_RATIO config.OriginalAspect
+
+#pragma parameter USER_HEADER "==== User: Geometry Settings ====" 0.0 0.0 0.0 0.0
+
+#pragma parameter USER_H_SIZE "H-Size" 1.0 0.0 10.0 0.001
+#define USER_H_SIZE config.USER_H_SIZE
+#pragma parameter USER_V_SIZE "V-Size" 1.0 0.0 10.0 0.001
+#define USER_V_SIZE config.USER_V_SIZE
+#pragma parameter USER_H_POS "H-Pos." 0.0 -1.0 1.0 0.001
+#define USER_H_POS config.USER_H_POS
+#pragma parameter USER_V_POS "V-Pos." 0.0 -1.0 1.0 0.001
+#define USER_V_POS config.USER_V_POS
+
+#pragma parameter BEZEL_HEADER "==== Engr: Bezel Settings ====" 0.0 0.0 0.0 0.0
+
 #pragma parameter BEZEL_BYPASS "Bypass bezel effect" 0.0 0.0 1.0 1.0
 #define BEZEL_BYPASS config.BEZEL_BYPASS
-#pragma parameter H_SIZE "Viewport horizontal size" 1.0 0.0 10.0 0.001
-#define H_SIZE config.H_SIZE
-#pragma parameter V_SIZE "Viewport vertical size" 1.0 0.0 10.0 0.001
-#define V_SIZE config.V_SIZE
-#pragma parameter H_POS "Viewport horizontal position" 0.0 -1.0 1.0 0.001
-#define H_POS config.H_POS
-#pragma parameter V_POS "Viewport vertical position" 0.0 -1.0 1.0 0.001
-#define V_POS config.V_POS
-#pragma parameter ASPECT_RATIO_NUM "Aspect ratio numerator" 4.0 1.0 10.0 0.1
-#define ASPECT_RATIO_NUM config.ASPECT_RATIO_NUM
-#pragma parameter ASPECT_RATIO_DEN "Aspect ratio denominator" 3.0 1.0 10.0 0.1
-#define ASPECT_RATIO_DEN config.ASPECT_RATIO_DEN
-
-#define ASPECT_RATIO (ASPECT_RATIO_NUM / ASPECT_RATIO_DEN)
 
 #pragma parameter BEZEL_GAIN "Bezel gain" 0.4 0.0 5.0 0.01
 #define BEZEL_GAIN config.BEZEL_GAIN
 
 #pragma parameter BEZEL_BIAS "Bezel bias" 0.0 -1.0 1.0 0.01
 #define BEZEL_BIAS config.BEZEL_BIAS
+
+#pragma parameter GLOW_HEADER "==== Engr: Glow Settings ====" 0.0 0.0 0.0 0.0
 
 #pragma parameter GLOW_RADIUS "Glow radius" 0.06 0.0 0.1 0.01
 #define GLOW_RADIUS config.GLOW_RADIUS
@@ -130,9 +130,9 @@ void main()
         vec2(config.OutputSize.x, config.OutputSize.x / ASPECT_RATIO);
     
     // Calculate scale factor and centering offset for the independently-sized viewport
-    vec2 scale = config.OutputSize.xy / corrected_size / vec2(H_SIZE, V_SIZE);
+    vec2 scale = config.OutputSize.xy / corrected_size / vec2(USER_H_SIZE, USER_V_SIZE);
     // Center the viewport, then apply user shift
-    vec2 offset = (1.0 - scale) * 0.5 + vec2(-H_POS, V_POS) * scale;
+    vec2 offset = (1.0 - scale) * 0.5 + vec2(-USER_H_POS, USER_V_POS) * scale;
     // Map texture coordinates to the scaled and shifted screen viewport
     screen_coord = TexCoord.xy * scale + offset;
     vTexCoord = TexCoord.xy;  // Unmodified coords for background/border sampling
@@ -426,7 +426,7 @@ void main()
     vec2 corrected_size = ASPECT_RATIO > 1.0 ?
         vec2(config.OutputSize.y * ASPECT_RATIO, config.OutputSize.y):
         vec2(config.OutputSize.x, config.OutputSize.x / ASPECT_RATIO);
-    vec2 scale = config.OutputSize.xy / corrected_size / vec2(H_SIZE, V_SIZE);
+    vec2 scale = config.OutputSize.xy / corrected_size / vec2(USER_H_SIZE, USER_V_SIZE);
     vec2 offset = (1.0 - scale) * 0.5;
     
     // Transform to viewport-relative coordinates

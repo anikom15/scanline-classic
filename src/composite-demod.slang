@@ -31,8 +31,8 @@ layout(push_constant) uniform Push
     vec4 OriginalSize;
     vec4 OutputSize;
     uint FrameCount;
+    float OriginalFPS;
     float BYPASS_COMPOSITE_DEMOD;
-    float V_FREQ;
     float V_LINES_PER_FIELD;
     float SHORTEN_ODD_FIELD_TIME;
     float SC_FREQ_MODE;
@@ -52,11 +52,13 @@ layout(push_constant) uniform Push
     float USER_SHARPNESS;
 } config;
 
-#pragma parameter USER_PICTURE "User Settings: Picture" 0.5 0.0 1.0 0.01
-#pragma parameter USER_BRIGHTNESS "User Settings: Brightness" 0.5 0.0 1.0 0.01
-#pragma parameter USER_COLOR "User Settings: Color" 0.5 0.0 1.0 0.01
-#pragma parameter USER_TINT "User Settings: Tint" 0.5 0.0 1.0 0.01
-#pragma parameter USER_SHARPNESS "User Settings: Sharpness" 0.0 0.0 1.0 0.01
+#pragma parameter COMPOSITE_DEMOD_HEADER2 "==== User Settings ====" 0.0 0.0 0.0 0.0
+
+#pragma parameter USER_PICTURE "User: Picture" 0.5 0.0 1.0 0.01
+#pragma parameter USER_BRIGHTNESS "User: Brightness" 0.5 0.0 1.0 0.01
+#pragma parameter USER_COLOR "User: Color" 0.5 0.0 1.0 0.01
+#pragma parameter USER_TINT "User: Tint" 0.5 0.0 1.0 0.01
+#pragma parameter USER_SHARPNESS "User: Sharpness" 0.0 0.0 1.0 0.01
 
 #define USER_TINT config.USER_TINT
 #define USER_SHARPNESS config.USER_SHARPNESS
@@ -66,8 +68,10 @@ layout(push_constant) uniform Push
 #pragma parameter BYPASS_COMPOSITE_DEMOD "Bypass Composite demodulation (0=Off, 1=On)" 0.0 0.0 1.0 1.0
 #define BYPASS_COMPOSITE_DEMOD config.BYPASS_COMPOSITE_DEMOD
 
-#pragma parameter V_FREQ "Vertical frequency (Hz)" 59.94 1.0 240.0 0.01
-#define V_FREQ config.V_FREQ
+//#pragma parameter V_FREQ "Vertical frequency (Hz)" 59.94 1.0 240.0 0.01
+//#define V_FREQ config.V_FREQ
+
+#define V_FREQ config.OriginalFPS
 
 #pragma parameter V_LINES_PER_FIELD "Video lines per field" 262.5 0.0 540.0 0.5
 #define V_LINES_PER_FIELD config.V_LINES_PER_FIELD

@@ -180,7 +180,7 @@ void main(){
 
     // Set up horizontal traversal with nearest pixel-center addressing (horizontal-only)
     vec2 UV  = vTexCoord * config.OutputSize.xy;
-    float baseIndex = floor(UV.x + 0.5);       // round to nearest pixel index
+    float baseIndex = floor(UV.x);       // round to nearest pixel index
     float baseCenter = baseIndex + 0.5;        // center position in pixel units
     float Ax = UV.x - baseCenter;              // offset from center in [-0.5, 0.5]
     vec2 Tex = vec2(baseCenter * config.OutputSize.z,

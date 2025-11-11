@@ -25,20 +25,22 @@ filter_linear3 = false
 shader4 = ../src/composite-demod.slang
 filter_linear4 = false
 
-shader5 = ../src/phosphor-luma.slang
+shader5 = ../src/display-rgb-bandlimit.slang
 filter_linear5 = false
 
-shader6 = ../src/phosphor-chroma.slang
+shader6 = ../src/phosphor-luma.slang
 filter_linear6 = false
+
+shader7 = ../src/phosphor-chroma.slang
+filter_linear7 = false
 alias6 = PHOSPHOR
 
-shader7 = ../src/scanline-advanced.slang
-filter_linear7 = false
-scale_type7 = viewport
+shader8 = ../src/scanline-advanced.slang
+filter_linear8 = false
+scale_type8 = viewport
 
-shader8 = ../src/bezel.slang
-filter_linear8 = true
-wrap_mode8 = mirrored_repeat
+shader9 = ../src/bezel.slang
+filter_linear9 = true
 
 textures = BORDER
 BORDER = "../share/bezel-trinitron.png"
