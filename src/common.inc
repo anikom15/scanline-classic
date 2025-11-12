@@ -15,8 +15,6 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <https://www.gnu.org/licenses/>. */ 
 
-const vec3 TEN = vec3(10.0, 10.0, 10.0);
-const vec3 TWENTY = vec3(20.0, 20.0, 20.0);
 const float EPS = 1.19209289551e-7;
 const float PI = 3.14159265359;
 const vec3 BLACK = vec3(0.0, 0.0, 0.0);
@@ -69,6 +67,48 @@ vec3 gaussian3(float x, vec3 sigma)
 
     // Use impulse where sigma <= 0, Gaussian otherwise
     return impulseVal + (vec3(1.0) - impulseMask) * gaussVal;
+}
+
+// Map normalized limited-range video signal to voltage
+// IRE = Input * 100.0
+// Voltage = IRE / 100.0 * 0.7143 V
+// Output = Input * 0.7143 V
+vec3 normlimit_to_voltage(const vec3 norm)
+{
+    return norm * 0.7143;
+}
+
+vec3 voltage_to_normlimit(const vec3 voltage)
+{
+    return voltage / 0.7143;
+}
+
+// Map normalized limited-range video signal to normalized full-range
+// video level
+//
+// Voltage = Input * 0.7143 V
+// Minimum voltage = 0.0 / 100.0 * 0.7143 = 0.0 V
+// Maximum voltage = 133.0 / 100.0 * 0.7143 = 0.950019 V
+// Voltage range = Maximum - Minimum = 0.950019 V
+// Output = (Input * 0.7143 - Minimum) / Voltage range
+//
+// This is needed for shaders that expect full-range input, such as the
+// scanline rasterizer.
+vec3 normlimit_to_normfull(const vec3 norm)
+{
+    return norm * 0.7143 / 0.950019;
+}
+
+vec3 voltage_to_normfull(const vec3 voltage)
+{
+    return voltage / 0.950019;
+}
+
+// Map normalized full-range video signal to voltage
+// Voltage = Input * Voltage range + Minimum voltage
+vec3 normfull_to_voltage(const vec3 norm)
+{
+    return norm * 0.950019;
 }
 
 float crt_linear(const float x)

@@ -80,15 +80,12 @@
 #pragma name ScanlineAdvanced
 #pragma format R16G16B16A16_SFLOAT
 
-layout(std140, set = 0, binding = 0) uniform UBO {
-    mat4 MVP;
+layout(push_constant) uniform Push {
     vec4 OutputSize;
     vec4 OriginalSize;
     vec4 SourceSize;
     uint FrameCount;
-} global;
-
-layout(push_constant) uniform Push {
+    float OriginalAspect;
     float V_FREQ;
     float V_LINES_PER_FIELD;
     float H_BLANK_INACTIVE_LEN;
@@ -107,6 +104,10 @@ layout(push_constant) uniform Push {
     float TRAPEZOID_STRENGTH;
     float CORNER_STRENGTH;
     float S_CORRECTION_H;
+} config;
+
+layout(std140, set = 0, binding = 0) uniform UBO {
+    mat4 MVP;
     float S_CORRECTION_V;
     float UNDERSCAN;
     float H_SIZE;
@@ -115,13 +116,15 @@ layout(push_constant) uniform Push {
     float V_POS;
     float SCANLINE_ADVANCED_BYPASS;
     float MASK_SCALE;
-} config;
+} global;
+
+#define ASPECT_RATIO config.OriginalAspect
 
 // ==== Shader Parameters ====
 
 #pragma parameter SCANLINE_ADVANCED_HEADER " ==== Scanline Advanced Parameters ==== " 0.0 0.0 0.0 0.0
 #pragma parameter SCANLINE_ADVANCED_BYPASS "Scanline advanced bypass" 0.0 0.0 1.0 1.0
-#define SCANLINE_ADVANCED_BYPASS config.SCANLINE_ADVANCED_BYPASS
+#define SCANLINE_ADVANCED_BYPASS global.SCANLINE_ADVANCED_BYPASS
 
 // ==== Quick Start Guide ====
 //
@@ -217,13 +220,13 @@ layout(push_constant) uniform Push {
 #define TRAPEZOID_STRENGTH config.TRAPEZOID_STRENGTH
 #define CORNER_STRENGTH config.CORNER_STRENGTH
 #define S_CORRECTION_H config.S_CORRECTION_H
-#define S_CORRECTION_V config.S_CORRECTION_V
-#define UNDERSCAN config.UNDERSCAN
-#define H_SIZE config.H_SIZE
-#define V_SIZE config.V_SIZE
-#define H_POS config.H_POS
-#define V_POS config.V_POS
-#define MASK_SCALE config.MASK_SCALE
+#define S_CORRECTION_V global.S_CORRECTION_V
+#define UNDERSCAN global.UNDERSCAN
+#define H_SIZE global.H_SIZE
+#define V_SIZE global.V_SIZE
+#define H_POS global.H_POS
+#define V_POS global.V_POS
+#define MASK_SCALE global.MASK_SCALE
 
 // ==== Helper Functions ====
 
@@ -313,23 +316,23 @@ vec3 mask_anisotropic(vec2 uv, vec2 ddx_uv, vec2 ddy_uv)
 vec3 pixel(float x, float y, sampler2D tex)
 {
     // Determine effective vertical resolution based on scan type and line doubling
-    float yThres = (SCAN_TYPE < 2.0 && global.OriginalSize.y > 1.7 * MAX_SCAN_RATE / 2.0)
-        ? global.OriginalSize.y / 2.0  // Interlaced mode
-        : global.OriginalSize.y;        // Progressive mode
+    float yThres = (SCAN_TYPE < 2.0 && config.OriginalSize.y > 1.7 * MAX_SCAN_RATE / 2.0)
+        ? config.OriginalSize.y / 2.0  // Interlaced mode
+        : config.OriginalSize.y;        // Progressive mode
     float scanw;
     int line;
 
     // Apply line-doubler if enabled and source resolution is low enough
-    if (LINE_DOUBLER > 0.0 && global.OriginalSize.y <= MAX_SCAN_RATE / 2.0 + EPS)
+    if (LINE_DOUBLER > 0.0 && config.OriginalSize.y <= MAX_SCAN_RATE / 2.0 + EPS)
         yThres *= 2.0;
     
     // Calculate scanline width (gap between lines)
     scanw = max(0.0, 2.0 * (yThres / MAX_SCAN_RATE - 0.5));
     
     // Determine which scanline we're on
-    if (SCAN_TYPE < 2.0 && global.OriginalSize.y > 1.7 * MAX_SCAN_RATE / 2.0) {
+    if (SCAN_TYPE < 2.0 && config.OriginalSize.y > 1.7 * MAX_SCAN_RATE / 2.0) {
         // Interlaced: alternate fields based on frame count
-        uint t = global.FrameCount % 2u;
+        uint t = config.FrameCount % 2u;
         line = int(2.0 * yThres * y + float(t));
     } else {
         // Progressive: fixed scanline pattern
@@ -382,8 +385,8 @@ void main()
     vec2 uv = vTexCoord.xy;
     
     // Calculate aspect ratios
-    float ar = global.OutputSize.x / global.OutputSize.y;    // Output aspect ratio
-    float sar = global.OriginalSize.x / global.OriginalSize.y; // Source aspect ratio
+    float ar = config.OutputSize.x / config.OutputSize.y;    // Output aspect ratio
+    float sar = ASPECT_RATIO; // Source aspect ratio
     float par = ar / sar;  // Pixel aspect ratio correction
 
     // Convert to normalized coordinates (-1.0 to 1.0), then apply viewport shift
@@ -396,19 +399,19 @@ void main()
     if (H_BLANK_INACTIVE_UNIT < 0.5)
         inactive_pixels = H_BLANK_INACTIVE_LEN;
     else if (H_BLANK_INACTIVE_UNIT < 1.5)
-        inactive_pixels = H_BLANK_INACTIVE_LEN * 1.0e-6 * H_FREQ_HZ * global.OriginalSize.x;
+        inactive_pixels = H_BLANK_INACTIVE_LEN * 1.0e-6 * H_FREQ_HZ * config.OriginalSize.x;
     else
-        inactive_pixels = H_BLANK_INACTIVE_LEN / 100.0 * global.OriginalSize.x;
+        inactive_pixels = H_BLANK_INACTIVE_LEN / 100.0 * config.OriginalSize.x;
 
-    float hsize = par * (global.OriginalSize.x + inactive_pixels);
-    float vsize = V_LINES_PER_FIELD;
-    float hscale = par * global.OriginalSize.x / hsize;
-    float vscale = global.OriginalSize.y / vsize;
+    float htotal = par * (config.OriginalSize.x + inactive_pixels);
+    float vlines = V_LINES_PER_FIELD;
+    float hscale = par * config.OriginalSize.x / htotal;
+    float vscale = config.OriginalSize.y / vlines;
 
     // ==== Apply CRT geometry distortions ====
     
     // Update aspect ratio with padding
-    ar = hsize / vsize;
+    ar = htotal / vlines;
     
     // Apply scaling
     uv.x *= hscale;
@@ -427,14 +430,14 @@ void main()
     uv /= zoom;
 
     // Aspect ratio pre-compensation for distortion
-    if (hsize > vsize)
+    if (htotal > vlines)
         uv.y /= ar;
     else
         uv.x *= ar;
     
     // Normalize to square space with ZOOM folded in
     // This keeps the distortion domain normalized regardless of zoom.
-    vec2 dist_scale = (hsize > vsize) ? vec2(1.0, ar) : vec2(1.0 / ar, 1.0);
+    vec2 dist_scale = (htotal > vlines) ? vec2(1.0, ar) : vec2(1.0 / ar, 1.0);
     vec2 dist_scale_zoom = dist_scale * zoom;
 
     // Transform to normalized square space for entire distortion pipeline
@@ -500,7 +503,7 @@ void main()
     uv = (uv_normalized / dist_scale_zoom);
 
     // Aspect ratio post-compensation
-    if (hsize > vsize)
+    if (htotal > vlines)
         uv.y *= ar;
     else
         uv.x /= ar;
@@ -516,15 +519,15 @@ void main()
     uv = uv / 2.0 + 0.5;
 
     // ==== Bicubic filtering setup ====
-    
-    vec2 stepxy = 1.0 / global.SourceSize.xy;
+
+    vec2 stepxy = 1.0 / config.SourceSize.xy;
 
     // Adjust vertical step for scanlines/interlacing
-    if (SCAN_TYPE > 1.0 || global.OriginalSize.y < 1.7 * MAX_SCAN_RATE / 2.0)
+    if (SCAN_TYPE > 1.0 || config.OriginalSize.y < 1.7 * MAX_SCAN_RATE / 2.0)
         stepxy.y /= 2.0;
 
     // Adjust for line-doubler
-    if (LINE_DOUBLER > 0.0 && global.OriginalSize.y <= MAX_SCAN_RATE / 2.0 + EPS)
+    if (LINE_DOUBLER > 0.0 && config.OriginalSize.y <= MAX_SCAN_RATE / 2.0 + EPS)
         stepxy.y /= 2.0;
 
     // Prevent horizontal over-blur for low-resolution content
@@ -541,7 +544,7 @@ void main()
     float rho_v = length(vec2(dudx.y, dudy.y)); // footprint along source V
 
     // Base texel size in uv units
-    vec2 texel_uv = 1.0 / global.SourceSize.xy;
+    vec2 texel_uv = 1.0 / config.SourceSize.xy;
 
     // Scale the kernel footprint when minifying (rho > texel size).
     // Clamp to avoid over-blur and runaway costs; 8.0 is a conservative cap.
@@ -619,7 +622,7 @@ void main()
         mask_coord /= 1.0 + tan(PI * UNDERSCAN / 200.0);
         mask_coord.x *= hscale;
         mask_coord.y *= vscale;
-        if (hsize > vsize)
+        if (htotal > vlines)
             mask_coord.y /= ar;
         else
             mask_coord.x *= ar;
@@ -648,14 +651,14 @@ void main()
         mask_normalized -= distortion_offset;
         
         mask_coord = mask_normalized / dist_scale_zoom;
-        if (hsize > vsize)
+        if (htotal > vlines)
             mask_coord.y *= ar;
         else
             mask_coord.x /= ar;
         mask_coord.x /= hscale;
         mask_coord.y /= vscale;
         mask_coord = mask_coord / 2.0 + 0.5;
-        vec2 mask_uv = mask_coord * global.OutputSize.xy;
+        vec2 mask_uv = mask_coord * config.OutputSize.xy;
         vec2 ddx_mask = dFdx(mask_uv);
         vec2 ddy_mask = dFdy(mask_uv);
         col *= mask_anisotropic(mask_uv, ddx_mask, ddy_mask);

@@ -17,6 +17,20 @@
 
 // Shared modulation and demodulation functions for composite and S-Video processing
 
+const float NTSC_FSC = 3.579545e6;
+const float PAL_FSC = 4.4336187e6;
+
+// Timebase and subcarrier configuration
+struct TimebaseConfig {
+    float field;
+    float line;
+    float field_phase;
+    float h_freq_hz;
+    float sc_freq_hz;
+    float pixel_time;
+    float pixel_time_px;
+};
+
 // Optimized sincos helper - computes both sin and cos in one call
 // Returns vec2(sin(phase), cos(phase))
 // This is more efficient than calling sin() and cos() separately
@@ -38,26 +52,16 @@ float compute_carrier_phase(float t, float sc_freq_hz, float field_phase) {
     return 2.0 * PI * fractional_cycles + field_phase;
 }
 
-// Timebase and subcarrier configuration
-struct TimebaseConfig {
-    float field;
-    float line;
-    float field_phase;
-    float sc_freq_hz;
-    float pixel_time;
-    float pixel_time_px;
-};
-
 // Compute complete timebase configuration for composite/S-Video processing
 // Assumptions:
 //   - Vertical line index derived from v_lines_per_field (includes blanking as needed).
 //   - tex_coord.y ∈ [0,1] spans the field; floor(tex_coord.y * v_lines_per_field) gives line number.
 // If you need active-only line indexing, reintroduce an original_height parameter or scale.
 TimebaseConfig compute_timebase(
-    float frame_count,
+    uint frame_count,
     vec2 tex_coord,
     vec2 original_size,
-    float output_width,         // OutputSize.x
+    float output_width,
     float v_freq,
     float v_lines_per_field,
     float shorten_odd_field_time,
@@ -69,21 +73,24 @@ TimebaseConfig compute_timebase(
     TimebaseConfig config;
 
     // Field number cycling (retain existing modulus behavior)
-    config.field = float(uint(frame_count) % 12u);
+    config.field = float(frame_count % 12u);
 
     // Line index derived from total lines-per-field (includes blanking region)
-    config.line = floor(tex_coord.y * original_size.y);
+    if (original_size.y > v_lines_per_field * 1.5)  // Interlaced mode
+        config.line = floor(tex_coord.y * original_size.y * 0.5);
+    else
+        config.line = floor(tex_coord.y * original_size.y);
 
     // Horizontal timing
-    float h_freq_hz = v_freq * v_lines_per_field;
-    float line_time = 1.0 / h_freq_hz;
+    config.h_freq_hz = v_freq * v_lines_per_field;
+    float line_time = 1.0 / config.h_freq_hz;
 
     // Inactive (blank) pixel span computation (horizontal)
     float inactive_pixels;
     if (h_blank_inactive_unit < 0.5)
         inactive_pixels = h_blank_inactive_len;
     else if (h_blank_inactive_unit < 1.5)
-        inactive_pixels = h_blank_inactive_len * 1.0e-6 * h_freq_hz * original_size.x;
+        inactive_pixels = h_blank_inactive_len * 1.0e-6 * config.h_freq_hz * original_size.x;
     else
         inactive_pixels = h_blank_inactive_len / 100.0 * original_size.x;
 
@@ -91,9 +98,9 @@ TimebaseConfig compute_timebase(
     config.pixel_time = line_time / total_pixels;
 
     // Subcarrier frequency derivation (preserves previous rounding scheme)
-    float subcarrier_div = round(h_freq_hz * total_pixels / NTSC_FSC * 100.0) / 100.0;
+    float subcarrier_div = round(config.h_freq_hz * total_pixels / NTSC_FSC * 100.0) / 100.0;
     if (sc_freq_mode < 0.5)
-        config.sc_freq_hz = h_freq_hz * total_pixels / subcarrier_div;
+        config.sc_freq_hz = config.h_freq_hz * total_pixels / subcarrier_div;
     else if (sc_freq_mode < 1.5)
         config.sc_freq_hz = NTSC_FSC;
     else if (sc_freq_mode < 2.5)

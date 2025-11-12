@@ -6,36 +6,45 @@
 
 shaders = 5
 
-shader0 = "../src/sys-display-rgb-bandlimit.slang"
-filter_linear0 = "false"
-scale_type0 = "source"
+shader0 = ../src/sys-rgb-amp.slang
+filter_linear0 = false
+scale_type0 = source
+
+shader1 = ../src/sys-display-rgb-bandlimit.slang
+filter_linear1 = false
+scale_type1 = source
 scale_x0 = 3.0
 scale_y0 = 1.0
 
-shader1 = "../src/phosphor-luma.slang"
-filter_linear1 = "false"
-scale_type1 = "source"
-scale_x1 = 1.0
-scale_y1 = 1.0
+shader2 = ../src/limiter-sdr.slang
+filter_linear2 = false
+scale_type2 = source
 
-shader2 = "../src/phosphor-chroma.slang"
-filter_linear2 = "false"
-scale_type2 = "source"
-alias2 = "PHOSPHOR"
-scale_x2 = 1.0
-scale_x2 = 1.0
+shader3 = ../src/scanraster.slang
+filter_linear3 = false
+scale_type3 = source
+scale_y3 = 2.0
 
-shader3 = "../src/scanline-advanced.slang"
-filter_linear3 = "false"
-scale_type3 = "viewport"
-scale_x3 = 1.0
-scale_y3 = 1.0
+shader4 = ../src/stock.slang
+filter_linear4 = true
+scale_type4 = viewport
 
-shader4 = "../src/bezel.slang"
-filter_linear4 = "true"
-scale_type4 = "viewport"
-scale_x4 = 1.0
-scale_y4 = 1.0
+#shader1 = "../src/phosphor-luma.slang"
+#filter_linear1 = "false"
+#scale1 = 1.0
+
+#shader2 = "../src/phosphor-chroma.slang"
+#filter_linear2 = "false"
+#alias2 = "PHOSPHOR"
+#scale2 = 1.0
+
+#shader3 = "../src/scanline-advanced.slang"
+#filter_linear3 = "false"
+#scale_type3 = "viewport"
+#scale3 = 1.0
+
+#shader4 = "../src/bezel.slang"
+#filter_linear4 = "true"
 
 textures = BORDER
 BORDER = "../share/bezel-trinitron.png"
