@@ -18,7 +18,9 @@
    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-#include "common.h"
+#include "common.inc"
+
+#include "parameters/user-common.inc"
 
 #pragma name Bezel
 
@@ -53,15 +55,10 @@ layout(push_constant) uniform Push
 
 #define ASPECT_RATIO config.OriginalAspect
 
-#pragma parameter USER_HEADER "==== User: Geometry Settings ====" 0.0 0.0 0.0 0.0
 
-#pragma parameter USER_H_SIZE "H-Size" 1.0 0.0 10.0 0.001
 #define USER_H_SIZE config.USER_H_SIZE
-#pragma parameter USER_V_SIZE "V-Size" 1.0 0.0 10.0 0.001
 #define USER_V_SIZE config.USER_V_SIZE
-#pragma parameter USER_H_POS "H-Pos." 0.0 -1.0 1.0 0.001
 #define USER_H_POS config.USER_H_POS
-#pragma parameter USER_V_POS "V-Pos." 0.0 -1.0 1.0 0.001
 #define USER_V_POS config.USER_V_POS
 
 #pragma parameter BEZEL_HEADER "==== Engr: Bezel Settings ====" 0.0 0.0 0.0 0.0

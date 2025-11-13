@@ -23,12 +23,14 @@
 // Helper shader for loading parameters in the appropriate order.
 
 #include "parameters/user-common.inc"
-#include "parameters/display-rgb.inc"
+#include "parameters/service-geometry.inc"
 #include "parameters/scanraster.inc"
 #include "parameters/limiter.inc"
+#include "parameters/display-rgb.inc"
+#include "parameters/factory-geometry.inc"
 #include "parameters/phosphor.inc"
-#include "parameters/sys-rgb.inc"
 #include "parameters/sys-timing.inc"
+#include "parameters/sys-rgb.inc"
 #include "parameters/debug-common.inc"
 
 #pragma name Menu

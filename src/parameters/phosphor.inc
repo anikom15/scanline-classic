@@ -1,4 +1,4 @@
-#pragma parameter PHOSPHOR_HEADER " —— Factory: Phosphor —— " 0.0 0.0 0.0 0.0
+#pragma parameter PHOSPHOR_HEADER " —— Factory: Phosphors —— " 0.0 0.0 0.0 0.0
 
 #pragma parameter PHOSPHOR_MANTISSA_R "Phosphor decay mantissa R (s)" 2.0 0.0 999.0 1.0
 #pragma parameter PHOSPHOR_MANTISSA_G "Phosphor decay mantissa G (s)" 200.0 0.0 999.0 1.0
