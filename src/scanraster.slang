@@ -109,36 +109,43 @@ void main()
         H_BLANK_INACTIVE_LEN,
         H_BLANK_INACTIVE_UNIT);
 
-    // Determine monitor half-resolution
+    // Determine monitor half-resolution (total lines including blanking)
     float design_v_lines = tb.h_freq_hz / config.OriginalFPS;
 
     // Determine if we are in progressive or interlaced mode
     bool is_interlaced = (config.OriginalSize.y > 1.5 * design_v_lines);
     float scanline_weight = SCANLINE_BLANK_WEIGHT * 0.01;
 
-    float line = tb.line;
-    float scale = ceil(config.OutputSize.y / (2.0 * design_v_lines));
-    float y_pos = ((vTexCoord.y * config.OutputSize.y) - 0.5) / scale;
-
-    if (is_interlaced)
-    {
-        // Render on odd lines for odd fields, even lines for even fields
-        float field = mod(tb.field + FIELD_ORDER, 2.0);
-        line = tb.line + field * 0.5;
+    // Field parity (0 for even, 1 for odd) with user-configurable order
+    int field = 0;
+    if (is_interlaced) {
+        field = int(mod(tb.field + FIELD_ORDER, 2.0));
     }
 
-    line = 2.0 * line;
+    // Output pixel row index (integer)
+    int output_y_px = int(floor(vTexCoord.y * config.OutputSize.y));
 
-    if (y_pos - line < 0.5 && y_pos - line >= -0.5) {
-        // Scanline
-        vec3 color = crt_linear(texture(Source, vTexCoord).rgb);
-        FragColor = vec4(color, 1.0);
-        return;
+    // Input line index (integer, with rounding to nearest to avoid edge cases)
+    int input_line = int(floor(tb.line + 0.5));
+
+    // Compute mask
+    float mask = 0.0;
+
+    if (is_interlaced) {
+        // Check if this input line belongs to the current field (even/odd parity)
+        int line_field = input_line & 1;  // Bitwise AND with 1 gives exact parity
+        if (line_field == field) {
+            // This line belongs to current field; map it to output
+            int input_line_in_output = int(floor(float(input_line) * config.OutputSize.y / config.OriginalSize.y + 0.5));
+            mask = (output_y_px == input_line_in_output) ? 1.0 : 0.0;
+        }
     } else {
-        // Blank line
-        vec3 color = crt_linear(texture(Source, vTexCoord).rgb);
-        color = mix(color, vec3(0.0), scanline_weight);
-        FragColor = vec4(color, 1.0);
-        return;
+        // Progressive: map all input lines to output
+        int input_line_in_output = int(floor(float(input_line) * config.OutputSize.y / config.OriginalSize.y + 0.5));
+        mask = (output_y_px == input_line_in_output) ? 1.0 : 0.0;
     }
+
+    vec3 color = crt_linear(texture(Source, vTexCoord).rgb);
+    vec3 outColor = mix(mix(color, vec3(0.0), scanline_weight), color, mask);
+    FragColor = vec4(outColor, 1.0);
 }

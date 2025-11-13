@@ -31,13 +31,7 @@
 #pragma name Amplifier
 #pragma format R16G16B16A16_SFLOAT
 
-#include "parameters/user-common.inc"
-#include "parameters/display-rgb.inc"
-#include "parameters/scanraster.inc"
-#include "parameters/limiter.inc"
 #include "parameters/sys-rgb.inc"
-#include "parameters/sys-timing.inc"
-#include "parameters/debug-common.inc"
 
 #pragma parameter SYS_RGB_AMP_BYPASS "Bypass RGB Amplifier" 0 0 1 1
 

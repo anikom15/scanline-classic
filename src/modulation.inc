@@ -76,10 +76,7 @@ TimebaseConfig compute_timebase(
     config.field = float(frame_count % 12u);
 
     // Line index derived from total lines-per-field (includes blanking region)
-    if (original_size.y > v_lines_per_field * 1.5)  // Interlaced mode
-        config.line = floor(tex_coord.y * original_size.y * 0.5);
-    else
-        config.line = floor(tex_coord.y * original_size.y);
+    config.line = floor(tex_coord.y * original_size.y);
 
     // Horizontal timing
     config.h_freq_hz = v_freq * v_lines_per_field;

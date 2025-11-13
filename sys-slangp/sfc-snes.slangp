@@ -4,30 +4,41 @@
 # output available without modification. However, its use was only
 # officially supported in Japan with the OEM JP-21 connector.
 
-shaders = 5
+shaders = 7
 
-shader0 = ../src/sys-rgb-amp.slang
+shader0 = ../src/menu.slang
 filter_linear0 = false
 scale_type0 = source
 
-shader1 = ../src/sys-display-rgb-bandlimit.slang
+shader1 = ../src/sys-rgb-amp.slang
 filter_linear1 = false
 scale_type1 = source
-scale_x0 = 3.0
-scale_y0 = 1.0
 
-shader2 = ../src/limiter-sdr.slang
+shader2 = ../src/sys-display-rgb-bandlimit.slang
 filter_linear2 = false
-scale_type2 = source
+scale_type_x2 = absolute
+scale_type_y2 = source
+scale_x2 = 1024.0
+scale_y2 = 1.0
 
-shader3 = ../src/scanraster.slang
+shader3 = ../src/limiter-sdr.slang
 filter_linear3 = false
 scale_type3 = source
-scale_y3 = 2.0
 
-shader4 = ../src/stock.slang
-filter_linear4 = true
-scale_type4 = viewport
+shader4 = ../src/scanraster.slang
+filter_linear4 = false
+scale_type_x4 = source
+scale_type_y4 = absolute
+scale_x4 = 1.0
+scale_y4 = 480.0
+
+shader5 = "../src/phosphor-trichrome.slang"
+filter_linear5 = false
+scale5 = 1.0
+
+shader6 = ../src/stock.slang
+filter_linear6 = true
+scale_type6 = viewport
 
 #shader1 = "../src/phosphor-luma.slang"
 #filter_linear1 = "false"
