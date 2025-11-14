@@ -115,6 +115,13 @@ void main()
 
     vec3 gamma_frame = gamma_c / config.OriginalFPS;
 
+    // Point-sample normalization so that the average of the first two point samples is 0.5.
+    // A_point = 1 / (1 + (1 + r)^(-n)), with r = gamma_frame and per-channel n.
+    vec3 A_point = 1.0 / (vec3(1.0) + pow(vec3(1.0) + gamma_frame, -n));
+
+    // Scale current input by A_point; feedback carries the tail.
+    color *= A_point;
+
     vec3 color1 = texture(Phosphor3Feedback, Tex).rgb;
     color1 = phosphor_inv_pow3(color1, gamma_frame, n);
     color = color + color1;

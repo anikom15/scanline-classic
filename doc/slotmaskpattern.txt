@@ -1,0 +1,8 @@
+R - Red
+G - Green
+B - Blue
+K - Black
+
+K K K K K K R K G K B K R K G K B K 
+R K G K B K K K K K K K R K G K B K 
+R K G K B K R K G K B K K K K K K K 

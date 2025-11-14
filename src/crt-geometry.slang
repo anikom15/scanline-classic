@@ -503,5 +503,5 @@ void main()
             C);
     }
 
-    FragColor = vec4(color, 1.0);
+    FragColor = vec4(crt_gamma(color), 1.0);
 }

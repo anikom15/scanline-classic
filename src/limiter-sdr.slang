@@ -46,14 +46,18 @@
 #pragma format R8G8B8A8_UNORM
 
 #pragma parameter LIMITER_BYPASS "Bypass Voltage Limiter" 0.0 0.0 1.0 1.0
+#pragma parameter LIMITER_DEBUG_OUT_OF_RANGE "Limiter: show out-of-range colors" 0.0 0.0 1.0 1.0
 
 layout(push_constant) uniform Push
 {
+    vec4 OutputSize;
+    uint FrameCount;
     float LIMITER_BYPASS;
     float LIMITER_OUTPUT_RANGE;
     float LIMITER_TYPE;
     float LIMITER_COMPRESSION_POINT;
     float LIMITER_MAX_OUTPUT;
+    float LIMITER_DEBUG_OUT_OF_RANGE;
 } config;
 
 layout(std140, set = 0, binding = 0) uniform UBO
@@ -66,6 +70,7 @@ layout(std140, set = 0, binding = 0) uniform UBO
 #define LIMITER_TYPE config.LIMITER_TYPE
 #define LIMITER_COMPRESSION_POINT config.LIMITER_COMPRESSION_POINT
 #define LIMITER_MAX_OUTPUT config.LIMITER_MAX_OUTPUT
+#define LIMITER_DEBUG_OUT_OF_RANGE config.LIMITER_DEBUG_OUT_OF_RANGE
 
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
@@ -117,6 +122,37 @@ void main()
 
     color = clamp(color, 0.0, peak);
     color = voltage_to_normlimit(color);
+
+    // Debug: Visualize out-of-range colors with sinusoid modulation
+    if (LIMITER_DEBUG_OUT_OF_RANGE >= 1.0) {
+        vec3 originalColor = texture(Source, vTexCoord).rgb;
+        bvec3 outOfRange = bvec3(
+            originalColor.r < 0.0 || originalColor.r > compression,
+            originalColor.g < 0.0 || originalColor.g > compression,
+            originalColor.b < 0.0 || originalColor.b > compression
+        );
+        
+        // Create animated temporal square wave (cycles over ~60 frames at 60fps)
+        float temporalPhase = float(config.FrameCount) * 0.1;
+        float temporalSquare = sign(sin(temporalPhase)) * 0.5 + 0.5; // Square wave: 0.0 or 1.0
+        
+        // Create spatial square wave pattern (checkerboard-like)
+        float spatialPhase = (vTexCoord.x + vTexCoord.y) * config.OutputSize.x / 2.0; // Adjust frequency with multiplier
+        float spatialSquare = sin(spatialPhase) * 0.5 + 0.5; // Square wave: 0.0 or 1.0
+        
+        // Combine temporal and spatial patterns with XOR-like behavior
+        float modulation = abs(temporalSquare - spatialSquare);
+        
+        // Modulate out-of-range channels with the combined pattern
+        if (any(outOfRange)) {
+            vec3 debugMask = vec3(
+                outOfRange.r ? modulation : 1.0,
+                outOfRange.g ? modulation : 1.0,
+                outOfRange.b ? modulation : 1.0
+            );
+            color *= debugMask;
+        }
+    }
 
     FragColor = vec4(color, 1.0);
 }

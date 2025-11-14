@@ -36,13 +36,14 @@ shader5 = ../src/phosphor-trichrome.slang
 filter_linear5 = false
 scale5 = 1.0
 
-shader6 = ../src/crt-geometry.slang
-filter_linear6 = false
+shader6 = ../src/crt-mask.slang
+filter_linear6 = true
 scale_type6 = viewport
-scale6 = 1.0
+scale_x6 = 1.0
+scale_y6 = 1.0
 
-#shader7 = ../src/bezel.slang
-#filter_linear7 = true
+#shader7 = ../src/crt-geometry.slang
+#filter_linear7 = false
 #scale_type7 = viewport
 #scale7 = 1.0
 

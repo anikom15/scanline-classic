@@ -1,0 +1,6 @@
+R - Red
+G - Green
+B - Blue
+K - Black
+
+R K G K B K

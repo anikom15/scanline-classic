@@ -28,6 +28,7 @@
 #include "parameters/limiter.inc"
 #include "parameters/display-rgb.inc"
 #include "parameters/factory-geometry.inc"
+#include "parameters/mask.inc"
 #include "parameters/phosphor.inc"
 #include "parameters/sys-timing.inc"
 #include "parameters/sys-rgb.inc"

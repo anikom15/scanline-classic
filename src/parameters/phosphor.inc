@@ -9,5 +9,5 @@
 #pragma parameter PHOSPHOR_EXPONENT_B "Phosphor decay exponent B (base-10)" -6.0 -9.0 0.0 1.0
 
 #pragma parameter PHOSPHOR_HOLD_R "Phosphor tail hold R (order)" 0.7 0.5 2.0 0.1
-#pragma parameter PHOSPHOR_HOLD_G "Phosphor tail hold G (order)" 1.6 0.5 2.0 0.1
-#pragma parameter PHOSPHOR_HOLD_B "Phosphor tail hold B (order)" 1.6 0.5 2.0 0.1
+#pragma parameter PHOSPHOR_HOLD_G "Phosphor tail hold G (order)" 1.4 0.5 2.0 0.1
+#pragma parameter PHOSPHOR_HOLD_B "Phosphor tail hold B (order)" 1.4 0.5 2.0 0.1
