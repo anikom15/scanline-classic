@@ -46,6 +46,8 @@ layout(push_constant) uniform Push
     float MASK_DIFFUSION;
     float X_OFFSET;
     float Y_OFFSET;
+    float MASK_ASPECT;
+    float MASK_FRAME_DEBUG;
 } config;
 
 #define MASK_BYPASS config.MASK_BYPASS
@@ -56,6 +58,8 @@ layout(push_constant) uniform Push
 #define BEAM_FOCUS config.BEAM_FOCUS
 #define V_LINES_PER_FIELD config.V_LINES_PER_FIELD
 #define MASK_DIFFUSION config.MASK_DIFFUSION
+#define MASK_ASPECT config.MASK_ASPECT
+#define MASK_FRAME_DEBUG config.MASK_FRAME_DEBUG
 
 #pragma parameter X_OFFSET "Horizontal Mask Offset" 0.0 -3.0 3.0 0.1
 #pragma parameter Y_OFFSET "Vertical Mask Offset" 0.0 -3.0 3.0 0.1
@@ -140,33 +144,65 @@ float cyclicDist(float x, float center, float period)
 
 void main()
 {
+    // Screen aspect ratio (SAR) and selected target aspect ratio
+    float displayAR = config.OriginalAspect;
+    float maskAR = (MASK_ASPECT < 0.5) ? (4.0/3.0)
+        : (MASK_ASPECT < 1.5) ? (16.0/9.0)
+        : (MASK_ASPECT < 2.5) ? (5.0/4.0)
+        : (16.0/10.0);
+
+    // Compute pillar/letterbox bounds in normalized screen space
+    float left = 0.0, right = 1.0, top = 0.0, bottom = 1.0;
+    if (maskAR > displayAR) {
+        // Pillarbox — screen is wider than target
+        float contentWidth = displayAR / maskAR;
+
+        float pad = (1.0 - contentWidth) * 0.5;
+        left = pad;
+        right = 1.0 - pad;
+    } else if (displayAR < maskAR) {
+        // Letterbox — screen is taller than target
+        float contentHeight = maskAR / displayAR;
+
+        float pad = (1.0 - contentHeight) * 0.5;
+        top = pad;
+        bottom = 1.0 - pad;
+    }
+
+    // Inside-frame test
+    bool inside = (vTexCoord.x >= left && vTexCoord.x <= right &&
+                   vTexCoord.y >= top  && vTexCoord.y <= bottom);
+
+    // Remap UV into the framed region [left,right]x[top,bottom]
+    vec2 uv = (vTexCoord - vec2(left, top)) / vec2(max(right - left, EPS), max(bottom - top, EPS));
+    uv = clamp(uv, 0.0, 1.0);
+
     // Bicubic resample from input texture using BEAM_FOCUS
     float focus = clamp(BEAM_FOCUS * 0.01, 0.0, 1.0);
     float C = -1.0 / 3.0 * focus * focus + 5.0 / 6.0 * focus;
     float B = 1.0 - 2.0 * C;
-    vec3 color = sample_bicubic(
-        Source,
-        vTexCoord,
-        1.0 / config.SourceSize.xy,
-        B,
-        C);
+    // Base color: sample content inside frame; outside use debug gray or black
+    float outsideGray = (MASK_FRAME_DEBUG > 0.5) ? 0.5 : 0.0;
+    vec3 color = inside
+        ? sample_bicubic(Source, uv, 1.0 / config.SourceSize.xy, B, C)
+        : vec3(outsideGray);
 
-    // Early exit for full bypass
+    // If mask is bypassed, still honor framing but skip mask application
     if (MASK_BYPASS >= 1.0) {
-        FragColor = vec4(color, 1.0);
+        FragColor = vec4(crt_gamma(color), 1.0);
         return;
     }
 
-    // Determine PAR (pixel aspect ratio)
+    // Determine PAR (pixel aspect ratio) relative to selected target aspect
     float dar = config.OriginalAspect;
-    float sar = config.OutputSize.x / max(config.OutputSize.y, EPS);
-    float par = dar / max(sar, EPS);
+    float par = dar / max(maskAR, EPS);
 
     // TVL-based unit scaling independent of output resolution
     // 1 TVL = 6 horizontal units (one RGB triad + gaps) in all modes
+    // TVL here is defined for the selected frame aspect
     float tvl = max(TVL, 1.0);
-    float units_x_total = tvl * 6.0 - 1.0;  // Subtract 1.0 for final dot edge
-    
+    float units_x_total = tvl * 6.0 - 1.0;
+
     // Vertical units depend on mask type:
     // Aperture: no vertical structure (use minimal for consistency)
     // Slot: 3-unit vertical cycle (simplified slot with gating)
@@ -175,15 +211,9 @@ void main()
     if (MASK_TYPE < 0.5) {
         units_y_total = tvl; // Aperture has no vertical pattern
     } else if (MASK_TYPE < 1.5) {
-        // Each cell is 6 units wide by 3 units high: 6 / 3 = 2
-        float cell_ar = 2.0 / par;
-        float cell_par = 1.0 / cell_ar;
-        units_y_total = tvl / cell_par;
+        units_y_total = tvl / maskAR * 3.0;
     } else {
-        // Each cell is 6 units wide by 4 units high: 6 / 4 = 1.5
-        float cell_ar = 1.5 / par;
-        float cell_par = 1.0 / cell_ar;
-        units_y_total = tvl / cell_par;
+        units_y_total = tvl / maskAR * 6.0 / sqrt(2.0);
     }
 
     // Continuous unit coordinates for smooth Gaussian weighting
