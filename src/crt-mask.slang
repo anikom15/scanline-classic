@@ -377,13 +377,7 @@ void main()
     // Full video aspect (active + blanking) - represents the ideal aspect including padding
     float full_aspect = par * total_h_pixels / max(total_v_lines, 1.0);
 
-    // Source texture aspect - the actual aspect of the input texture
-    float source_aspect = config.SourceSize.x / config.SourceSize.y;
-
-    // Aspect scale factor - accounts for padding when applying distortions
-    // Distortions will operate in full-frame coordinate space
-    float aspect_scale = full_aspect / source_aspect;
-
+    // Distortion geometry will be based on display aspect (maskAR)
     // Work directly in source texture space (no initial scaling needed)
     vec2 uv_frame = vTexCoord;
     
@@ -422,13 +416,11 @@ void main()
     }
 
     // ---- Unified geometry pipeline in square space ----
-    // Convert to square space using source_aspect (matches actual texture)
+    // Start in full-video square space, then remap X into display-geometry space (maskAR)
     vec2 uv_screen = uv_frame * 2.0 - 1.0;  // [-1,1] in texture space
-    vec2 sq = vec2(uv_screen.x * source_aspect, uv_screen.y);
-
-    // Scale coordinates to full-frame space (accounts for padding in distortions)
-    // This makes edge/corner distortions proportional to the full video frame
-    sq *= aspect_scale;
+    vec2 sq = vec2(uv_screen.x * full_aspect, uv_screen.y);
+    float to_mask = maskAR / max(full_aspect, EPS);
+    sq.x *= to_mask;
 
     // Part 1: Physical distortions (pincushion and magnetic) - tied to mask/tube
     // These operate in full-frame coordinate space
@@ -470,7 +462,8 @@ void main()
     float ox = (USER_H_POS - 50.0) / 50.0;
     float oy = (USER_V_POS - 50.0) / 50.0;
     float underscan_scale = (USER_UNDERSCAN_TOGGLE > 0.5) ? (1.0 - (UNDERSCAN * 0.01)) : 1.0;
-    sq = (sq - vec2(ox * full_aspect * aspect_scale, oy)) / (vec2(sx, sy) * underscan_scale);
+    // Offset/scale in display-geometry units (maskAR for X)
+    sq = (sq - vec2(ox * maskAR, oy)) / (vec2(sx, sy) * underscan_scale);
 
     // Electronic service corrections (trapezoid, corner, S-corrections)
     float trap = TRAPEZOIDAL_CORRECTION * 0.01;
@@ -481,9 +474,10 @@ void main()
         sq = geometric_correction(sq, trap, corner, s_h, s_v);
     }
 
-    // Unscale from full-frame space back to texture space, then to normalized
-    sq /= aspect_scale;
-    vec2 uv_full = vec2(sq.x / source_aspect, sq.y);
+    // Convert back from display-geometry space to full-video square space, then to normalized
+    float to_full = max(full_aspect, EPS) / maskAR;
+    sq.x *= to_full;
+    vec2 uv_full = vec2(sq.x / full_aspect, sq.y);
     vec2 tex = uv_full * 0.5 + 0.5; // full video area [0,1]
 
     // Redefine inside test: after all geometry transformations, is pixel within [0,1] full video bounds?
