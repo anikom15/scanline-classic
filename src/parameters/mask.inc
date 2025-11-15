@@ -9,5 +9,3 @@
 // Aspect framing for mask/output
 // 0 = Full frame (4:3), 1 = Widescreen (16:9), 2 = Workstation (5:4), 3 = Wide workstation (16:10)
 #pragma parameter MASK_ASPECT "Display aspect ratio (0=4:3, 1=16:9, 2=5:4, 3=16:10)" 0.0 0.0 3.0 1.0
-// When enabled, areas outside the frame are shown as 50% gray instead of black
-#pragma parameter MASK_FRAME_DEBUG "Mask frame debug (0=Off, 1=On)" 0.0 0.0 1.0 1.0

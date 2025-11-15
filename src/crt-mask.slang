@@ -22,19 +22,31 @@
 
 #include "common.inc"
 #include "filter.h"
+#include "geometry.inc"
+#include "modulation.inc"
 
 #include "parameters/mask.inc"
+// Reuse geometry parameters for positioning/sizing and electronic corrections
+#include "parameters/factory-geometry.inc"
+#include "parameters/service-geometry.inc"
+#include "parameters/user-common.inc"
 
 #pragma name CRTMask
 #pragma format R16G16B16A16_SFLOAT
 
 #pragma parameter MASK_BYPASS "Bypass CRT mask" 0.0 0.0 1.0 1.0
+#pragma parameter MASK_DEBUG_PADDING "Show timing regions" 0.0 0.0 1.0 1.0
+// When enabled, areas outside the frame are shown as 50% gray instead of black
+#pragma parameter MASK_FRAME_DEBUG "Mask frame debug (0=Off, 1=On)" 0.0 0.0 1.0 1.0
+#pragma parameter MASK_DEBUG_PAD "Highlight padding (yellow)" 0.0 0.0 1.0 1.0
 
 layout(push_constant) uniform Push
 {
     vec4 SourceSize;     // xy = input size in pixels
     vec4 OriginalSize;   // xy = input size in pixels
     vec4 OutputSize;     // xy = output size in pixels
+    uint FrameCount;
+    float OriginalFPS;
     float OriginalAspect;
     float MASK_BYPASS;
     float MASK_TYPE;
@@ -43,11 +55,17 @@ layout(push_constant) uniform Push
     float TVL;
     float BEAM_FOCUS;
     float V_LINES_PER_FIELD;
+    float SC_FREQ_MODE;
+    float SC_FREQ;
+    float H_BLANK_INACTIVE_LEN;
+    float H_BLANK_INACTIVE_UNIT;
     float MASK_DIFFUSION;
-    float X_OFFSET;
-    float Y_OFFSET;
     float MASK_ASPECT;
     float MASK_FRAME_DEBUG;
+    float MASK_DEBUG_PADDING;
+    // ---- Geometry/user viewport controls ----
+    float USER_H_SIZE;           // % (50 = 1.0)
+    float USER_V_SIZE;           // % (50 = 1.0)
 } config;
 
 #define MASK_BYPASS config.MASK_BYPASS
@@ -57,14 +75,50 @@ layout(push_constant) uniform Push
 #define TVL config.TVL
 #define BEAM_FOCUS config.BEAM_FOCUS
 #define V_LINES_PER_FIELD config.V_LINES_PER_FIELD
+#define SC_FREQ_MODE config.SC_FREQ_MODE
+#define SC_FREQ config.SC_FREQ
+#define H_BLANK_INACTIVE_LEN config.H_BLANK_INACTIVE_LEN
+#define H_BLANK_INACTIVE_UNIT config.H_BLANK_INACTIVE_UNIT
 #define MASK_DIFFUSION config.MASK_DIFFUSION
 #define MASK_ASPECT config.MASK_ASPECT
 #define MASK_FRAME_DEBUG config.MASK_FRAME_DEBUG
+#define MASK_DEBUG_PADDING config.MASK_DEBUG_PADDING
 
-#pragma parameter X_OFFSET "Horizontal Mask Offset" 0.0 -3.0 3.0 0.1
-#pragma parameter Y_OFFSET "Vertical Mask Offset" 0.0 -3.0 3.0 0.1
-#define X_OFFSET config.X_OFFSET
-#define Y_OFFSET config.Y_OFFSET
+// Geometry macro bindings
+#define USER_H_SIZE            config.USER_H_SIZE
+#define USER_V_SIZE            config.USER_V_SIZE
+
+layout(std140, set = 0, binding = 0) uniform UBO {
+    mat4 MVP;
+    float TRAPEZOIDAL_CORRECTION; // %
+    float CORNER_CORRECTION;      // %
+    float MAGNETIC_CORRECTION;    // % (0..100)
+    float SHORTEN_ODD_FIELD_TIME;
+    float USER_H_POS;            // % (50 = center)
+    float USER_V_POS;            // % (50 = center)
+    float USER_UNDERSCAN_TOGGLE; // toggle
+    // Factory/service geometry controls needed here
+    float DEFLECTION_ANGLE; // degrees
+    float UNDERSCAN;        // %
+    float S_CORRECTION_H;   // %
+    float S_CORRECTION_V;   // %
+    float MASK_DEBUG_PAD;
+} global;
+
+#define TRAPEZOIDAL_CORRECTION global.TRAPEZOIDAL_CORRECTION
+#define CORNER_CORRECTION global.CORNER_CORRECTION
+#define MAGNETIC_CORRECTION global.MAGNETIC_CORRECTION
+#define SHORTEN_ODD_FIELD_TIME global.SHORTEN_ODD_FIELD_TIME
+#define USER_H_POS global.USER_H_POS
+#define USER_V_POS global.USER_V_POS
+#define USER_UNDERSCAN_TOGGLE global.USER_UNDERSCAN_TOGGLE
+
+#define DEFLECTION_ANGLE global.DEFLECTION_ANGLE
+#define UNDERSCAN global.UNDERSCAN
+#define S_CORRECTION_H global.S_CORRECTION_H
+#define S_CORRECTION_V global.S_CORRECTION_V
+
+#define MASK_DEBUG_PAD global.MASK_DEBUG_PAD
 
 // Bicubic texture sampling (4x4 Mitchell-Netravali)
 // Matches implementation style from crt-geometry.slang
@@ -114,9 +168,145 @@ vec3 sample_bicubic(sampler2D source, vec2 uv, vec2 stepxy, float B, float C)
     return col;
 }
 
-layout(std140, set = 0, binding = 0) uniform UBO {
-    mat4 MVP;
-} global;
+// ---- Local geometry helpers (subset; barrel handled later stage) ----
+// Parameterized pincushion (electrostatic/linear) using anisotropic angles (radians)
+vec2 pincushion_theta(vec2 uv, const float theta_h, const float theta_v)
+{
+    if (theta_h < EPS && theta_v < EPS) return uv;
+    float safe_theta_h = max(theta_h, 0.001);
+    float safe_theta_v = max(theta_v, 0.001);
+    vec2 t = uv * vec2(safe_theta_h, safe_theta_v);
+    float x = t.x;
+    float y = t.y;
+    float dx = atan(x * cos(y));
+    float dy = atan(y * cos(x));
+    vec2 out_uv = vec2(dx / safe_theta_h, dy / safe_theta_v);
+    return out_uv;
+}
+
+// Parameterized pincushion non-linear (magnetic) using anisotropic angles (radians)
+vec2 pincushion_nl_theta(vec2 uv, const float theta_h, const float theta_v)
+{
+    if (theta_h < EPS && theta_v < EPS) return uv;
+    float safe_theta_h = max(theta_h, 0.001);
+    float safe_theta_v = max(theta_v, 0.001);
+    vec2 t = uv * vec2(safe_theta_h, safe_theta_v);
+    float x = t.x;
+    float y = t.y;
+    float dx = atan(asin(x) * cos(asin(y)));
+    float dy = atan(asin(y) * cos(asin(x)));
+    vec2 out_uv = vec2(dx / safe_theta_h, dy / safe_theta_v);
+    return out_uv;
+}
+
+// Cyclic distance on a ring of length `period`
+// Returns shortest wrapped distance between x and center.
+float cyclicDist(float x, float center, float period)
+{
+    float d = abs(x - center);
+    return min(d, period - d);
+}
+
+// ---- Mask computation as a subroutine ----
+vec3 compute_mask(vec2 screen_uv, float units_x_total, float units_y_total, float sigma)
+{
+    // Continuous unit coordinates for smooth Gaussian weighting
+    float x_units = screen_uv.x * units_x_total;
+    float y_units = screen_uv.y * units_y_total;
+
+    // Horizontal centers aligned to left-edge origin (R starts at [0,1])
+    float cycle = mod(x_units - 0.4, 6.0);
+
+    // Use cyclic distances so weights are seamless across the 6-unit wrap
+    float dr = cyclicDist(cycle, 0.0, 6.0);
+    float dg = cyclicDist(cycle, 2.0, 6.0);
+    float db = cyclicDist(cycle, 4.0, 6.0);
+
+    float gauss_r = exp(-0.5 * dr*dr / (sigma*sigma));
+    float gauss_g = exp(-0.5 * dg*dg / (sigma*sigma));
+    float gauss_b = exp(-0.5 * db*db / (sigma*sigma));
+
+    vec3 mask_color;
+    if (MASK_TYPE < 0.5) {
+        // Aperture grille
+        mask_color = vec3(gauss_r, gauss_g, gauss_b);
+        float peak = max(mask_color.r, max(mask_color.g, mask_color.b));
+        if (peak > 1.0) mask_color /= peak;
+    } else if (MASK_TYPE < 1.5) {
+        // Slot mask: 3-unit vertical cycle with periodic black row suppression
+        float cycle_y = mod(y_units + 1.0, 3.0);
+
+        float blockF = x_units / 6.0;
+        float block3 = mod(blockF, 3.0);
+        float sigma_h = sigma;
+
+        int base = int(floor(blockF / 3.0)) * 3;
+        int b0 = (base + 0) % 3;
+        int b1 = (base + 1) % 3;
+        int b2 = (base + 2) % 3;
+
+        float d0 = cyclicDist(block3, -0.6, 3.0);
+        float d1 = cyclicDist(block3,  0.4, 3.0);
+        float d2 = cyclicDist(block3,  1.4, 3.0);
+
+        float w0 = exp(-0.5 * d0*d0 / (sigma_h*sigma_h));
+        float w1 = exp(-0.5 * d1*d1 / (sigma_h*sigma_h));
+        float w2 = exp(-0.5 * d2*d2 / (sigma_h*sigma_h));
+
+        float sigma_v = sigma * 0.65;
+        float gate_0 = 1.0 - exp(-0.5 * pow(cyclicDist(cycle_y, float(b0), 3.0) / sigma_v, 2.0));
+        float gate_1 = 1.0 - exp(-0.5 * pow(cyclicDist(cycle_y, float(b1), 3.0) / sigma_v, 2.0));
+        float gate_2 = 1.0 - exp(-0.5 * pow(cyclicDist(cycle_y, float(b2), 3.0) / sigma_v, 2.0));
+
+        float gate = w0 * gate_0 + w1 * gate_1 + w2 * gate_2;
+
+        vec3 rgb = vec3(gauss_r, gauss_g, gauss_b);
+        float peak_rgb = max(rgb.r, max(rgb.g, rgb.b));
+        if (peak_rgb > 1.0) rgb /= peak_rgb;
+
+        vec3 out_rgb = rgb * gate;
+        float peak_out = max(out_rgb.r, max(out_rgb.g, out_rgb.b));
+        if (peak_out > 1.0) out_rgb /= peak_out;
+        mask_color = out_rgb;
+    } else {
+        // Shadow mask (4-row cycle)
+        float vcycle = mod(y_units - 0.4, 4.0);
+        float sigma_v = max(0.08, sigma * 0.65);
+        float w0 = exp(-0.5 * pow(cyclicDist(vcycle, 0.5, 4.0) / sigma_v, 2.0));
+        float w2 = exp(-0.5 * pow(cyclicDist(vcycle, 2.5, 4.0) / sigma_v, 2.0));
+
+        float dR0 = cyclicDist(cycle, 0.0, 6.0);
+        float dG0 = cyclicDist(cycle, 2.0, 6.0);
+        float dB0 = cyclicDist(cycle, 4.0, 6.0);
+        vec3 rgb0 = vec3(
+            exp(-0.5 * dR0*dR0 / (sigma*sigma)),
+            exp(-0.5 * dG0*dG0 / (sigma*sigma)),
+            exp(-0.5 * dB0*dB0 / (sigma*sigma))
+        );
+
+        float dB2 = cyclicDist(cycle, 1.0, 6.0);
+        float dR2 = cyclicDist(cycle, 3.0, 6.0);
+        float dG2 = cyclicDist(cycle, 5.0, 6.0);
+        vec3 rgb2 = vec3(
+            exp(-0.5 * dR2*dR2 / (sigma*sigma)),
+            exp(-0.5 * dG2*dG2 / (sigma*sigma)),
+            exp(-0.5 * dB2*dB2 / (sigma*sigma))
+        );
+
+        vec3 rgb = w0 * rgb0 + w2 * rgb2;
+        float peak = max(rgb.r, max(rgb.g, rgb.b));
+        if (peak > 1.0) rgb /= peak;
+        mask_color = rgb;
+    }
+
+    if (MASK_MONOCHROME > 0.5) {
+        float nb = max(mask_color.r, max(mask_color.g, mask_color.b));
+        float mono = nb * nb * (3.0 - 2.0 * nb);
+        mask_color = vec3(mono);
+    }
+
+    return mask_color;
+}
 
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
@@ -134,48 +324,187 @@ layout(location = 0) in vec2 vTexCoord;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 1) uniform sampler2D Source;
 
-// Cyclic distance on a ring of length `period`
-// Returns shortest wrapped distance between x and center.
-float cyclicDist(float x, float center, float period)
-{
-    float d = abs(x - center);
-    return min(d, period - d);
-}
-
 void main()
 {
-    // Screen aspect ratio (SAR) and selected target aspect ratio
-    float displayAR = config.OriginalAspect;
+    // Selected target aspect ratio for framing
     float maskAR = (MASK_ASPECT < 0.5) ? (4.0/3.0)
         : (MASK_ASPECT < 1.5) ? (16.0/9.0)
         : (MASK_ASPECT < 2.5) ? (5.0/4.0)
         : (16.0/10.0);
 
-    // Compute pillar/letterbox bounds in normalized screen space
-    float left = 0.0, right = 1.0, top = 0.0, bottom = 1.0;
-    if (maskAR > displayAR) {
-        // Pillarbox — screen is wider than target
-        float contentWidth = displayAR / maskAR;
+    // Compute timebase and padding/active regions (like CRTGeometry)
+    TimebaseConfig tb = compute_timebase(
+        config.FrameCount,
+        vTexCoord,
+        config.OriginalSize.xy,
+        config.OutputSize.x,
+        config.OriginalFPS,
+        V_LINES_PER_FIELD,
+        SHORTEN_ODD_FIELD_TIME,
+        SC_FREQ_MODE,
+        SC_FREQ,
+        H_BLANK_INACTIVE_LEN,
+        H_BLANK_INACTIVE_UNIT);
 
-        float pad = (1.0 - contentWidth) * 0.5;
-        left = pad;
-        right = 1.0 - pad;
-    } else if (displayAR < maskAR) {
-        // Letterbox — screen is taller than target
-        float contentHeight = maskAR / displayAR;
+    // Horizontal inactive pixels (blanking)
+    float inactive_pixels_h;
+    if (H_BLANK_INACTIVE_UNIT < 0.5)
+        inactive_pixels_h = H_BLANK_INACTIVE_LEN;
+    else if (H_BLANK_INACTIVE_UNIT < 1.5)
+        inactive_pixels_h = H_BLANK_INACTIVE_LEN * 1.0e-6 * tb.h_freq_hz * config.OriginalSize.x;
+    else
+        inactive_pixels_h = H_BLANK_INACTIVE_LEN / 100.0 * config.OriginalSize.x;
 
-        float pad = (1.0 - contentHeight) * 0.5;
-        top = pad;
-        bottom = 1.0 - pad;
+    float total_h_pixels = config.OriginalSize.x + inactive_pixels_h;
+    float active_region_h = config.OriginalSize.x / max(total_h_pixels, 1.0);
+
+    // Vertical inactive (blanking) lines
+    float total_v_lines = V_LINES_PER_FIELD;
+
+    // Interlace detection/compensation
+    float interlace_scale = 1.0;
+    if (config.OriginalSize.y > total_v_lines * 1.7)
+        interlace_scale = 2.0;
+
+    float active_v_lines = config.OriginalSize.y / interlace_scale;
+    float active_region_v = active_v_lines / max(total_v_lines, 1.0);
+
+    // Aspect ratios for full video (active + blanking)
+    float dar = config.OriginalAspect;
+    float sar = config.OriginalSize.x / (config.OriginalSize.y / interlace_scale);
+    float par = dar / max(sar, EPS);
+
+    // Full video aspect (active + blanking) - represents the ideal aspect including padding
+    float full_aspect = par * total_h_pixels / max(total_v_lines, 1.0);
+
+    // Source texture aspect - the actual aspect of the input texture
+    float source_aspect = config.SourceSize.x / config.SourceSize.y;
+
+    // Aspect scale factor - accounts for padding when applying distortions
+    // Distortions will operate in full-frame coordinate space
+    float aspect_scale = full_aspect / source_aspect;
+
+    // Work directly in source texture space (no initial scaling needed)
+    vec2 uv_frame = vTexCoord;
+    
+    // Initial inside test: are we within the full video frame (including padding)?
+    bool inside_initial = (uv_frame.x >= 0.0 && uv_frame.x <= 1.0 &&
+                           uv_frame.y >= 0.0 && uv_frame.y <= 1.0);
+    
+    uv_frame = clamp(uv_frame, 0.0, 1.0);
+
+    // Optional timing padding debug (inside the frame)
+    if (MASK_DEBUG_PADDING > 0.5) {
+        vec3 debug_color = vec3(0.0);
+        if (inside_initial) {
+            bool in_h_padding = (uv_frame.x < (1.0 - active_region_h) * 0.5) ||
+                                (uv_frame.x > 1.0 - (1.0 - active_region_h) * 0.5);
+            bool in_v_padding = (uv_frame.y < (1.0 - active_region_v) * 0.5) ||
+                                (uv_frame.y > 1.0 - (1.0 - active_region_v) * 0.5);
+
+            if (!in_h_padding && !in_v_padding) {
+                vec2 active_sample = vec2(
+                    (uv_frame.x - (1.0 - active_region_h) * 0.5) / max(active_region_h, EPS),
+                    (uv_frame.y - (1.0 - active_region_v) * 0.5) / max(active_region_v, EPS)
+                );
+                active_sample = clamp(active_sample, 0.0, 1.0);
+                debug_color = texture(Source, active_sample).rgb;
+            }
+            if (in_h_padding || in_v_padding) {
+                debug_color = mix(debug_color, vec3(1.0, 1.0, 0.0), 0.5);
+            }
+        } else {
+            float outsideGray = (MASK_FRAME_DEBUG > 0.5) ? 0.5 : 0.0;
+            debug_color = vec3(outsideGray);
+        }
+        FragColor = vec4(crt_gamma(debug_color), 1.0);
+        return;
     }
 
-    // Inside-frame test
-    bool inside = (vTexCoord.x >= left && vTexCoord.x <= right &&
-                   vTexCoord.y >= top  && vTexCoord.y <= bottom);
+    // ---- Unified geometry pipeline in square space ----
+    // Convert to square space using source_aspect (matches actual texture)
+    vec2 uv_screen = uv_frame * 2.0 - 1.0;  // [-1,1] in texture space
+    vec2 sq = vec2(uv_screen.x * source_aspect, uv_screen.y);
 
-    // Remap UV into the framed region [left,right]x[top,bottom]
-    vec2 uv = (vTexCoord - vec2(left, top)) / vec2(max(right - left, EPS), max(bottom - top, EPS));
-    uv = clamp(uv, 0.0, 1.0);
+    // Scale coordinates to full-frame space (accounts for padding in distortions)
+    // This makes edge/corner distortions proportional to the full video frame
+    sq *= aspect_scale;
+
+    // Part 1: Physical distortions (pincushion and magnetic) - tied to mask/tube
+    // These operate in full-frame coordinate space
+    float theta_defl = radians(DEFLECTION_ANGLE / 4.0);
+    if (DEFLECTION_ANGLE > 4.0) {
+        if (DEFLECTION_ANGLE <= 60.0) {
+            sq = pincushion_theta(sq, theta_defl, theta_defl);
+        } else {
+            sq = pincushion_nl_theta(sq, theta_defl, theta_defl);
+        }
+    }
+
+    float mag_corr = MAGNETIC_CORRECTION * 0.01;
+    if (mag_corr > 0.0) {
+        sq = magnetic_correction(sq, mag_corr, 2.0 * theta_defl);
+    }
+
+    // Part 2: Electronic positioning/sizing and service corrections (all in square space)
+
+    // Viewport controls (position, size, underscan)
+    // First, determine if we need to letterbox or pillarbox based on aspect ratios
+    float display_aspect = maskAR; // Target display aspect ratio
+    float content_aspect = full_aspect; // Content aspect including padding
+
+    // Calculate scaling to fit content within display aspect
+    float aspect_fit_scale_x = 1.0;
+    float aspect_fit_scale_y = 1.0;
+
+    if (content_aspect > display_aspect) {
+        // Content is wider than display - need pillarbox (shrink horizontally)
+        aspect_fit_scale_x = display_aspect / content_aspect;
+    } else {
+        // Content is taller than display - need letterbox (shrink vertically)
+        aspect_fit_scale_y = content_aspect / display_aspect;
+    }
+
+    float sx = (USER_H_SIZE / 50.0) / aspect_fit_scale_x;
+    float sy = (USER_V_SIZE / 50.0) / aspect_fit_scale_y;
+    float ox = (USER_H_POS - 50.0) / 50.0;
+    float oy = (USER_V_POS - 50.0) / 50.0;
+    float underscan_scale = (USER_UNDERSCAN_TOGGLE > 0.5) ? (1.0 - (UNDERSCAN * 0.01)) : 1.0;
+    sq = (sq - vec2(ox * full_aspect * aspect_scale, oy)) / (vec2(sx, sy) * underscan_scale);
+
+    // Electronic service corrections (trapezoid, corner, S-corrections)
+    float trap = TRAPEZOIDAL_CORRECTION * 0.01;
+    float corner = CORNER_CORRECTION * 0.01;
+    float s_h = S_CORRECTION_H * 0.01;
+    float s_v = S_CORRECTION_V * 0.01;
+    if (abs(trap) > 0.0001 || abs(corner) > 0.0001 || abs(s_h) > 0.0001 || abs(s_v) > 0.0001) {
+        sq = geometric_correction(sq, trap, corner, s_h, s_v);
+    }
+
+    // Unscale from full-frame space back to texture space, then to normalized
+    sq /= aspect_scale;
+    vec2 uv_full = vec2(sq.x / source_aspect, sq.y);
+    vec2 tex = uv_full * 0.5 + 0.5; // full video area [0,1]
+
+    // Redefine inside test: after all geometry transformations, is pixel within [0,1] full video bounds?
+    bool inside = (tex.x >= 0.0 && tex.x <= 1.0 &&
+                   tex.y >= 0.0 && tex.y <= 1.0);
+
+    // Active region bounds within full video space
+    float x_active_min = (1.0 - active_region_h) * 0.5;
+    float x_active_max = 1.0 - x_active_min;
+    float y_active_min = (1.0 - active_region_v) * 0.5;
+    float y_active_max = 1.0 - y_active_min;
+
+    bool in_active = (tex.x >= x_active_min && tex.x <= x_active_max &&
+                      tex.y >= y_active_min && tex.y <= y_active_max);
+
+    // Remap to input active texture coordinates only if inside active region
+    vec2 input_tex = vec2(
+        (tex.x - x_active_min) / max(active_region_h, EPS),
+        (tex.y - y_active_min) / max(active_region_v, EPS)
+    );
+    input_tex = clamp(input_tex, 0.0, 1.0);
 
     // Bicubic resample from input texture using BEAM_FOCUS
     float focus = clamp(BEAM_FOCUS * 0.01, 0.0, 1.0);
@@ -183,19 +512,20 @@ void main()
     float B = 1.0 - 2.0 * C;
     // Base color: sample content inside frame; outside use debug gray or black
     float outsideGray = (MASK_FRAME_DEBUG > 0.5) ? 0.5 : 0.0;
-    vec3 color = inside
-        ? sample_bicubic(Source, uv, 1.0 / config.SourceSize.xy, B, C)
-        : vec3(outsideGray);
+    vec3 inside_color;
+    if (in_active) {
+        inside_color = sample_bicubic(Source, input_tex, 1.0 / config.SourceSize.xy, B, C);
+    } else {
+        // Render padding (blanking) as black
+        inside_color = vec3(0.0);
+    }
+    vec3 color = inside ? inside_color : vec3(outsideGray);
 
     // If mask is bypassed, still honor framing but skip mask application
     if (MASK_BYPASS >= 1.0) {
         FragColor = vec4(crt_gamma(color), 1.0);
         return;
     }
-
-    // Determine PAR (pixel aspect ratio) relative to selected target aspect
-    float dar = config.OriginalAspect;
-    float par = dar / max(maskAR, EPS);
 
     // TVL-based unit scaling independent of output resolution
     // 1 TVL = 6 horizontal units (one RGB triad + gaps) in all modes
@@ -216,147 +546,24 @@ void main()
         units_y_total = tvl / maskAR * 6.0 / sqrt(2.0);
     }
 
-    // Continuous unit coordinates for smooth Gaussian weighting
-    float x_units = vTexCoord.x * units_x_total;
-    float y_units = vTexCoord.y * units_y_total;
-
     float mask_intensity = MASK_INTENSITY * 0.01;
-
-    vec3 mask_color;
-
     // Gaussian stripe helper (sigma in pattern units)
     float sigma = max(MASK_DIFFUSION, 1e-5);
-
-    // Horizontal centers aligned to left-edge origin (R starts at [0,1])
-    float cycle = mod(x_units - 0.4, 6.0);
-
-    // Use cyclic distances so weights are seamless across the 6-unit wrap
-    float dr = cyclicDist(cycle, 0.0, 6.0);
-    float dg = cyclicDist(cycle, 2.0, 6.0);
-    float db = cyclicDist(cycle, 4.0, 6.0);
-
-    float gauss_r = exp(-0.5 * dr*dr / (sigma*sigma));
-    float gauss_g = exp(-0.5 * dg*dg / (sigma*sigma));
-    float gauss_b = exp(-0.5 * db*db / (sigma*sigma));
-
-    if (MASK_TYPE < 0.5) {
-        // Aperture grille: seamless by cyclic Gaussian distances
-        mask_color = vec3(gauss_r, gauss_g, gauss_b);
-        float peak = max(mask_color.r, max(mask_color.g, mask_color.b));
-        if (peak > 1.0)
-            mask_color /= peak;
-    } else if (MASK_TYPE < 1.5) {
-        // Slot mask: 3-unit vertical cycle with periodic black row suppression
-        float cycle_y = mod(y_units + 1.0, 3.0);
-
-        // Horizontal position in 6-unit blocks (continuous)
-        float blockF = x_units / 6.0;
-
-        // Position within a 3-block cycle [0, 3)
-        float block3 = mod(blockF, 3.0);
-
-        // Horizontal blend width (tied to feather for consistency)
-        float sigma_h = sigma;
-
-        // Three candidate black rows for blocks 0, 1, 2 in the 3-block cycle
-        int base = int(floor(blockF / 3.0)) * 3;
-        int b0 = (base + 0) % 3;
-        int b1 = (base + 1) % 3;
-        int b2 = (base + 2) % 3;
-
-        // Cyclic distance to three block centers on a 3.0-period ring
-        // Empirically aligned centers: -0.6, 0.4, 1.4
-        float d0 = cyclicDist(block3, -0.6, 3.0);
-        float d1 = cyclicDist(block3,  0.4, 3.0);
-        float d2 = cyclicDist(block3,  1.4, 3.0);
-
-        // Gaussian weights per block (do NOT normalize — match shadow behavior)
-        float w0 = exp(-0.5 * d0*d0 / (sigma_h*sigma_h));
-        float w1 = exp(-0.5 * d1*d1 / (sigma_h*sigma_h));
-        float w2 = exp(-0.5 * d2*d2 / (sigma_h*sigma_h));
-
-        // Vertical gating using cyclic distance on 3-unit ring
-        float sigma_v = sigma * 0.65;
-        float gate_0 = 1.0 - exp(-0.5 * (cyclicDist(cycle_y, float(b0), 3.0) / sigma_v) *
-                                        (cyclicDist(cycle_y, float(b0), 3.0) / sigma_v));
-        float gate_1 = 1.0 - exp(-0.5 * (cyclicDist(cycle_y, float(b1), 3.0) / sigma_v) *
-                                        (cyclicDist(cycle_y, float(b1), 3.0) / sigma_v));
-        float gate_2 = 1.0 - exp(-0.5 * (cyclicDist(cycle_y, float(b2), 3.0) / sigma_v) *
-                                        (cyclicDist(cycle_y, float(b2), 3.0) / sigma_v));
-
-        // Blend gates by horizontal weights (no normalization, like shadow’s vertical blend)
-        float gate = w0 * gate_0 + w1 * gate_1 + w2 * gate_2;
-
-        // RGB stripe pattern from horizontal Gaussians
-        vec3 rgb = vec3(gauss_r, gauss_g, gauss_b);
-        float peak_rgb = max(rgb.r, max(rgb.g, rgb.b));
-        if (peak_rgb > 1.0) rgb /= peak_rgb;
-
-        // Match shadow mask normalization: clamp the final blended result to peak 1
-        vec3 out_rgb = rgb * gate;
-        float peak_out = max(out_rgb.r, max(out_rgb.g, out_rgb.b));
-        if (peak_out > 1.0) out_rgb /= peak_out;
-
-        mask_color = out_rgb;
-    } else {
-        // Shadow mask (4-row cycle). Two lit rows with a 1-row black gap between:
-        // Row 0 centers: R0 G2 B4
-        // Row 2 centers: B1 R3 G5
-        // Rows 1 and 3 are blank. Blend lit rows smoothly in vertical unit space.
-
-        // Vertical cyclic coordinate with top-edge origin so row centers lie at 0.5 and 2.5
-        float vcycle = mod(y_units - 0.4, 4.0);
-
-        // Vertical sigma (slightly smaller than horizontal to keep dots crisp)
-        float sigma_v = max(0.08, sigma * 0.65);
-
-        // Vertical weights for the two lit rows (use cyclic distance on 4-unit ring)
-        float w0 = exp(-0.5 * (cyclicDist(vcycle, 0.5, 4.0) / sigma_v) *
-                               (cyclicDist(vcycle, 0.5, 4.0) / sigma_v)); // row 0
-        float w2 = exp(-0.5 * (cyclicDist(vcycle, 2.5, 4.0) / sigma_v) *
-                               (cyclicDist(vcycle, 2.5, 4.0) / sigma_v)); // row 2
-
-        // Row 0 horizontal RGB weights (R0,G2,B4)
-        float dR0 = cyclicDist(cycle, 0.0, 6.0);
-        float dG0 = cyclicDist(cycle, 2.0, 6.0);
-        float dB0 = cyclicDist(cycle, 4.0, 6.0);
-        vec3 rgb0 = vec3(
-            exp(-0.5 * dR0*dR0 / (sigma*sigma)),
-            exp(-0.5 * dG0*dG0 / (sigma*sigma)),
-            exp(-0.5 * dB0*dB0 / (sigma*sigma))
-        );
-
-        // Row 2 horizontal RGB weights (B1,R3,G5) — 1-unit shift
-        float dB2 = cyclicDist(cycle, 1.0, 6.0);
-        float dR2 = cyclicDist(cycle, 3.0, 6.0);
-        float dG2 = cyclicDist(cycle, 5.0, 6.0);
-        vec3 rgb2 = vec3(
-            exp(-0.5 * dR2*dR2 / (sigma*sigma)),
-            exp(-0.5 * dG2*dG2 / (sigma*sigma)),
-            exp(-0.5 * dB2*dB2 / (sigma*sigma))
-        );
-
-        // Blend lit rows by vertical weights; rows 1 and 3 end up dark naturally
-        vec3 rgb = w0 * rgb0 + w2 * rgb2;
-
-        // Optional peak clamp to avoid overbright when both rows overlap slightly
-        float peak = max(rgb.r, max(rgb.g, rgb.b));
-        if (peak > 1.0)
-            rgb /= peak;
-        mask_color = rgb;
-    }
-
-    // Optional monochrome override with smooth Gaussian-based transition
-    if (MASK_MONOCHROME > 0.5) {
-        float nb = max(mask_color.r, max(mask_color.g, mask_color.b));
-        // Use a wider, gentler curve that respects the Gaussian feathering
-        // Map the [0,1] range more smoothly, preserving soft gradients
-        float mono = nb * nb * (3.0 - 2.0 * nb); // Hermite smoothstep curve
-        // Alternative: exponential soft threshold
-        // float mono = 1.0 - exp(-3.0 * nb);
-        mask_color = vec3(mono);
-    }
+    vec3 mask_color = compute_mask(vTexCoord, units_x_total, units_y_total, sigma);
 
     vec3 masked_color = mix(color, color * mask_color, mask_intensity);
+
+    if (MASK_DEBUG_PAD > 0.5) {
+        bool is_padding = inside && !in_active;
+        if (is_padding) {
+            // Padding area: yellow
+            masked_color = vec3(1.0, 1.0, 0.0);
+        } else if (!inside) {
+            // Outside full video frame: gray
+            masked_color = vec3(0.5);
+        }
+        // else: active content, show normally with mask
+    }
+
     FragColor = vec4(crt_gamma(masked_color), 1.0);
 }
