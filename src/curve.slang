@@ -33,7 +33,7 @@
 #pragma format R16G16B16A16_SFLOAT
 
 #pragma parameter CURVE_BYPASS "Bypass Curvature" 0 0 1.0 1.0
-#pragma parameter CURVE_FILTER "Curvature filter (0=off, 1=on)" 1.0 0.0 2.0 1.0
+#pragma parameter CURVE_FILTER "Curvature filter (0=off, 1=on)" 1.0 0.0 1.0 1.0
 #pragma parameter ZOOM "Zoom level (%)" 104.10 50.0 200.0 0.1
 #pragma parameter DEBUG_BARREL_SURROUND "Debug: Show surround outside barrel" 0.0 0.0 1.0 1.0
 
@@ -234,5 +234,5 @@ void main()
         color = sample_bicubic(Source, tex, 1.0 / config.SourceSize.xy, B, C);
     }
 
-    FragColor = vec4(crt_gamma(color), 1.0);
+    FragColor = vec4(color, 1.0);
 }

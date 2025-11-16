@@ -4,7 +4,7 @@
 # output available without modification. However, its use was only
 # officially supported in Japan with the OEM JP-21 connector.
 
-shaders = 8
+shaders = 9
 
 shader0 = ../src/menu.slang
 filter_linear0 = false
@@ -45,9 +45,9 @@ shader7 = ../src/curve.slang
 filter_linear7 = false
 scale7 = 1.0
 
-#shader8 = ../src/color.slang
-#filter_linear8 = false
-#scale8 = 1.0
+shader8 = ../src/color-sdr.slang
+filter_linear8 = false
+scale8 = 1.0
 
 textures = BORDER
 BORDER = "../share/bezel-trinitron.png"
@@ -77,3 +77,14 @@ USER_V_SIZE = 58.4
 # Bezel parameters
 GLOW_DIFFUSION = 6.0
 GLOW_COMPRESSION = 0.7
+
+# Test NTSC-J
+R_X = "0.618"
+R_Y = "0.350"
+G_X = "0.280"
+G_Y = "0.605"
+B_X = "0.152"
+B_Y = "0.063"
+R_WEIGHT = "0.2243"
+G_WEIGHT = "0.6742"
+B_WEIGHT = "0.1015"
