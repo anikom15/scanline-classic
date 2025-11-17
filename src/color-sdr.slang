@@ -23,7 +23,8 @@
 #include "common.inc"
 #include "color.inc"
 
-#include "parameters/color.inc"
+#include "parameters/colorimetry.inc"
+#include "parameters/color-sdr.inc"
 
 #pragma name Color
 #pragma format R8G8B8A8_UNORM

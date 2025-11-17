@@ -22,13 +22,15 @@
 //
 // Helper shader for loading parameters in the appropriate order.
 
-#include "parameters/color.inc"
+#include "parameters/output-tonemap.inc"
+#include "parameters/color-sdr.inc"
 #include "parameters/user-common.inc"
 #include "parameters/service-geometry.inc"
 #include "parameters/scanraster.inc"
 #include "parameters/display-rgb.inc"
 #include "parameters/factory-geometry.inc"
 #include "parameters/mask.inc"
+#include "parameters/colorimetry.inc"
 #include "parameters/phosphor.inc"
 #include "parameters/limiter.inc"
 #include "parameters/sys-timing.inc"

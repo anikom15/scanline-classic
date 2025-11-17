@@ -26,6 +26,9 @@ const vec3 BLUE = vec3(0.0, 1.0, 1.0);
 const vec3 INDIGO = vec3(0.0, 0.0, 1.0);
 const vec3 VIOLET = vec3(1.0, 0.0, 1.0);
 
+const float VOLTAGE_100 = 0.7143;      // Voltage at 100 IRE
+const float VOLTAGE_133 = 0.950019;    // Voltage at 133 IRE
+
 float sq(const float x)
 {
 	return x * x;
@@ -75,12 +78,12 @@ vec3 gaussian3(float x, vec3 sigma)
 // Output = Input * 0.7143 V
 vec3 normlimit_to_voltage(const vec3 norm)
 {
-    return norm * 0.7143;
+    return norm * VOLTAGE_100;
 }
 
 vec3 voltage_to_normlimit(const vec3 voltage)
 {
-    return voltage / 0.7143;
+    return voltage / VOLTAGE_100;
 }
 
 // Map normalized limited-range video signal to normalized full-range
@@ -96,19 +99,19 @@ vec3 voltage_to_normlimit(const vec3 voltage)
 // scanline rasterizer.
 vec3 normlimit_to_normfull(const vec3 norm)
 {
-    return norm * 0.7143 / 0.950019;
+    return norm * VOLTAGE_100 / VOLTAGE_133;
 }
 
 vec3 voltage_to_normfull(const vec3 voltage)
 {
-    return voltage / 0.950019;
+    return voltage / VOLTAGE_133;
 }
 
 // Map normalized full-range video signal to voltage
 // Voltage = Input * Voltage range + Minimum voltage
 vec3 normfull_to_voltage(const vec3 norm)
 {
-    return norm * 0.950019;
+   return norm * VOLTAGE_133;
 }
 
 float crt_linear(const float x)

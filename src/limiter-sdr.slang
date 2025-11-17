@@ -20,26 +20,30 @@
 // Voltage limiter (SDR output range)
 // -----------------
 // Input: Voltage
-// Output: Limited range normalized RGB signal [0.0, 1.0]
+// Output: Normalized RGB signal [0.0, 1.0]
 //
 // Clips and normalizes voltage to standard RGB signal range.
 //
-// There are two techniques for limiting here: hard clipping and soft clipping.
-// Hard clipping simply clamps the value to the min/max limits, while soft
-// clipping uses a transfer function to gently roll off the signal as it
-// approaches the limits, reducing harsh transitions that can cause artifacts.
+// There are two techniques for limiting here: hard clipping and soft
+// clipping.  Hard clipping simply clamps the value to the min/max
+// limits, while soft clipping uses a transfer function to gently roll
+// off the signal as it approaches the limits, reducing harsh
+// transitions that can cause artifacts.
 //
 // Most output should remain linear due to the linear range mapping
 // directly to SDR range (default settings), but the soft limiter will
 // apply distortion to signals that have been modified by the
 // amplifiers in the previous stages to go beyond 100 IRE.
 //
-// The SDR version clamps any values outside the standard 0-100 IRE
-// range, mapping them to 0.0-1.0 normalized RGB output.  See the HDR
-// version for tone-mapping extended range signals.
+// A modified Reinhard tone mapper is available, but turned off by
+// default as most use cases do not require amplifying core input
+// signals.  Turning on the tone mapper will compress 100 IRE white
+// level to allow signals (up to max output) to be displayed without
+// clipping.
 
 #include "common.inc"
 
+#include "parameters/output-tonemap.inc"
 #include "parameters/limiter.inc"
 
 #pragma name Limiter
@@ -58,12 +62,8 @@ layout(push_constant) uniform Push
     float LIMITER_COMPRESSION_POINT;
     float LIMITER_MAX_OUTPUT;
     float LIMITER_DEBUG_OUT_OF_RANGE;
+    float TONEMAP_LIMITER;
 } config;
-
-layout(std140, set = 0, binding = 0) uniform UBO
-{
-    mat4 MVP;
-} global;
 
 #define LIMITER_BYPASS config.LIMITER_BYPASS
 #define LIMITER_OUTPUT_RANGE config.LIMITER_OUTPUT_RANGE
@@ -71,6 +71,22 @@ layout(std140, set = 0, binding = 0) uniform UBO
 #define LIMITER_COMPRESSION_POINT config.LIMITER_COMPRESSION_POINT
 #define LIMITER_MAX_OUTPUT config.LIMITER_MAX_OUTPUT
 #define LIMITER_DEBUG_OUT_OF_RANGE config.LIMITER_DEBUG_OUT_OF_RANGE
+#define TONEMAP_LIMITER config.TONEMAP_LIMITER
+
+layout(std140, set = 0, binding = 0) uniform UBO
+{
+    mat4 MVP;
+} global;
+
+// Reinhard tone mapping operator (extended version)
+vec3 reinhard_extended(vec3 color, float w)
+{
+    // Convert input color to luminance
+    float y = dot(color, vec3(0.299, 0.587, 0.114));  // Rec. 601 Luma
+    float y_adj = y * (1.0 + (y / (w * w))) / (1.0 + y);
+
+    return color * (y_adj / y);
+}
 
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
@@ -122,6 +138,14 @@ void main()
 
     color = clamp(color, 0.0, peak);
     color = voltage_to_normlimit(color);
+
+    // Tone mapping
+    if (TONEMAP_LIMITER > 0.5) {
+        // Map peak voltage to normalized range
+        float w = peak / VOLTAGE_100;
+
+        color = reinhard_extended(color, w);
+    }
 
     // Debug: Visualize out-of-range colors with sinusoid modulation
     if (LIMITER_DEBUG_OUT_OF_RANGE >= 1.0) {
