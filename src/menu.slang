@@ -23,7 +23,9 @@
 // Helper shader for loading parameters in the appropriate order.
 
 #include "parameters/output-tonemap.inc"
-#include "parameters/color-sdr.inc"
+#include "parameters/output-curve.inc"
+#include "parameters/output-color-sdr.inc"
+#include "parameters/output-bezel.inc"
 #include "parameters/user-common.inc"
 #include "parameters/service-geometry.inc"
 #include "parameters/scanraster.inc"

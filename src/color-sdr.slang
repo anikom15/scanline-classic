@@ -24,7 +24,7 @@
 #include "color.inc"
 
 #include "parameters/colorimetry.inc"
-#include "parameters/color-sdr.inc"
+#include "parameters/output-color-sdr.inc"
 
 #pragma name Color
 #pragma format R8G8B8A8_UNORM
@@ -234,7 +234,7 @@ vec3 reduce_luminance(const vec3 color)
 // humans are less sensitive to chroma loss in dark colors while being
 // more sensitive to changes in luminance.
 vec3 compress_gamut_cieluv(vec3 color) {
-    const float THRESHOLD = 1.0 / 256.0;
+    const float THRESHOLD = 1.0 / 255.0;
     vec3 xyz = sRGB_TO_XYZ * clamp(color, 0.0, 1.0);
     vec3 luv = XYZ_to_CIE_LUV(xyz);
 

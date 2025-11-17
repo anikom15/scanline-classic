@@ -28,13 +28,13 @@
 #include "parameters/user-common.inc"
 #include "parameters/factory-geometry.inc"
 #include "parameters/sys-timing.inc"
+#include "parameters/output-curve.inc"
 
 #pragma name Curve
 #pragma format R16G16B16A16_SFLOAT
 
 #pragma parameter CURVE_BYPASS "Bypass Curvature" 0 0 1.0 1.0
 #pragma parameter CURVE_FILTER "Curvature filter (0=off, 1=on)" 1.0 0.0 1.0 1.0
-#pragma parameter ZOOM "Zoom level (%)" 104.10 50.0 200.0 0.1
 #pragma parameter DEBUG_BARREL_SURROUND "Debug: Show surround outside barrel" 0.0 0.0 1.0 1.0
 
 layout(push_constant) uniform Push
@@ -48,7 +48,7 @@ layout(push_constant) uniform Push
     float CURVE_FILTER;
     float SCREEN_FOCUS;
     float ZOOM;
-    float DEBUG_BARREL_SURROUND; // <-- Add this line
+    float DEBUG_BARREL_SURROUND;
 
     // Factory geometry (angles in degrees)
     float ASPECT;

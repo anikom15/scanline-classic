@@ -4,7 +4,7 @@
 # output available without modification. However, its use was only
 # officially supported in Japan with the OEM JP-21 connector.
 
-shaders = 9
+shaders = 10
 
 shader0 = ../src/menu.slang
 filter_linear0 = false
@@ -31,26 +31,36 @@ scale_type_x4 = source
 scale_type_y4 = absolute
 scale_x4 = 1.0
 scale_y4 = 480.0
+alias4 = PHOSPHOR
 
 shader5 = ../src/beam-mask.slang
 filter_linear5 = false
 scale_type5 = viewport
-scale5 = 1.0
+scale_x5 = 0.75
+scale_y5 = 1.0
 
 shader6 = ../src/phosphor-trichrome.slang
 filter_linear6 = false
+scale_type6 = source
 scale6 = 1.0
 
 shader7 = ../src/curve.slang
 filter_linear7 = false
+scale_type7 = source
 scale7 = 1.0
 
 shader8 = ../src/color-sdr.slang
 filter_linear8 = false
+scale_type8 = source
 scale8 = 1.0
 
+shader9 = ../src/bezel-sdr.slang
+filter_linear9 = true
+scale_type9 = viewport
+scale9 = 1.0
+
 textures = BORDER
-BORDER = "../share/bezel-trinitron.png"
+BORDER = "../share/bezel-tv.png"
 
 # rgb-bandlimit parameters
 SYS_BANDWIDTH_R = 5.4
@@ -78,7 +88,6 @@ USER_V_SIZE = 58.4
 GLOW_DIFFUSION = 6.0
 GLOW_COMPRESSION = 0.7
 
-# Test NTSC-J
 R_X = "0.618"
 R_Y = "0.350"
 G_X = "0.280"
