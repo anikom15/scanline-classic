@@ -35,6 +35,11 @@ mat3 XYZ_TO_DCIP3 = mat3(
     -0.931384,  1.762664, -0.076172,
     -0.402711,  0.023625,  0.956885);
 
+mat3 sRGB_TO_XYZ = mat3(
+    0.4124, 0.2126, 0.0193,
+    0.3576, 0.7152, 0.1192,
+    0.1805, 0.0722, 0.9505);
+
 mat3 RGB_TO_YIQ = mat3(
     0.30,  0.599,   0.213,
     0.59, -0.2773, -0.5251,
@@ -101,4 +106,41 @@ vec3 xyY_to_XYZ(const vec3 xyY)
     float z = 1.0 - x - y;
 
     return vec3(Y * x / y, Y, Y * z / y);
+}
+
+vec3 XYZ_to_CIE_LUV(vec3 XYZ) {
+    const float Yn = 1.0;
+    const float Un = (4.0 * 0.95047) / (0.95047 + 15.0 * Yn + 3.0 * 1.08883);
+    const float Vn = (9.0 * Yn) / (0.95047 + 15.0 * Yn + 3.0 * 1.08883);
+
+    float Y = XYZ.y / Yn;
+    float L = (Y > 0.008856) ? (116.0 * pow(Y, 1.0 / 3.0) - 16.0) : (903.3 * Y);
+
+    float denom = XYZ.x + 15.0 * XYZ.y + 3.0 * XYZ.z;
+    float u = (denom > 0.0) ? (4.0 * XYZ.x) / denom : 0.0;
+    float v = (denom > 0.0) ? (9.0 * XYZ.y) / denom : 0.0;
+
+    float U = 13.0 * L * (u - Un);
+    float V = 13.0 * L * (v - Vn);
+
+    return vec3(L, U, V);
+}
+
+vec3 CIE_LUV_to_XYZ(vec3 LUV) {
+    const float Yn = 1.0;
+    const float Un = (4.0 * 0.95047) / (0.95047 + 15.0 * Yn + 3.0 * 1.08883);
+    const float Vn = (9.0 * Yn) / (0.95047 + 15.0 * Yn + 3.0 * 1.08883);
+
+    float L = LUV.x;
+    float U = LUV.y;
+    float V = LUV.z;
+
+    float u = Un + U / (13.0 * L);
+    float v = Vn + V / (13.0 * L);
+
+    float Y = (L > 8.0) ? pow((L + 16.0) / 116.0, 3.0) : (L / 903.3);
+    float X = Y * 9.0 * u / (4.0 * v);
+    float Z = Y * (12.0 - 3.0 * u - 20.0 * v) / (4.0 * v);
+
+    return vec3(X, Y, Z);
 }

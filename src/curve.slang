@@ -234,5 +234,5 @@ void main()
         color = sample_bicubic(Source, tex, 1.0 / config.SourceSize.xy, B, C);
     }
 
-    FragColor = vec4(color, 1.0);
+    FragColor = vec4(max(color, 0.0), 1.0);
 }

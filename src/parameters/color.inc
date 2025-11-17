@@ -1,4 +1,4 @@
-#pragma parameter COLOR_HEADER " —— Output: Color Conversion —— " 0.0 0.0 0.0 0.0
+#pragma parameter COLOR_HEADER " —— Output: Colorimetry —— " 0.0 0.0 0.0 0.0
 
 #pragma parameter R_X "Phosphor red x" 0.630 0.0 1.0 0.001
 #pragma parameter R_Y "Phosphor red y" 0.340 0.0 1.0 0.001
@@ -11,8 +11,9 @@
 #pragma parameter G_WEIGHT "Green weight" 0.7011 0.0 1.0 0.0001
 #pragma parameter B_WEIGHT "Blue weight" 0.0866 0.0 1.0 0.0001
 
-#pragma parameter COLOR_CONVERSION_METHOD "Chromatic adaptation (N,Brad,MBrad,Z-L)" 0.0 0.0 3.0 1.0
+#pragma parameter COLOR_CORRECTION_HEADER " —— Output: Color Correction —— " 0.0 0.0 0.0 0.0
 
-#pragma parameter TONE_MAP_HEADER " —— Output: Tone Mapping —— " 0.0 0.0 0.0 0.0
+#pragma parameter CHROMATIC_ADAPTATION "Chromatic adaptation (Off,Brad,MBrad,Z-L)" 1.0 0.0 3.0 1.0
+#pragma parameter ADAPTATION_LEVEL "Adaptation Level (Z-L only)" 1.0 0.0 1.0 0.01
 
-#pragma parameter TONE_MAP_TYPE "Tone Mapping Type (R,RY,RX,RXY,U2,ACES)" 3.0 0.0 5.0 1.0
+#pragma parameter GAMUT_COMPRESSION "Gamut Mapping (Off, Simple, Advanced)" 2.0 0.0 2.0 1.0

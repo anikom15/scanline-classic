@@ -29,9 +29,8 @@
 #pragma format R8G8B8A8_UNORM
 
 #pragma parameter COLOR_CONVERSION_BYPASS "Bypass color correction" 0.0 0.0 1.0 1.0
-#pragma parameter TONE_MAPPING_BYPASS "Bypass tone mapping" 0.0 0.0 1.0 1.0
+#pragma parameter COLORIMETRY_PRESET "Colorimetry Preset (Off, Rec. 601, Rec. 709)" 0.0 0.0 2.0 1.0
 #pragma parameter DEBUG_COLOR_DELTA "Show color correction deltas" 0.0 0.0 1.0 1.0
-#pragma parameter DEBUG_TONE_MAP_DELTA "Show tone mapping deltas" 0.0 0.0 1.0 1.0
 #pragma parameter COLOR_DEBUG_OUT_OF_RANGE "Debug out-of-range colors" 0.0 0.0 1.0 1.0
 
 layout(push_constant) uniform Push
@@ -48,12 +47,12 @@ layout(push_constant) uniform Push
     float R_WEIGHT;
     float G_WEIGHT;
     float B_WEIGHT;
-    float COLOR_CONVERSION_METHOD;
-    float TONE_MAP_TYPE;
+    float CHROMATIC_ADAPTATION;
+    float ADAPTATION_LEVEL;
+    float GAMUT_COMPRESSION;
     float COLOR_CONVERSION_BYPASS;
-    float TONE_MAPPING_BYPASS;
+    float COLORIMETRY_PRESET;
     float DEBUG_COLOR_DELTA;
-    float DEBUG_TONE_MAP_DELTA;
     float COLOR_DEBUG_OUT_OF_RANGE;
 } config;
 
@@ -66,12 +65,12 @@ layout(push_constant) uniform Push
 #define R_WEIGHT config.R_WEIGHT
 #define G_WEIGHT config.G_WEIGHT
 #define B_WEIGHT config.B_WEIGHT
-#define COLOR_CONVERSION_METHOD config.COLOR_CONVERSION_METHOD
-#define TONE_MAP_TYPE config.TONE_MAP_TYPE
+#define CHROMATIC_ADAPTATION config.CHROMATIC_ADAPTATION
+#define ADAPTATION_LEVEL config.ADAPTATION_LEVEL
+#define GAMUT_COMPRESSION config.GAMUT_COMPRESSION
 #define COLOR_CONVERSION_BYPASS config.COLOR_CONVERSION_BYPASS
-#define TONE_MAPPING_BYPASS config.TONE_MAPPING_BYPASS
+#define COLORIMETRY_PRESET config.COLORIMETRY_PRESET
 #define DEBUG_COLOR_DELTA config.DEBUG_COLOR_DELTA
-#define DEBUG_TONE_MAP_DELTA config.DEBUG_TONE_MAP_DELTA
 #define COLOR_DEBUG_OUT_OF_RANGE config.COLOR_DEBUG_OUT_OF_RANGE
 
 layout(std140, set = 0, binding = 0) uniform UBO {
@@ -80,24 +79,31 @@ layout(std140, set = 0, binding = 0) uniform UBO {
 
 // -- Color space conversion functions -- //
 
+struct Colorimetry {
+    vec2 R; // Red primary (x, y)
+    vec2 G; // Green primary (x, y)
+    vec2 B; // Blue primary (x, y)
+    vec3 W; // White point weights (Wr, Wg, Wb)
+};
+
 // Convert from linear RGB to XYZ by way of xy chromaticity
 //
 // Yrgb: Input color in Yrgb space
 // W: Weighting vector for RGB channels
-vec3 Yrgb_to_XYZ(vec3 Yrgb, vec3 W)
+vec3 Yrgb_to_XYZ(vec3 Yrgb, Colorimetry colorimetry)
 {
     mat3 xyYrgb = mat3(
-        R_X, R_Y, Yrgb.r,
-        G_X, G_Y, Yrgb.g,
-        B_X, B_Y, Yrgb.b);
+        colorimetry.R.x, colorimetry.R.y, Yrgb.r,
+        colorimetry.G.x, colorimetry.G.y, Yrgb.g,
+        colorimetry.B.x, colorimetry.B.y, Yrgb.b);
     mat3 XYZrgb = mat3(
         xyY_to_XYZ(xyYrgb[0]),
         xyY_to_XYZ(xyYrgb[1]),
         xyY_to_XYZ(xyYrgb[2]));
     vec3 XYZ = vec3(
-        dot(W, vec3(XYZrgb[0].r, XYZrgb[1].r, XYZrgb[2].r)),
-        dot(W, vec3(XYZrgb[0].g, XYZrgb[1].g, XYZrgb[2].g)),
-        dot(W, vec3(XYZrgb[0].b, XYZrgb[1].b, XYZrgb[2].b)));
+        dot(colorimetry.W, vec3(XYZrgb[0].r, XYZrgb[1].r, XYZrgb[2].r)),
+        dot(colorimetry.W, vec3(XYZrgb[0].g, XYZrgb[1].g, XYZrgb[2].g)),
+        dot(colorimetry.W, vec3(XYZrgb[0].b, XYZrgb[1].b, XYZrgb[2].b)));
     return XYZ;
 }
 
@@ -106,9 +112,9 @@ vec3 Yrgb_to_XYZ(vec3 Yrgb, vec3 W)
 // Yrgb: Input color in Yrgb space
 // W: Weighting vector for RGB channels
 // toRGB: Matrix to convert from XYZ to RGB
-vec3 Yrgb_to_RGB(vec3 Yrgb, vec3 W, mat3 toRGB)
+vec3 Yrgb_to_RGB(vec3 Yrgb, Colorimetry colorimetry, mat3 toRGB)
 {
-    vec3 XYZ = Yrgb_to_XYZ(Yrgb, W);
+    vec3 XYZ = Yrgb_to_XYZ(Yrgb, colorimetry);
     return toRGB * XYZ;
 }
 
@@ -170,7 +176,7 @@ vec3 bradford_linear(vec3 color_XYZ, vec3 wref_XYZ)
 
 // Chromatic adaptation model (Zhai et al. 2018) using CAT16
 
-mat3 zhai2018_cat16_adaptation_matrix(vec3 src_white) {
+mat3 zhai2018_cat16_adaptation_matrix(vec3 src_white, float d) {
     const vec3 tgt_white = vec3(0.95047, 1.0, 1.08883); // D65
 
     // CAT16 matrix
@@ -189,82 +195,89 @@ mat3 zhai2018_cat16_adaptation_matrix(vec3 src_white) {
     vec3 tgt_cone = cat16_M * tgt_white;
 
     mat3 D = mat3(
-        tgt_cone.x / src_cone.x, 0.0, 0.0,
-        0.0, tgt_cone.y / src_cone.y, 0.0,
-        0.0, 0.0, tgt_cone.z / src_cone.z);
+        d * tgt_cone.x / src_cone.x + 1.0 - d, 0.0, 0.0,
+        0.0, d * tgt_cone.y / src_cone.y + 1.0 - d, 0.0,
+        0.0, 0.0, d * tgt_cone.z / src_cone.z + 1.0 - d);
 
     return cat16_M_inv * D * cat16_M;
 }
 
-vec3 adapt_color_cat16(vec3 color_xyz, vec3 src_white) {
-    mat3 adapt = zhai2018_cat16_adaptation_matrix(src_white);
+vec3 adapt_color_cat16(vec3 color_xyz, vec3 src_white, float d) {
+    mat3 adapt = zhai2018_cat16_adaptation_matrix(src_white, d);
     return adapt * color_xyz;
 }
 
-// -- Tone mapping functions -- //
+// -- Gamut compression functions -- //
 
-// Reinhard tone mapping
-vec3 reinhard(vec3 color)
+// Simple luminance scaling to fit sRGB
+vec3 reduce_luminance(const vec3 color)
 {
-    return color / (1.0 + color);
+    float maxC = max(max(color.r, color.g), color.b);
+    if (maxC > 1.0) {
+        // Scale all channels so the maximum is 1.0
+        return color / maxC;
+    }
+    return color;
 }
 
-// Reinhard tone mapping, luminance only
-vec3 reinhard_yonly(vec3 color)
-{
-    // Calculate luminance
-    float y = max(dot(color, vec3(0.2126, 0.7152, 0.0722)), EPS);
-    float y_sdr = y / (1.0 + y);
+// Advanced gamut compression using CIE Luv space
+//
+// color: Input RGB color
+// Returns: Gamut-compressed RGB color
+//
+// Reduces luminance and chroma as needed to fit into sRGB gamut.
+// Since most displays have luminance headroom in dim environments,
+// this method prioritizes preserving chrominance over luminance when
+// a channel is greater than 1.0.  Conversely, when a channel is less
+// than 0.0, luminance is preserved while chroma is reduced because
+// humans are less sensitive to chroma loss in dark colors while being
+// more sensitive to changes in luminance.
+vec3 compress_gamut_cieluv(vec3 color) {
+    const float THRESHOLD = 1.0 / 256.0;
+    vec3 xyz = sRGB_TO_XYZ * clamp(color, 0.0, 1.0);
+    vec3 luv = XYZ_to_CIE_LUV(xyz);
 
-    return color * y_sdr / y;
-}
+    // Reduce luminance if any channel > 1
+    if (any(greaterThan(color, vec3(1.0)))) {
+        float minScale = 0.0;
+        float maxScale = 1.0;
+        float scale = 1.0;
+        for (int i = 0; i < 9; ++i) {
+            float testL = luv.x * scale;
+            vec3 testRGB = XYZ_TO_sRGB * CIE_LUV_to_XYZ(vec3(testL, luv.y, luv.z));
+            if (all(lessThanEqual(testRGB, vec3(1.0)))) {
+                minScale = scale;
+            } else {
+                maxScale = scale;
+            }
+            scale = 0.5 * (minScale + maxScale);
+            if (maxScale - minScale < THRESHOLD)
+                break;
+        }
+        luv.x *= minScale;
+    }
 
-// Reinhard tone mapping with white point compensation
-// w is the white point scaling factor
-vec3 reinhard_extended(vec3 color, const float w) {
-    vec3 safe_w = vec3(max(w, EPS));
-    return color * (1.0 + color / (safe_w * safe_w)) / (1.0 + color);
-}
+    // Reduce chroma if any channel < 0
+    if (any(lessThan(color, vec3(0.0)))) {
+        float minScale = 0.0;
+        float maxScale = 1.0;
+        float scale = 1.0;
+        for (int i = 0; i < 9; ++i) {
+            vec3 testLuv = vec3(luv.x, luv.y * scale, luv.z * scale);
+            vec3 testRGB = XYZ_TO_sRGB * CIE_LUV_to_XYZ(testLuv);
+            if (all(greaterThanEqual(testRGB, vec3(0.0)))) {
+                minScale = scale;
+            } else {
+                maxScale = scale;
+            }
+            scale = 0.5 * (minScale + maxScale);
+            if (maxScale - minScale < THRESHOLD)
+                break;
+        }
+        luv.yz *= minScale;
+    }
 
-// Reinhard tone mapping with white point compensation, luminance only
-// w is the white point scaling factor
-vec3 reinhard_extended_yonly(vec3 color, const float w) {
-    // Calculate luminance
-    float safe_w = max(w, EPS);
-    float y = max(dot(color, vec3(0.2126, 0.7152, 0.0722)), EPS);
-    float y_sdr = y * (1.0 + y / (safe_w * safe_w)) / (1.0 + y);
-
-    return color * y_sdr / y;
-}
-
-// ACES approximation (Narkowicz 2015)
-vec3 tone_map_aces(vec3 color) {
-    const float a = 2.51;
-    const float b = 0.03;
-    const float c = 2.43;
-    const float d = 0.59;
-    const float e = 0.14;
-    return clamp((color * (a * color + b)) / (color * (c * color + d) + e), 0.0, 1.0);
-}
-
-vec3 uncharted2_tonemap_partial(vec3 x)
-{
-    float A = 0.15f;
-    float B = 0.50f;
-    float C = 0.10f;
-    float D = 0.20f;
-    float E = 0.02f;
-    float F = 0.30f;
-    return ((x * (A * x + C * B) + D * E) / (x * (A * x + B) + D * F)) - E / F;
-}
-
-vec3 uncharted2_filmic(vec3 v, const float w, const float exposure_bias)
-{
-    vec3 curr = uncharted2_tonemap_partial(v * exposure_bias);
-
-    vec3 W = vec3(w);
-    vec3 white_scale = vec3(1.0f) / uncharted2_tonemap_partial(W);
-    return curr * white_scale;
+    return XYZ_TO_sRGB * CIE_LUV_to_XYZ(luv);
 }
 
 #pragma stage vertex
@@ -300,27 +313,52 @@ void main()
         B_WEIGHT);
     vec3 RGB;
 
-    if (COLOR_CONVERSION_METHOD < 0.5) {
+    // Select colorimetry preset
+    Colorimetry colorimetry;
+    if (COLORIMETRY_PRESET < 0.5) {
+        // Custom
+        colorimetry = Colorimetry(
+            vec2(R_X, R_Y),
+            vec2(G_X, G_Y),
+            vec2(B_X, B_Y),
+            W);
+    } else if (COLORIMETRY_PRESET < 1.5) {
+        // Rec. 601
+        colorimetry = Colorimetry(
+            vec2(0.630, 0.340),
+            vec2(0.310, 0.595),
+            vec2(0.155, 0.070),
+            vec3(0.2124, 0.7011, 0.0866)); // D65 weights
+    } else {
+        // Rec. 709
+        colorimetry = Colorimetry(
+            vec2(0.640, 0.330),
+            vec2(0.300, 0.600),
+            vec2(0.150, 0.060),
+            vec3(0.2126, 0.7152, 0.0722)); // D65 weights
+    }
+
+    if (CHROMATIC_ADAPTATION < 0.5) {
         // No adaptation, just convert RGBref to XYZ to RGBout
-        RGB = Yrgb_to_RGB(Yrgb, W, toRGB);
-    } else if (COLOR_CONVERSION_METHOD < 1.5) {
+        RGB = Yrgb_to_RGB(Yrgb, colorimetry, toRGB);
+    } else if (CHROMATIC_ADAPTATION < 1.5) {
         // Bradford adaptation
-        vec3 white_XYZ = Yrgb_to_XYZ(WHITE, W);
-        vec3 Yrgb_XYZ = Yrgb_to_XYZ(Yrgb, W);
+        vec3 white_XYZ = Yrgb_to_XYZ(WHITE, colorimetry);
+        vec3 Yrgb_XYZ = Yrgb_to_XYZ(Yrgb, colorimetry);
         vec3 adapted_XYZ = bradford(Yrgb_XYZ, white_XYZ);
         RGB = XYZ_TO_sRGB * adapted_XYZ;
-    } else if (COLOR_CONVERSION_METHOD < 2.5) {
+    } else if (CHROMATIC_ADAPTATION < 2.5) {
         // Linear Bradford adaptation
         // Forgoes precise blue channel adaptation for performance
-        vec3 white_XYZ = Yrgb_to_XYZ(WHITE, W);
-        vec3 Yrgb_XYZ = Yrgb_to_XYZ(Yrgb, W);
+        vec3 white_XYZ = Yrgb_to_XYZ(WHITE, colorimetry);
+        vec3 Yrgb_XYZ = Yrgb_to_XYZ(Yrgb, colorimetry);
         vec3 adapted_XYZ = bradford_linear(Yrgb_XYZ, white_XYZ);
         RGB = XYZ_TO_sRGB * adapted_XYZ;
     } else {
         // Zhai et al. 2018 CAT16 adaptation
-        vec3 white_XYZ = Yrgb_to_XYZ(WHITE, W);
-        vec3 Yrgb_XYZ = Yrgb_to_XYZ(Yrgb, W);
-        vec3 adapted_XYZ = adapt_color_cat16(Yrgb_XYZ, white_XYZ);
+        vec3 white_XYZ = Yrgb_to_XYZ(WHITE, colorimetry);
+        vec3 Yrgb_XYZ = Yrgb_to_XYZ(Yrgb, colorimetry);
+        vec3 adapted_XYZ = adapt_color_cat16(Yrgb_XYZ, white_XYZ, ADAPTATION_LEVEL);
         RGB = XYZ_TO_sRGB * adapted_XYZ;
     }
 
@@ -328,6 +366,15 @@ void main()
         vec3 delta = abs(RGB - Yrgb);
         FragColor = vec4(crt_gamma(clamp(delta, 0.0, 1.0)), 1.0);
         return;
+    }
+
+    // Gamut mapping
+    if (GAMUT_COMPRESSION < 0.5) {
+        // No gamut compression
+    } else if (GAMUT_COMPRESSION < 1.5) {
+        RGB = reduce_luminance(RGB);
+    } else {
+        RGB = compress_gamut_cieluv(RGB);
     }
 
     // Debug: Visualize out-of-range colors with sinusoid modulation
@@ -344,7 +391,7 @@ void main()
         float temporalSquare = sign(sin(temporalPhase)) * 0.5 + 0.5; // Square wave: 0.0 or 1.0
 
         // Create spatial square wave pattern (checkerboard-like)
-        float spatialPhase = (vTexCoord.x + vTexCoord.y) * config.OutputSize.x / 4.0;  // Adjust frequency as needed
+        float spatialPhase = (vTexCoord.x + vTexCoord.y) * config.OutputSize.x / 2.0;  // Adjust frequency as needed
         float spatialSquare = sign(sin(spatialPhase)) * 0.5 + 0.5; // Square wave: 0.0 or 1.0
 
         // Combine temporal and spatial patterns with XOR-like behavior
@@ -379,38 +426,7 @@ void main()
         return;
     }
 
-    // Gamut mapping goes here
-
-    // Tone mapping
-    vec3 color;
-    if (TONE_MAPPING_BYPASS < 1.0) {
-        // Calculate white point
-        vec3 white = Yrgb_to_RGB(WHITE, W, toRGB);
-        float G = max(max(white.r, white.g), white.b);
-
-        // Apply tone mapping
-        if (TONE_MAP_TYPE < 0.5) {
-            color = reinhard(RGB);
-        } else if (TONE_MAP_TYPE < 1.5) {
-            color = reinhard_yonly(RGB);
-        } else if (TONE_MAP_TYPE < 2.5) {
-            color = reinhard_extended(RGB, 1.33);
-        } else if (TONE_MAP_TYPE < 3.5) {
-            color = reinhard_extended_yonly(RGB, 1.33);
-        } else if (TONE_MAP_TYPE < 4.5) {
-            color = uncharted2_filmic(RGB, 11.2, 2.0);
-        } else {
-            color = tone_map_aces(0.8 * RGB);
-        }
-    } else {
-        color = RGB;
-    }
-
-    if (DEBUG_TONE_MAP_DELTA > 0.5) {
-        vec3 delta = abs(RGB - color);
-        FragColor = vec4(crt_gamma(clamp(delta, 0.0, 1.0)), 1.0);
-        return;
-    }
+    vec3 color = RGB;
 
     // Safety clamp
     color = clamp(color, 0.0, 1.0);

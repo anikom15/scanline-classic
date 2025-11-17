@@ -756,5 +756,5 @@ void main()
 
     vec3 masked_color = mix(color, color * mask_color, mask_intensity);
 
-    FragColor = vec4(masked_color, 1.0);
+    FragColor = vec4(max(masked_color, 0.0), 1.0);
 }
