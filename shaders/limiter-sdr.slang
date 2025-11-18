@@ -42,6 +42,7 @@
 // clipping.
 
 #include "common.inc"
+#include "color.inc"
 
 #include "menus/parameters/output-tonemap.inc"
 #include "menus/parameters/limiter.inc"
@@ -56,6 +57,7 @@ layout(push_constant) uniform Push
 {
     vec4 OutputSize;
     uint FrameCount;
+    float NTSC_CONVERSION;
     float LIMITER_BYPASS;
     float LIMITER_OUTPUT_RANGE;
     float LIMITER_TYPE;
@@ -65,6 +67,7 @@ layout(push_constant) uniform Push
     float TONEMAP_LIMITER;
 } config;
 
+#define NTSC_CONVERSION config.NTSC_CONVERSION
 #define LIMITER_BYPASS config.LIMITER_BYPASS
 #define LIMITER_OUTPUT_RANGE config.LIMITER_OUTPUT_RANGE
 #define LIMITER_TYPE config.LIMITER_TYPE
@@ -107,6 +110,11 @@ layout(set = 0, binding = 2) uniform sampler2D Source;
 void main()
 {
     vec3 color = texture(Source, vTexCoord).rgb;
+
+    if (NTSC_CONVERSION > 0.5) {
+        // Apply NTSC conversion matrix
+        color = ParkerCCorrection * color;
+    }
 
     // Bypass limiter, but translate to expected unit
     if (LIMITER_BYPASS >= 1.0) {
