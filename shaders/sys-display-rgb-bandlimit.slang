@@ -29,10 +29,10 @@
 #include "modulation.inc"
 #include "bandlimit.inc"
 
-#include "parameters/user-common.inc"
-#include "parameters/display-rgb.inc"
-#include "parameters/sys-rgb.inc"
-#include "parameters/sys-timing.inc"
+#include "menus/parameters/user-common.inc"
+#include "menus/parameters/display-rgb.inc"
+#include "menus/parameters/sys-rgb.inc"
+#include "menus/parameters/sys-timing.inc"
 
 #pragma name SysDisplayRGBBandlimit
 #pragma format R16G16B16A16_SFLOAT

@@ -22,7 +22,7 @@
 
 #include "common.inc"
 
-#include "parameters/phosphor.inc"
+#include "menus/parameters/phosphor.inc"
 
 #pragma name Phosphor3
 #pragma format R16G16B16A16_SFLOAT

@@ -1,4 +1,4 @@
-# SFC/SNES RGB shader set
+# SFC RGB shader set
 #
 # All standard models, but not the Jr. and Mini models, have an RGB
 # output available without modification. However, its use was only
@@ -6,26 +6,26 @@
 
 shaders = 10
 
-shader0 = ../src/menu.slang
+shader0 = ../../../shaders/menus/menu.slang
 filter_linear0 = false
 scale_type0 = source
 
-shader1 = ../src/sys-rgb-amp.slang
+shader1 = ../../../shaders/sys-rgb-amp.slang
 filter_linear1 = false
 scale_type1 = source
 
-shader2 = ../src/sys-display-rgb-bandlimit.slang
+shader2 = ../../../shaders/sys-display-rgb-bandlimit.slang
 filter_linear2 = false
 scale_type_x2 = absolute
 scale_type_y2 = source
 scale_x2 = 1024.0
 scale_y2 = 1.0
 
-shader3 = ../src/limiter-sdr.slang
+shader3 = ../../../shaders/limiter-sdr.slang
 filter_linear3 = false
 scale_type3 = source
 
-shader4 = ../src/scanraster.slang
+shader4 = ../../../shaders/scanraster.slang
 filter_linear4 = false
 scale_type_x4 = source
 scale_type_y4 = absolute
@@ -33,36 +33,36 @@ scale_x4 = 1.0
 scale_y4 = 480.0
 alias4 = PHOSPHOR
 
-shader5 = ../src/beam-mask.slang
+shader5 = ../../../shaders/beam-mask.slang
 filter_linear5 = false
 scale_type5 = viewport
 scale_x5 = 0.75
 scale_y5 = 1.0
 
-shader6 = ../src/phosphor-trichrome.slang
+shader6 = ../../../shaders/phosphor-trichrome.slang
 filter_linear6 = false
 scale_type6 = source
 scale6 = 1.0
 
-shader7 = ../src/curve.slang
+shader7 = ../../../shaders/curve.slang
 filter_linear7 = false
 scale_type7 = source
 scale7 = 1.0
 
-shader8 = ../src/color-sdr.slang
+shader8 = ../../../shaders/color-sdr.slang
 filter_linear8 = false
 scale_type8 = source
 scale8 = 1.0
 
-shader9 = ../src/bezel-sdr.slang
+shader9 = ../../../shaders/bezel-sdr.slang
 filter_linear9 = true
 scale_type9 = viewport
 scale9 = 1.0
 
 textures = BORDER
-BORDER = "../share/bezel-tv.png"
+BORDER = ../../../share/bezel-trinitron.png
 
-# rgb-bandlimit parameters
+# SNES signal modification
 SYS_BANDWIDTH_R = 5.4
 SYS_BANDWIDTH_G = 5.4
 SYS_BANDWIDTH_B = 5.4
@@ -70,24 +70,34 @@ SYS_CUTOFF_ATTEN_R = 16
 SYS_CUTOFF_ATTEN_G = 16
 SYS_CUTOFF_ATTEN_B = 16
 
-# Scanline Advanced parameters
+# Timing
 V_LINES_PER_FIELD = 262
 H_BLANK_INACTIVE_LEN = 33.203125
 H_BLANK_INACTIVE_UNIT = 2
-#FOCUS = 0.5
-#MAGNETIC_CORRECTION = 30.0
-#SCREEN_ANGLE_H = 30.0
-#SCREEN_ANGLE_V = 0.0
-#TRAPEZOIDAL_CORRECTION = 8.0
-#S_CORRECTION_H = 2.0
-#S_CORRECTION_V = 5.0
-USER_H_SIZE = 58.4
-USER_V_SIZE = 58.4
 
-# Bezel parameters
-GLOW_DIFFUSION = 6.0
-GLOW_COMPRESSION = 0.7
+# Beam control
+SCANLINE_BLANK_WEIGHT = 100.0
+TVL = 600.0
+MASK_TYPE = 0.0
+MASK_DIFFUSION = 0.7
+BEAM_FOCUS = 0.5
+MAGNETIC_CORRECTION = 30.0
+DEFLECTION_ANGLE = 90.0
+SCREEN_ANGLE_H = 25.0
+SCREEN_ANGLE_V = 0.0
+TRAPEZOIDAL_CORRECTION = 3.0
+S_CORRECTION_H = 3.0
+S_CORRECTION_V = 3.0
 
+USER_H_SIZE = 56.0
+USER_V_SIZE = 56.0
+
+# Phosphor
+PHOSPHOR_MANTISSA_R = 1.0
+PHOSPHOR_MANTISSA_G = 100.0
+PHOSPHOR_MANTISSA_B = 100.0
+
+# Colorimetry (NTSC-J)
 R_X = "0.618"
 R_Y = "0.350"
 G_X = "0.280"
@@ -97,3 +107,7 @@ B_Y = "0.063"
 R_WEIGHT = "0.2243"
 G_WEIGHT = "0.6742"
 B_WEIGHT = "0.1015"
+
+# Bezel parameters
+GLOW_DIFFUSION = 6.0
+GLOW_COMPRESSION = 0.7

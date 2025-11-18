@@ -30,8 +30,8 @@
 #include "common.inc"
 #include "modulation.inc"
 
-#include "parameters/sys-timing.inc"
-#include "parameters/scanraster.inc"
+#include "menus/parameters/sys-timing.inc"
+#include "menus/parameters/scanraster.inc"
 
 #pragma name ScanRaster
 #pragma format R16G16B16A16_SFLOAT

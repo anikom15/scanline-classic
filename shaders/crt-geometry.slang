@@ -25,10 +25,10 @@
 #include "filter.h"
 #include "modulation.inc"
 
-#include "parameters/factory-geometry.inc"
-#include "parameters/service-geometry.inc"
-#include "parameters/user-common.inc"
-#include "parameters/sys-timing.inc"
+#include "menus/parameters/factory-geometry.inc"
+#include "menus/parameters/service-geometry.inc"
+#include "menus/parameters/user-common.inc"
+#include "menus/parameters/sys-timing.inc"
 
 #pragma name CRTGeometry
 #pragma format R16G16B16A16_SFLOAT

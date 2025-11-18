@@ -25,10 +25,10 @@
 #include "filter.h"
 #include "modulation.inc"
 
-#include "parameters/user-common.inc"
-#include "parameters/factory-geometry.inc"
-#include "parameters/sys-timing.inc"
-#include "parameters/output-curve.inc"
+#include "menus/parameters/user-common.inc"
+#include "menus/parameters/factory-geometry.inc"
+#include "menus/parameters/sys-timing.inc"
+#include "menus/parameters/output-curve.inc"
 
 #pragma name Curve
 #pragma format R16G16B16A16_SFLOAT

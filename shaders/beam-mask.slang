@@ -25,11 +25,10 @@
 #include "geometry.inc"
 #include "modulation.inc"
 
-#include "parameters/mask.inc"
-// Reuse geometry parameters for positioning/sizing and electronic corrections
-#include "parameters/factory-geometry.inc"
-#include "parameters/service-geometry.inc"
-#include "parameters/user-common.inc"
+#include "menus/parameters/mask.inc"
+#include "menus/parameters/factory-geometry.inc"
+#include "menus/parameters/service-geometry.inc"
+#include "menus/parameters/user-common.inc"
 
 #pragma name CRTMask
 #pragma format R16G16B16A16_SFLOAT

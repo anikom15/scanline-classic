@@ -23,8 +23,8 @@
 #include "common.inc"
 #include "color.inc"
 
-#include "parameters/colorimetry.inc"
-#include "parameters/output-color-sdr.inc"
+#include "menus/parameters/colorimetry.inc"
+#include "menus/parameters/output-color-sdr.inc"
 
 #pragma name Color
 #pragma format R8G8B8A8_UNORM
@@ -85,6 +85,19 @@ struct Colorimetry {
     vec2 G; // Green primary (x, y)
     vec2 B; // Blue primary (x, y)
     vec3 W; // White point weights (Wr, Wg, Wb)
+};
+
+// Precomputed gamut space for CIELuv gamut compression
+struct ReferenceColors {
+    vec3 ref_XYZ;
+    vec3 white_sRGB;
+    vec3 red_sRGB;
+    vec3 green_sRGB;
+    vec3 blue_sRGB;
+    vec3 white_Luv;
+    vec3 red_Luv;
+    vec3 green_Luv;
+    vec3 blue_Luv;
 };
 
 // Convert from linear RGB to XYZ by way of xy chromaticity
@@ -221,23 +234,11 @@ vec3 reduce_luminance(const vec3 color)
     return color;
 }
 
-// Advanced gamut compression using CIE Luv space
-//
-// color: Input RGB color
-// Returns: Gamut-compressed RGB color
-//
-// Reduces luminance and chroma as needed to fit into sRGB gamut.
-// Since most displays have luminance headroom in dim environments,
-// this method prioritizes preserving chrominance over luminance when
-// a channel is greater than 1.0.  Conversely, when a channel is less
-// than 0.0, luminance is preserved while chroma is reduced because
-// humans are less sensitive to chroma loss in dark colors while being
-// more sensitive to changes in luminance.
-vec3 compress_gamut_cieluv(vec3 color) {
-    const float THRESHOLD = 1.0 / 255.0;
-    vec3 xyz = sRGB_TO_XYZ * clamp(color, 0.0, 1.0);
-    vec3 luv = XYZ_to_CIE_LUV(xyz);
+const float THRESHOLD = 1.0 / 256.0;
 
+// Scale luminance in CIE Luv space
+float scale_luminance_cieluv(vec3 color, vec3 luv)
+{
     // Reduce luminance if any channel > 1
     if (any(greaterThan(color, vec3(1.0)))) {
         float minScale = 0.0;
@@ -255,9 +256,14 @@ vec3 compress_gamut_cieluv(vec3 color) {
             if (maxScale - minScale < THRESHOLD)
                 break;
         }
-        luv.x *= minScale;
+        return minScale;
     }
+    return 1.0;
+}
 
+// Scale chroma in CIE Luv space
+float scale_chroma_cieluv(vec3 color, vec3 luv)
+{
     // Reduce chroma if any channel < 0
     if (any(lessThan(color, vec3(0.0)))) {
         float minScale = 0.0;
@@ -275,9 +281,63 @@ vec3 compress_gamut_cieluv(vec3 color) {
             if (maxScale - minScale < THRESHOLD)
                 break;
         }
-        luv.yz *= minScale;
+        return minScale;
     }
+    return 1.0;
+}
 
+// Advanced gamut compression using CIE Luv space
+//
+// color: Input RGB color
+// Returns: Gamut-compressed RGB color
+//
+// Reduces luminance and chroma as needed to fit into sRGB gamut.
+// Since most displays have luminance headroom in dim environments,
+// this method prioritizes preserving chrominance over luminance when
+// a channel is greater than 1.0.  Conversely, when a channel is less
+// than 0.0, luminance is preserved while chroma is reduced because
+// humans are less sensitive to chroma loss in dark colors while being
+// more sensitive to changes in luminance.
+vec3 compress_gamut_cieluv(vec3 color)
+{
+    vec3 xyz = sRGB_TO_XYZ * clamp(color, 0.0, 1.0);
+    vec3 luv = XYZ_to_CIE_LUV(xyz);
+
+    luv.x *= scale_luminance_cieluv(color, luv);
+    luv.yz *= scale_chroma_cieluv(color, luv);
+
+    return XYZ_TO_sRGB * CIE_LUV_to_XYZ(luv);
+}
+
+vec3 compress_gamut_cieluv_prescaling(vec3 color, ReferenceColors ref_colors)
+{
+    vec3 white_srgb = ref_colors.white_sRGB;
+    vec3 red_srgb = ref_colors.red_sRGB;
+    vec3 green_srgb = ref_colors.green_sRGB;
+    vec3 blue_srgb = ref_colors.blue_sRGB;
+
+    vec3 white_luv = ref_colors.white_Luv;
+    vec3 red_luv = ref_colors.red_Luv;
+    vec3 green_luv = ref_colors.green_Luv;
+    vec3 blue_luv = ref_colors.blue_Luv;
+
+    // Determine luminance pre-scale
+    float y_scale = scale_luminance_cieluv(white_srgb, white_luv);
+
+    red_luv.x *= y_scale;
+    green_luv.x *= y_scale;
+    blue_luv.x *= y_scale;
+
+    // Determine chroma pre-scale
+    float red_c_scale = scale_chroma_cieluv(red_srgb, red_luv);
+    float green_c_scale = scale_chroma_cieluv(green_srgb, green_luv);
+    float blue_c_scale = scale_chroma_cieluv(blue_srgb, blue_luv);
+    float c_scale = min(min(red_c_scale, green_c_scale), blue_c_scale);
+
+    // Apply pre-scaling
+    vec3 luv = XYZ_to_CIE_LUV(sRGB_TO_XYZ * color);
+    luv.x *= y_scale;
+    luv.yz *= c_scale;
     return XYZ_TO_sRGB * CIE_LUV_to_XYZ(luv);
 }
 
@@ -285,44 +345,22 @@ vec3 compress_gamut_cieluv(vec3 color) {
 layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
+layout(location = 1) out Colorimetry colorimetry;
+layout(location = 5) out ReferenceColors ref_colors;
 
 void main()
 {
     gl_Position = global.MVP * Position;
     vTexCoord = TexCoord;
-}
 
-#pragma stage fragment
-layout(location = 0) in vec2 vTexCoord;
-layout(location = 0) out vec4 FragColor;
-layout(set = 0, binding = 1) uniform sampler2D Source;
-
-void main()
-{
-    vec3 Yrgb = texture(Source, vTexCoord).rgb;
-    
-    // Early exit for full bypass
-    if (COLOR_CONVERSION_BYPASS >= 1.0) {
-        FragColor = vec4(crt_gamma(clamp(Yrgb, 0.0, 1.0)), 1.0);
-        return;
-    }
-
-    mat3 toRGB = XYZ_TO_sRGB;
-    vec3 W = vec3(
-        R_WEIGHT,
-        G_WEIGHT,
-        B_WEIGHT);
-    vec3 RGB;
-
-    // Select colorimetry preset
-    Colorimetry colorimetry;
+    // Set up colorimetry
     if (COLORIMETRY_PRESET < 0.5) {
         // Custom
         colorimetry = Colorimetry(
             vec2(R_X, R_Y),
             vec2(G_X, G_Y),
             vec2(B_X, B_Y),
-            W);
+            vec3(R_WEIGHT, G_WEIGHT, B_WEIGHT));
     } else if (COLORIMETRY_PRESET < 1.5) {
         // Rec. 601
         colorimetry = Colorimetry(
@@ -339,27 +377,95 @@ void main()
             vec3(0.2126, 0.7152, 0.0722)); // D65 weights
     }
 
+    ref_colors = ReferenceColors(
+        Yrgb_to_XYZ(WHITE, colorimetry),
+        vec3(0.0),
+        vec3(0.0),
+        vec3(0.0),
+        vec3(0.0),
+        vec3(0.0),
+        vec3(0.0),
+        vec3(0.0),
+        vec3(0.0));
+    ref_colors.ref_XYZ = Yrgb_to_XYZ(WHITE, colorimetry);
+
+    // Set up reference colors for advanced gamut compression
+    if (GAMUT_COMPRESSION > 2.5) {
+        vec3 white_XYZ = ref_colors.ref_XYZ;
+        vec3 red_XYZ = Yrgb_to_XYZ(RED, colorimetry);
+        vec3 green_XYZ = Yrgb_to_XYZ(GREEN, colorimetry);
+        vec3 blue_XYZ = Yrgb_to_XYZ(INDIGO, colorimetry);
+
+        if (CHROMATIC_ADAPTATION < 0.5) {
+            // No adaptation
+        } else if (CHROMATIC_ADAPTATION < 1.5) {
+            // Bradford adaptation
+            white_XYZ = bradford(white_XYZ, ref_colors.ref_XYZ);
+            red_XYZ = bradford(red_XYZ, ref_colors.ref_XYZ);
+            green_XYZ = bradford(green_XYZ, ref_colors.ref_XYZ);
+            blue_XYZ = bradford(blue_XYZ, ref_colors.ref_XYZ);
+        } else if (CHROMATIC_ADAPTATION < 2.5) {
+            // Linear Bradford adaptation
+            white_XYZ = bradford_linear(white_XYZ, ref_colors.ref_XYZ);
+            red_XYZ = bradford_linear(red_XYZ, ref_colors.ref_XYZ);
+            green_XYZ = bradford_linear(green_XYZ, ref_colors.ref_XYZ);
+            blue_XYZ = bradford_linear(blue_XYZ, ref_colors.ref_XYZ);
+        } else {
+            // Zhai et al. 2018 CAT16 adaptation
+            white_XYZ = adapt_color_cat16(white_XYZ, ref_colors.ref_XYZ, ADAPTATION_LEVEL);
+            red_XYZ = adapt_color_cat16(red_XYZ, ref_colors.ref_XYZ, ADAPTATION_LEVEL);
+            green_XYZ = adapt_color_cat16(green_XYZ, ref_colors.ref_XYZ, ADAPTATION_LEVEL);
+            blue_XYZ = adapt_color_cat16(blue_XYZ, ref_colors.ref_XYZ, ADAPTATION_LEVEL);
+        }
+        ref_colors.white_sRGB = XYZ_TO_sRGB * white_XYZ;
+        ref_colors.red_sRGB = XYZ_TO_sRGB * red_XYZ;
+        ref_colors.green_sRGB = XYZ_TO_sRGB * green_XYZ;
+        ref_colors.blue_sRGB = XYZ_TO_sRGB * blue_XYZ;
+        ref_colors.white_Luv = XYZ_to_CIE_LUV(white_XYZ);
+        ref_colors.red_Luv = XYZ_to_CIE_LUV(red_XYZ);
+        ref_colors.green_Luv = XYZ_to_CIE_LUV(green_XYZ);
+    }
+}
+
+
+#pragma stage fragment
+layout(location = 0) in vec2 vTexCoord;
+layout(location = 1) in Colorimetry colorimetry;
+layout(location = 5) in ReferenceColors ref_colors;
+layout(location = 0) out vec4 FragColor;
+layout(set = 0, binding = 1) uniform sampler2D Source;
+
+void main()
+{
+    vec3 Yrgb = texture(Source, vTexCoord).rgb;
+    
+    // Early exit for full bypass
+    if (COLOR_CONVERSION_BYPASS >= 1.0) {
+        FragColor = vec4(crt_gamma(clamp(Yrgb, 0.0, 1.0)), 1.0);
+        return;
+    }
+
+    mat3 toRGB = XYZ_TO_sRGB;
+    vec3 RGB;
+
     if (CHROMATIC_ADAPTATION < 0.5) {
         // No adaptation, just convert RGBref to XYZ to RGBout
         RGB = Yrgb_to_RGB(Yrgb, colorimetry, toRGB);
     } else if (CHROMATIC_ADAPTATION < 1.5) {
         // Bradford adaptation
-        vec3 white_XYZ = Yrgb_to_XYZ(WHITE, colorimetry);
         vec3 Yrgb_XYZ = Yrgb_to_XYZ(Yrgb, colorimetry);
-        vec3 adapted_XYZ = bradford(Yrgb_XYZ, white_XYZ);
+        vec3 adapted_XYZ = bradford(Yrgb_XYZ, ref_colors.ref_XYZ);
         RGB = XYZ_TO_sRGB * adapted_XYZ;
     } else if (CHROMATIC_ADAPTATION < 2.5) {
         // Linear Bradford adaptation
         // Forgoes precise blue channel adaptation for performance
-        vec3 white_XYZ = Yrgb_to_XYZ(WHITE, colorimetry);
         vec3 Yrgb_XYZ = Yrgb_to_XYZ(Yrgb, colorimetry);
-        vec3 adapted_XYZ = bradford_linear(Yrgb_XYZ, white_XYZ);
+        vec3 adapted_XYZ = bradford_linear(Yrgb_XYZ, ref_colors.ref_XYZ);
         RGB = XYZ_TO_sRGB * adapted_XYZ;
     } else {
         // Zhai et al. 2018 CAT16 adaptation
-        vec3 white_XYZ = Yrgb_to_XYZ(WHITE, colorimetry);
         vec3 Yrgb_XYZ = Yrgb_to_XYZ(Yrgb, colorimetry);
-        vec3 adapted_XYZ = adapt_color_cat16(Yrgb_XYZ, white_XYZ, ADAPTATION_LEVEL);
+        vec3 adapted_XYZ = adapt_color_cat16(Yrgb_XYZ, ref_colors.ref_XYZ, ADAPTATION_LEVEL);
         RGB = XYZ_TO_sRGB * adapted_XYZ;
     }
 
@@ -374,8 +480,10 @@ void main()
         // No gamut compression
     } else if (GAMUT_COMPRESSION < 1.5) {
         RGB = reduce_luminance(RGB);
-    } else {
+    } else if (GAMUT_COMPRESSION < 2.5) {
         RGB = compress_gamut_cieluv(RGB);
+    } else {
+        RGB = compress_gamut_cieluv_prescaling(RGB, ref_colors);
     }
 
     // Debug: Visualize out-of-range colors with sinusoid modulation

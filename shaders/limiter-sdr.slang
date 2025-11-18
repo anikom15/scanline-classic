@@ -43,11 +43,11 @@
 
 #include "common.inc"
 
-#include "parameters/output-tonemap.inc"
-#include "parameters/limiter.inc"
+#include "menus/parameters/output-tonemap.inc"
+#include "menus/parameters/limiter.inc"
 
 #pragma name Limiter
-#pragma format R8G8B8A8_UNORM
+#pragma format R16G16B16A16_SFLOAT
 
 #pragma parameter LIMITER_BYPASS "Bypass Voltage Limiter" 0.0 0.0 1.0 1.0
 #pragma parameter LIMITER_DEBUG_OUT_OF_RANGE "Limiter: show out-of-range colors" 0.0 0.0 1.0 1.0
@@ -83,9 +83,9 @@ vec3 reinhard_extended(vec3 color, float w)
 {
     // Convert input color to luminance
     float y = dot(color, vec3(0.299, 0.587, 0.114));  // Rec. 601 Luma
-    float y_adj = y * (1.0 + (y / (w * w))) / (1.0 + y);
+    float y_adj = y * (1.0 + y / (w * w)) / (1.0 + y);
 
-    return color * (y_adj / y);
+    return color * y_adj / y;
 }
 
 #pragma stage vertex
@@ -136,7 +136,6 @@ void main()
         color = min(color, softColor);        
     }
 
-    color = clamp(color, 0.0, peak);
     color = voltage_to_normlimit(color);
 
     // Tone mapping
@@ -149,11 +148,10 @@ void main()
 
     // Debug: Visualize out-of-range colors with sinusoid modulation
     if (LIMITER_DEBUG_OUT_OF_RANGE >= 1.0) {
-        vec3 originalColor = texture(Source, vTexCoord).rgb;
         bvec3 outOfRange = bvec3(
-            originalColor.r < 0.0 || originalColor.r > compression,
-            originalColor.g < 0.0 || originalColor.g > compression,
-            originalColor.b < 0.0 || originalColor.b > compression
+            color.r < 0.0 || color.r > compression,
+            color.g < 0.0 || color.g > compression,
+            color.b < 0.0 || color.b > compression
         );
         
         // Create animated temporal square wave (cycles over ~60 frames at 60fps)
@@ -177,6 +175,8 @@ void main()
             color *= debugMask;
         }
     }
+
+    color = clamp(color, 0.0, 1.0);
 
     FragColor = vec4(color, 1.0);
 }
