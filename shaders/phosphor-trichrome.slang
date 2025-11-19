@@ -70,7 +70,7 @@ vec3 phosphor_inv_pow3(vec3 col, vec3 gamma, vec3 n)
     vec3 safe = max(col, vec3(EPS));
     // Compute decay: y_{k+1} = (y_k^{-1/n} + gamma)^{-n}
     vec3 y = pow(pow(safe, -1.0 / n) + gamma, -n);
-    return mask * y;
+    return mask * min(y, col - EPS);  // Prevent positive feedback
 }
 
 #pragma stage vertex

@@ -104,9 +104,6 @@ layout(std140, set = 0, binding = 0) uniform UBO
     float DISPLAY_GAIN_R;
     float DISPLAY_GAIN_G;
     float DISPLAY_GAIN_B;
-    float USER_PICTURE;
-    float USER_BRIGHTNESS;
-    float USER_GAMMA;
     float USER_BLUE_ONLY;
 } global;
 
@@ -176,20 +173,6 @@ void main()
 
     // Single Gaussian lobe convolution with combined sigma
     vec3 color = bandlimit_convolve_gaussian_x(vTexCoord, config.OutputSize, Source, sigma_total);
-
-    // Apply user video adjustments
-    float gamma = (2.4 - USER_GAMMA / 10.0) / 2.4; // Map USER_GAMMA 0-1 to fraction of 2.4
-
-    color /= 0.7143; // Map to normalized range, preserve negatives
-    if (color.r > 0.0)
-        color.r = pow(color.r, gamma);
-    if (color.g > 0.0)
-        color.g = pow(color.g, gamma);
-    if (color.b > 0.0)
-        color.b = pow(color.b, gamma);
-    color *= 0.7143; // Map back to voltage
-    color += 0.5 * ((USER_BRIGHTNESS / 100.0) - 0.5);
-    color *= 2.0 * USER_PICTURE / 100.0;
     
     // RGB amplifier
     vec3 gain = vec3(

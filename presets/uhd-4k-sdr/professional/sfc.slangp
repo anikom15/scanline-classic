@@ -98,15 +98,7 @@ PHOSPHOR_MANTISSA_G = 100.0
 PHOSPHOR_MANTISSA_B = 100.0
 
 # Colorimetry (NTSC-J)
-R_X = "0.618"
-R_Y = "0.350"
-G_X = "0.280"
-G_Y = "0.605"
-B_X = "0.152"
-B_Y = "0.063"
-R_WEIGHT = "0.2243"
-G_WEIGHT = "0.6742"
-B_WEIGHT = "0.1015"
+COLORIMETRY_PRESET = 2
 
 # Bezel parameters
 GLOW_DIFFUSION = 6.0
