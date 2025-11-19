@@ -116,12 +116,12 @@ vec3 normfull_to_voltage(const vec3 norm)
 
 float crt_linear(const float x)
 {
-	return pow(x, 2.4);
+    return pow(x, 2.4);
 }
 
 vec3 crt_linear(const vec3 x)
 {
-	return vec3(crt_linear(x.r), crt_linear(x.g), crt_linear(x.b));
+	return pow(x, vec3(2.4));
 }
 
 float crt_gamma(const float x)
@@ -131,17 +131,23 @@ float crt_gamma(const float x)
 
 vec3 crt_gamma(const vec3 x)
 {
-	return vec3(crt_gamma(x.r), crt_gamma(x.g), crt_gamma(x.b));
+    return pow(x, vec3(1.0 / 2.4));
+}
+
+vec3 bt1886_linear(const vec3 x, const float a, const float b)
+{
+    return pow(a * max(x + b, vec3(0.0)), vec3(2.4));
 }
 
 float sdr_linear(const float x)
 {
-	return x < 0.081 ? x / 4.5 : pow((x + 0.099) / 1.099, 1.0 / 0.45);
+	return x < 0.018 ? x / 4.5 : pow((x + 0.099) / 1.099, 1.0 / 0.45);
 }
 
 vec3 sdr_linear(const vec3 x)
 {
-	return vec3(sdr_linear(x.r), sdr_linear(x.g), sdr_linear(x.b));
+    return vec3(lessThanEqual(x, vec3(0.018))) * (x / 4.5)
+        + vec3(greaterThan(x, vec3(0.018))) * pow((x + 0.099) / 1.099, vec3(1.0 / 0.45));
 }
 
 float sdr_gamma(const float x)
@@ -151,7 +157,8 @@ float sdr_gamma(const float x)
 
 vec3 sdr_gamma(const vec3 x)
 {
-	return vec3(sdr_gamma(x.r), sdr_gamma(x.g), sdr_gamma(x.b));
+	return vec3(lessThanEqual(x, vec3(0.018))) * (4.5 * x)
+        + vec3(greaterThan(x, vec3(0.018))) * (1.099 * pow(x, vec3(0.45)) - 0.099);
 }
 
 // DCI-P3 also uses sRGB's gamma functions.
@@ -162,7 +169,8 @@ float srgb_linear(const float x)
 
 vec3 srgb_linear(const vec3 x)
 {
-	return vec3(srgb_linear(x.r), srgb_linear(x.g), srgb_linear(x.b));
+    return vec3(lessThanEqual(x, vec3(0.04045))) * (x / 12.92)
+        + vec3(greaterThan(x, vec3(0.04045))) * pow((x + 0.055) / 1.055, vec3(2.4));
 }
 
 float srgb_gamma(const float x)
@@ -172,7 +180,8 @@ float srgb_gamma(const float x)
 
 vec3 srgb_gamma(const vec3 x)
 {
-	return vec3(srgb_gamma(x.r), srgb_gamma(x.g), srgb_gamma(x.b));
+    return vec3(lessThanEqual(x, vec3(0.0031308))) * (12.92 * x)
+        + vec3(greaterThan(x, vec3(0.0031308))) * (1.055 * pow(x, vec3(1.0 / 2.4)) - 0.055);
 }
 
 float adobe_linear(const float x)
@@ -182,7 +191,7 @@ float adobe_linear(const float x)
 
 vec3 adobe_linear(const vec3 x)
 {
-	return vec3(adobe_linear(x.r), adobe_linear(x.g), adobe_linear(x.b));
+    return pow(x, vec3(563.0 / 256.0));
 }
 
 float adobe_gamma(const float x)
@@ -192,5 +201,5 @@ float adobe_gamma(const float x)
 
 vec3 adobe_gamma(const vec3 x)
 {
-	return vec3(adobe_gamma(x.r), adobe_gamma(x.g), adobe_gamma(x.b));
+    return pow(x, vec3(256.0 / 563.0));
 }

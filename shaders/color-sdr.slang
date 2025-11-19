@@ -332,7 +332,7 @@ void main()
     
     // Early exit for full bypass
     if (COLOR_CONVERSION_BYPASS >= 1.0) {
-        FragColor = vec4(crt_gamma(clamp(Yrgb, 0.0, 1.0)), 1.0);
+        FragColor = vec4(sdr_gamma(clamp(Yrgb, 0.0, 1.0)), 1.0);
         return;
     }
 
@@ -389,7 +389,7 @@ void main()
 
     if (DEBUG_COLOR_DELTA > 0.5) {
         vec3 delta = abs(RGB - Yrgb);
-        FragColor = vec4(crt_gamma(clamp(delta, 0.0, 1.0)), 1.0);
+        FragColor = vec4(sdr_gamma(clamp(delta, 0.0, 1.0)), 1.0);
         return;
     }
 
@@ -448,7 +448,7 @@ void main()
             }
             RGB = debugColor;
         }
-        FragColor = vec4(crt_gamma(clamp(RGB, 0.0, 1.0)), 1.0);
+        FragColor = vec4(sdr_gamma(clamp(RGB, 0.0, 1.0)), 1.0);
         return;
     }
 
@@ -456,5 +456,5 @@ void main()
 
     // Safety clamp
     color = clamp(color, 0.0, 1.0);
-    FragColor = vec4(crt_gamma(color), 1.0);
+    FragColor = vec4(sdr_gamma(color), 1.0);
 }

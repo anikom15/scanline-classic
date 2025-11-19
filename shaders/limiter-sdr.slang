@@ -61,9 +61,8 @@ layout(push_constant) uniform Push
     uint FrameCount;
 
     // User video adjustments
-    float USER_PICTURE;
-    float USER_BRIGHTNESS;
     float USER_GAMMA;
+    float USER_BRIGHTNESS;
     
     // Color conversion circuitry (RGB matrix type)
     float NTSC_CONVERSION;
@@ -88,9 +87,8 @@ layout(push_constant) uniform Push
     float TONEMAP_LIMITER;
 } config;
 
-#define USER_PICTURE config.USER_PICTURE
-#define USER_BRIGHTNESS config.USER_BRIGHTNESS
 #define USER_GAMMA config.USER_GAMMA
+#define USER_BRIGHTNESS config.USER_BRIGHTNESS
 
 #define NTSC_CONVERSION config.NTSC_CONVERSION
 #define NTSC_CONVERSION_WEIGHT config.NTSC_CONVERSION_WEIGHT
@@ -272,8 +270,11 @@ void main()
         color.b = pow(color.b, gamma);
     if (w > 0.0 && w < 1.0)
         w = pow(w, gamma);
-    color += 0.5 * ((USER_BRIGHTNESS / 100.0) - 0.5);
-    color *= 2.0 * USER_PICTURE / 100.0;
+
+    if (USER_BRIGHTNESS < 50.0) {
+        color -= (1.0 - 2.0 * USER_BRIGHTNESS / 100.0);
+        w -= (1.0 - 2.0 * USER_BRIGHTNESS / 100.0);
+    }
 
     // Tone mapping
     if (TONEMAP_LIMITER > 0.5) {
@@ -281,8 +282,6 @@ void main()
 
         if (w > 0.0 && w < 1.0)
             w = pow(w, gamma);
-        w += 0.5 * ((USER_BRIGHTNESS / 100.0) - 0.5);
-        w *= 2.0 * USER_PICTURE / 100.0;
         color = reinhard_extended(color, w);
     }
 

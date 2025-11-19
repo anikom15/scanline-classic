@@ -30,6 +30,7 @@
 #include "common.inc"
 #include "modulation.inc"
 
+#include "menus/parameters/user-common.inc"
 #include "menus/parameters/sys-timing.inc"
 #include "menus/parameters/scanraster.inc"
 
@@ -44,6 +45,11 @@ layout(push_constant) uniform Push
     vec4 OutputSize;
     uint FrameCount;
     float OriginalFPS;
+
+    // User settings
+    float USER_PICTURE;
+    float USER_BRIGHTNESS;
+
     float V_LINES_PER_FIELD;
     float SC_FREQ_MODE;
     float SC_FREQ;
@@ -54,6 +60,9 @@ layout(push_constant) uniform Push
     float SCANRASTER_BYPASS;
     float SCANLINE_BLANK_WEIGHT;
 } config;
+
+#define USER_PICTURE config.USER_PICTURE
+#define USER_BRIGHTNESS config.USER_BRIGHTNESS
 
 #define V_LINES_PER_FIELD config.V_LINES_PER_FIELD
 #define SC_FREQ_MODE config.SC_FREQ_MODE
@@ -74,15 +83,28 @@ layout(std140, set = 0, binding = 0) uniform UBO {
 layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
+layout(location = 1) out float bt1886_a;
+layout(location = 2) out float bt1886_b;
 
 void main()
 {
     gl_Position = global.MVP * Position;
     vTexCoord = TexCoord;
+
+    // Precompute BT.1886 parameters for linearization
+    const float beta = log(1.0 / 3.0) / log(0.5);
+    const float gamma = 2.4;
+
+    float black_level = max(2.0 * USER_BRIGHTNESS / 100.0 - 1.0, 0.0);
+    float white_level = pow(3.0 * pow(USER_PICTURE / 100.0, beta), 1.0 / gamma) + black_level;
+    bt1886_a = pow(white_level - black_level, gamma);
+    bt1886_b = black_level / (white_level - black_level);
 }
 
 #pragma stage fragment
 layout(location = 0) in vec2 vTexCoord;
+layout(location = 1) in float bt1886_a;
+layout(location = 2) in float bt1886_b;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
@@ -91,7 +113,7 @@ void main()
     if (SCANRASTER_BYPASS > 0.5)
     {
         // Linearize for later stages
-        vec3 color = crt_linear(texture(Source, vTexCoord).rgb);
+        vec3 color = bt1886_linear(texture(Source, vTexCoord).rgb, bt1886_a, bt1886_b);
         FragColor = vec4(color, 1.0);
         return;
     }
@@ -145,7 +167,7 @@ void main()
         mask = (output_y_px == input_line_in_output) ? 1.0 : 0.0;
     }
 
-    vec3 color = crt_linear(texture(Source, vTexCoord).rgb);
+    vec3 color = bt1886_linear(texture(Source, vTexCoord).rgb, bt1886_a, bt1886_b);
     vec3 outColor = mix(mix(color, vec3(0.0), scanline_weight), color, mask);
     FragColor = vec4(outColor, 1.0);
 }
