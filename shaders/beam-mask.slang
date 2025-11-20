@@ -42,14 +42,6 @@
 #pragma parameter GEOMETRY_BYPASS "Bypass beam geometry" 0.0 0.0 1.0 1.0
 #pragma parameter FILTER_BYPASS "Bypass beam filter" 0.0 0.0 1.0 1.0
 
-#if 0
-#pragma parameter PARTIAL_OFFSET_X "Partial-dot detection offset X" 0.0 -3.0 3.0 0.1
-#pragma parameter PARTIAL_OFFSET_Y "Partial-dot detection offset Y" 0.0 -3.0 3.0 0.1
-
-// NEW: user-tunable partial-dot radius scale (DOT_K)
-#pragma parameter MASK_PARTIAL_K "Partial-dot radius factor (DOT_K)" 1.75 0.5 3.0 0.05
-#endif
-
 layout(push_constant) uniform Push
 {
     vec4 SourceSize;     // xy = input size in pixels
@@ -115,15 +107,6 @@ layout(std140, set = 0, binding = 0) uniform UBO {
     float MASK_DEBUG_PAD;
     float GEOMETRY_BYPASS;
     float FILTER_BYPASS;
-
-#if 0
-    // NEW: measurement-center offsets for partial-dot detection (mask units)
-    float PARTIAL_OFFSET_X; // horizontal units; affects only partial-dot detection
-    float PARTIAL_OFFSET_Y; // vertical units; affects only partial-dot detection
-                            // NEW: user parameter for partial-dot radius scale
-    float MASK_PARTIAL_K;
-#endif
-
 } global;
 
 #define GEOMETRY_BYPASS global.GEOMETRY_BYPASS
@@ -143,15 +126,6 @@ layout(std140, set = 0, binding = 0) uniform UBO {
 #define S_CORRECTION_V global.S_CORRECTION_V
 
 #define MASK_DEBUG_PAD global.MASK_DEBUG_PAD
-
-// NEW:
-#if 0
-#define PARTIAL_OFFSET_X global.PARTIAL_OFFSET_X
-#define PARTIAL_OFFSET_Y global.PARTIAL_OFFSET_Y
-#define MASK_PARTIAL_K global.MASK_PARTIAL_K
-#endif
-
-#define PINCUSHION_FACTOR global.PINCUSHION_FACTOR
 
 // Bicubic texture sampling (4x4 Mitchell-Netravali)
 // Matches implementation style from crt-geometry.slang
@@ -389,194 +363,90 @@ void apply_geometry_pipeline(
 }
 
 // ---- Mask computation as a subroutine ----
-vec3 compute_mask(vec2 screen_uv, float units_x_total, float units_y_total, float sigma)
+vec3 compute_mask(vec2 screen_uv, float units_x_total, float units_y_total, vec2 pixels_per_unit)
 {
+    vec2 sigma = max(vec2(MASK_DIFFUSION) * 1.0 / pixels_per_unit, vec2(0.25));
+
     // Continuous unit coordinates for smooth Gaussian weighting
     float x_units = screen_uv.x * units_x_total;
     float y_units = screen_uv.y * units_y_total;
 
     // Horizontal centers aligned to left-edge origin (R starts at [0,1])
-    float cycle = mod(x_units - 0.4, 6.0);
+    float cycle = mod(x_units - 0.5, 6.0);
 
     // Use cyclic distances so weights are seamless across the 6-unit wrap
     float dr = cyclicDist(cycle, 0.0, 6.0);
     float dg = cyclicDist(cycle, 2.0, 6.0);
     float db = cyclicDist(cycle, 4.0, 6.0);
 
-    float gauss_r = exp(-0.5 * dr*dr / (sigma*sigma));
-    float gauss_g = exp(-0.5 * dg*dg / (sigma*sigma));
-    float gauss_b = exp(-0.5 * db*db / (sigma*sigma));
+    float gauss_rx = exp(-0.5 * dr*dr / (sigma.x*sigma.x));
+    float gauss_gx = exp(-0.5 * dg*dg / (sigma.x*sigma.x));
+    float gauss_bx = exp(-0.5 * db*db / (sigma.x*sigma.x));
 
     vec3 mask_color;
     if (MASK_TYPE < 0.5) {
         // Aperture grille
-        mask_color = vec3(gauss_r, gauss_g, gauss_b);
-
-        float avg = (mask_color.r + mask_color.g + mask_color.b) / 3.0;
-        if (avg > 0.0) {
-            mask_color /= avg;
-        }
+        mask_color = vec3(gauss_rx, gauss_gx, gauss_bx);
     } else if (MASK_TYPE < 1.5) {
         // Slot mask: 3-unit vertical cycle with periodic black row suppression
-        float cycle_y = mod(y_units + 1.0, 3.0);
+        cycle = mod(x_units - 0.5, 18.0);
+        float vcycle = mod(y_units - 0.5, 3.0);
+        float sigma_v = sigma.y * 1.5;
+        float w0 = exp(-0.5 * pow(cyclicDist(vcycle, 0.0, 3.0), 2.0) / (sigma_v * sigma_v));
+        float w1 = exp(-0.5 * pow(cyclicDist(vcycle, 1.0, 3.0), 2.0) / (sigma_v * sigma_v));
+        float w2 = exp(-0.5 * pow(cyclicDist(vcycle, 2.0, 3.0), 2.0) / (sigma_v * sigma_v));
 
-        float blockF = x_units / 6.0;
-        float block3 = mod(blockF, 3.0);
-        float sigma_h = sigma;
+        vec2 dR0 = vec2(cyclicDist(cycle, 6.0, 18.0), cyclicDist(cycle, 12.0, 18.0));
+        vec2 dG0 = vec2(cyclicDist(cycle, 8.0, 18.0), cyclicDist(cycle, 14.0, 18.0));
+        vec2 dB0 = vec2(cyclicDist(cycle, 10.0, 18.0), cyclicDist(cycle, 16.0, 18.0));
+        vec3 rgb0 = vec3(
+            exp(-0.5 * dR0.x * dR0.x / (sigma.x * sigma.x)) + exp(-0.5 * dR0.y * dR0.y / (sigma.x * sigma.x)),
+            exp(-0.5 * dG0.x * dG0.x / (sigma.x * sigma.x)) + exp(-0.5 * dG0.y * dG0.y / (sigma.x * sigma.x)),
+            exp(-0.5 * dB0.x * dB0.x / (sigma.x * sigma.x)) + exp(-0.5 * dB0.y * dB0.y / (sigma.x * sigma.x)));
 
-        int base = int(floor(blockF / 3.0)) * 3;
-        int b0 = (base + 0) % 3;
-        int b1 = (base + 1) % 3;
-        int b2 = (base + 2) % 3;
+        vec2 dR1 = vec2(cyclicDist(cycle, 0.0, 18.0), cyclicDist(cycle, 12.0, 18.0));
+        vec2 dG1 = vec2(cyclicDist(cycle, 2.0, 18.0), cyclicDist(cycle, 14.0, 18.0));
+        vec2 dB1 = vec2(cyclicDist(cycle, 4.0, 18.0), cyclicDist(cycle, 16.0, 18.0));
+        vec3 rgb1 = vec3(
+            exp(-0.5 * dR1.x * dR1.x / (sigma.x * sigma.x)) + exp(-0.5 * dR1.y * dR1.y / (sigma.x * sigma.x)),
+            exp(-0.5 * dG1.x * dG1.x / (sigma.x * sigma.x)) + exp(-0.5 * dG1.y * dG1.y / (sigma.x * sigma.x)),
+            exp(-0.5 * dB1.x * dB1.x / (sigma.x * sigma.x)) + exp(-0.5 * dB1.y * dB1.y / (sigma.x * sigma.x)));
 
-        float d0 = cyclicDist(block3, -0.6, 3.0);
-        float d1 = cyclicDist(block3,  0.4, 3.0);
-        float d2 = cyclicDist(block3,  1.4, 3.0);
+        vec2 dR2 = vec2(cyclicDist(cycle, 0.0, 18.0), cyclicDist(cycle, 6.0, 18.0));
+        vec2 dG2 = vec2(cyclicDist(cycle, 2.0, 18.0), cyclicDist(cycle, 8.0, 18.0));
+        vec2 dB2 = vec2(cyclicDist(cycle, 4.0, 18.0), cyclicDist(cycle, 10.0, 18.0));
+        vec3 rgb2 = vec3(
+            exp(-0.5 * dR2.x * dR2.x / (sigma.x * sigma.x)) + exp(-0.5 * dR2.y * dR2.y / (sigma.x * sigma.x)),
+            exp(-0.5 * dG2.x * dG2.x / (sigma.x * sigma.x)) + exp(-0.5 * dG2.y * dG2.y / (sigma.x * sigma.x)),
+            exp(-0.5 * dB2.x * dB2.x / (sigma.x * sigma.x)) + exp(-0.5 * dB2.y * dB2.y / (sigma.x * sigma.x)));
 
-        float w0 = exp(-0.5 * d0*d0 / (sigma_h*sigma_h));
-        float w1 = exp(-0.5 * d1*d1 / (sigma_h*sigma_h));
-        float w2 = exp(-0.5 * d2*d2 / (sigma_h*sigma_h));
-
-        float sigma_v = sigma * 0.65;
-        float gate_0 = 1.0 - exp(-0.5 * pow(cyclicDist(cycle_y, float(b0), 3.0) / sigma_v, 2.0));
-        float gate_1 = 1.0 - exp(-0.5 * pow(cyclicDist(cycle_y, float(b1), 3.0) / sigma_v, 2.0));
-        float gate_2 = 1.0 - exp(-0.5 * pow(cyclicDist(cycle_y, float(b2), 3.0) / sigma_v, 2.0));
-
-        float gate = w0 * gate_0 + w1 * gate_1 + w2 * gate_2;
-
-        mask_color = vec3(gauss_r, gauss_g, gauss_b) * gate;
-
-        // After computing mask_color for slot mask
-        float avg = (mask_color.r + mask_color.g + mask_color.b) / 3.0;
-        if (avg > 0.0) {
-            mask_color /= avg;
-        }
-
-#if 0
-        // -------- Partial-slot detection: 9-phase mapping + edge-aware feather --------
-        // The slot pattern is a 3-row vertical cycle with a 1-unit horizontal shift per row.
-        // If we measure horizontal in 2-unit color steps, the combined state cycles every 9 steps.
-        // We use that to deterministically pick the "black row" for this x and y without clumping.
-        float dotK = MASK_PARTIAL_K;
-        float sigma_v_local = sigma_v;
-        float r_y = dotK * sigma_v_local;
-
-        const float EDGE_EPS_Y = 0.02;
-        const float FEATHER_UNITS = 0.30; // softening for overshoot ramp
-
-        // Vertical row index in {0,1,2}, with measurement offset applied only to detection
-        int rowIdx = int(floor(mod(y_units + 1.0 + PARTIAL_OFFSET_Y, 3.0)));
-
-        // Local absolute base of this 3-row cell (aligns to black-line indices 0,1,2)
-        float Sy = y_units + 1.0 + PARTIAL_OFFSET_Y;
-        float cy_base = floor(Sy / 3.0);
-        float y_cell_base = cy_base * 3.0 - 1.0 - PARTIAL_OFFSET_Y;
-
-        // 9-phase horizontal index based on 2-unit steps of the color sequence
-        // (x_units - 0.4) aligns with the RGB phase used above; 2.0 steps hop between sub-triad centers.
-        int idx9 = int(floor(mod((x_units - 0.4) / 2.0, 9.0)));
-        int phase3 = idx9 % 3;
-
-        // Deterministic "black-row" for this x and y: rotates with horizontal phase and vertical row
-        int blackRow = (phase3 + rowIdx) % 3;
-
-        // Absolute center of that black row within our local cell
-        float black_center = y_cell_base + float(blackRow);
-
-        // Directional checks: nearest black-line to the north for top edge, and to the south for bottom
-        float north_center = black_center - 3.0;
-        float south_center = black_center + 3.0;
-
-        // Compute overshoot in "mask units" and convert to a smooth feather factor
-        float dist_top = north_center - r_y - EDGE_EPS_Y;                         // >0 means safe
-        float dist_bot = units_y_total - EDGE_EPS_Y - (south_center + r_y);       // >0 means safe
-        float over_top = max(0.0, -dist_top);
-        float over_bot = max(0.0, -dist_bot);
-        float overshoot = max(over_top, over_bot);
-
-        float feather = 1.0 - smoothstep(0.0, FEATHER_UNITS, overshoot);
-        mask_color *= feather;
-#endif
+        mask_color = w0 * rgb0 + w1 * rgb1 + w2 * rgb2;
     } else {
         // Shadow mask (4-row cycle)
-        float vcycle = mod(y_units - 0.4, 4.0);
-        float sigma_v = max(0.08, sigma * 0.65);
-        float w0 = exp(-0.5 * pow(cyclicDist(vcycle, 0.5, 4.0) / sigma_v, 2.0));
-        float w2 = exp(-0.5 * pow(cyclicDist(vcycle, 2.5, 4.0) / sigma_v, 2.0));
+        float vcycle = mod(y_units - 0.5, 4.0);
+        float sigma_v = sigma.y;
+        float w0 = exp(-0.5 * pow(cyclicDist(vcycle, 0.5, 4.0), 2.0) / (sigma_v * sigma_v));
+        float w2 = exp(-0.5 * pow(cyclicDist(vcycle, 2.5, 4.0), 2.0) / (sigma_v * sigma_v));
 
         float dR0 = cyclicDist(cycle, 0.0, 6.0);
         float dG0 = cyclicDist(cycle, 2.0, 6.0);
         float dB0 = cyclicDist(cycle, 4.0, 6.0);
         vec3 rgb0 = vec3(
-            exp(-0.5 * dR0*dR0 / (sigma*sigma)),
-            exp(-0.5 * dG0*dG0 / (sigma*sigma)),
-            exp(-0.5 * dB0*dB0 / (sigma*sigma))
+            exp(-0.5 * dR0*dR0 / (sigma.x*sigma.x)),
+            exp(-0.5 * dG0*dG0 / (sigma.x*sigma.x)),
+            exp(-0.5 * dB0*dB0 / (sigma.x*sigma.x))
         );
 
         float dB2 = cyclicDist(cycle, 1.0, 6.0);
         float dR2 = cyclicDist(cycle, 3.0, 6.0);
         float dG2 = cyclicDist(cycle, 5.0, 6.0);
         vec3 rgb2 = vec3(
-            exp(-0.5 * dR2*dR2 / (sigma*sigma)),
-            exp(-0.5 * dG2*dG2 / (sigma*sigma)),
-            exp(-0.5 * dB2*dB2 / (sigma*sigma))
+            exp(-0.5 * dR2*dR2 / (sigma.x*sigma.x)),
+            exp(-0.5 * dG2*dG2 / (sigma.x*sigma.x)),
+            exp(-0.5 * dB2*dB2 / (sigma.x*sigma.x))
         );
 
         mask_color = w0 * rgb0 + w2 * rgb2;
-        // After computing mask_color for slot mask
-        float avg = (mask_color.r + mask_color.g + mask_color.b) / 3.0;
-        if (avg > 0.0) {
-            mask_color /= avg;
-        }
-
-#if 0
-        // -------- Partial-dot detection (Shadow): all four edges, stable centers --------
-        float dotK = MASK_PARTIAL_K;
-        float r_y = dotK * sigma_v;
-        float r_x = dotK * sigma;
-
-        const float EDGE_EPS_X = 0.02;
-        const float EDGE_EPS_Y = 0.02;
-
-        // Stable absolute base for vertical rows (period 4.0, centers at 0.5 and 2.5 with -0.4 phase)
-        float Sy = y_units - 0.4 + PARTIAL_OFFSET_Y;
-        float ty = floor(Sy / 4.0);
-        float baseVy = ty * 4.0 + 0.4 - PARTIAL_OFFSET_Y;
-
-        float dy = y_units - baseVy;
-        float cVy = (abs(dy - 0.5) <= abs(dy - 2.5)) ? 0.5 : 2.5;
-        float y_center = baseVy + cVy;
-
-        // Stable absolute base for horizontal triads (period 6.0, phase -0.4)
-        float Sx = x_units - 0.4 + PARTIAL_OFFSET_X;
-        float tx = floor(Sx / 6.0);
-        float baseX = tx * 6.0 + 0.4 - PARTIAL_OFFSET_X;
-
-        float dx = x_units - baseX;
-
-        // Choose nearest dot center from the correct parity set based on the dominant row
-        bool useRow0 = (w0 >= w2);
-        float cHx;
-        if (useRow0) {
-            // even set {0,2,4}
-            float nearest_even = round(dx / 2.0) * 2.0;
-            cHx = clamp(nearest_even, 0.0, 4.0);
-        } else {
-            // odd set {1,3,5}
-            float nearest_odd = 1.0 + round((dx - 1.0) / 2.0) * 2.0;
-            cHx = clamp(nearest_odd, 1.0, 5.0);
-        }
-        float x_center = baseX + cHx;
-
-        bool partial_y = (y_center - r_y < 0.0 + EDGE_EPS_Y) ||
-                         (y_center + r_y > units_y_total - EDGE_EPS_Y);
-        bool partial_x = (x_center - r_x < 0.0 + EDGE_EPS_X) ||
-                         (x_center + r_x > units_x_total - EDGE_EPS_X);
-
-        if (partial_x || partial_y) {
-            mask_color = vec3(0.0);
-        }
-#endif
     }
 
     if (MASK_MONOCHROME > 0.5) {
@@ -756,9 +626,9 @@ void main()
     if (MASK_TYPE < 0.5) {
         units_y_total = tvl; // Aperture has no vertical pattern
     } else if (MASK_TYPE < 1.5) {
-        units_y_total = tvl / maskAR * 3.0;
+        units_y_total = tvl / maskAR * 2.5;
     } else {
-        units_y_total = tvl / maskAR * 4.5;
+        units_y_total = tvl / maskAR * 6.0;
     }
 
     if (MASK_DEBUG_PAD > 0.5) {
@@ -774,11 +644,11 @@ void main()
     }
 
     float mask_intensity = MASK_INTENSITY * 0.01;
-    // Gaussian stripe helper (sigma in pattern units)
-    float pixels_per_unit = config.OutputSize.x / units_x_total;
-    float sigma = MASK_DIFFUSION * 1.0 / pixels_per_unit;
-    vec3 mask_color = compute_mask(vTexCoord, units_x_total, units_y_total, sigma);
 
+    // Gaussian stripe helper (sigma in pattern units)
+    vec2 pixels_per_unit = config.OutputSize.xy / vec2(units_x_total, units_y_total);
+
+    vec3 mask_color = compute_mask(vTexCoord, units_x_total, units_y_total, pixels_per_unit);
     vec3 masked_color = mix(color, color * mask_color, mask_intensity);
 
     FragColor = vec4(max(masked_color, 0.0), 1.0);
