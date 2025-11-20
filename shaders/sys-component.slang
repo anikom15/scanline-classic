@@ -1,39 +1,62 @@
 #version 450
 
-/* Filename: sys-component.slang
+// Filename: sys-component.slang
+//
+// Copyright (C) 2023 W. M. Martinez
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+//
+// System-level component amplifier and filter
+// -------------------------------
+// Input: Voltage (RGB color space)
+// Output: Voltage (YC color space)
+//
+// Encodes linear RGB into a chosen luma-chroma color space (YIQ / YPbPr / YUV / YDbDr / YCbCr),
+// then optionally bandlimits each component with a horizontal Gaussian (lobe technique) to
+// approximate analog system bandwidth. Component-wise SYS_GAIN/SYS_BIAS are applied after filtering.
+//
+// Notes:
+// - YDbDr is implemented by first computing YUV, then scaling chroma:
+//     Db = (1.333 / 0.436) * U  ≈  3.05688 * U
+//     Dr = (-1.333 / 0.615) * V ≈ -2.16829 * V
+// - Filtering is performed in the color space domain, not RGB, to better emulate analog chains.
+// - Bypasses:
+//     SYS_COMPONENT_BYPASS          -> output source RGB unmodified (skip color conversion + filter)
+//     SYS_COMPONENT_FILTER_BYPASS   -> convert to selected color space and apply SYS_GAIN/BIAS, but skip filtering
 
-   Encodes linear RGB into a chosen luma-chroma color space (YIQ / YPbPr / YUV / YDbDr / YCbCr),
-   then optionally bandlimits each component with a horizontal Gaussian (lobe technique) to
-   approximate analog system bandwidth. Component-wise SYS_GAIN/SYS_BIAS are applied after filtering.
-
-   Notes:
-   - YDbDr is implemented by first computing YUV, then scaling chroma:
-       Db = (1.333 / 0.436) * U  ≈  3.05688 * U
-       Dr = (-1.333 / 0.615) * V ≈ -2.16829 * V
-   - Bandwidth/attenuation to sigma mapping uses sigma601() (BT.601-style) from bandlimit.inc.
-   - Filtering is performed in the color space domain, not RGB, to better emulate analog chains.
-   - Bypasses:
-       SYS_COMPONENT_BYPASS          -> output source RGB unmodified (skip color conversion + filter)
-       SYS_COMPONENT_FILTER_BYPASS   -> convert to selected color space and apply SYS_GAIN/BIAS, but skip filtering
-*/
-
-#include "common.h"
-#include "color.h"
+#include "common.inc"
+#include "color.inc"
 #include "bandlimit.inc"
 #include "modulation.inc"
+
+#include "menus/parameters/sys-timing.inc"
+#include "menus/parameters/sys-component.inc"
 
 #pragma name SysComponent
 #pragma format R16G16B16A16_SFLOAT
 
+#pragma parameter SYS_COMPONENT_BYPASS "Bypass system component stage" 0.0 0.0 1.0 1.0
+#pragma parameter SYS_COMPONENT_FILTER_BYPASS "Bypass system component filter" 0.0 0.0 1.0 1.0
+
 layout(push_constant) uniform Push
 {
-    vec4 SourceSize;
     vec4 OriginalSize;
     vec4 OutputSize;
     uint FrameCount;
+    float OriginalFPS;
 
     // Timing parameters for timebase computation
-    float V_FREQ;
     float V_LINES_PER_FIELD;
     float SHORTEN_ODD_FIELD_TIME;
     float SC_FREQ_MODE;
@@ -60,89 +83,43 @@ layout(push_constant) uniform Push
     float SYS_GAIN_Y;
     float SYS_GAIN_U;
     float SYS_GAIN_V;
+    float SYS_BIAS_Y;
+    float SYS_BIAS_U;
+    float SYS_BIAS_V;
 } config;
 
-// UI parameters
-#pragma parameter SYS_COMPONENT_HEADER " ==== System Component Parameters ==== " 0.0 0.0 0.0 0.0
-#pragma parameter SYS_COMPONENT_BYPASS "System component bypass" 0.0 0.0 1.0 1.0
-#pragma parameter SYS_COMPONENT_FILTER_BYPASS "System component filter bypass" 0.0 0.0 1.0 1.0
-
-#pragma parameter YC_MODEL "YC color model (0=YIQ,1=YPbPr,2=YUV,3=YDbDr,4=YCbCr)" 1.0 0.0 4.0 1.0
-
-#pragma parameter SYS_BANDWIDTH_Y "System Luma (Y) bandwidth (MHz)" 5.4 0.0 75.0 0.01
-#pragma parameter SYS_BANDWIDTH_U "System Chroma (U) bandwidth (MHz)" 3.6 0.0 15.0 0.01
-#pragma parameter SYS_BANDWIDTH_V "System Chroma (V) bandwidth (MHz)" 3.6 0.0 15.0 0.01
-
-#pragma parameter SYS_CUTOFF_ATTEN_Y "System Y cutoff attenuation (dB)" 12.5 0.0 30.0 1.0
-#pragma parameter SYS_CUTOFF_ATTEN_U "System U cutoff attenuation (dB)" 20.0 0.0 30.0 1.0
-#pragma parameter SYS_CUTOFF_ATTEN_V "System V cutoff attenuation (dB)" 20.0 0.0 30.0 1.0
-
-#pragma parameter SYS_GAIN_Y "System Gain Y" 1.0 0.0 10.0 0.01
-#pragma parameter SYS_GAIN_U "System Gain U" 1.0 0.0 10.0 0.01
-#pragma parameter SYS_GAIN_V "System Gain V" 1.0 0.0 10.0 0.01
-
-#pragma parameter SYS_BIAS_Y "System Bias Y" 0.0 -1.0 1.0 0.001
-#pragma parameter SYS_BIAS_U "System Bias U" 0.0 -1.0 1.0 0.001
-#pragma parameter SYS_BIAS_V "System Bias V" 0.0 -1.0 1.0 0.001
-
-// Timing UI parameters
-#pragma parameter V_FREQ "Vertical frequency (Hz)" 59.94 1.0 240.0 0.01
-#define V_FREQ config.V_FREQ
-#pragma parameter V_LINES_PER_FIELD "Video lines per field" 262.5 0.0 540.0 0.5
-#define V_LINES_PER_FIELD config.V_LINES_PER_FIELD
-#pragma parameter SHORTEN_ODD_FIELD_TIME "Shorten odd field time (0=Off, 1=On)" 0.0 0.0 1.0 1.0
-#define SHORTEN_ODD_FIELD_TIME config.SHORTEN_ODD_FIELD_TIME
-#pragma parameter SC_FREQ_MODE "Subcarrier frequency mode (0=Auto, 1=NTSC, 2=PAL, 3=Custom)" 1.0 0.0 3.0 1.0
-#define SC_FREQ_MODE config.SC_FREQ_MODE
-#pragma parameter SC_FREQ "Custom subcarrier frequency (MHz)" 3.579545 0.0 10.0 0.000001
-#define SC_FREQ config.SC_FREQ
-#define H_FREQ_HZ (V_FREQ * V_LINES_PER_FIELD)
-#pragma parameter H_BLANK_INACTIVE_LEN "Horizontal blank inactive length" 138.0 0.0 1000.0 0.1
-#define H_BLANK_INACTIVE_LEN config.H_BLANK_INACTIVE_LEN
-#pragma parameter H_BLANK_INACTIVE_UNIT "Horizontal blank inactive unit (0=px, 1=µs, 2=% active)" 0.0 0.0 2.0 1.0
-#define H_BLANK_INACTIVE_UNIT config.H_BLANK_INACTIVE_UNIT
-
 // Short-hand macros
-#define SYS_COMPONENT_BYPASS        config.SYS_COMPONENT_BYPASS
+#define SYS_COMPONENT_BYPASS config.SYS_COMPONENT_BYPASS
 #define SYS_COMPONENT_FILTER_BYPASS config.SYS_COMPONENT_FILTER_BYPASS
 
-#define MODEL config.YC_MODEL
+#define V_LINES_PER_FIELD config.V_LINES_PER_FIELD
+#define SHORTEN_ODD_FIELD_TIME config.SHORTEN_ODD_FIELD_TIME
+#define SC_FREQ_MODE config.SC_FREQ_MODE
+#define SC_FREQ config.SC_FREQ
+#define H_BLANK_INACTIVE_LEN config.H_BLANK_INACTIVE_LEN
+#define H_BLANK_INACTIVE_UNIT config.H_BLANK_INACTIVE_UNIT
 
-#define BW_Y  config.SYS_BANDWIDTH_Y
-#define BW_U  config.SYS_BANDWIDTH_U
-#define BW_V  config.SYS_BANDWIDTH_V
-#define ATN_Y config.SYS_CUTOFF_ATTEN_Y
-#define ATN_U config.SYS_CUTOFF_ATTEN_U
-#define ATN_V config.SYS_CUTOFF_ATTEN_V
+#define YC_MODEL config.YC_MODEL
 
-#define G_Y config.SYS_GAIN_Y
-#define G_U config.SYS_GAIN_U
-#define G_V config.SYS_GAIN_V
+#define SYS_BANDWIDTH_Y config.SYS_BANDWIDTH_Y
+#define SYS_BANDWIDTH_U config.SYS_BANDWIDTH_U
+#define SYS_BANDWIDTH_V config.SYS_BANDWIDTH_V
+#define SYS_CUTOFF_ATTEN_Y config.SYS_CUTOFF_ATTEN_Y
+#define SYS_CUTOFF_ATTEN_U config.SYS_CUTOFF_ATTEN_U
+#define SYS_CUTOFF_ATTEN_V config.SYS_CUTOFF_ATTEN_V
+
+#define SYS_GAIN_Y config.SYS_GAIN_Y
+#define SYS_GAIN_U config.SYS_GAIN_U
+#define SYS_GAIN_V config.SYS_GAIN_V
+
+#define SYS_BIAS_Y config.SYS_BIAS_Y
+#define SYS_BIAS_U config.SYS_BIAS_U
+#define SYS_BIAS_V config.SYS_BIAS_V
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
     mat4 MVP;
-    float SYS_BIAS_Y;
-    float SYS_BIAS_U;
-    float SYS_BIAS_V;
 } global;
-
-#define B_Y global.SYS_BIAS_Y
-#define B_U global.SYS_BIAS_U
-#define B_V global.SYS_BIAS_V
-
-#pragma stage vertex
-layout(location = 0) in vec4 Position;
-layout(location = 1) in vec2 TexCoord;
-layout(location = 0) out vec2 vTexCoord;
-
-void main()
-{
-   gl_Position = global.MVP * Position;
-   vTexCoord = TexCoord;
-}
-
-#pragma stage fragment
 
 // Convert RGB to selected luma-chroma space.
 // For YDbDr: RGB -> YUV -> scale (U,V) to (Db,Dr).
@@ -154,18 +131,70 @@ vec3 rgb_to_luma_chroma(vec3 rgb, float model)
         return RGB_TO_YPbPr * rgb;
     } else if (model < 2.5) { // YUV
         return RGB_TO_YUV * rgb;
-    } else if (model < 3.5) { // YDbDr via YUV scale
-        vec3 yuv = RGB_TO_YUV * rgb;
+    } else if (model < 3.5) {                                             // YDbDr via YUV scale
         // Db = (1.333 / 0.436) * U ; Dr = (-1.333 / 0.615) * V
         const float K_DB_FROM_U = 1.333 / 0.436;  // ≈ 3.056880734
         const float K_DR_FROM_V = -1.333 / 0.615; // ≈ -2.168292683
+
+        vec3 yuv = RGB_TO_YUV * rgb;
+
         return vec3(yuv.r, K_DB_FROM_U * yuv.g, K_DR_FROM_V * yuv.b);
     } else { // YCbCr
         return RGB_TO_YCbCr * rgb;
     }
 }
 
+#pragma stage vertex
+layout(location = 0) in vec4 Position;
+layout(location = 1) in vec2 TexCoord;
+layout(location = 0) out vec2 vTexCoord;
+layout(location = 1) out vec3 gain;
+layout(location = 2) out vec3 bias;
+layout(location = 3) out vec3 sigma;
+layout(location = 4) out TimebaseConfig tb;
+
+void main()
+{
+    gl_Position = global.MVP * Position;
+    vTexCoord = TexCoord;
+   
+    // Precompute per-component sigmas (in texels) from MHz/dB specs.
+    // We reuse the vec3 return as (Y, U/Db, V/Dr).
+    tb = compute_timebase(
+        config.FrameCount,
+        vTexCoord,
+        config.OriginalSize.xy,
+        config.OutputSize.x,
+        config.OriginalFPS,
+        V_LINES_PER_FIELD,
+        SHORTEN_ODD_FIELD_TIME,
+        SC_FREQ_MODE,
+        SC_FREQ,
+        H_BLANK_INACTIVE_LEN,
+        H_BLANK_INACTIVE_UNIT);
+
+    sigma.x = sigma_tb(tb, SYS_BANDWIDTH_Y, SYS_CUTOFF_ATTEN_Y);
+    sigma.y = sigma_tb(tb, SYS_BANDWIDTH_U, SYS_CUTOFF_ATTEN_U);
+    sigma.z = sigma_tb(tb, SYS_BANDWIDTH_V, SYS_CUTOFF_ATTEN_V);
+
+    // Amplifier
+    gain = vec3(
+        pow(10.0, SYS_GAIN_Y / 20.0),
+        pow(10.0, SYS_GAIN_U / 20.0),
+        pow(10.0, SYS_GAIN_V / 20.0));
+    bias = vec3(
+        SYS_BIAS_Y * 7.143e-3,
+        SYS_BIAS_U * 7.143e-3,
+        SYS_BIAS_V * 7.143e-3);
+}
+
+#pragma stage fragment
+
 layout(location = 0) in vec2 vTexCoord;
+layout(location = 1) in vec3 gain;
+layout(location = 2) in vec3 bias;
+layout(location = 3) in vec3 sigma;
+layout(location = 4) in TimebaseConfig tb;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
@@ -179,33 +208,13 @@ void main()
 
     // Filter bypass: convert once and apply SYS_GAIN/BIAS only
     if (SYS_COMPONENT_FILTER_BYPASS >= 1.0) {
-        vec3 yc = rgb_to_luma_chroma(texture(Source, vTexCoord).rgb, MODEL);
-        yc.x = yc.x * G_Y + B_Y;
-        yc.y = yc.y * G_U + B_U;
-        yc.z = yc.z * G_V + B_V;
+        vec3 yc = rgb_to_luma_chroma(texture(Source, vTexCoord).rgb, YC_MODEL);
+        yc.x = yc.x * SYS_GAIN_Y + SYS_BIAS_Y;
+        yc.y = yc.y * SYS_GAIN_U + SYS_BIAS_U;
+        yc.z = yc.z * SYS_GAIN_V + SYS_BIAS_V;
         FragColor = vec4(yc, 1.0);
         return;
     }
-
-    // Precompute per-component sigmas (in texels) from MHz/dB specs.
-    // We reuse the vec3 return as (Y, U/Db, V/Dr).
-    TimebaseConfig tb = compute_timebase(
-        float(config.FrameCount),
-        vTexCoord,
-        config.OriginalSize.xy,
-        config.OutputSize.x,
-        V_FREQ,
-        V_LINES_PER_FIELD,
-        SHORTEN_ODD_FIELD_TIME,
-        SC_FREQ_MODE,
-        SC_FREQ,
-        H_BLANK_INACTIVE_LEN,
-        H_BLANK_INACTIVE_UNIT
-    );
-    vec3 sigma;
-    sigma.x = sigma_tb(tb, BW_Y, ATN_Y);
-    sigma.y = sigma_tb(tb, BW_U, ATN_U);
-    sigma.z = sigma_tb(tb, BW_V, ATN_V);
 
     // Horizontal Gaussian convolution in the chosen luma-chroma space.
     // Follows a lobe technique similar to bandlimit_convolve_gaussian_x,
@@ -228,7 +237,7 @@ void main()
 
     // Center sample
     vec3 rgb0 = texture(Source, Tex).rgb;
-    vec3 yc_c = rgb_to_luma_chroma(rgb0, MODEL);
+    vec3 yc_c = rgb_to_luma_chroma(rgb0, YC_MODEL);
 
     float wy = gaussian(Ax, sigma.x);
     float wu = gaussian(Ax, sigma.y);
@@ -259,8 +268,8 @@ void main()
         vec3 rgbr = texture(Source, Tex + nf * dx).rgb;
         vec3 rgbl = texture(Source, Tex - nf * dx).rgb;
 
-        vec3 yc_r = rgb_to_luma_chroma(rgbr, MODEL);
-        vec3 yc_l = rgb_to_luma_chroma(rgbl, MODEL);
+        vec3 yc_r = rgb_to_luma_chroma(rgbr, YC_MODEL);
+        vec3 yc_l = rgb_to_luma_chroma(rgbl, YC_MODEL);
 
         // Accumulate right and left for each component
         accum.x += wy_r * yc_r.x + wy_l * yc_l.x;
@@ -274,9 +283,7 @@ void main()
 
     // Normalize and apply per-component SYS_GAIN/SYS_BIAS
     vec3 outyc = accum / max(wsum, vec3(EPS));
-    outyc.x = outyc.x * G_Y + B_Y;
-    outyc.y = outyc.y * G_U + B_U;
-    outyc.z = outyc.z * G_V + B_V;
+    outyc = gain * (outyc + bias);
 
     // Emit in the selected luma-chroma space
     FragColor = vec4(outyc, 1.0);

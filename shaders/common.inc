@@ -1,4 +1,4 @@
-/* Filename: common.h
+/* Filename: common.inc
 
    Copyright (C) 2023-2025 W. M. Martinez
 

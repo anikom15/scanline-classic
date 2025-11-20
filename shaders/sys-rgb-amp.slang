@@ -65,15 +65,29 @@ layout(std140, set = 0, binding = 0) uniform UBO
 layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
+layout(location = 1) out vec3 gain;
+layout(location = 2) out vec3 bias;
 
 void main()
 {
    gl_Position = global.MVP * Position;
    vTexCoord = TexCoord;
+
+   gain = vec3(
+       pow(10.0, SYS_GAIN_R / 20.0),
+       pow(10.0, SYS_GAIN_G / 20.0),
+       pow(10.0, SYS_GAIN_B / 20.0));
+
+   bias = vec3(
+       SYS_BIAS_R * 7.143e-3,
+       SYS_BIAS_G * 7.143e-3,
+       SYS_BIAS_B * 7.143e-3);
 }
 
 #pragma stage fragment
 layout(location = 0) in vec2 vTexCoord;
+layout(location = 1) in vec3 gain;
+layout(location = 2) in vec3 bias;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
@@ -88,16 +102,6 @@ void main()
         FragColor = vec4(color, 1.0);
         return;
     }
-
-    vec3 gain = vec3(
-        pow(10.0, SYS_GAIN_R / 20.0),
-        pow(10.0, SYS_GAIN_G / 20.0),
-        pow(10.0, SYS_GAIN_B / 20.0));
-
-    vec3 bias = vec3(
-        SYS_BIAS_R * 7.143e-3,
-        SYS_BIAS_G * 7.143e-3,
-        SYS_BIAS_B * 7.143e-3);
 
     color = gain * (color + bias);
     FragColor = vec4(color, 1.0);

@@ -6,7 +6,7 @@
 
 shaders = 10
 
-shader0 = ../../../shaders/menus/menu.slang
+shader0 = ../../../shaders/menus/menu-sdr.slang
 filter_linear0 = false
 scale_type0 = source
 
@@ -21,7 +21,7 @@ scale_type_y2 = source
 scale_x2 = 1024.0
 scale_y2 = 1.0
 
-shader3 = ../../../shaders/limiter-sdr.slang
+shader3 = ../../../shaders/limiter.slang
 filter_linear3 = false
 scale_type3 = source
 
@@ -74,6 +74,8 @@ SYS_CUTOFF_ATTEN_B = 16
 V_LINES_PER_FIELD = 262
 H_BLANK_INACTIVE_LEN = 33.203125
 H_BLANK_INACTIVE_UNIT = 2
+SC_FREQ_MODE = 0
+SHORTEN_ODD_FIELD_TIME = 1
 
 # Display setup
 SCANLINE_BLANK_WEIGHT = 100.0
@@ -101,5 +103,5 @@ PHOSPHOR_MANTISSA_B = 100.0
 COLORIMETRY_PRESET = 2
 
 # Bezel parameters
-GLOW_DIFFUSION = 6.0
+GLOW_DIFFUSION = 4.0
 GLOW_COMPRESSION = 0.7

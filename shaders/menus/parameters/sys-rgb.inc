@@ -3,13 +3,13 @@
 
 #pragma parameter SYS_RGB_HEADER " —— System: RGB —— " 0.0 0.0 0.0 0.0
 
-#pragma parameter SYS_BIAS_R "Offset R (IRE)" 0.0 -30.0 30.0 0.5
-#pragma parameter SYS_BIAS_G "Offset G (IRE)" 0.0 -30.0 30.0 0.5
-#pragma parameter SYS_BIAS_B "Offset B (IRE)" 0.0 -30.0 30.0 0.5
+#pragma parameter SYS_BIAS_R "Offset R (IRE)" 0.0 -30.0 30.0 0.1
+#pragma parameter SYS_BIAS_G "Offset G (IRE)" 0.0 -30.0 30.0 0.1
+#pragma parameter SYS_BIAS_B "Offset B (IRE)" 0.0 -30.0 30.0 0.1
 
-#pragma parameter SYS_GAIN_R "Gain R (dB)" 0.0 -30.0 30.0 1.0
-#pragma parameter SYS_GAIN_G "Gain G (dB)" 0.0 -30.0 30.0 1.0
-#pragma parameter SYS_GAIN_B "Gain B (dB)" 0.0 -30.0 30.0 1.0
+#pragma parameter SYS_GAIN_R "Gain R (dB)" 0.0 -30.0 30.0 0.1
+#pragma parameter SYS_GAIN_G "Gain G (dB)" 0.0 -30.0 30.0 0.1
+#pragma parameter SYS_GAIN_B "Gain B (dB)" 0.0 -30.0 30.0 0.1
 
 #pragma parameter SYS_BANDWIDTH_R "Bandwidth R (MHz)" 5.4 0.0 75.0 0.01
 #pragma parameter SYS_BANDWIDTH_G "Bandwidth G (MHz)" 5.4 0.0 75.0 0.01

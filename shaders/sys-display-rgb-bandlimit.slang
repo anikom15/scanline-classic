@@ -53,7 +53,6 @@ layout(push_constant) uniform Push
     float SC_FREQ;
     float H_BLANK_INACTIVE_LEN;
     float H_BLANK_INACTIVE_UNIT;
-    float FIELD_ORDER;
     float SHORTEN_ODD_FIELD_TIME;
     float SYS_BANDWIDTH_R;
     float SYS_BANDWIDTH_G;
@@ -76,7 +75,6 @@ layout(push_constant) uniform Push
 #define SC_FREQ config.SC_FREQ
 #define H_BLANK_INACTIVE_LEN config.H_BLANK_INACTIVE_LEN
 #define H_BLANK_INACTIVE_UNIT config.H_BLANK_INACTIVE_UNIT
-#define FIELD_ORDER config.FIELD_ORDER
 #define SHORTEN_ODD_FIELD_TIME config.SHORTEN_ODD_FIELD_TIME
 
 #define SYS_BANDWIDTH_R config.SYS_BANDWIDTH_R
@@ -124,15 +122,60 @@ layout(std140, set = 0, binding = 0) uniform UBO
 layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
+layout(location = 1) out vec3 sigma;
+layout(location = 2) out vec3 gain;
+layout(location = 3) out vec3 bias;
+layout(location = 4) out TimebaseConfig tb;
 
 void main()
 {
     gl_Position = global.MVP * Position;
     vTexCoord = TexCoord;
+
+    // Precompute filter characteristics
+    tb = compute_timebase(
+        config.FrameCount,
+        vTexCoord,
+        config.OriginalSize.xy,
+        config.OutputSize.x,
+        config.OriginalFPS,
+        V_LINES_PER_FIELD,
+        SHORTEN_ODD_FIELD_TIME,
+        SC_FREQ_MODE,
+        SC_FREQ,
+        H_BLANK_INACTIVE_LEN,
+        H_BLANK_INACTIVE_UNIT);
+
+    vec3 sigma_sys;
+    vec3 sigma_disp;
+
+    sigma_sys.x = sigma_tb(tb, SYS_BANDWIDTH_R, SYS_CUTOFF_ATTEN_R);
+    sigma_sys.y = sigma_tb(tb, SYS_BANDWIDTH_G, SYS_CUTOFF_ATTEN_G);
+    sigma_sys.z = sigma_tb(tb, SYS_BANDWIDTH_B, SYS_CUTOFF_ATTEN_B);
+    sigma_disp.x = sigma_tb(tb, DISPLAY_BANDLIMIT_R, DISPLAY_CUTOFF_ATTEN_R);
+    sigma_disp.y = sigma_tb(tb, DISPLAY_BANDLIMIT_G, DISPLAY_CUTOFF_ATTEN_G);
+    sigma_disp.z = sigma_tb(tb, DISPLAY_BANDLIMIT_B, DISPLAY_CUTOFF_ATTEN_B);
+
+    // Combine cascaded Gaussians via variance addition (sigma_total^2 = sigma1^2 + sigma2^2)
+    sigma = sqrt(sigma_sys * sigma_sys + sigma_disp * sigma_disp);
+
+    // Amplifier parameters
+    gain = vec3(
+        pow(10.0, DISPLAY_GAIN_R / 20.0),
+        pow(10.0, DISPLAY_GAIN_G / 20.0),
+        pow(10.0, DISPLAY_GAIN_B / 20.0));
+    bias = vec3(
+        DISPLAY_BIAS_R * 7.143e-3,
+        DISPLAY_BIAS_G * 7.143e-3,
+        DISPLAY_BIAS_B * 7.143e-3);
 }
 
 #pragma stage fragment
 layout(location = 0) in vec2 vTexCoord;
+layout(location = 1) in vec3 sigma;
+layout(location = 2) in vec3 gain;
+layout(location = 3) in vec3 bias;
+layout(location = 4) in TimebaseConfig tb;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
@@ -145,45 +188,10 @@ void main()
         return;
     }
 
-    // Compute per-stage sigmas (in uv texel units)
-    TimebaseConfig tb = compute_timebase(
-        config.FrameCount,
-        vTexCoord,
-        config.OriginalSize.xy,
-        config.OutputSize.x,
-        config.OriginalFPS,
-        V_LINES_PER_FIELD,
-        SHORTEN_ODD_FIELD_TIME,
-        SC_FREQ_MODE,
-        SC_FREQ,
-        H_BLANK_INACTIVE_LEN,
-        H_BLANK_INACTIVE_UNIT);
-    vec3 sigma_sys;
-    vec3 sigma_disp;
-
-    sigma_sys.x = sigma_tb(tb, SYS_BANDWIDTH_R, SYS_CUTOFF_ATTEN_R);
-    sigma_sys.y = sigma_tb(tb, SYS_BANDWIDTH_G, SYS_CUTOFF_ATTEN_G);
-    sigma_sys.z = sigma_tb(tb, SYS_BANDWIDTH_B, SYS_CUTOFF_ATTEN_B);
-    sigma_disp.x = sigma_tb(tb, DISPLAY_BANDLIMIT_R, DISPLAY_CUTOFF_ATTEN_R);
-    sigma_disp.y = sigma_tb(tb, DISPLAY_BANDLIMIT_G, DISPLAY_CUTOFF_ATTEN_G);
-    sigma_disp.z = sigma_tb(tb, DISPLAY_BANDLIMIT_B, DISPLAY_CUTOFF_ATTEN_B);
-
-    // Combine cascaded Gaussians via variance addition (sigma_total^2 = sigma1^2 + sigma2^2)
-    vec3 sigma_total = sqrt(sigma_sys * sigma_sys + sigma_disp * sigma_disp);
-
     // Single Gaussian lobe convolution with combined sigma
-    vec3 color = bandlimit_convolve_gaussian_x(vTexCoord, config.OutputSize, Source, sigma_total);
+    vec3 color = bandlimit_convolve_gaussian_x(vTexCoord, config.OutputSize, Source, sigma);
     
     // RGB amplifier
-    vec3 gain = vec3(
-        pow(10.0, DISPLAY_GAIN_R / 20.0),
-        pow(10.0, DISPLAY_GAIN_G / 20.0),
-        pow(10.0, DISPLAY_GAIN_B / 20.0));
-    vec3 bias = vec3(
-        DISPLAY_BIAS_R * 7.143e-3,
-        DISPLAY_BIAS_G * 7.143e-3,
-        DISPLAY_BIAS_B * 7.143e-3);
-
     color = gain * (color + bias);
 
     // Apply blue-only filter
