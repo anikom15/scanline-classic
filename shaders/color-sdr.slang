@@ -23,6 +23,7 @@
 #include "common.inc"
 #include "color.inc"
 
+#include "menus/parameters/user-common.inc"
 #include "menus/parameters/colorimetry.inc"
 #include "menus/parameters/output-color-sdr.inc"
 
@@ -35,9 +36,10 @@
 
 layout(push_constant) uniform Push
 {
-    vec4 SourceSize;
     vec4 OutputSize;
     uint FrameCount;
+    float USER_PICTURE;
+    float USER_BRIGHTNESS;
     float R_X;
     float R_Y;
     float G_X;
@@ -51,10 +53,14 @@ layout(push_constant) uniform Push
     float GAMUT_COMPRESSION;
     float COLOR_CONVERSION_BYPASS;
     float COLORIMETRY_PRESET;
+    float TONEMAP_TYPE;
+    float CLIP_GAMUT;
     float DEBUG_COLOR_DELTA;
     float COLOR_DEBUG_OUT_OF_RANGE;
 } config;
 
+#define USER_PICTURE config.USER_PICTURE
+#define USER_BRIGHTNESS config.USER_BRIGHTNESS
 #define COLORIMETRY_PRESET config.COLORIMETRY_PRESET
 #define R_X config.R_X
 #define R_Y config.R_Y
@@ -67,6 +73,8 @@ layout(push_constant) uniform Push
 #define CHROMATIC_ADAPTATION config.CHROMATIC_ADAPTATION
 #define ADAPTATION_LEVEL config.ADAPTATION_LEVEL
 #define GAMUT_COMPRESSION config.GAMUT_COMPRESSION
+#define TONEMAP_TYPE config.TONEMAP_TYPE
+#define CLIP_GAMUT config.CLIP_GAMUT
 #define COLOR_CONVERSION_BYPASS config.COLOR_CONVERSION_BYPASS
 #define DEBUG_COLOR_DELTA config.DEBUG_COLOR_DELTA
 #define COLOR_DEBUG_OUT_OF_RANGE config.COLOR_DEBUG_OUT_OF_RANGE
@@ -135,7 +143,7 @@ const float THRESHOLD = 1.0 / 256.0;
 // more sensitive to changes in luminance.
 
 // Scale luminance in CIE Luv space
-float scale_luminance_cieluv(vec3 color, vec3 luv)
+float scale_luminance_cieluv(vec3 color, vec3 luv, mat3 toRGB)
 {
     // Reduce luminance if any channel > 1
     if (any(greaterThan(color, vec3(1.0)))) {
@@ -144,7 +152,7 @@ float scale_luminance_cieluv(vec3 color, vec3 luv)
         float scale = 1.0;
         for (int i = 0; i < 9; ++i) {
             float testL = luv.x * scale;
-            vec3 testRGB = XYZ_TO_sRGB * CIE_LUV_to_XYZ(vec3(testL, luv.y, luv.z));
+            vec3 testRGB = toRGB * CIE_LUV_to_XYZ(vec3(testL, luv.y, luv.z));
             if (all(lessThanEqual(testRGB, vec3(1.0)))) {
                 minScale = scale;
             } else {
@@ -160,7 +168,7 @@ float scale_luminance_cieluv(vec3 color, vec3 luv)
 }
 
 // Scale chroma in CIE Luv space
-float scale_chroma_cieluv(vec3 color, vec3 luv)
+float scale_chroma_cieluv(vec3 color, vec3 luv, mat3 toRGB)
 {
     // Reduce chroma if any channel < 0
     if (any(lessThan(color, vec3(0.0)))) {
@@ -169,7 +177,7 @@ float scale_chroma_cieluv(vec3 color, vec3 luv)
         float scale = 1.0;
         for (int i = 0; i < 9; ++i) {
             vec3 testLuv = vec3(luv.x, luv.y * scale, luv.z * scale);
-            vec3 testRGB = XYZ_TO_sRGB * CIE_LUV_to_XYZ(testLuv);
+            vec3 testRGB = toRGB * CIE_LUV_to_XYZ(testLuv);
             if (all(greaterThanEqual(testRGB, vec3(0.0)))) {
                 minScale = scale;
             } else {
@@ -184,13 +192,44 @@ float scale_chroma_cieluv(vec3 color, vec3 luv)
     return 1.0;
 }
 
+// -- Tone mapping functions -- //
+
+// Reinhard tone mapping operator (basic version)
+vec3 reinhard_basic(vec3 color)
+{
+    return color / (1.0 + color);
+}
+
+// Reinhard tone mapping operator (extended version)
+vec3 reinhard_extended(vec3 color, float y, float w)
+{
+    float y_adj = y * (1.0 + y / (w * w)) / (1.0 + y);
+
+    return color * y_adj / y;
+}
+
+// ACES tone mapping operator (estimate)
+vec3 aces_tone_map(vec3 color)
+{
+    const float a = 2.51;
+    const float b = 0.03;
+    const float c = 2.43;
+    const float d = 0.59;
+    const float e = 0.14;
+
+    color *= 0.8;
+    vec3 mapped = (color * (a * color + b)) / (color * (c * color + d) + e);
+    return clamp(mapped, 0.0, 1.0);
+}
+
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
 layout(location = 1) out vec2 luv_scale;
 layout(location = 2) out mat3 RGB_to_XYZ;
-layout(location = 5) out Colorimetry colorimetry;
+layout(location = 5) out mat3 XYZ_to_RGB;
+layout(location = 8) out Colorimetry colorimetry;
 
 void main()
 {
@@ -217,6 +256,7 @@ void main()
         blue_XYZ = xyY_to_XYZ(vec3(B_X, B_Y, 1.0));
 
         RGB_to_XYZ = get_RGB_to_XYZ(red_XYZ, green_XYZ, blue_XYZ, ref_XYZ);
+        XYZ_to_RGB = inverse(RGB_to_XYZ);
     } else if (COLORIMETRY_PRESET < 1.5) {
         // Rec. 601
         colorimetry = Colorimetry(
@@ -225,6 +265,7 @@ void main()
             vec2(0.155, 0.070),
             vec2(0.3127, 0.3290));
         RGB_to_XYZ = SMPTE_C_TO_XYZ;
+        XYZ_to_RGB = XYZ_TO_SMPTE_C;
     } else if (COLORIMETRY_PRESET < 2.5) {
         // Japanese phosphors, D93
         colorimetry = Colorimetry(
@@ -233,6 +274,7 @@ void main()
             vec2(0.152, 0.063),
             vec2(0.2832, 0.2971));
         RGB_to_XYZ = NTSC_J_TO_XYZ;
+        XYZ_to_RGB = XYZ_TO_NTSC_J;
     } else if (COLORIMETRY_PRESET < 3.5) {
         // EBU Tech 3213
         colorimetry = Colorimetry(
@@ -241,6 +283,7 @@ void main()
             vec2(0.150, 0.060),
             vec2(0.3127, 0.3290));
         RGB_to_XYZ = EBU_TO_XYZ;
+        XYZ_to_RGB = XYZ_TO_EBU;
     } else {
         // Rec. 709
         colorimetry = Colorimetry(
@@ -249,6 +292,7 @@ void main()
             vec2(0.150, 0.060),
             vec2(0.3127, 0.3290));
         RGB_to_XYZ = sRGB_TO_XYZ;
+        XYZ_to_RGB = XYZ_TO_sRGB;
     }
 
     ref_XYZ = RGB_to_XYZ * WHITE;
@@ -301,16 +345,16 @@ void main()
         vec3 blue_luv = XYZ_to_CIE_LUV(blue_XYZ);
 
         // Determine luminance pre-scale
-        float y_scale = scale_luminance_cieluv(white_srgb, white_luv);
+        float y_scale = scale_luminance_cieluv(white_srgb, white_luv, XYZ_TO_sRGB);
 
         red_luv.x *= y_scale;
         green_luv.x *= y_scale;
         blue_luv.x *= y_scale;
 
         // Determine chroma pre-scale
-        float red_c_scale = scale_chroma_cieluv(red_srgb, red_luv);
-        float green_c_scale = scale_chroma_cieluv(green_srgb, green_luv);
-        float blue_c_scale = scale_chroma_cieluv(blue_srgb, blue_luv);
+        float red_c_scale = scale_chroma_cieluv(red_srgb, red_luv, XYZ_TO_sRGB);
+        float green_c_scale = scale_chroma_cieluv(green_srgb, green_luv, XYZ_TO_sRGB);
+        float blue_c_scale = scale_chroma_cieluv(blue_srgb, blue_luv, XYZ_TO_sRGB);
         float c_scale = min(min(red_c_scale, green_c_scale), blue_c_scale);
 
         luv_scale = vec2(y_scale, c_scale);
@@ -322,19 +366,41 @@ void main()
 layout(location = 0) in vec2 vTexCoord;
 layout(location = 1) in vec2 luv_scale;
 layout(location = 2) in mat3 RGB_to_XYZ;
-layout(location = 5) in Colorimetry colorimetry;
+layout(location = 5) in mat3 XYZ_to_RGB;
+layout(location = 8) in Colorimetry colorimetry;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 1) uniform sampler2D Source;
 
 void main()
 {
     vec3 Yrgb = texture(Source, vTexCoord).rgb;
+
+    float black_level = max(2.0 * USER_BRIGHTNESS / 100.0 - 1.0, 0.0);
+    float white_level = 2.0 * USER_PICTURE / 100.0 + black_level;
     
     // Early exit for full bypass
     if (COLOR_CONVERSION_BYPASS >= 1.0) {
-        FragColor = vec4(sdr_gamma(clamp(Yrgb, 0.0, 1.0)), 1.0);
+        // Inverse power law
+        FragColor = vec4(crt_gamma(clamp(Yrgb, 0.0, 1.0)), 1.0);
         return;
     }
+
+    // Tone mapping
+    if (TONEMAP_TYPE < 0.5) {
+        // No tone mapping
+    } else if (TONEMAP_TYPE < 1.5) {
+        Yrgb = reinhard_basic(Yrgb);
+    } else if (TONEMAP_TYPE < 2.5) {
+        // Luminance
+        float y = dot(Yrgb, vec3(RGB_to_XYZ[0][1], RGB_to_XYZ[1][1], RGB_to_XYZ[2][1]));
+
+        Yrgb = reinhard_extended(Yrgb, y, white_level);
+    } else {
+        Yrgb = aces_tone_map(Yrgb);
+    }
+
+    // Clamp to native gamut RGB space
+    Yrgb = clamp(Yrgb, 0.0, 1.0);
 
     mat3 toRGB = XYZ_TO_sRGB;
     vec3 RGB;
@@ -350,8 +416,8 @@ void main()
             vec3 Luv = XYZ_to_CIE_LUV(XYZ);
 
             RGB = toRGB * XYZ;
-            Luv.x *= scale_luminance_cieluv(RGB, Luv);
-            Luv.yz *= scale_chroma_cieluv(RGB, Luv);
+            Luv.x *= scale_luminance_cieluv(RGB, Luv, toRGB);
+            Luv.yz *= scale_chroma_cieluv(RGB, Luv, toRGB);
 
             RGB = toRGB * CIE_LUV_to_XYZ(Luv);
         } else if (GAMUT_COMPRESSION < 3.5) {
@@ -374,8 +440,8 @@ void main()
         } else if (GAMUT_COMPRESSION < 2.5) {
             vec3 Luv = XYZ_to_CIE_LUV(adapted_XYZ);
 
-            Luv.x *= scale_luminance_cieluv(RGB, Luv);
-            Luv.yz *= scale_chroma_cieluv(RGB, Luv);
+            Luv.x *= scale_luminance_cieluv(RGB, Luv, toRGB);
+            Luv.yz *= scale_chroma_cieluv(RGB, Luv, toRGB);
 
             RGB = toRGB * CIE_LUV_to_XYZ(Luv);
         } else if (GAMUT_COMPRESSION < 3.5) {
@@ -389,7 +455,9 @@ void main()
 
     if (DEBUG_COLOR_DELTA > 0.5) {
         vec3 delta = abs(RGB - Yrgb);
-        FragColor = vec4(sdr_gamma(clamp(delta, 0.0, 1.0)), 1.0);
+
+        // Inverse power law
+        FragColor = vec4(crt_gamma(clamp(delta, 0.0, 1.0)), 1.0);
         return;
     }
 
@@ -448,7 +516,9 @@ void main()
             }
             RGB = debugColor;
         }
-        FragColor = vec4(sdr_gamma(clamp(RGB, 0.0, 1.0)), 1.0);
+
+        // Inverse power law
+        FragColor = vec4(crt_gamma(clamp(RGB, 0.0, 1.0)), 1.0);
         return;
     }
 
@@ -456,5 +526,7 @@ void main()
 
     // Safety clamp
     color = clamp(color, 0.0, 1.0);
-    FragColor = vec4(sdr_gamma(color), 1.0);
+    
+    // Inverse power law
+    FragColor = vec4(crt_gamma(color), 1.0);
 }

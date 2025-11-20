@@ -39,6 +39,9 @@
 #pragma parameter MASK_FRAME_DEBUG "Mask frame debug (0=Off, 1=On)" 0.0 0.0 1.0 1.0
 #pragma parameter MASK_DEBUG_PAD "Highlight padding (yellow)" 0.0 0.0 1.0 1.0
 
+#pragma parameter GEOMETRY_BYPASS "Bypass beam geometry" 0.0 0.0 1.0 1.0
+#pragma parameter FILTER_BYPASS "Bypass beam filter" 0.0 0.0 1.0 1.0
+
 #if 0
 #pragma parameter PARTIAL_OFFSET_X "Partial-dot detection offset X" 0.0 -3.0 3.0 0.1
 #pragma parameter PARTIAL_OFFSET_Y "Partial-dot detection offset Y" 0.0 -3.0 3.0 0.1
@@ -110,6 +113,9 @@ layout(std140, set = 0, binding = 0) uniform UBO {
     float S_CORRECTION_H;   // %
     float S_CORRECTION_V;   // %
     float MASK_DEBUG_PAD;
+    float GEOMETRY_BYPASS;
+    float FILTER_BYPASS;
+
 #if 0
     // NEW: measurement-center offsets for partial-dot detection (mask units)
     float PARTIAL_OFFSET_X; // horizontal units; affects only partial-dot detection
@@ -119,6 +125,9 @@ layout(std140, set = 0, binding = 0) uniform UBO {
 #endif
 
 } global;
+
+#define GEOMETRY_BYPASS global.GEOMETRY_BYPASS
+#define FILTER_BYPASS global.FILTER_BYPASS
 
 #define TRAPEZOIDAL_CORRECTION global.TRAPEZOIDAL_CORRECTION
 #define CORNER_CORRECTION global.CORNER_CORRECTION
@@ -402,9 +411,11 @@ vec3 compute_mask(vec2 screen_uv, float units_x_total, float units_y_total, floa
     if (MASK_TYPE < 0.5) {
         // Aperture grille
         mask_color = vec3(gauss_r, gauss_g, gauss_b);
-        float peak = max(mask_color.r, max(mask_color.g, mask_color.b));
-        if (peak > 1.0)
-            mask_color /= peak;
+
+        float avg = (mask_color.r + mask_color.g + mask_color.b) / 3.0;
+        if (avg > 0.0) {
+            mask_color /= avg;
+        }
     } else if (MASK_TYPE < 1.5) {
         // Slot mask: 3-unit vertical cycle with periodic black row suppression
         float cycle_y = mod(y_units + 1.0, 3.0);
@@ -433,14 +444,13 @@ vec3 compute_mask(vec2 screen_uv, float units_x_total, float units_y_total, floa
 
         float gate = w0 * gate_0 + w1 * gate_1 + w2 * gate_2;
 
-        vec3 rgb = vec3(gauss_r, gauss_g, gauss_b);
-        float peak_rgb = max(rgb.r, max(rgb.g, rgb.b));
-        if (peak_rgb > 1.0) rgb /= peak_rgb;
+        mask_color = vec3(gauss_r, gauss_g, gauss_b) * gate;
 
-        vec3 out_rgb = rgb * gate;
-        float peak_out = max(out_rgb.r, max(out_rgb.g, out_rgb.b));
-        if (peak_out > 1.0) out_rgb /= peak_out;
-        mask_color = out_rgb;
+        // After computing mask_color for slot mask
+        float avg = (mask_color.r + mask_color.g + mask_color.b) / 3.0;
+        if (avg > 0.0) {
+            mask_color /= avg;
+        }
 
 #if 0
         // -------- Partial-slot detection: 9-phase mapping + edge-aware feather --------
@@ -512,10 +522,12 @@ vec3 compute_mask(vec2 screen_uv, float units_x_total, float units_y_total, floa
             exp(-0.5 * dB2*dB2 / (sigma*sigma))
         );
 
-        vec3 rgb = w0 * rgb0 + w2 * rgb2;
-        float peak = max(rgb.r, max(rgb.g, rgb.b));
-        if (peak > 1.0) rgb /= peak;
-        mask_color = rgb;
+        mask_color = w0 * rgb0 + w2 * rgb2;
+        // After computing mask_color for slot mask
+        float avg = (mask_color.r + mask_color.g + mask_color.b) / 3.0;
+        if (avg > 0.0) {
+            mask_color /= avg;
+        }
 
 #if 0
         // -------- Partial-dot detection (Shadow): all four edges, stable centers --------
@@ -686,15 +698,24 @@ void main()
     bool inside;
     bool in_active;
     vec2 input_tex;
-    apply_geometry_pipeline(
-        uv_frame,
-        maskAR,
-        full_aspect,
-        active_region_h,
-        active_region_v,
-        inside,
-        in_active,
-        input_tex);
+
+    if (GEOMETRY_BYPASS >= 1.0) {
+        // Geometry bypass: treat vTexCoord as direct input
+        inside = (vTexCoord.x >= 0.0 && vTexCoord.x <= 1.0 &&
+                  vTexCoord.y >= 0.0 && vTexCoord.y <= 1.0);
+        in_active = inside;
+        input_tex = clamp(vTexCoord, 0.0, 1.0);
+    } else {
+        apply_geometry_pipeline(
+            uv_frame,
+            maskAR,
+            full_aspect,
+            active_region_h,
+            active_region_v,
+            inside,
+            in_active,
+            input_tex);
+    }
 
     // Bicubic resample from input texture using BEAM_FOCUS
     float focus = clamp(BEAM_FOCUS * 0.01, 0.0, 1.0);
@@ -704,7 +725,11 @@ void main()
     float outsideGray = (MASK_FRAME_DEBUG > 0.5) ? 0.5 : 0.0;
     vec3 inside_color;
     if (in_active) {
-        inside_color = sample_bicubic(Source, input_tex, 1.0 / config.SourceSize.xy, B, C);
+        if (FILTER_BYPASS < 0.5) {
+            inside_color = sample_bicubic(Source, input_tex, 1.0 / config.SourceSize.xy, B, C);
+        } else {
+            inside_color = texture(Source, input_tex).rgb;
+        }
     } else {
         // Render padding (blanking) as black
         inside_color = vec3(0.0);
@@ -750,7 +775,8 @@ void main()
 
     float mask_intensity = MASK_INTENSITY * 0.01;
     // Gaussian stripe helper (sigma in pattern units)
-    float sigma = max(MASK_DIFFUSION, 1e-5);
+    float pixels_per_unit = config.OutputSize.x / units_x_total;
+    float sigma = MASK_DIFFUSION * 1.0 / pixels_per_unit;
     vec3 mask_color = compute_mask(vTexCoord, units_x_total, units_y_total, sigma);
 
     vec3 masked_color = mix(color, color * mask_color, mask_intensity);

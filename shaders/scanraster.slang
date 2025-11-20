@@ -92,11 +92,10 @@ void main()
     vTexCoord = TexCoord;
 
     // Precompute BT.1886 parameters for linearization
-    const float beta = log(1.0 / 3.0) / log(0.5);
     const float gamma = 2.4;
 
-    float black_level = max(2.0 * USER_BRIGHTNESS / 100.0 - 1.0, 0.0);
-    float white_level = pow(3.0 * pow(USER_PICTURE / 100.0, beta), 1.0 / gamma) + black_level;
+    float black_level = 2.0 * USER_BRIGHTNESS / 100.0 - 1.0;
+    float white_level = 2.0 * USER_PICTURE / 100.0 + black_level;
     bt1886_a = pow(white_level - black_level, gamma);
     bt1886_b = black_level / (white_level - black_level);
 }

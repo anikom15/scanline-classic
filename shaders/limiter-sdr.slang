@@ -50,7 +50,7 @@
 #include "menus/parameters/limiter.inc"
 
 #pragma name Limiter
-#pragma format R8G8B8A8_UNORM
+#pragma format R16G16B16A16_SFLOAT
 
 #pragma parameter LIMITER_BYPASS "Bypass Voltage Limiter" 0.0 0.0 1.0 1.0
 #pragma parameter LIMITER_DEBUG_OUT_OF_RANGE "Limiter: show out-of-range colors" 0.0 0.0 1.0 1.0
@@ -62,7 +62,6 @@ layout(push_constant) uniform Push
 
     // User video adjustments
     float USER_GAMMA;
-    float USER_BRIGHTNESS;
     
     // Color conversion circuitry (RGB matrix type)
     float NTSC_CONVERSION;
@@ -84,11 +83,9 @@ layout(push_constant) uniform Push
     float LIMITER_COMPRESSION_POINT;
     float LIMITER_MAX_OUTPUT;
     float LIMITER_DEBUG_OUT_OF_RANGE;
-    float TONEMAP_LIMITER;
 } config;
 
 #define USER_GAMMA config.USER_GAMMA
-#define USER_BRIGHTNESS config.USER_BRIGHTNESS
 
 #define NTSC_CONVERSION config.NTSC_CONVERSION
 #define NTSC_CONVERSION_WEIGHT config.NTSC_CONVERSION_WEIGHT
@@ -108,22 +105,11 @@ layout(push_constant) uniform Push
 #define LIMITER_COMPRESSION_POINT config.LIMITER_COMPRESSION_POINT
 #define LIMITER_MAX_OUTPUT config.LIMITER_MAX_OUTPUT
 #define LIMITER_DEBUG_OUT_OF_RANGE config.LIMITER_DEBUG_OUT_OF_RANGE
-#define TONEMAP_LIMITER config.TONEMAP_LIMITER
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
     mat4 MVP;
 } global;
-
-// Reinhard tone mapping operator (extended version)
-vec3 reinhard_extended(vec3 color, float w)
-{
-    // Convert input color to luminance
-    float y = dot(color, vec3(0.299, 0.587, 0.114));  // Rec. 601 Luma
-    float y_adj = y * (1.0 + y / (w * w)) / (1.0 + y);
-
-    return color * y_adj / y;
-}
 
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
@@ -221,6 +207,9 @@ void main()
 {
     vec3 color = texture(Source, vTexCoord).rgb;
 
+    // Clamp negative voltages to zero
+    color = max(color, vec3(0.0));
+
     if (NTSC_CONVERSION > 0.5) {
         // Apply NTSC conversion matrix
         color = CorrectionMatrix * color;
@@ -262,28 +251,12 @@ void main()
     float gamma = (2.4 - USER_GAMMA / 10.0) / 2.4; // Map USER_GAMMA 0-1 to fraction of 2.4
 
     // Preserve extended values for proper handling
-    if (color.r > 0.0 && color.r < 1.0)
+    if (color.r < 1.0)
         color.r = pow(color.r, gamma);
-    if (color.g > 0.0 && color.g < 1.0)
+    if (color.g < 1.0)
         color.g = pow(color.g, gamma);
-    if (color.b > 0.0 && color.b < 1.0)
+    if (color.b < 1.0)
         color.b = pow(color.b, gamma);
-    if (w > 0.0 && w < 1.0)
-        w = pow(w, gamma);
-
-    if (USER_BRIGHTNESS < 50.0) {
-        color -= (1.0 - 2.0 * USER_BRIGHTNESS / 100.0);
-        w -= (1.0 - 2.0 * USER_BRIGHTNESS / 100.0);
-    }
-
-    // Tone mapping
-    if (TONEMAP_LIMITER > 0.5) {
-        float w = peak / 0.7143;  // white point for tone mapping
-
-        if (w > 0.0 && w < 1.0)
-            w = pow(w, gamma);
-        color = reinhard_extended(color, w);
-    }
 
     // Debug: Visualize out-of-range colors with sinusoid modulation
     if (LIMITER_DEBUG_OUT_OF_RANGE >= 1.0) {
@@ -314,8 +287,6 @@ void main()
             color *= debugMask;
         }
     }
-
-    color = clamp(color, 0.0, 1.0);
 
     FragColor = vec4(color, 1.0);
 }
