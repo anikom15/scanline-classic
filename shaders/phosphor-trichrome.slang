@@ -32,7 +32,6 @@
 layout(push_constant) uniform Push
 {
     float OriginalFPS;
-    uint FrameTimeDelta;
     float PHOSPHOR_BYPASS;
     float PHOSPHOR_MANTISSA_R;
     float PHOSPHOR_MANTISSA_G;

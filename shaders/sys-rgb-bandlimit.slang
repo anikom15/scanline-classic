@@ -34,6 +34,8 @@ layout(push_constant) uniform Push
     vec4 OutputSize;
     uint FrameCount;
     float OriginalFPS;
+    float V_FREQ_MODE;
+    float V_FREQ;
     float V_LINES_PER_FIELD;
     float SHORTEN_ODD_FIELD_TIME;
     float SC_FREQ_MODE;
@@ -52,6 +54,8 @@ layout(push_constant) uniform Push
 #pragma parameter SYS_RGB_BANDLIMIT_BYPASS "System RGB bandlimit bypass" 0.0 0.0 1.0 1.0
 #define SYS_RGB_BANDLIMIT_BYPASS config.SYS_RGB_BANDLIMIT_BYPASS
 
+#define V_FREQ_MODE config.V_FREQ_MODE
+#define V_FREQ config.V_FREQ
 #define V_LINES_PER_FIELD config.V_LINES_PER_FIELD
 #define SHORTEN_ODD_FIELD_TIME config.SHORTEN_ODD_FIELD_TIME
 #define SC_FREQ_MODE config.SC_FREQ_MODE
@@ -89,7 +93,9 @@ void main()
         vTexCoord,
         config.OriginalSize.xy,
         config.OutputSize.x,
+        V_FREQ_MODE,
         config.OriginalFPS,
+        V_FREQ,
         V_LINES_PER_FIELD,
         SHORTEN_ODD_FIELD_TIME,
         SC_FREQ_MODE,

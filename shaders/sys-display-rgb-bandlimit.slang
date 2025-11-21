@@ -30,6 +30,7 @@
 #include "bandlimit.inc"
 
 #include "menus/parameters/user-common.inc"
+#include "menus/parameters/user-uncommon.inc"
 #include "menus/parameters/display-rgb.inc"
 #include "menus/parameters/sys-rgb.inc"
 #include "menus/parameters/sys-timing.inc"
@@ -38,6 +39,7 @@
 #pragma format R16G16B16A16_SFLOAT
 
 #pragma parameter SYS_DISPLAY_RGB_BANDLIMIT_BYPASS "Bypass System+Display RGB Bandlimit" 0.0 0.0 1.0 1.0
+#pragma parameter DISPLAY_RGB_AMP_BYPASS "Bypass Display RGB Amplifier" 0.0 0.0 1.0 1.0
 
 // Push constants with combined parameter sets
 layout(push_constant) uniform Push
@@ -66,6 +68,8 @@ layout(push_constant) uniform Push
     float DISPLAY_CUTOFF_ATTEN_R;
     float DISPLAY_CUTOFF_ATTEN_G;
     float DISPLAY_CUTOFF_ATTEN_B;
+    float USER_BLUE_ONLY;
+    float DISPLAY_RGB_AMP_BYPASS;
 } config;
 
 #define SYS_DISPLAY_RGB_BANDLIMIT_BYPASS config.SYS_DISPLAY_RGB_BANDLIMIT_BYPASS
@@ -93,6 +97,10 @@ layout(push_constant) uniform Push
 #define DISPLAY_CUTOFF_ATTEN_G config.DISPLAY_CUTOFF_ATTEN_G
 #define DISPLAY_CUTOFF_ATTEN_B config.DISPLAY_CUTOFF_ATTEN_B
 
+#define USER_BLUE_ONLY config.USER_BLUE_ONLY
+
+#define DISPLAY_RGB_AMP_BYPASS config.DISPLAY_RGB_AMP_BYPASS
+    
 layout(std140, set = 0, binding = 0) uniform UBO
 {
     mat4 MVP;
@@ -102,8 +110,12 @@ layout(std140, set = 0, binding = 0) uniform UBO
     float DISPLAY_GAIN_R;
     float DISPLAY_GAIN_G;
     float DISPLAY_GAIN_B;
-    float USER_BLUE_ONLY;
+    float V_FREQ_MODE;
+    float V_FREQ;
 } global;
+
+#define V_FREQ_MODE global.V_FREQ_MODE
+#define V_FREQ global.V_FREQ
 
 #define DISPLAY_BIAS_R global.DISPLAY_BIAS_R
 #define DISPLAY_BIAS_G global.DISPLAY_BIAS_G
@@ -112,11 +124,6 @@ layout(std140, set = 0, binding = 0) uniform UBO
 #define DISPLAY_GAIN_R global.DISPLAY_GAIN_R
 #define DISPLAY_GAIN_G global.DISPLAY_GAIN_G
 #define DISPLAY_GAIN_B global.DISPLAY_GAIN_B
-
-#define USER_PICTURE global.USER_PICTURE
-#define USER_BRIGHTNESS global.USER_BRIGHTNESS
-#define USER_GAMMA global.USER_GAMMA
-#define USER_BLUE_ONLY global.USER_BLUE_ONLY
 
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
@@ -138,7 +145,9 @@ void main()
         vTexCoord,
         config.OriginalSize.xy,
         config.OutputSize.x,
+        V_FREQ_MODE,
         config.OriginalFPS,
+        V_FREQ,
         V_LINES_PER_FIELD,
         SHORTEN_ODD_FIELD_TIME,
         SC_FREQ_MODE,
@@ -165,9 +174,9 @@ void main()
         pow(10.0, DISPLAY_GAIN_G / 20.0),
         pow(10.0, DISPLAY_GAIN_B / 20.0));
     bias = vec3(
-        DISPLAY_BIAS_R * 7.143e-3,
-        DISPLAY_BIAS_G * 7.143e-3,
-        DISPLAY_BIAS_B * 7.143e-3);
+        DISPLAY_BIAS_R * 10e-3,
+        DISPLAY_BIAS_G * 10e-3,
+        DISPLAY_BIAS_B * 10e-3);
 }
 
 #pragma stage fragment
@@ -181,18 +190,18 @@ layout(set = 0, binding = 2) uniform sampler2D Source;
 
 void main()
 {
-    if (SYS_DISPLAY_RGB_BANDLIMIT_BYPASS > 0.5)
-    {
-        // Bypass: output unfiltered source
-        FragColor = texture(Source, vTexCoord);
-        return;
+    vec3 color;
+
+    if (SYS_DISPLAY_RGB_BANDLIMIT_BYPASS < 0.5) {
+        color = bandlimit_convolve_gaussian_x(vTexCoord, config.OutputSize, Source, sigma);
+    } else {
+        color = texture(Source, vTexCoord).rgb;
     }
 
-    // Single Gaussian lobe convolution with combined sigma
-    vec3 color = bandlimit_convolve_gaussian_x(vTexCoord, config.OutputSize, Source, sigma);
-    
     // RGB amplifier
-    color = gain * (color + bias);
+    if (DISPLAY_RGB_AMP_BYPASS < 0.5) {
+        color = gain * (color + bias);
+    }
 
     // Apply blue-only filter
     color.r *= 1.0 - USER_BLUE_ONLY;

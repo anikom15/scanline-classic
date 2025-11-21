@@ -24,23 +24,24 @@
 #include "filter.h"
 #include "geometry.inc"
 #include "modulation.inc"
+#include "tools/zebra.inc"
 
+#include "menus/parameters/sys-timing.inc"
 #include "menus/parameters/mask.inc"
 #include "menus/parameters/factory-geometry.inc"
 #include "menus/parameters/service-geometry.inc"
-#include "menus/parameters/user-common.inc"
+#include "menus/parameters/user-uncommon.inc"
 
 #pragma name CRTMask
 #pragma format R16G16B16A16_SFLOAT
 
-#pragma parameter MASK_BYPASS "Bypass CRT mask" 0.0 0.0 1.0 1.0
-#pragma parameter MASK_DEBUG_PADDING "Show timing regions" 0.0 0.0 1.0 1.0
-// When enabled, areas outside the frame are shown as 50% gray instead of black
-#pragma parameter MASK_FRAME_DEBUG "Mask frame debug (0=Off, 1=On)" 0.0 0.0 1.0 1.0
-#pragma parameter MASK_DEBUG_PAD "Highlight padding (yellow)" 0.0 0.0 1.0 1.0
-
 #pragma parameter GEOMETRY_BYPASS "Bypass beam geometry" 0.0 0.0 1.0 1.0
 #pragma parameter FILTER_BYPASS "Bypass beam filter" 0.0 0.0 1.0 1.0
+#pragma parameter MASK_BYPASS "Bypass CRT mask" 0.0 0.0 1.0 1.0
+#pragma parameter MASK_DEBUG_PADDING "Show timing regions" 0.0 0.0 1.0 1.0
+#pragma parameter MASK_FRAME_DEBUG "Mask frame debug (0=Off, 1=On)" 0.0 0.0 1.0 1.0
+#pragma parameter MASK_DEBUG_PAD "Highlight padding (yellow)" 0.0 0.0 1.0 1.0
+#pragma parameter BEAM_DEBUG_OUT_OF_RANGE "Beam-mask: Show out-of-range colors" 0.0 0.0 1.0 1.0
 
 layout(push_constant) uniform Push
 {
@@ -107,6 +108,10 @@ layout(std140, set = 0, binding = 0) uniform UBO {
     float MASK_DEBUG_PAD;
     float GEOMETRY_BYPASS;
     float FILTER_BYPASS;
+    float BEAM_DEBUG_OUT_OF_RANGE;
+
+    float V_FREQ_MODE;
+    float V_FREQ;
 } global;
 
 #define GEOMETRY_BYPASS global.GEOMETRY_BYPASS
@@ -126,6 +131,10 @@ layout(std140, set = 0, binding = 0) uniform UBO {
 #define S_CORRECTION_V global.S_CORRECTION_V
 
 #define MASK_DEBUG_PAD global.MASK_DEBUG_PAD
+#define BEAM_DEBUG_OUT_OF_RANGE global.BEAM_DEBUG_OUT_OF_RANGE
+
+#define V_FREQ_MODE global.V_FREQ_MODE
+#define V_FREQ global.V_FREQ
 
 // Bicubic texture sampling (4x4 Mitchell-Netravali)
 // Matches implementation style from crt-geometry.slang
@@ -213,52 +222,6 @@ float cyclicDist(float x, float center, float period)
     float d = abs(x - center);
     return min(d, period - d);
 }
-
-#if 0
-// NEW: Edge-aware cyclic distance.
-// Increases effective distance when a gaussian of `radius` centered at `center` would be clipped by edges.
-// Use this when you want a distance that "self-suppresses" near the frame edges.
-float cyclicDistEdge(float x,
-                     float center,
-                     float period,
-                     float edgeMin,
-                     float edgeMax,
-                     float radius,
-                     float feather)
-{
-    // Base cyclic distance on the ring.
-    float d = abs(x - center);
-    d = min(d, period - d);
-
-    // Overshoot if the gaussian footprint would exceed the visible domain.
-    float leftOver  = max(0.0, edgeMin - (center - radius));
-    float rightOver = max(0.0, (center + radius) - edgeMax);
-    float over = max(leftOver, rightOver);
-
-    // If no overshoot, return the base cyclic distance unchanged.
-    if (over <= 0.0) return d;
-
-    // Softly push distance toward "far" when overshooting, which kills the gaussian weight.
-    float t = clamp(over / max(feather, 1e-6), 0.0, 1.0);
-    // period*0.5 is the maximum cyclic distance on the ring.
-    return mix(d, period * 0.5, t);
-}
-
-// NEW: One-dimensional edge feather based on how much a radius would overshoot the edges.
-// Returns 1.0 when fully safe; ramps to 0.0 as overshoot grows beyond `feather`.
-float edgeFeather1D(float center,
-                    float radius,
-                    float edgeMin,
-                    float edgeMax,
-                    float eps,
-                    float feather)
-{
-    float leftOver  = max(0.0, (edgeMin + eps) - (center - radius));
-    float rightOver = max(0.0, (center + radius) - (edgeMax - eps));
-    float over = max(leftOver, rightOver);
-    return 1.0 - smoothstep(0.0, max(feather, 1e-6), over);
-}
-#endif
 
 // Map from framebuffer UV to input active texture coordinates, applying
 // display framing, physical distortions, and electronic service geometry.
@@ -462,40 +425,45 @@ vec3 compute_mask(vec2 screen_uv, float units_x_total, float units_y_total, vec2
 layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
+layout(location = 1) out float maskAR;
+layout(location = 2) out TimebaseConfig tb;
 
 void main()
 {
     gl_Position = global.MVP * Position;
     vTexCoord = TexCoord;
-}
 
-#pragma stage fragment
-layout(location = 0) in vec2 vTexCoord;
-layout(location = 0) out vec4 FragColor;
-layout(set = 0, binding = 1) uniform sampler2D Source;
-
-void main()
-{
     // Selected target aspect ratio for framing
-    float maskAR = (ASPECT < 0.5) ? (4.0/3.0)
-        : (ASPECT < 1.5) ? (16.0/9.0)
-        : (ASPECT < 2.5) ? (5.0/4.0)
-        : (16.0/10.0);
+    maskAR = (ASPECT < 0.5) ? (4.0 / 3.0)
+        : (ASPECT < 1.5) ? (16.0 / 9.0)
+        : (ASPECT < 2.5) ? (5.0 / 4.0)
+        : (16.0 / 10.0);
 
-    // Compute timebase and padding/active regions (like CRTGeometry)
-    TimebaseConfig tb = compute_timebase(
+    tb = compute_timebase(
         config.FrameCount,
         vTexCoord,
         config.OriginalSize.xy,
         config.OutputSize.x,
+        V_FREQ_MODE,
         config.OriginalFPS,
+        V_FREQ,
         V_LINES_PER_FIELD,
         SHORTEN_ODD_FIELD_TIME,
         SC_FREQ_MODE,
         SC_FREQ,
         H_BLANK_INACTIVE_LEN,
         H_BLANK_INACTIVE_UNIT);
+}
 
+#pragma stage fragment
+layout(location = 0) in vec2 vTexCoord;
+layout(location = 1) in float maskAR;
+layout(location = 2) in TimebaseConfig tb;
+layout(location = 0) out vec4 FragColor;
+layout(set = 0, binding = 1) uniform sampler2D Source;
+
+void main()
+{
     // Horizontal inactive pixels (blanking)
     float inactive_pixels_h;
     if (H_BLANK_INACTIVE_UNIT < 0.5)
@@ -651,5 +619,9 @@ void main()
     vec3 mask_color = compute_mask(vTexCoord, units_x_total, units_y_total, pixels_per_unit);
     vec3 masked_color = mix(color, color * mask_color, mask_intensity);
 
-    FragColor = vec4(max(masked_color, 0.0), 1.0);
+    if (BEAM_DEBUG_OUT_OF_RANGE >= 1.0) {
+        masked_color = zebra(masked_color, 0.0, 1.0, vTexCoord, config.OutputSize.xy, config.FrameCount, 2.0);
+    }
+
+    FragColor = vec4(masked_color, 1.0);
 }

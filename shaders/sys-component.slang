@@ -119,7 +119,12 @@ layout(push_constant) uniform Push
 layout(std140, set = 0, binding = 0) uniform UBO
 {
     mat4 MVP;
+    float V_FREQ_MODE;
+    float V_FREQ;
 } global;
+
+#define V_FREQ_MODE global.V_FREQ_MODE
+#define V_FREQ global.V_FREQ
 
 // Convert RGB to selected luma-chroma space.
 // For YDbDr: RGB -> YUV -> scale (U,V) to (Db,Dr).
@@ -157,7 +162,7 @@ void main()
 {
     gl_Position = global.MVP * Position;
     vTexCoord = TexCoord;
-   
+
     // Precompute per-component sigmas (in texels) from MHz/dB specs.
     // We reuse the vec3 return as (Y, U/Db, V/Dr).
     tb = compute_timebase(
@@ -165,7 +170,9 @@ void main()
         vTexCoord,
         config.OriginalSize.xy,
         config.OutputSize.x,
+        V_FREQ_MODE,
         config.OriginalFPS,
+        V_FREQ,
         V_LINES_PER_FIELD,
         SHORTEN_ODD_FIELD_TIME,
         SC_FREQ_MODE,

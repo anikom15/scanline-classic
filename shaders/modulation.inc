@@ -62,7 +62,9 @@ TimebaseConfig compute_timebase(
     vec2 tex_coord,
     vec2 original_size,
     float output_width,
-    float v_freq,
+    float v_freq_mode,
+    float auto_v_freq,
+    float custom_v_freq,
     float v_lines_per_field,
     float shorten_odd_field_time,
     float sc_freq_mode,
@@ -77,6 +79,17 @@ TimebaseConfig compute_timebase(
 
     // Line index derived from total lines-per-field (includes blanking region)
     config.line = floor(tex_coord.y * original_size.y);
+
+    // Vertical frequency selection
+    float v_freq;
+    if (v_freq_mode < 0.5)
+        v_freq = auto_v_freq;
+    else if (v_freq_mode < 1.5)
+        v_freq = 59.94; // NTSC standard
+    else if (v_freq_mode < 2.5)
+        v_freq = 50.0; // PAL standard
+    else
+        v_freq = custom_v_freq;
 
     // Horizontal timing
     config.h_freq_hz = v_freq * v_lines_per_field;

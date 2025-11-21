@@ -24,10 +24,10 @@
 #include "geometry.inc"
 #include "filter.h"
 #include "modulation.inc"
+#include "tools/zebra.inc"
 
 #include "menus/parameters/user-common.inc"
 #include "menus/parameters/factory-geometry.inc"
-#include "menus/parameters/sys-timing.inc"
 #include "menus/parameters/output-curve.inc"
 
 #pragma name Curve
@@ -36,12 +36,14 @@
 #pragma parameter CURVE_BYPASS "Bypass Curvature" 0 0 1.0 1.0
 #pragma parameter CURVE_FILTER "Curvature filter (0=off, 1=on)" 1.0 0.0 1.0 1.0
 #pragma parameter DEBUG_BARREL_SURROUND "Debug: Show surround outside barrel" 0.0 0.0 1.0 1.0
+#pragma parameter CURVE_DEBUG_OUT_OF_RANGE "Curve: Show out-of-range colors" 0.0 0.0 1.0 1.0
 
 layout(push_constant) uniform Push
 {
     // IO
     vec4 SourceSize;
     vec4 OutputSize;
+    uint FrameCount;
 
     // Control
     float CURVE_BYPASS;
@@ -54,6 +56,8 @@ layout(push_constant) uniform Push
     float ASPECT;
     float SCREEN_ANGLE_H;
     float SCREEN_ANGLE_V;
+
+    float CURVE_DEBUG_OUT_OF_RANGE;
 } config;
 
 // Macro bindings for consistency with code style
@@ -66,6 +70,8 @@ layout(push_constant) uniform Push
 #define ASPECT config.ASPECT
 #define SCREEN_ANGLE_H config.SCREEN_ANGLE_H
 #define SCREEN_ANGLE_V config.SCREEN_ANGLE_V
+
+#define CURVE_DEBUG_OUT_OF_RANGE config.CURVE_DEBUG_OUT_OF_RANGE
 
 // MVP / matrix UBO (matches project convention)
 layout(std140, set = 0, binding = 0) uniform UBO {
@@ -234,5 +240,9 @@ void main()
         color = sample_bicubic(Source, tex, 1.0 / config.SourceSize.xy, B, C);
     }
 
-    FragColor = vec4(max(color, 0.0), 1.0);
+    if (CURVE_DEBUG_OUT_OF_RANGE > 0.5) {
+        color = zebra(color, 0.0, 1.0, vTexCoord, config.OutputSize.xy, config.FrameCount, 1.0);
+    }
+
+    FragColor = vec4(color, 1.0);
 }

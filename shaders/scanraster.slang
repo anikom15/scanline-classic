@@ -46,6 +46,9 @@ layout(push_constant) uniform Push
     uint FrameCount;
     float OriginalFPS;
 
+    float V_FREQ_MODE;
+    float V_FREQ;
+
     // User settings
     float USER_PICTURE;
     float USER_BRIGHTNESS;
@@ -63,6 +66,9 @@ layout(push_constant) uniform Push
 
 #define USER_PICTURE config.USER_PICTURE
 #define USER_BRIGHTNESS config.USER_BRIGHTNESS
+
+#define V_FREQ_MODE config.V_FREQ_MODE
+#define V_FREQ config.V_FREQ
 
 #define V_LINES_PER_FIELD config.V_LINES_PER_FIELD
 #define SC_FREQ_MODE config.SC_FREQ_MODE
@@ -85,6 +91,7 @@ layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
 layout(location = 1) out float bt1886_a;
 layout(location = 2) out float bt1886_b;
+layout(location = 3) out TimebaseConfig tb;
 
 void main()
 {
@@ -98,12 +105,29 @@ void main()
     float white_level = 2.0 * USER_PICTURE / 100.0 + black_level;
     bt1886_a = pow(white_level - black_level, gamma);
     bt1886_b = black_level / (white_level - black_level);
+
+    // Precompute timebase parameters
+    tb = compute_timebase(
+        config.FrameCount,
+        vTexCoord,
+        config.OriginalSize.xy,
+        config.OutputSize.x,
+        V_FREQ_MODE,
+        config.OriginalFPS,
+        V_FREQ,
+        V_LINES_PER_FIELD,
+        SHORTEN_ODD_FIELD_TIME,
+        SC_FREQ_MODE,
+        SC_FREQ,
+        H_BLANK_INACTIVE_LEN,
+        H_BLANK_INACTIVE_UNIT);
 }
 
 #pragma stage fragment
 layout(location = 0) in vec2 vTexCoord;
 layout(location = 1) in float bt1886_a;
 layout(location = 2) in float bt1886_b;
+layout(location = 3) in TimebaseConfig tb;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
@@ -116,19 +140,6 @@ void main()
         FragColor = vec4(color, 1.0);
         return;
     }
-
-    TimebaseConfig tb = compute_timebase(
-        config.FrameCount,
-        vTexCoord,
-        config.OriginalSize.xy,
-        config.OutputSize.x,
-        config.OriginalFPS,
-        V_LINES_PER_FIELD,
-        SHORTEN_ODD_FIELD_TIME,
-        SC_FREQ_MODE,
-        SC_FREQ,
-        H_BLANK_INACTIVE_LEN,
-        H_BLANK_INACTIVE_UNIT);
 
     // Determine monitor half-resolution (total lines including blanking)
     float design_v_lines = tb.h_freq_hz / config.OriginalFPS;

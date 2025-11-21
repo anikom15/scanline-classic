@@ -30,9 +30,9 @@ vec3 bandlimit_convolve_gaussian_x(vec2 vTexCoord, vec4 OutputSize, sampler2D So
     color = w0 * pixel;
     wsum  = w0;
 
-    const float THRESHOLD = 1.0 / 510.0;
+    const float THRESHOLD = 1.0 / 255.0;
 
-    for (int n = 1; n <= 32; ++n) {
+    for (int n = 1; n <= 20; ++n) {
         float nf = float(n);
 
         // Correct symmetric distances

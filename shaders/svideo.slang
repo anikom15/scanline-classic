@@ -146,28 +146,35 @@
       so Auto fSC aligns well; otherwise pick NTSC/PAL mode explicitly.
 */
 
-#include "common.h"
-#include "color.h"
+#include "common.inc"
+#include "color.inc"
 #include "bandlimit.inc"
 #include "modulation.inc"
 
+#include "menus/parameters/user-video.inc"
+#include "menus/parameters/sys-timing.inc"
+#include "menus/parameters/svideo.inc"
+
 #pragma name SVideo
-#pragma format R8G8B8A8_UNORM
+#pragma format R16G16B16A16_SFLOAT
+
+#pragma parameter BYPASS_SVIDEO "Bypass S-Video processing (0=Off, 1=On)" 0.0 0.0 1.0 1.0
+#pragma parameter SVIDEO_FILTER_BYPASS "S-Video filter bypass (use center sample)" 0.0 0.0 1.0 1.0
 
 layout(push_constant) uniform Push
 {
-    vec4 SourceSize;
     vec4 OriginalSize;
     vec4 OutputSize;
     uint FrameCount;
+    float OriginalFPS;
+    float V_FREQ_MODE;
+    float V_FREQ;
     float BYPASS_SVIDEO;
-    float USER_PICTURE;
-    float USER_BRIGHTNESS;
     float USER_COLOR;
     float USER_TINT;
     float USER_SHARPNESS;
+    float USER_MONOCHROME;
     float SVIDEO_FILTER_BYPASS;
-    float V_FREQ;
     float V_LINES_PER_FIELD;
     float SHORTEN_ODD_FIELD_TIME;
     float H_BLANK_INACTIVE_LEN;
@@ -176,67 +183,37 @@ layout(push_constant) uniform Push
     float DISPLAY_BANDWIDTH_C;
     float DISPLAY_CUTOFF_ATTEN_Y;
     float DISPLAY_CUTOFF_ATTEN_C;
-    float BW_MODE; // 0=Off/Normal, 1=Y-only, 2=C-only
+    float BW_MODE;
     float SC_FREQ;          // Custom subcarrier frequency (MHz)
     float SC_FREQ_MODE;     // 0=Auto, 1=NTSC, 2=PAL, 3=Custom
 } config;
 
-#pragma parameter S_VIDEO_HEADER " ==== S-Video Parameters ==== " 0.0 0.0 0.0 0.0
-
-#pragma parameter USER_PICTURE "User Settings: Picture" 0.5 0.0 1.0 0.01
-#define USER_PICTURE config.USER_PICTURE
-#pragma parameter USER_BRIGHTNESS "User Settings: Brightness" 0.5 0.0 1.0 0.01
-#define USER_BRIGHTNESS config.USER_BRIGHTNESS
-#pragma parameter USER_COLOR "User Settings: Color" 0.5 0.0 1.0 0.01
-#define USER_COLOR config.USER_COLOR
-#pragma parameter USER_TINT "User Settings: Tint" 0.5 0.0 1.0 0.01
-#define USER_TINT config.USER_TINT
-#pragma parameter USER_SHARPNESS "User Settings: Sharpness" 0.0 0.0 1.0 0.01
-#define USER_SHARPNESS config.USER_SHARPNESS
-
-#pragma parameter BYPASS_SVIDEO "Bypass S-Video processing (0=Off, 1=On)" 0.0 0.0 1.0 1.0
 #define BYPASS_SVIDEO config.BYPASS_SVIDEO
-
-#pragma parameter SVIDEO_FILTER_BYPASS "S-Video filter bypass (use center sample)" 0.0 0.0 1.0 1.0
 #define SVIDEO_FILTER_BYPASS config.SVIDEO_FILTER_BYPASS
 
-#pragma parameter BW_MODE "Monitor mode (0=Off, 1=BW, 2=Y, 3=C, 4=Y+C)" 0 0 4 1
-#define BW_MODE config.BW_MODE
-
-#pragma parameter V_FREQ "Vertical frequency (Hz)" 59.94 1.0 240.0 0.01
+#define V_FREQ_MODE config.V_FREQ_MODE
 #define V_FREQ config.V_FREQ
 
-#pragma parameter V_LINES_PER_FIELD "Video lines per field" 262.5 0.0 540.0 0.5
+#define USER_COLOR config.USER_COLOR
+#define USER_TINT config.USER_TINT
+#define USER_SHARPNESS config.USER_SHARPNESS
+#define USER_MONOCHROME config.USER_MONOCHROME
+
 #define V_LINES_PER_FIELD config.V_LINES_PER_FIELD
-
-#pragma parameter SHORTEN_ODD_FIELD_TIME "Shorten odd field time (0=Off, 1=On)" 0.0 0.0 1.0 1.0
 #define SHORTEN_ODD_FIELD_TIME config.SHORTEN_ODD_FIELD_TIME
-
-#pragma parameter SC_FREQ_MODE "Subcarrier frequency mode (0=Auto, 1=NTSC, 2=PAL, 3=Custom)" 1.0 0.0 3.0 1.0
 #define SC_FREQ_MODE config.SC_FREQ_MODE
-
-#pragma parameter SC_FREQ "Custom subcarrier frequency (MHz)" 3.579545 0.0 10.0 0.000001
 #define SC_FREQ config.SC_FREQ
 
-#define H_FREQ_HZ (V_FREQ * V_LINES_PER_FIELD)
-
-#pragma parameter H_BLANK_INACTIVE_LEN "Horizontal blank inactive length" 138.0 0.0 1000.0 0.1
 #define H_BLANK_INACTIVE_LEN config.H_BLANK_INACTIVE_LEN
-#pragma parameter H_BLANK_INACTIVE_UNIT "Horizontal blank inactive unit (0=px, 1=µs, 2=% active)" 0.0 0.0 2.0 1.0
 #define H_BLANK_INACTIVE_UNIT config.H_BLANK_INACTIVE_UNIT
 
-#pragma parameter DISPLAY_BANDWIDTH_Y "Display bandwidth Y (MHz)" 5.4 0.0 75.0 0.1
 #define DISPLAY_BANDWIDTH_Y config.DISPLAY_BANDWIDTH_Y
-#pragma parameter DISPLAY_BANDWIDTH_C "Display bandwidth C (MHz)" 2.7 0.0 15.0 0.01
 #define DISPLAY_BANDWIDTH_C config.DISPLAY_BANDWIDTH_C
 
-#pragma parameter DISPLAY_CUTOFF_ATTEN_Y "Display cutoff attenuation Y (dB)" 12.5 0.0 30.0 1.0
 #define DISPLAY_CUTOFF_ATTEN_Y config.DISPLAY_CUTOFF_ATTEN_Y
-#pragma parameter DISPLAY_CUTOFF_ATTEN_C "Display cutoff attenuation C (dB)" 12.5 0.0 30.0 1.0
 #define DISPLAY_CUTOFF_ATTEN_C config.DISPLAY_CUTOFF_ATTEN_C
 
-#define LINE_TIME (1.0 / H_FREQ_HZ)
-#define FIELD_TIME (1.0 / V_FREQ)
+#define BW_MODE config.BW_MODE
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
@@ -247,15 +224,48 @@ layout(std140, set = 0, binding = 0) uniform UBO
 layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
+layout(location = 1) out vec3 sigma;
+layout(location = 2) out float c_gain;
+layout(location = 3) out float c_phase;
+layout(location = 4) out TimebaseConfig tb;
 
 void main()
 {
     gl_Position = global.MVP * Position;
     vTexCoord = TexCoord;
+
+    // Precompute timebase config for fragment stage
+    tb = compute_timebase(
+        config.FrameCount,
+        vTexCoord,
+        config.OriginalSize.xy,
+        config.OutputSize.x,
+        V_FREQ_MODE,
+        config.OriginalFPS,
+        V_FREQ,
+        V_LINES_PER_FIELD,
+        SHORTEN_ODD_FIELD_TIME,
+        SC_FREQ_MODE,
+        SC_FREQ,
+        H_BLANK_INACTIVE_LEN,
+        H_BLANK_INACTIVE_UNIT);
+
+    // Precompute per-component sigmas for fragment stage
+    sigma.x = sigma_tb(tb, DISPLAY_BANDWIDTH_Y, DISPLAY_CUTOFF_ATTEN_Y);
+    sigma.y = sigma_tb(tb, DISPLAY_BANDWIDTH_C, DISPLAY_CUTOFF_ATTEN_C);
+    sigma.z = sigma.y; // sigma.z == sigma.y for chroma
+
+    // Precompute user color gain/phase
+    c_gain = 2.0 * USER_COLOR / 100.0;
+    c_phase = PI * USER_TINT / 180.0;
 }
 
 #pragma stage fragment
 layout(location = 0) in vec2 vTexCoord;
+layout(location = 1) in vec3 sigma;
+layout(location = 2) in float c_gain;
+layout(location = 3) in float c_phase;
+layout(location = 4) in TimebaseConfig tb;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
@@ -266,27 +276,7 @@ void main()
         return;
     }
 
-    // Use consolidated timebase helper
-    TimebaseConfig tb = compute_timebase(
-        float(config.FrameCount),
-        vTexCoord,
-        config.OriginalSize.xy,
-        config.OutputSize.x,
-        V_FREQ,
-        V_LINES_PER_FIELD,
-        SHORTEN_ODD_FIELD_TIME,
-        SC_FREQ_MODE,
-        SC_FREQ,
-        H_BLANK_INACTIVE_LEN,
-        H_BLANK_INACTIVE_UNIT);
-
-    // Per-component sigmas (Y, C, C)
-    vec3 sigma;
-    sigma.x = sigma_tb(tb, DISPLAY_BANDWIDTH_Y, DISPLAY_CUTOFF_ATTEN_Y);
-    sigma.y = sigma_tb(tb, DISPLAY_BANDWIDTH_C, DISPLAY_CUTOFF_ATTEN_C);
-    sigma.z = sigma_tb(tb, DISPLAY_BANDWIDTH_C, DISPLAY_CUTOFF_ATTEN_C);
-
-    const float THRESHOLD = 1.0 / 510.0;
+    const float THRESHOLD = 1.0 / 255.0;
 
     // Horizontal coordinate handling using nearest pixel center (keep Y center)
     vec2 UV  = vTexCoord * config.OutputSize.xy;
@@ -303,12 +293,7 @@ void main()
 
     // Center sample
     float offset0 = Tex.x * config.OriginalSize.x;
-    float t0 = tb.line * LINE_TIME + offset0 * tb.pixel_time;
-
-    float y_gain = 2.0 * USER_PICTURE;
-    float y_bias = 0.2 * USER_BRIGHTNESS - 0.1;
-    float c_gain = 2.0 * USER_COLOR;
-    float c_phase = 2.0 * PI * (USER_TINT - 0.5);
+    float t0 = tb.line / tb.h_freq_hz + offset0 * tb.pixel_time;
 
     vec3 pixel0 = texture(Source, Tex).rgb;
     float phase0 = compute_carrier_phase(t0, tb.sc_freq_hz, tb.field_phase);
@@ -321,94 +306,92 @@ void main()
     float c_out = chroma0;
 
     vec3 yc0;
-    yc0.r = y_gain * pixel0.r + y_bias; // luma
+    yc0.r = pixel0.r;
     yc0.g = c_gain * chroma0 * 2.0 * carrier0_user.x;
     yc0.b = c_gain * chroma0 * 2.0 * carrier0_user.y;
 
-    // Optional filter bypass: use center-sample demodulated values directly
-    if (SVIDEO_FILTER_BYPASS >= 1.0) {
-        vec3 color;
-        if (BW_MODE < 0.5) {
-            // Normal path without filtering
-            color = YPbPr_TO_RGB * yc0;
-        } else if (BW_MODE < 1.5) {
-            // BW mode: Y + C to all channels
-            color = vec3(y_out + c_out);
-        } else if (BW_MODE < 2.5) {
-            // Y mode
-            color = vec3(y_out);
-        } else if (BW_MODE < 3.5) {
-            // C mode
-            color = vec3(c_out);
-        } else {
-            // YC mode
-            color.r = y_out;
-            color.g = 0.0;
-            color.b = c_out;
-        }
-        FragColor = vec4(color, 1.0);
-        return;
-    }
-
-    float wy0 = gaussian(Ax, sigma.x);
-    float wc0 = gaussian(Ax, sigma.y); // sigma.y == sigma.z for chroma
-
-    accum += vec3(wy0 * yc0.r, wc0 * yc0.g, wc0 * yc0.b);
-    wsum  += vec3(wy0, wc0, wc0);
-
-    // Symmetric lobes
-    // Limited to 32 iterations for faster shader compilation
-    // Gaussian weights fall off rapidly, so early exit handles quality
-    for (int n = 1; n <= 32; ++n) {
-        float nf = float(n);
-        // Symmetric distances: right = n - Ax, left = n + Ax
-        float wy_r = gaussian(nf - Ax, sigma.x);
-        float wy_l = gaussian(nf + Ax, sigma.x);
-        float wc_r = gaussian(nf - Ax, sigma.y);
-        float wc_l = gaussian(nf + Ax, sigma.y);
-        if (wy_r < THRESHOLD && wy_l < THRESHOLD && wc_r < THRESHOLD && wc_l < THRESHOLD)
-            break;
-
-        float offsetR = (Tex.x + nf * dx.x) * config.OriginalSize.x;
-        float tR = tb.line * LINE_TIME + offsetR * tb.pixel_time;
-        vec3 pixelR = texture(Source, Tex + nf * dx).rgb;
-        float phaseR = compute_carrier_phase(tR, tb.sc_freq_hz, tb.field_phase);
-        vec2 carrierR = sincos_phase(phaseR);
-        vec2 carrierR_user = sincos_phase(phaseR + c_phase);
-        float chromaR = pixelR.g * carrierR.x + pixelR.b * carrierR.y;
-        vec3 ycR;
-        ycR.r = y_gain * pixelR.r + y_bias;
-        ycR.g = c_gain * chromaR * 2.0 * carrierR_user.x;
-        ycR.b = c_gain * chromaR * 2.0 * carrierR_user.y;
-
-        float offsetL = (Tex.x - nf * dx.x) * config.OriginalSize.x;
-        float tL = tb.line * LINE_TIME + offsetL * tb.pixel_time;
-        vec3 pixelL = texture(Source, Tex - nf * dx).rgb;
-        float phaseL = compute_carrier_phase(tL, tb.sc_freq_hz, tb.field_phase);
-        vec2 carrierL = sincos_phase(phaseL);
-        vec2 carrierL_user = sincos_phase(phaseL + c_phase);
-        float chromaL = pixelL.g * carrierL.x + pixelL.b * carrierL.y;
-        vec3 ycL;
-        ycL.r = y_gain * pixelL.r + y_bias;
-        ycL.g = c_gain * chromaL * 2.0 * carrierL_user.x;
-        ycL.b = c_gain * chromaL * 2.0 * carrierL_user.y;
-
-        accum.x += wy_r * ycR.x + wy_l * ycL.x;
-        accum.y += wc_r * ycR.y + wc_l * ycL.y;
-        accum.z += wc_r * ycR.z + wc_l * ycL.z;
-        wsum.x  += wy_r + wy_l;
-        wsum.y  += wc_r + wc_l;
-        wsum.z  += wc_r + wc_l;
-    }
-
-    // Normalized outputs
-    vec3 color_vec = accum / max(wsum, vec3(EPS));
-
-    // Convert to RGB
     vec3 color;
 
+    // Optional filter bypass: use center-sample demodulated values directly
+    if (SVIDEO_FILTER_BYPASS < 0.5) {
+        float wy0 = gaussian(Ax, sigma.x);
+        float wc0 = gaussian(Ax, sigma.y); // sigma.y == sigma.z for chroma
+
+        accum += vec3(wy0 * yc0.r, wc0 * yc0.g, wc0 * yc0.b);
+        wsum  += vec3(wy0, wc0, wc0);
+
+        // Symmetric lobes
+        // Limited to 32 iterations for faster shader compilation
+        // Gaussian weights fall off rapidly, so early exit handles quality
+        for (int n = 1; n <= 20; ++n) {
+            float nf = float(n);
+            // Symmetric distances: right = n - Ax, left = n + Ax
+            float wy_r = gaussian(nf - Ax, sigma.x);
+            float wy_l = gaussian(nf + Ax, sigma.x);
+            float wc_r = gaussian(nf - Ax, sigma.y);
+            float wc_l = gaussian(nf + Ax, sigma.y);
+            if (wy_r < THRESHOLD && wy_l < THRESHOLD && wc_r < THRESHOLD && wc_l < THRESHOLD)
+                break;
+
+            float offsetR = (Tex.x + nf * dx.x) * config.OriginalSize.x;
+            float tR = tb.line / tb.h_freq_hz + offsetR * tb.pixel_time;
+            vec3 pixelR = texture(Source, Tex + nf * dx).rgb;
+            float phaseR = compute_carrier_phase(tR, tb.sc_freq_hz, tb.field_phase);
+            vec2 carrierR = sincos_phase(phaseR);
+            vec2 carrierR_user = sincos_phase(phaseR + c_phase);
+            float chromaR = pixelR.g * carrierR.x + pixelR.b * carrierR.y;
+            vec3 ycR;
+            ycR.r = pixelR.r;
+            ycR.g = c_gain * chromaR * 2.0 * carrierR_user.x;
+            ycR.b = c_gain * chromaR * 2.0 * carrierR_user.y;
+
+            float offsetL = (Tex.x - nf * dx.x) * config.OriginalSize.x;
+            float tL = tb.line / tb.h_freq_hz + offsetL * tb.pixel_time;
+            vec3 pixelL = texture(Source, Tex - nf * dx).rgb;
+            float phaseL = compute_carrier_phase(tL, tb.sc_freq_hz, tb.field_phase);
+            vec2 carrierL = sincos_phase(phaseL);
+            vec2 carrierL_user = sincos_phase(phaseL + c_phase);
+            float chromaL = pixelL.g * carrierL.x + pixelL.b * carrierL.y;
+            vec3 ycL;
+            ycL.r = pixelL.r;
+            ycL.g = c_gain * chromaL * 2.0 * carrierL_user.x;
+            ycL.b = c_gain * chromaL * 2.0 * carrierL_user.y;
+
+            accum.x += wy_r * ycR.x + wy_l * ycL.x;
+            accum.y += wc_r * ycR.y + wc_l * ycL.y;
+            accum.z += wc_r * ycR.z + wc_l * ycL.z;
+            wsum.x  += wy_r + wy_l;
+            wsum.y  += wc_r + wc_l;
+            wsum.z  += wc_r + wc_l;
+        }
+
+        // Normalized outputs
+        color = accum / max(wsum, vec3(EPS));
+    } else {
+        color = vec3(y_out, yc0.g, yc0.b);
+    }
+
+    if (USER_MONOCHROME > 0.5) {
+        // Monochrome modes
+        float mono;
+
+        if (USER_MONOCHROME < 1.5) {
+            // Standard black & white
+            color.g = 0.0;
+            color.b = 0.0;
+        } else {
+            // Sepia tone
+            vec3 yiq = color;
+
+            yiq.g = 0.1;
+            yiq.b = 0.0;
+            color = RGB_TO_YPbPr * YIQ_TO_RGB * yiq;
+        }
+    }
+
+    // Convert to RGB
     if (BW_MODE < 0.5) {
-        color = YPbPr_TO_RGB * color_vec;
+        color = YPbPr_TO_RGB * color;
     } else if (BW_MODE < 1.5) {
         // BW mode: Y + C to Y channel
         color = vec3(y_out + c_out);

@@ -19,12 +19,11 @@
 //
 // System-level amplifier
 // ------------------------
-// Input: Limited range RGB signal [0.0, 1.0]
-// Output: Voltage (0.7143 V full scale)
+// Input: Voltage
+// Output: Voltage
 //
 // Can be used to alter channel level, e.g. to compensate an emulator's
-// output being too dark or too bright, but otherwise simply changes
-// basis of video level to work with full-range processing.
+// output being too dark or too bright
 
 #include "common.inc"
 
@@ -79,9 +78,9 @@ void main()
        pow(10.0, SYS_GAIN_B / 20.0));
 
    bias = vec3(
-       SYS_BIAS_R * 7.143e-3,
-       SYS_BIAS_G * 7.143e-3,
-       SYS_BIAS_B * 7.143e-3);
+       SYS_BIAS_R * 10e-3,
+       SYS_BIAS_G * 10e-3,
+       SYS_BIAS_B * 10e-3);
 }
 
 #pragma stage fragment
@@ -94,9 +93,6 @@ layout(set = 0, binding = 2) uniform sampler2D Source;
 void main()
 {
     vec3 color = texture(Source, vTexCoord).rgb;
-
-    // Maps to range [0.0, 0.7143] V
-    color = normlimit_to_voltage(color);
 
     if (SYS_RGB_AMP_BYPASS >= 0.5) {
         FragColor = vec4(color, 1.0);
