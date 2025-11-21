@@ -1,8 +1,4 @@
-# SFC S-Video shader set
-#
-# All standard NTSC models, but not the Jr. and Mini models, have an
-# S-Video output available without modification.  S-Video cables were
-# sold separately in Japan and America.
+# SFC composite shader set
 
 shaders = 13
 

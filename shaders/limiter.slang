@@ -50,7 +50,8 @@
 #pragma name Limiter
 #pragma format R16G16B16A16_SFLOAT
 
-#pragma parameter LIMITER_BYPASS "Bypass Voltage Limiter" 0.0 0.0 1.0 1.0
+#pragma parameter SHARPNENER_BYPASS "Bypass sharpener" 0.0 0.0 1.0 1.0
+#pragma parameter LIMITER_BYPASS "Bypass voltage limiter" 0.0 0.0 1.0 1.0
 #pragma parameter LIMITER_DEBUG_OUT_OF_RANGE "Limiter: show out-of-range colors" 0.0 0.0 1.0 1.0
 
 layout(push_constant) uniform Push
@@ -113,6 +114,7 @@ layout(std140, set = 0, binding = 0) uniform UBO
     float W_Y;
 
     // Limiter
+    float SHARPNENER_BYPASS;
     float LIMITER_BYPASS;
     float LIMITER_TYPE;
     float LIMITER_COMPRESSION_POINT;
@@ -124,6 +126,8 @@ layout(std140, set = 0, binding = 0) uniform UBO
 } global;
 
 #define W_Y global.W_Y
+
+#define SHARPNENER_BYPASS global.SHARPNENER_BYPASS
 
 #define LIMITER_BYPASS global.LIMITER_BYPASS
 #define LIMITER_TYPE global.LIMITER_TYPE
@@ -238,12 +242,15 @@ void main()
         H_BLANK_INACTIVE_UNIT);
 
     // Emphasis design parameters using timebase
-    float emphasis_center_hz = 195.0 * tb.h_freq_hz;
-    float emphasis2_center_hz = 1.4 * emphasis_center_hz;
+    if (SHARPNENER_BYPASS < 0.5) {
+    float emphasis_center_hz = 3.1e6;
+    float emphasis2_center_hz = 4.3e6;
     float emphasis_sigma = sigma_tb(tb, 0.6, 3.0);
-    float emphasis2_sigma = sigma_tb(tb, 0.45, 3.0);
+    float emphasis2_sigma = sigma_tb(tb, 0.4, 3.0);
     sharpness_filters = vec4(emphasis_center_hz, emphasis_sigma, emphasis2_center_hz, emphasis2_sigma);
-
+    } else {
+        sharpness_filters = vec4(0.0);
+    }
 }
 
 #pragma stage fragment
@@ -261,7 +268,7 @@ void main()
     // Sharpness bandpass + harmonic (modulated Gaussian) before any other processing.
     float sharpness = USER_SHARPNESS / 100.0;
 
-    if (sharpness > 0.0) {
+    if (sharpness > 0.0 && SHARPNENER_BYPASS < 0.5) {
         float emphasis_center_hz = sharpness_filters.x;
         float emphasis_sigma = sharpness_filters.y;
         float emphasis2_center_hz = sharpness_filters.z;
@@ -326,13 +333,21 @@ void main()
 
         float demod_mod = 2.0 * cos(emphasis_phase0);
         vec3 emphasis_component = band_color * demod_mod;
-        color += sharpness * emphasis_component;
 
         float demod_mod2 = 2.0 * cos(emphasis2_phase0);
         vec3 emphasis2_component = band2_color * demod_mod2;
-        color += sharpness * 0.3 * emphasis2_component;
 
-        color = max(color, vec3(0.0));
+        // Non-linear gain mapping for stronger high sharpness
+        float primary_gain = sharpness * (1.0 + 0.6 * sharpness * sharpness);
+        float harm2_gain = mix(0.3, 0.55, sharpness * sharpness);
+
+        // Energy-based soft limiter to tame overshoots
+        float energy = dot(emphasis_component, emphasis_component);
+        float energy_limit = 1.0 / (1.0 + energy * 12.0 * primary_gain);
+
+        // Apply boosted gains
+        color += primary_gain * energy_limit * emphasis_component;
+        color += primary_gain * harm2_gain * energy_limit * emphasis2_component;
     }
 
     // Clamp negative voltages to zero

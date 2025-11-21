@@ -14,7 +14,7 @@ shader2 = ../../../shaders/sys-rgb-bandlimit.slang
 filter_linear2 = false
 scale_type_x2 = absolute
 scale_type_y2 = source
-scale_x2 = 1024.0
+scale_x2 = 1280.0
 scale_y2 = 1.0
 
 shader3 = ../../../shaders/sys-component.slang
@@ -27,7 +27,7 @@ scale_type4 = source
 
 shader5 = ../../../shaders/display-rgb-bandlimit.slang
 filter_linear5 = false
-scale_type5 = viewport
+scale_type5 = source
 
 shader6 = ../../../shaders/limiter.slang
 filter_linear6 = false
