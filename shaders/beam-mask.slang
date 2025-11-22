@@ -383,7 +383,7 @@ vec3 compute_mask(vec2 screen_uv, float units_x_total, float units_y_total, vec2
             exp(-0.5 * dG2.x * dG2.x / (sigma.x * sigma.x)) + exp(-0.5 * dG2.y * dG2.y / (sigma.x * sigma.x)),
             exp(-0.5 * dB2.x * dB2.x / (sigma.x * sigma.x)) + exp(-0.5 * dB2.y * dB2.y / (sigma.x * sigma.x)));
 
-        mask_color = w0 * rgb0 + w1 * rgb1 + w2 * rgb2;
+        mask_color = (w0 * rgb0 + w1 * rgb1 + w2 * rgb2) / 2.0;
     } else {
         // Shadow mask (4-row cycle)
         float vcycle = mod(y_units - 0.5, 4.0);
@@ -409,7 +409,7 @@ vec3 compute_mask(vec2 screen_uv, float units_x_total, float units_y_total, vec2
             exp(-0.5 * dB2*dB2 / (sigma.x*sigma.x))
         );
 
-        mask_color = w0 * rgb0 + w2 * rgb2;
+        mask_color = (w0 * rgb0 + w2 * rgb2) / 2.0;
     }
 
     if (MASK_MONOCHROME > 0.5) {
