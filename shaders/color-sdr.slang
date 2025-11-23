@@ -28,6 +28,8 @@
 #define SDR
 #define XYZ_TO_COLOR_SPACE XYZ_TO_sRGB
 
+#pragma parameter GAMUT_COMPRESSION "Gamut mapping (off, basic, advanced clip, advanced compress)" 3.0 0.0 3.0 1.0
+
 #include "menus/parameters/output-color-sdr.inc"
 
 #include "color-base.slang"

@@ -26,11 +26,6 @@
 #include "menus/parameters/colorimetry.inc"
 #include "menus/parameters/output-color.inc"
 
-// We cannot put includes in ifdef blocks
-#ifdef SDR
-#pragma parameter GAMUT_COMPRESSION "Gamut mapping (off, basic, advanced clip, advanced compress)" 3.0 0.0 3.0 1.0
-#endif
-
 #pragma parameter COLOR_CONVERSION_BYPASS "Bypass color correction" 0.0 0.0 1.0 1.0
 #pragma parameter DEBUG_COLOR_DELTA "Show color correction deltas" 0.0 0.0 1.0 1.0
 #pragma parameter COLOR_DEBUG_OUT_OF_RANGE "Debug out-of-range colors" 0.0 0.0 1.0 1.0
@@ -135,7 +130,7 @@ vec3 reduce_luminance(const vec3 color)
     return color;
 }
 
-const float THRESHOLD = 1.0 / 256.0;
+const float THRESHOLD = 1.0 / 255.0;
 
 // --- Advanced gamut compression in CIE Luv space -- //
 //
@@ -345,7 +340,7 @@ void main()
 #ifdef SDR
     // Precompute Luv scale factors for advanced gamut compression
     luv_scale = vec2(0.0);
-
+    
     if (GAMUT_COMPRESSION > 2.5) {
         vec3 white_out = XYZ_TO_COLOR_SPACE * white_XYZ;
         vec3 red_out = XYZ_TO_COLOR_SPACE * red_XYZ;
@@ -428,29 +423,28 @@ void main()
 
     if (CHROMATIC_ADAPTATION < 2.5) {
         // Linear, convert directly from conversion matrix
-
+        vec3 XYZ = RGB_to_XYZ * Yrgb;
 #ifdef SDR
         // Take advantage of intermediate for advanced compression
         if (GAMUT_COMPRESSION < 1.5) {
-            RGB = toRGB * RGB_to_XYZ * Yrgb;
+            // Handle later
         } else if (GAMUT_COMPRESSION < 2.5) {
-            vec3 XYZ = RGB_to_XYZ * Yrgb;
             vec3 Luv = XYZ_to_CIE_LUV(XYZ);
 
             RGB = toRGB * XYZ;
             Luv.x *= scale_luminance_cieluv(RGB, Luv, toRGB);
             Luv.yz *= scale_chroma_cieluv(RGB, Luv, toRGB);
 
-            RGB = toRGB * CIE_LUV_to_XYZ(Luv);
+            XYZ = CIE_LUV_to_XYZ(Luv);
         } else if (GAMUT_COMPRESSION < 3.5) {
-            vec3 XYZ = RGB_to_XYZ * Yrgb;
             vec3 Luv = XYZ_to_CIE_LUV(XYZ);
 
             Luv.x *= luv_scale.x;
             Luv.yz *= luv_scale.y;
-            RGB = toRGB * CIE_LUV_to_XYZ(Luv);
+            XYZ = CIE_LUV_to_XYZ(Luv);
         }
 #endif
+        RGB = toRGB * XYZ;
     } else {
         // Bradford adaptation requires special handling
         vec3 ref_XYZ = RGB_to_XYZ * WHITE;
