@@ -63,6 +63,7 @@ textures = BORDER
 BORDER = ../../../share/bezel-trinitron.png
 
 # SNES signal modification
+ENCODER_SETUP = 0
 SYS_BANDWIDTH_R = 5.4
 SYS_BANDWIDTH_G = 5.4
 SYS_BANDWIDTH_B = 5.4
@@ -78,6 +79,7 @@ SC_FREQ_MODE = 0
 SHORTEN_ODD_FIELD_TIME = 1
 
 # Display setup
+DECODER_SETUP = 0
 SCANLINE_BLANK_WEIGHT = 100.0
 TVL = 600.0
 MASK_TYPE = 0.0

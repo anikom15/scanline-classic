@@ -1,8 +1,8 @@
-# SFC composite shader set
+# SFC composite PAL shader set
 
 shaders = 14
 
-shader0 = ../../../shaders/menus/menu-composite-wcg.slang
+shader0 = ../../../shaders/menus/menu-composite-sdr.slang
 filter_linear0 = false
 scale_type0 = source
 
@@ -61,12 +61,12 @@ filter_linear11 = false
 scale_type11 = source
 scale11 = 1.0
 
-shader12 = ../../../shaders/color-wcg.slang
+shader12 = ../../../shaders/color-sdr.slang
 filter_linear12 = false
 scale_type12 = source
 scale12 = 1.0
 
-shader13 = ../../../shaders/bezel-wcg.slang
+shader13 = ../../../shaders/bezel-sdr.slang
 filter_linear13 = true
 scale_type13 = viewport
 scale13 = 1.0
@@ -120,8 +120,8 @@ PHOSPHOR_MANTISSA_R = 1.0
 PHOSPHOR_MANTISSA_G = 100.0
 PHOSPHOR_MANTISSA_B = 100.0
 
-# Colorimetry (NTSC-J)
-COLORIMETRY_PRESET = 2
+# Colorimetry (EBU)
+COLORIMETRY_PRESET = 3
 
 # Bezel parameters
 GLOW_DIFFUSION = 4.0

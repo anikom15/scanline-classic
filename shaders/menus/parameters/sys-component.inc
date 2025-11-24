@@ -1,4 +1,4 @@
-#pragma parameter SYS_COMPONENT_HEADER " —— Component Video Settings —— " 0.0 0.0 0.0 0.0
+#pragma parameter SYS_COMPONENT_HEADER " —— System: Component Video —— " 0.0 0.0 0.0 0.0
 
 #pragma parameter YC_MODEL "System color space (YIQ, YPbPr, YUV, YDbDr, YCbCr)" 1.0 0.0 4.0 1.0
 

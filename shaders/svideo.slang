@@ -154,6 +154,7 @@
 #include "menus/parameters/user-video.inc"
 #include "menus/parameters/sys-timing.inc"
 #include "menus/parameters/svideo.inc"
+#include "menus/parameters/sys-encode.inc"
 
 #pragma name SVideo
 #pragma format R16G16B16A16_SFLOAT
@@ -186,6 +187,8 @@ layout(push_constant) uniform Push
     float BW_MODE;
     float SC_FREQ;          // Custom subcarrier frequency (MHz)
     float SC_FREQ_MODE;     // 0=Auto, 1=NTSC, 2=PAL, 3=Custom
+    float ENCODER_SETUP;
+    float DECODER_SETUP;
 } config;
 
 #define BYPASS_SVIDEO config.BYPASS_SVIDEO
@@ -214,6 +217,9 @@ layout(push_constant) uniform Push
 #define DISPLAY_CUTOFF_ATTEN_C config.DISPLAY_CUTOFF_ATTEN_C
 
 #define BW_MODE config.BW_MODE
+
+#define ENCODER_SETUP config.ENCODER_SETUP
+#define DECODER_SETUP config.DECODER_SETUP
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
@@ -301,12 +307,20 @@ void main()
     vec2 carrier0_user = sincos_phase(phase0 + c_phase);
     float chroma0 = pixel0.g * carrier0.x + pixel0.b * carrier0.y;
 
+    float y_gain = 1.0;
+    float y_offset = 0.0;
+
+    if (ENCODER_SETUP > 0.5) {
+        y_gain = 0.925;
+        y_offset = 0.075;
+    }
+
     // Monitor mode: use center sample directly (bypass filter)
-    float y_out = pixel0.r;
+    float y_out = y_gain * (pixel0.r + y_offset);
     float c_out = chroma0;
 
     vec3 yc0;
-    yc0.r = pixel0.r;
+    yc0.r = y_out;
     yc0.g = c_gain * chroma0 * 2.0 * carrier0_user.x;
     yc0.b = c_gain * chroma0 * 2.0 * carrier0_user.y;
 
@@ -341,7 +355,7 @@ void main()
             vec2 carrierR_user = sincos_phase(phaseR + c_phase);
             float chromaR = pixelR.g * carrierR.x + pixelR.b * carrierR.y;
             vec3 ycR;
-            ycR.r = pixelR.r;
+            ycR.r = y_gain * (pixelR.r + y_offset);
             ycR.g = c_gain * chromaR * 2.0 * carrierR_user.x;
             ycR.b = c_gain * chromaR * 2.0 * carrierR_user.y;
 
@@ -353,7 +367,7 @@ void main()
             vec2 carrierL_user = sincos_phase(phaseL + c_phase);
             float chromaL = pixelL.g * carrierL.x + pixelL.b * carrierL.y;
             vec3 ycL;
-            ycL.r = pixelL.r;
+            ycL.r = y_gain * (pixelL.r + y_offset);
             ycL.g = c_gain * chromaL * 2.0 * carrierL_user.x;
             ycL.b = c_gain * chromaL * 2.0 * carrierL_user.y;
 
@@ -387,6 +401,12 @@ void main()
             yiq.b = 0.0;
             color = RGB_TO_YPbPr * YIQ_TO_RGB * yiq;
         }
+    }
+
+    // Correct setup
+    if (DECODER_SETUP > 0.5) {
+        color.r = (color.r - 0.075) / 0.925;
+        y_out = (y_out - 0.075) / 0.925;
     }
 
     // Convert to RGB

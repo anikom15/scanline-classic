@@ -57,6 +57,7 @@ layout(push_constant) uniform Push
     float BW_MODE;
     float USER_COLOR;   // Color (%)
     float USER_TINT;    // Tint (degrees)
+    float DECODER_SETUP;
 } config;
 
 #define USER_COLOR config.USER_COLOR
@@ -87,6 +88,8 @@ layout(push_constant) uniform Push
 #define FEEDBACK_RAW_Y_CORRECT config.FEEDBACK_RAW_Y_CORRECT
 
 #define BW_MODE config.BW_MODE
+
+#define DECODER_SETUP config.DECODER_SETUP
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
@@ -177,7 +180,7 @@ void main()
     float chroma0 = pixel0.g;
 
     // Monitor mode: use center sample directly (bypass filter)
-    float y_out = pixel0.r;
+    float y_out = composite0;
     float c_out = chroma0;
     
     vec3 demod0;
@@ -262,6 +265,11 @@ void main()
             // No filter; use composite directly
             color.r = FEEDBACK_RAW_Y_CORRECT * color.r - chroma;
         }
+    }
+
+    // Correct for setup if necessary
+    if (DECODER_SETUP > 0.5) {
+        color.r = (color.r - 0.075) / 0.925;
     }
 
     if (BW_MODE < 0.5) {

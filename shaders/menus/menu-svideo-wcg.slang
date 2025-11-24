@@ -22,13 +22,13 @@
 //
 // Helper shader for loading parameters in the appropriate order.
 
+#include "parameters/user-common.inc"
+#include "parameters/user-video.inc"
+#include "parameters/user-uncommon.inc"
 #include "parameters/output-curve.inc"
 #include "parameters/output-tonemap.inc"
 #include "parameters/output-color.inc"
 #include "parameters/output-bezel.inc"
-#include "parameters/user-common.inc"
-#include "parameters/user-video.inc"
-#include "parameters/user-uncommon.inc"
 #include "parameters/service-geometry.inc"
 #include "parameters/scanraster.inc"
 #include "parameters/svideo.inc"
@@ -41,6 +41,7 @@
 #include "parameters/sys-timing.inc"
 #include "parameters/sys-rgb.inc"
 #include "parameters/sys-component.inc"
+#include "parameters/sys-encode.inc"
 #include "parameters/debug-common.inc"
 
 #pragma format A2B10G10R10_UNORM_PACK32

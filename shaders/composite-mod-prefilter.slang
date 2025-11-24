@@ -24,6 +24,7 @@
 
 #include "menus/parameters/sys-timing.inc"
 #include "menus/parameters/composite.inc"
+#include "menus/parameters/sys-encode.inc"
 
 #pragma parameter BYPASS_COMPOSITE_MOD "Bypass Composite modulation (off, on)" 0.0 0.0 1.0 1.0
 
@@ -56,6 +57,7 @@ layout(push_constant) uniform Push
     float NOTCH_Y_CORRECT;
     float RAW_Y_CORRECT;
     float RAW_C_CORRECT;
+    float ENCODER_SETUP;
 } config;
 
 #define BYPASS_COMPOSITE_MOD config.BYPASS_COMPOSITE_MOD
@@ -87,6 +89,8 @@ layout(push_constant) uniform Push
     
 #define RAW_Y_CORRECT config.RAW_Y_CORRECT
 #define RAW_C_CORRECT config.RAW_C_CORRECT
+
+#define ENCODER_SETUP config.ENCODER_SETUP
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
@@ -185,7 +189,17 @@ void main()
     vec2 carrier0 = sincos_phase(phase0);
     
     float chroma0 = pixel0.g * carrier0.x + pixel0.b * carrier0.y;
-    float composite0 = pixel0.r + chroma0;
+
+    float y_gain = 1.0;
+    float y_offset = 0.0;
+
+    if (ENCODER_SETUP > 0.5) {
+        // NTSC setup
+        y_gain = 0.925;
+        y_offset = 0.075;
+    }
+
+    float composite0 = y_gain * (pixel0.r + y_offset) + chroma0;
     
     // Center weights for luma band-stop notch
     float g_env0 = gaussian(Ax, sigma.x);
@@ -225,7 +239,7 @@ void main()
         vec2 carrierR = sincos_phase(phaseR);
         
         float chromaR = pixelR.g * carrierR.x + pixelR.b * carrierR.y;
-        float compositeR = pixelR.r + chromaR;
+        float compositeR = y_gain * (pixelR.r + y_offset) + chromaR;
         
         // Left sample (output pixel lattice)
         float offsetL = baseCenter - nf; // center - n output pixels
@@ -236,7 +250,7 @@ void main()
         vec2 carrierL = sincos_phase(phaseL);
         
         float chromaL = pixelL.g * carrierL.x + pixelL.b * carrierL.y;
-        float compositeL = pixelL.r + chromaL;
+        float compositeL = y_gain * (pixelL.r + y_offset) + chromaL;
         
         // Accumulate luma band-stop components (modulated weights per side)
         float w_notch_r = g_env_r * cos(2.0 * PI * f_sc_px * (nf - Ax));

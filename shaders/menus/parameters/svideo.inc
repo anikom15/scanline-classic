@@ -1,4 +1,6 @@
-#pragma parameter S_VIDEO_HEADER " —— Service: S-Video —— " 0.0 0.0 0.0 0.0
+#pragma parameter S_VIDEO_HEADER " —— Service: S-Video Input —— " 0.0 0.0 0.0 0.0
+
+#pragma parameter DECODER_SETUP "Setup (off, on)" 1.0 0.0 1.0 1.0
 
 #pragma parameter BW_MODE "Monitor mode (0=Off, 1=BW, 2=Y, 3=C, 4=Y+C)" 0.0 0.0 4.0 1.0
 
