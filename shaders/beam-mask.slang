@@ -349,6 +349,140 @@ vec3 integrate_aperture_grille_numerical(float x_min, float x_max, float sigma_x
     return sum / float(samples);
 }
 
+// 2D numerical integration for slot mask (18-unit horizontal, 3-unit vertical cycle)
+vec3 integrate_slot_mask_numerical(
+    float x_min, float x_max, float y_min, float y_max,
+    float sigma_x, float sigma_y,
+    int samples_x, int samples_y)
+{
+    // Vertical weights at sample points (slot mask has 3-unit vertical cycle)
+    float sigma_v = sigma_y * 0.5;
+    vec3 v_weights = vec3(0.0);
+    float step_y = (y_max - y_min) / float(samples_y);
+    
+    for (int j = 0; j < samples_y; ++j) {
+        float y = y_min + (float(j) + 0.5) * step_y;
+        float vc = mod(y - 0.5, 3.0);
+        
+        float w0 = exp(-0.5 * pow(cyclicDist(vc, 0.0, 3.0), 2.0) / (sigma_v * sigma_v));
+        float w1 = exp(-0.5 * pow(cyclicDist(vc, 1.0, 3.0), 2.0) / (sigma_v * sigma_v));
+        float w2 = exp(-0.5 * pow(cyclicDist(vc, 2.0, 3.0), 2.0) / (sigma_v * sigma_v));
+        
+        v_weights += vec3(w0, w1, w2);
+    }
+    v_weights /= float(samples_y);
+    
+    // Horizontal integration for each vertical row pattern (18-unit cycle)
+    float step_x = (x_max - x_min) / float(samples_x);
+    vec3 row0 = vec3(0.0), row1 = vec3(0.0), row2 = vec3(0.0);
+    
+    for (int i = 0; i < samples_x; ++i) {
+        float x = x_min + (float(i) + 0.5) * step_x;
+        float cycle = mod(x - 0.5, 18.0);
+        
+        // Row 0: RGB at 6, 8, 10 and 12, 14, 16
+        vec2 dR0 = vec2(cyclicDist(cycle, 6.0, 18.0), cyclicDist(cycle, 12.0, 18.0));
+        vec2 dG0 = vec2(cyclicDist(cycle, 8.0, 18.0), cyclicDist(cycle, 14.0, 18.0));
+        vec2 dB0 = vec2(cyclicDist(cycle, 10.0, 18.0), cyclicDist(cycle, 16.0, 18.0));
+        
+        row0 += vec3(
+            exp(-0.5 * dR0.x * dR0.x / (sigma_x * sigma_x)) + exp(-0.5 * dR0.y * dR0.y / (sigma_x * sigma_x)),
+            exp(-0.5 * dG0.x * dG0.x / (sigma_x * sigma_x)) + exp(-0.5 * dG0.y * dG0.y / (sigma_x * sigma_x)),
+            exp(-0.5 * dB0.x * dB0.x / (sigma_x * sigma_x)) + exp(-0.5 * dB0.y * dB0.y / (sigma_x * sigma_x))
+        );
+        
+        // Row 1: RGB at 0, 2, 4 and 12, 14, 16
+        vec2 dR1 = vec2(cyclicDist(cycle, 0.0, 18.0), cyclicDist(cycle, 12.0, 18.0));
+        vec2 dG1 = vec2(cyclicDist(cycle, 2.0, 18.0), cyclicDist(cycle, 14.0, 18.0));
+        vec2 dB1 = vec2(cyclicDist(cycle, 4.0, 18.0), cyclicDist(cycle, 16.0, 18.0));
+        
+        row1 += vec3(
+            exp(-0.5 * dR1.x * dR1.x / (sigma_x * sigma_x)) + exp(-0.5 * dR1.y * dR1.y / (sigma_x * sigma_x)),
+            exp(-0.5 * dG1.x * dG1.x / (sigma_x * sigma_x)) + exp(-0.5 * dG1.y * dG1.y / (sigma_x * sigma_x)),
+            exp(-0.5 * dB1.x * dB1.x / (sigma_x * sigma_x)) + exp(-0.5 * dB1.y * dB1.y / (sigma_x * sigma_x))
+        );
+        
+        // Row 2: RGB at 0, 2, 4 and 6, 8, 10
+        vec2 dR2 = vec2(cyclicDist(cycle, 0.0, 18.0), cyclicDist(cycle, 6.0, 18.0));
+        vec2 dG2 = vec2(cyclicDist(cycle, 2.0, 18.0), cyclicDist(cycle, 8.0, 18.0));
+        vec2 dB2 = vec2(cyclicDist(cycle, 4.0, 18.0), cyclicDist(cycle, 10.0, 18.0));
+        
+        row2 += vec3(
+            exp(-0.5 * dR2.x * dR2.x / (sigma_x * sigma_x)) + exp(-0.5 * dR2.y * dR2.y / (sigma_x * sigma_x)),
+            exp(-0.5 * dG2.x * dG2.x / (sigma_x * sigma_x)) + exp(-0.5 * dG2.y * dG2.y / (sigma_x * sigma_x)),
+            exp(-0.5 * dB2.x * dB2.x / (sigma_x * sigma_x)) + exp(-0.5 * dB2.y * dB2.y / (sigma_x * sigma_x))
+        );
+    }
+    
+    row0 /= float(samples_x);
+    row1 /= float(samples_x);
+    row2 /= float(samples_x);
+    
+    // Combine: weighted average of rows
+    return v_weights.x * row0 + v_weights.y * row1 + v_weights.z * row2;
+}
+
+// 2D numerical integration for shadow mask (6-unit horizontal, 4-unit vertical cycle)
+vec3 integrate_shadow_mask_numerical(
+    float x_min, float x_max, float y_min, float y_max,
+    float sigma_x, float sigma_y,
+    int samples_x, int samples_y)
+{
+    // Shadow mask: 6-unit horizontal, 4-unit vertical cycle
+    // Two rows: row 0 at y=0 (RGB at x=0,2,4), row 2 at y=2 (BRG at x=1,3,5)
+    
+    // Vertical weights
+    vec2 v_weights = vec2(0.0);
+    float step_y = (y_max - y_min) / float(samples_y);
+    
+    for (int j = 0; j < samples_y; ++j) {
+        float y = y_min + (float(j) + 0.5) * step_y;
+        float vc = mod(y - 1.0, 4.0);
+        
+        float w0 = exp(-0.5 * pow(cyclicDist(vc, 0.0, 4.0), 2.0) / (sigma_y * sigma_y));
+        float w2 = exp(-0.5 * pow(cyclicDist(vc, 2.0, 4.0), 2.0) / (sigma_y * sigma_y));
+        
+        v_weights += vec2(w0, w2);
+    }
+    v_weights /= float(samples_y);
+    
+    // Horizontal integration
+    float step_x = (x_max - x_min) / float(samples_x);
+    vec3 row0 = vec3(0.0), row2 = vec3(0.0);
+    
+    for (int i = 0; i < samples_x; ++i) {
+        float x = x_min + (float(i) + 0.5) * step_x;
+        float cycle = mod(x - 0.5, 6.0);
+        
+        // Row 0: R=0, G=2, B=4
+        float dR0 = cyclicDist(cycle, 0.0, 6.0);
+        float dG0 = cyclicDist(cycle, 2.0, 6.0);
+        float dB0 = cyclicDist(cycle, 4.0, 6.0);
+        
+        row0 += vec3(
+            exp(-0.5 * dR0*dR0 / (sigma_x*sigma_x)),
+            exp(-0.5 * dG0*dG0 / (sigma_x*sigma_x)),
+            exp(-0.5 * dB0*dB0 / (sigma_x*sigma_x))
+        );
+        
+        // Row 2: B=1, R=3, G=5
+        float dB2 = cyclicDist(cycle, 1.0, 6.0);
+        float dR2 = cyclicDist(cycle, 3.0, 6.0);
+        float dG2 = cyclicDist(cycle, 5.0, 6.0);
+        
+        row2 += vec3(
+            exp(-0.5 * dR2*dR2 / (sigma_x*sigma_x)),
+            exp(-0.5 * dG2*dG2 / (sigma_x*sigma_x)),
+            exp(-0.5 * dB2*dB2 / (sigma_x*sigma_x))
+        );
+    }
+    
+    row0 /= float(samples_x);
+    row2 /= float(samples_x);
+    
+    return v_weights.x * row0 + v_weights.y * row2;
+}
+
 // Compute mask with analytical anti-aliasing when pixels_per_unit < threshold
 vec3 compute_mask(vec2 screen_uv, float units_x_total, float units_y_total, vec2 pixels_per_unit)
 {
@@ -414,46 +548,18 @@ vec3 compute_mask(vec2 screen_uv, float units_x_total, float units_y_total, vec2
         if (passthrough_x && passthrough_y) {
             mask_color = vec3(1.0);
         } else if (use_integration_x || use_integration_y) {
-            // Fall back to point sampling for slot mask (2D integration pending)
-            float cycle = mod(x_units - 0.5, 18.0);
-            float vcycle = mod(y_units - 0.5, 3.0);
-            float sigma_v = sigma.y * 0.5;
-            float w0 = exp(-0.5 * pow(cyclicDist(vcycle, 0.0, 3.0), 2.0) / (sigma_v * sigma_v));
-            float w1 = exp(-0.5 * pow(cyclicDist(vcycle, 1.0, 3.0), 2.0) / (sigma_v * sigma_v));
-            float w2 = exp(-0.5 * pow(cyclicDist(vcycle, 2.0, 3.0), 2.0) / (sigma_v * sigma_v));
-
-            vec2 dR0 = vec2(cyclicDist(cycle, 6.0, 18.0), cyclicDist(cycle, 12.0, 18.0));
-            vec2 dG0 = vec2(cyclicDist(cycle, 8.0, 18.0), cyclicDist(cycle, 14.0, 18.0));
-            vec2 dB0 = vec2(cyclicDist(cycle, 10.0, 18.0), cyclicDist(cycle, 16.0, 18.0));
-            vec3 rgb0 = vec3(
-                exp(-0.5 * dR0.x * dR0.x / (sigma.x * sigma.x)) + exp(-0.5 * dR0.y * dR0.y / (sigma.x * sigma.x)),
-                exp(-0.5 * dG0.x * dG0.x / (sigma.x * sigma.x)) + exp(-0.5 * dG0.y * dG0.y / (sigma.x * sigma.x)),
-                exp(-0.5 * dB0.x * dB0.x / (sigma.x * sigma.x)) + exp(-0.5 * dB0.y * dB0.y / (sigma.x * sigma.x)));
-
-            vec2 dR1 = vec2(cyclicDist(cycle, 0.0, 18.0), cyclicDist(cycle, 12.0, 18.0));
-            vec2 dG1 = vec2(cyclicDist(cycle, 2.0, 18.0), cyclicDist(cycle, 14.0, 18.0));
-            vec2 dB1 = vec2(cyclicDist(cycle, 4.0, 18.0), cyclicDist(cycle, 16.0, 18.0));
-            vec3 rgb1 = vec3(
-                exp(-0.5 * dR1.x * dR1.x / (sigma.x * sigma.x)) + exp(-0.5 * dR1.y * dR1.y / (sigma.x * sigma.x)),
-                exp(-0.5 * dG1.x * dG1.x / (sigma.x * sigma.x)) + exp(-0.5 * dG1.y * dG1.y / (sigma.x * sigma.x)),
-                exp(-0.5 * dB1.x * dB1.x / (sigma.x * sigma.x)) + exp(-0.5 * dB1.y * dB1.y / (sigma.x * sigma.x)));
-
-            vec2 dR2 = vec2(cyclicDist(cycle, 0.0, 18.0), cyclicDist(cycle, 6.0, 18.0));
-            vec2 dG2 = vec2(cyclicDist(cycle, 2.0, 18.0), cyclicDist(cycle, 8.0, 18.0));
-            vec2 dB2 = vec2(cyclicDist(cycle, 4.0, 18.0), cyclicDist(cycle, 10.0, 18.0));
-            vec3 rgb2 = vec3(
-                exp(-0.5 * dR2.x * dR2.x / (sigma.x * sigma.x)) + exp(-0.5 * dR2.y * dR2.y / (sigma.x * sigma.x)),
-                exp(-0.5 * dG2.x * dG2.x / (sigma.x * sigma.x)) + exp(-0.5 * dG2.y * dG2.y / (sigma.x * sigma.x)),
-                exp(-0.5 * dB2.x * dB2.x / (sigma.x * sigma.x)) + exp(-0.5 * dB2.y * dB2.y / (sigma.x * sigma.x)));
-
-            mask_color = w0 * rgb0 + w1 * rgb1 + w2 * rgb2;
+            // 2D numerical integration with adaptive sample counts
+            int samples_x = int(clamp(pixel_width_units * 6.0, 6.0, 24.0));
+            int samples_y = int(clamp(pixel_height_units * 4.0, 4.0, 16.0));
+            float sigma_v = sigma.y * 0.75;
+            mask_color = integrate_slot_mask_numerical(x_min, x_max, y_min, y_max, sigma.x, sigma_v, samples_x, samples_y);
             float brightness_ratio = sqrt(1.0 + (sigma_v * sigma_v));
             mask_color /= brightness_ratio;
         } else {
             // Original point sampling code
             float cycle = mod(x_units - 0.5, 18.0);
             float vcycle = mod(y_units - 0.5, 3.0);
-            float sigma_v = sigma.y * 1.5;
+            float sigma_v = sigma.y * 0.75;
             float w0 = exp(-0.5 * pow(cyclicDist(vcycle, 0.0, 3.0), 2.0) / (sigma_v * sigma_v));
             float w1 = exp(-0.5 * pow(cyclicDist(vcycle, 1.0, 3.0), 2.0) / (sigma_v * sigma_v));
             float w2 = exp(-0.5 * pow(cyclicDist(vcycle, 2.0, 3.0), 2.0) / (sigma_v * sigma_v));
@@ -491,33 +597,10 @@ vec3 compute_mask(vec2 screen_uv, float units_x_total, float units_y_total, vec2
         if (passthrough_x && passthrough_y) {
             mask_color = vec3(1.0);
         } else if (use_integration_x || use_integration_y) {
-            // For now, fall back to point sampling when integration is needed
-            // Full 2D integration implementation pending
-            float cycle = mod(x_units - 0.5, 6.0);
-            float vcycle = mod(y_units - 1.0, 4.0);
-            float sigma_v = sigma.y;
-            float w0 = exp(-0.5 * pow(cyclicDist(vcycle, 0.0, 4.0), 2.0) / (sigma_v * sigma_v));
-            float w2 = exp(-0.5 * pow(cyclicDist(vcycle, 2.0, 4.0), 2.0) / (sigma_v * sigma_v));
-
-            float dR0 = cyclicDist(cycle, 0.0, 6.0);
-            float dG0 = cyclicDist(cycle, 2.0, 6.0);
-            float dB0 = cyclicDist(cycle, 4.0, 6.0);
-            vec3 rgb0 = vec3(
-                exp(-0.5 * dR0*dR0 / (sigma.x*sigma.x)),
-                exp(-0.5 * dG0*dG0 / (sigma.x*sigma.x)),
-                exp(-0.5 * dB0*dB0 / (sigma.x*sigma.x))
-            );
-
-            float dB2 = cyclicDist(cycle, 1.0, 6.0);
-            float dR2 = cyclicDist(cycle, 3.0, 6.0);
-            float dG2 = cyclicDist(cycle, 5.0, 6.0);
-            vec3 rgb2 = vec3(
-                exp(-0.5 * dR2*dR2 / (sigma.x*sigma.x)),
-                exp(-0.5 * dG2*dG2 / (sigma.x*sigma.x)),
-                exp(-0.5 * dB2*dB2 / (sigma.x*sigma.x))
-            );
-
-            mask_color = w0 * rgb0 + w2 * rgb2;
+            // 2D numerical integration with adaptive sample counts
+            int samples_x = int(clamp(pixel_width_units * 6.0, 6.0, 24.0));
+            int samples_y = int(clamp(pixel_height_units * 4.0, 4.0, 16.0));
+            mask_color = integrate_shadow_mask_numerical(x_min, x_max, y_min, y_max, sigma.x, sigma.y, samples_x, samples_y);
             float brightness_ratio = sqrt(1.0 + (sigma.y * sigma.y));
             mask_color /= brightness_ratio;
         } else {
@@ -724,7 +807,7 @@ void main()
     // 1 TVL = 6 horizontal units (one RGB triad + gaps) in all modes
     // TVL here is defined for the selected frame aspect
     float tvl = max(TVL, 1.0);
-    float units_x_total = tvl * 6.0 - 1.0;
+    float units_x_total = tvl * 6.0;
 
     // Vertical units depend on mask type:
     // Aperture: no vertical structure (use minimal for consistency)
