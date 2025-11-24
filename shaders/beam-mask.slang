@@ -352,11 +352,10 @@ vec3 integrate_aperture_grille_numerical(float x_min, float x_max, float sigma_x
 // 2D numerical integration for slot mask (18-unit horizontal, 3-unit vertical cycle)
 vec3 integrate_slot_mask_numerical(
     float x_min, float x_max, float y_min, float y_max,
-    float sigma_x, float sigma_y,
+    float sigma_x, float sigma_v,
     int samples_x, int samples_y)
 {
     // Vertical weights at sample points (slot mask has 3-unit vertical cycle)
-    float sigma_v = sigma_y * 0.5;
     vec3 v_weights = vec3(0.0);
     float step_y = (y_max - y_min) / float(samples_y);
     
@@ -551,15 +550,15 @@ vec3 compute_mask(vec2 screen_uv, float units_x_total, float units_y_total, vec2
             // 2D numerical integration with adaptive sample counts
             int samples_x = int(clamp(pixel_width_units * 6.0, 6.0, 24.0));
             int samples_y = int(clamp(pixel_height_units * 4.0, 4.0, 16.0));
-            float sigma_v = sigma.y * 0.75;
+            float sigma_v = sigma.y * 0.5;
             mask_color = integrate_slot_mask_numerical(x_min, x_max, y_min, y_max, sigma.x, sigma_v, samples_x, samples_y);
-            float brightness_ratio = sqrt(1.0 + (sigma_v * sigma_v));
+            float brightness_ratio = sqrt(1.0 + (sigma.y * sigma.y));
             mask_color /= brightness_ratio;
         } else {
             // Original point sampling code
             float cycle = mod(x_units - 0.5, 18.0);
             float vcycle = mod(y_units - 0.5, 3.0);
-            float sigma_v = sigma.y * 0.75;
+            float sigma_v = sigma.y * 0.5;
             float w0 = exp(-0.5 * pow(cyclicDist(vcycle, 0.0, 3.0), 2.0) / (sigma_v * sigma_v));
             float w1 = exp(-0.5 * pow(cyclicDist(vcycle, 1.0, 3.0), 2.0) / (sigma_v * sigma_v));
             float w2 = exp(-0.5 * pow(cyclicDist(vcycle, 2.0, 3.0), 2.0) / (sigma_v * sigma_v));
@@ -589,7 +588,7 @@ vec3 compute_mask(vec2 screen_uv, float units_x_total, float units_y_total, vec2
                 exp(-0.5 * dB2.x * dB2.x / (sigma.x * sigma.x)) + exp(-0.5 * dB2.y * dB2.y / (sigma.x * sigma.x)));
 
             mask_color = w0 * rgb0 + w1 * rgb1 + w2 * rgb2;
-            float brightness_ratio = sqrt(1.0 + (sigma_v * sigma_v));
+            float brightness_ratio = sqrt(1.0 + (sigma.y * sigma.y));
             mask_color /= brightness_ratio;
         }
     } else {
