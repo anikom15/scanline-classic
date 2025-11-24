@@ -4,7 +4,7 @@
 
 #pragma parameter COLOR_FILTER_MODE "Filter mode (notch, comb, notch+comb, off)" 0.0 0.0 3.0 1.0
 #pragma parameter NOTCH_WIDTH "Notch band-stop width (MHz)" 2.6 0.01 10.0 0.01
-#pragma parameter NOTCH_CENTER_ATTEN_DB "Notch center attenuation (dB)" 48.0 0.0 120.0 0.1
+#pragma parameter NOTCH_CENTER_ATTEN_DB "Notch center attenuation (dB)" 30.0 0.0 120.0 0.1
 #pragma parameter NOTCH_EDGE_ATTEN_DB "Notch edge attenuation (dB)" 3.0 0.0 20.0 0.1
 #pragma parameter NOTCH_Y_CORRECT "Notch Y correction" 1.18 0.0 10.0 0.01
 

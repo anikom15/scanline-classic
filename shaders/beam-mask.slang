@@ -325,91 +325,231 @@ void apply_geometry_pipeline(
     input_tex = clamp(input_tex, 0.0, 1.0);
 }
 
-// ---- Mask computation as a subroutine ----
+// ---- Mask computation with numerical integration for anti-aliasing ----
+// Numerically integrate Gaussian stripe contributions across pixel extent
+// Uses multiple sample points to average the Gaussian values within the pixel
+vec3 integrate_aperture_grille_numerical(float x_min, float x_max, float sigma_x, int samples)
+{
+    vec3 sum = vec3(0.0);
+    float step = (x_max - x_min) / float(samples);
+    
+    for (int i = 0; i < samples; ++i) {
+        float x = x_min + (float(i) + 0.5) * step;
+        
+        // Evaluate Gaussian at each RGB stripe center (0, 2, 4 in 6-unit cycle)
+        float dr = cyclicDist(mod(x - 0.5, 6.0), 0.0, 6.0);
+        float dg = cyclicDist(mod(x - 0.5, 6.0), 2.0, 6.0);
+        float db = cyclicDist(mod(x - 0.5, 6.0), 4.0, 6.0);
+        
+        sum.r += exp(-0.5 * dr*dr / (sigma_x*sigma_x));
+        sum.g += exp(-0.5 * dg*dg / (sigma_x*sigma_x));
+        sum.b += exp(-0.5 * db*db / (sigma_x*sigma_x));
+    }
+    
+    return sum / float(samples);
+}
+
+// Compute mask with analytical anti-aliasing when pixels_per_unit < threshold
 vec3 compute_mask(vec2 screen_uv, float units_x_total, float units_y_total, vec2 pixels_per_unit)
 {
-    vec2 sigma = max(vec2(MASK_DIFFUSION) * 1.0 / pixels_per_unit, vec2(0.25));
+    vec2 sigma = vec2(MASK_DIFFUSION);
 
     // Continuous unit coordinates for smooth Gaussian weighting
     float x_units = screen_uv.x * units_x_total;
     float y_units = screen_uv.y * units_y_total;
 
-    // Horizontal centers aligned to left-edge origin (R starts at [0,1])
-    float cycle = mod(x_units - 0.5, 6.0);
+    // Three-case resolution handling:
+    // Case 1: pixels_per_unit >= 1.0 → Point sampling (sufficient resolution)
+    // Case 2: 1/3 <= pixels_per_unit < 1.0 → Numerical integration (anti-aliasing)
+    // Case 3: pixels_per_unit < 1/3 → Passthrough (pattern nearly unresolvable)
+    const float INTEGRATION_THRESHOLD = 1.0;
+    const float PASSTHROUGH_THRESHOLD = 1.0 / 3.0;
+    
+    bool use_integration_x = (pixels_per_unit.x >= PASSTHROUGH_THRESHOLD && 
+                              pixels_per_unit.x < INTEGRATION_THRESHOLD);
+    bool use_integration_y = (pixels_per_unit.y >= PASSTHROUGH_THRESHOLD && 
+                              pixels_per_unit.y < INTEGRATION_THRESHOLD);
+    bool passthrough_x = pixels_per_unit.x < PASSTHROUGH_THRESHOLD;
+    bool passthrough_y = pixels_per_unit.y < PASSTHROUGH_THRESHOLD;
 
-    // Use cyclic distances so weights are seamless across the 6-unit wrap
-    float dr = cyclicDist(cycle, 0.0, 6.0);
-    float dg = cyclicDist(cycle, 2.0, 6.0);
-    float db = cyclicDist(cycle, 4.0, 6.0);
-
-    float gauss_rx = exp(-0.5 * dr*dr / (sigma.x*sigma.x));
-    float gauss_gx = exp(-0.5 * dg*dg / (sigma.x*sigma.x));
-    float gauss_bx = exp(-0.5 * db*db / (sigma.x*sigma.x));
+    // Pixel extent in unit space
+    float pixel_width_units = 1.0 / max(pixels_per_unit.x, EPS);
+    float pixel_height_units = 1.0 / max(pixels_per_unit.y, EPS);
+    
+    // Pixel bounds in unit space (centered on current position)
+    float x_min = x_units - pixel_width_units * 0.5;
+    float x_max = x_units + pixel_width_units * 0.5;
+    float y_min = y_units - pixel_height_units * 0.5;
+    float y_max = y_units + pixel_height_units * 0.5;
 
     vec3 mask_color;
+    
     if (MASK_TYPE < 0.5) {
-        // Aperture grille
-        mask_color = vec3(gauss_rx, gauss_gx, gauss_bx);
+        // Aperture grille (6-unit horizontal cycle, R G B at 0, 2, 4)
+        
+        if (passthrough_x) {
+            // Case 3: Resolution too low, disable mask
+            mask_color = vec3(1.0);
+        } else if (use_integration_x) {
+            // Case 2: Numerical integration with adaptive sample count
+            // Use more samples when pixel spans more units
+            int samples = int(clamp(pixel_width_units * 6.0, 6.0, 24.0));
+            mask_color = integrate_aperture_grille_numerical(x_min, x_max, sigma.x, samples);
+        } else {
+            // Case 1: Point sampling (original method)
+            float cycle = mod(x_units - 0.5, 6.0);
+            float dr = cyclicDist(cycle, 0.0, 6.0);
+            float dg = cyclicDist(cycle, 2.0, 6.0);
+            float db = cyclicDist(cycle, 4.0, 6.0);
+            
+            float gauss_rx = exp(-0.5 * dr*dr / (sigma.x*sigma.x));
+            float gauss_gx = exp(-0.5 * dg*dg / (sigma.x*sigma.x));
+            float gauss_bx = exp(-0.5 * db*db / (sigma.x*sigma.x));
+            
+            mask_color = vec3(gauss_rx, gauss_gx, gauss_bx);
+        }
     } else if (MASK_TYPE < 1.5) {
-        // Slot mask: 3-unit vertical cycle with periodic black row suppression
-        cycle = mod(x_units - 0.5, 18.0);
-        float vcycle = mod(y_units - 0.5, 3.0);
-        float sigma_v = sigma.y * 1.5;
-        float w0 = exp(-0.5 * pow(cyclicDist(vcycle, 0.0, 3.0), 2.0) / (sigma_v * sigma_v));
-        float w1 = exp(-0.5 * pow(cyclicDist(vcycle, 1.0, 3.0), 2.0) / (sigma_v * sigma_v));
-        float w2 = exp(-0.5 * pow(cyclicDist(vcycle, 2.0, 3.0), 2.0) / (sigma_v * sigma_v));
+        // Slot mask: 18-unit horizontal, 3-unit vertical cycle
+        // For now, only point sampling supported (integration TODO)
+        if (passthrough_x && passthrough_y) {
+            mask_color = vec3(1.0);
+        } else if (use_integration_x || use_integration_y) {
+            // Fall back to point sampling for slot mask (2D integration pending)
+            float cycle = mod(x_units - 0.5, 18.0);
+            float vcycle = mod(y_units - 0.5, 3.0);
+            float sigma_v = sigma.y * 0.5;
+            float w0 = exp(-0.5 * pow(cyclicDist(vcycle, 0.0, 3.0), 2.0) / (sigma_v * sigma_v));
+            float w1 = exp(-0.5 * pow(cyclicDist(vcycle, 1.0, 3.0), 2.0) / (sigma_v * sigma_v));
+            float w2 = exp(-0.5 * pow(cyclicDist(vcycle, 2.0, 3.0), 2.0) / (sigma_v * sigma_v));
 
-        vec2 dR0 = vec2(cyclicDist(cycle, 6.0, 18.0), cyclicDist(cycle, 12.0, 18.0));
-        vec2 dG0 = vec2(cyclicDist(cycle, 8.0, 18.0), cyclicDist(cycle, 14.0, 18.0));
-        vec2 dB0 = vec2(cyclicDist(cycle, 10.0, 18.0), cyclicDist(cycle, 16.0, 18.0));
-        vec3 rgb0 = vec3(
-            exp(-0.5 * dR0.x * dR0.x / (sigma.x * sigma.x)) + exp(-0.5 * dR0.y * dR0.y / (sigma.x * sigma.x)),
-            exp(-0.5 * dG0.x * dG0.x / (sigma.x * sigma.x)) + exp(-0.5 * dG0.y * dG0.y / (sigma.x * sigma.x)),
-            exp(-0.5 * dB0.x * dB0.x / (sigma.x * sigma.x)) + exp(-0.5 * dB0.y * dB0.y / (sigma.x * sigma.x)));
+            vec2 dR0 = vec2(cyclicDist(cycle, 6.0, 18.0), cyclicDist(cycle, 12.0, 18.0));
+            vec2 dG0 = vec2(cyclicDist(cycle, 8.0, 18.0), cyclicDist(cycle, 14.0, 18.0));
+            vec2 dB0 = vec2(cyclicDist(cycle, 10.0, 18.0), cyclicDist(cycle, 16.0, 18.0));
+            vec3 rgb0 = vec3(
+                exp(-0.5 * dR0.x * dR0.x / (sigma.x * sigma.x)) + exp(-0.5 * dR0.y * dR0.y / (sigma.x * sigma.x)),
+                exp(-0.5 * dG0.x * dG0.x / (sigma.x * sigma.x)) + exp(-0.5 * dG0.y * dG0.y / (sigma.x * sigma.x)),
+                exp(-0.5 * dB0.x * dB0.x / (sigma.x * sigma.x)) + exp(-0.5 * dB0.y * dB0.y / (sigma.x * sigma.x)));
 
-        vec2 dR1 = vec2(cyclicDist(cycle, 0.0, 18.0), cyclicDist(cycle, 12.0, 18.0));
-        vec2 dG1 = vec2(cyclicDist(cycle, 2.0, 18.0), cyclicDist(cycle, 14.0, 18.0));
-        vec2 dB1 = vec2(cyclicDist(cycle, 4.0, 18.0), cyclicDist(cycle, 16.0, 18.0));
-        vec3 rgb1 = vec3(
-            exp(-0.5 * dR1.x * dR1.x / (sigma.x * sigma.x)) + exp(-0.5 * dR1.y * dR1.y / (sigma.x * sigma.x)),
-            exp(-0.5 * dG1.x * dG1.x / (sigma.x * sigma.x)) + exp(-0.5 * dG1.y * dG1.y / (sigma.x * sigma.x)),
-            exp(-0.5 * dB1.x * dB1.x / (sigma.x * sigma.x)) + exp(-0.5 * dB1.y * dB1.y / (sigma.x * sigma.x)));
+            vec2 dR1 = vec2(cyclicDist(cycle, 0.0, 18.0), cyclicDist(cycle, 12.0, 18.0));
+            vec2 dG1 = vec2(cyclicDist(cycle, 2.0, 18.0), cyclicDist(cycle, 14.0, 18.0));
+            vec2 dB1 = vec2(cyclicDist(cycle, 4.0, 18.0), cyclicDist(cycle, 16.0, 18.0));
+            vec3 rgb1 = vec3(
+                exp(-0.5 * dR1.x * dR1.x / (sigma.x * sigma.x)) + exp(-0.5 * dR1.y * dR1.y / (sigma.x * sigma.x)),
+                exp(-0.5 * dG1.x * dG1.x / (sigma.x * sigma.x)) + exp(-0.5 * dG1.y * dG1.y / (sigma.x * sigma.x)),
+                exp(-0.5 * dB1.x * dB1.x / (sigma.x * sigma.x)) + exp(-0.5 * dB1.y * dB1.y / (sigma.x * sigma.x)));
 
-        vec2 dR2 = vec2(cyclicDist(cycle, 0.0, 18.0), cyclicDist(cycle, 6.0, 18.0));
-        vec2 dG2 = vec2(cyclicDist(cycle, 2.0, 18.0), cyclicDist(cycle, 8.0, 18.0));
-        vec2 dB2 = vec2(cyclicDist(cycle, 4.0, 18.0), cyclicDist(cycle, 10.0, 18.0));
-        vec3 rgb2 = vec3(
-            exp(-0.5 * dR2.x * dR2.x / (sigma.x * sigma.x)) + exp(-0.5 * dR2.y * dR2.y / (sigma.x * sigma.x)),
-            exp(-0.5 * dG2.x * dG2.x / (sigma.x * sigma.x)) + exp(-0.5 * dG2.y * dG2.y / (sigma.x * sigma.x)),
-            exp(-0.5 * dB2.x * dB2.x / (sigma.x * sigma.x)) + exp(-0.5 * dB2.y * dB2.y / (sigma.x * sigma.x)));
+            vec2 dR2 = vec2(cyclicDist(cycle, 0.0, 18.0), cyclicDist(cycle, 6.0, 18.0));
+            vec2 dG2 = vec2(cyclicDist(cycle, 2.0, 18.0), cyclicDist(cycle, 8.0, 18.0));
+            vec2 dB2 = vec2(cyclicDist(cycle, 4.0, 18.0), cyclicDist(cycle, 10.0, 18.0));
+            vec3 rgb2 = vec3(
+                exp(-0.5 * dR2.x * dR2.x / (sigma.x * sigma.x)) + exp(-0.5 * dR2.y * dR2.y / (sigma.x * sigma.x)),
+                exp(-0.5 * dG2.x * dG2.x / (sigma.x * sigma.x)) + exp(-0.5 * dG2.y * dG2.y / (sigma.x * sigma.x)),
+                exp(-0.5 * dB2.x * dB2.x / (sigma.x * sigma.x)) + exp(-0.5 * dB2.y * dB2.y / (sigma.x * sigma.x)));
 
-        mask_color = (w0 * rgb0 + w1 * rgb1 + w2 * rgb2) / 2.0;
+            mask_color = w0 * rgb0 + w1 * rgb1 + w2 * rgb2;
+            float brightness_ratio = sqrt(1.0 + (sigma_v * sigma_v));
+            mask_color /= brightness_ratio;
+        } else {
+            // Original point sampling code
+            float cycle = mod(x_units - 0.5, 18.0);
+            float vcycle = mod(y_units - 0.5, 3.0);
+            float sigma_v = sigma.y * 1.5;
+            float w0 = exp(-0.5 * pow(cyclicDist(vcycle, 0.0, 3.0), 2.0) / (sigma_v * sigma_v));
+            float w1 = exp(-0.5 * pow(cyclicDist(vcycle, 1.0, 3.0), 2.0) / (sigma_v * sigma_v));
+            float w2 = exp(-0.5 * pow(cyclicDist(vcycle, 2.0, 3.0), 2.0) / (sigma_v * sigma_v));
+
+            vec2 dR0 = vec2(cyclicDist(cycle, 6.0, 18.0), cyclicDist(cycle, 12.0, 18.0));
+            vec2 dG0 = vec2(cyclicDist(cycle, 8.0, 18.0), cyclicDist(cycle, 14.0, 18.0));
+            vec2 dB0 = vec2(cyclicDist(cycle, 10.0, 18.0), cyclicDist(cycle, 16.0, 18.0));
+            vec3 rgb0 = vec3(
+                exp(-0.5 * dR0.x * dR0.x / (sigma.x * sigma.x)) + exp(-0.5 * dR0.y * dR0.y / (sigma.x * sigma.x)),
+                exp(-0.5 * dG0.x * dG0.x / (sigma.x * sigma.x)) + exp(-0.5 * dG0.y * dG0.y / (sigma.x * sigma.x)),
+                exp(-0.5 * dB0.x * dB0.x / (sigma.x * sigma.x)) + exp(-0.5 * dB0.y * dB0.y / (sigma.x * sigma.x)));
+
+            vec2 dR1 = vec2(cyclicDist(cycle, 0.0, 18.0), cyclicDist(cycle, 12.0, 18.0));
+            vec2 dG1 = vec2(cyclicDist(cycle, 2.0, 18.0), cyclicDist(cycle, 14.0, 18.0));
+            vec2 dB1 = vec2(cyclicDist(cycle, 4.0, 18.0), cyclicDist(cycle, 16.0, 18.0));
+            vec3 rgb1 = vec3(
+                exp(-0.5 * dR1.x * dR1.x / (sigma.x * sigma.x)) + exp(-0.5 * dR1.y * dR1.y / (sigma.x * sigma.x)),
+                exp(-0.5 * dG1.x * dG1.x / (sigma.x * sigma.x)) + exp(-0.5 * dG1.y * dG1.y / (sigma.x * sigma.x)),
+                exp(-0.5 * dB1.x * dB1.x / (sigma.x * sigma.x)) + exp(-0.5 * dB1.y * dB1.y / (sigma.x * sigma.x)));
+
+            vec2 dR2 = vec2(cyclicDist(cycle, 0.0, 18.0), cyclicDist(cycle, 6.0, 18.0));
+            vec2 dG2 = vec2(cyclicDist(cycle, 2.0, 18.0), cyclicDist(cycle, 8.0, 18.0));
+            vec2 dB2 = vec2(cyclicDist(cycle, 4.0, 18.0), cyclicDist(cycle, 10.0, 18.0));
+            vec3 rgb2 = vec3(
+                exp(-0.5 * dR2.x * dR2.x / (sigma.x * sigma.x)) + exp(-0.5 * dR2.y * dR2.y / (sigma.x * sigma.x)),
+                exp(-0.5 * dG2.x * dG2.x / (sigma.x * sigma.x)) + exp(-0.5 * dG2.y * dG2.y / (sigma.x * sigma.x)),
+                exp(-0.5 * dB2.x * dB2.x / (sigma.x * sigma.x)) + exp(-0.5 * dB2.y * dB2.y / (sigma.x * sigma.x)));
+
+            mask_color = w0 * rgb0 + w1 * rgb1 + w2 * rgb2;
+            float brightness_ratio = sqrt(1.0 + (sigma_v * sigma_v));
+            mask_color /= brightness_ratio;
+        }
     } else {
-        // Shadow mask (4-row cycle)
-        float vcycle = mod(y_units - 0.5, 4.0);
-        float sigma_v = sigma.y;
-        float w0 = exp(-0.5 * pow(cyclicDist(vcycle, 0.5, 4.0), 2.0) / (sigma_v * sigma_v));
-        float w2 = exp(-0.5 * pow(cyclicDist(vcycle, 2.5, 4.0), 2.0) / (sigma_v * sigma_v));
+        // Shadow mask: 6-unit horizontal, 4-unit vertical cycle
+        if (passthrough_x && passthrough_y) {
+            mask_color = vec3(1.0);
+        } else if (use_integration_x || use_integration_y) {
+            // For now, fall back to point sampling when integration is needed
+            // Full 2D integration implementation pending
+            float cycle = mod(x_units - 0.5, 6.0);
+            float vcycle = mod(y_units - 1.0, 4.0);
+            float sigma_v = sigma.y;
+            float w0 = exp(-0.5 * pow(cyclicDist(vcycle, 0.0, 4.0), 2.0) / (sigma_v * sigma_v));
+            float w2 = exp(-0.5 * pow(cyclicDist(vcycle, 2.0, 4.0), 2.0) / (sigma_v * sigma_v));
 
-        float dR0 = cyclicDist(cycle, 0.0, 6.0);
-        float dG0 = cyclicDist(cycle, 2.0, 6.0);
-        float dB0 = cyclicDist(cycle, 4.0, 6.0);
-        vec3 rgb0 = vec3(
-            exp(-0.5 * dR0*dR0 / (sigma.x*sigma.x)),
-            exp(-0.5 * dG0*dG0 / (sigma.x*sigma.x)),
-            exp(-0.5 * dB0*dB0 / (sigma.x*sigma.x))
-        );
+            float dR0 = cyclicDist(cycle, 0.0, 6.0);
+            float dG0 = cyclicDist(cycle, 2.0, 6.0);
+            float dB0 = cyclicDist(cycle, 4.0, 6.0);
+            vec3 rgb0 = vec3(
+                exp(-0.5 * dR0*dR0 / (sigma.x*sigma.x)),
+                exp(-0.5 * dG0*dG0 / (sigma.x*sigma.x)),
+                exp(-0.5 * dB0*dB0 / (sigma.x*sigma.x))
+            );
 
-        float dB2 = cyclicDist(cycle, 1.0, 6.0);
-        float dR2 = cyclicDist(cycle, 3.0, 6.0);
-        float dG2 = cyclicDist(cycle, 5.0, 6.0);
-        vec3 rgb2 = vec3(
-            exp(-0.5 * dR2*dR2 / (sigma.x*sigma.x)),
-            exp(-0.5 * dG2*dG2 / (sigma.x*sigma.x)),
-            exp(-0.5 * dB2*dB2 / (sigma.x*sigma.x))
-        );
+            float dB2 = cyclicDist(cycle, 1.0, 6.0);
+            float dR2 = cyclicDist(cycle, 3.0, 6.0);
+            float dG2 = cyclicDist(cycle, 5.0, 6.0);
+            vec3 rgb2 = vec3(
+                exp(-0.5 * dR2*dR2 / (sigma.x*sigma.x)),
+                exp(-0.5 * dG2*dG2 / (sigma.x*sigma.x)),
+                exp(-0.5 * dB2*dB2 / (sigma.x*sigma.x))
+            );
 
-        mask_color = (w0 * rgb0 + w2 * rgb2) / 2.0;
+            mask_color = w0 * rgb0 + w2 * rgb2;
+            float brightness_ratio = sqrt(1.0 + (sigma.y * sigma.y));
+            mask_color /= brightness_ratio;
+        } else {
+            // Point sampling
+            float cycle = mod(x_units - 0.5, 6.0);
+            float vcycle = mod(y_units - 1.0, 4.0);
+            float sigma_v = sigma.y;
+            float w0 = exp(-0.5 * pow(cyclicDist(vcycle, 0.0, 4.0), 2.0) / (sigma_v * sigma_v));
+            float w2 = exp(-0.5 * pow(cyclicDist(vcycle, 2.0, 4.0), 2.0) / (sigma_v * sigma_v));
+
+            float dR0 = cyclicDist(cycle, 0.0, 6.0);
+            float dG0 = cyclicDist(cycle, 2.0, 6.0);
+            float dB0 = cyclicDist(cycle, 4.0, 6.0);
+            vec3 rgb0 = vec3(
+                exp(-0.5 * dR0*dR0 / (sigma.x*sigma.x)),
+                exp(-0.5 * dG0*dG0 / (sigma.x*sigma.x)),
+                exp(-0.5 * dB0*dB0 / (sigma.x*sigma.x))
+            );
+
+            float dB2 = cyclicDist(cycle, 1.0, 6.0);
+            float dR2 = cyclicDist(cycle, 3.0, 6.0);
+            float dG2 = cyclicDist(cycle, 5.0, 6.0);
+            vec3 rgb2 = vec3(
+                exp(-0.5 * dR2*dR2 / (sigma.x*sigma.x)),
+                exp(-0.5 * dG2*dG2 / (sigma.x*sigma.x)),
+                exp(-0.5 * dB2*dB2 / (sigma.x*sigma.x))
+            );
+
+            mask_color = w0 * rgb0 + w2 * rgb2;
+            float brightness_ratio = sqrt(1.0 + (sigma.y * sigma.y));
+            mask_color /= brightness_ratio;
+        }
     }
 
     if (MASK_MONOCHROME > 0.5) {

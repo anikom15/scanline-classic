@@ -216,9 +216,7 @@ void main()
     // Filter bypass: convert once and apply SYS_GAIN/BIAS only
     if (SYS_COMPONENT_FILTER_BYPASS >= 1.0) {
         vec3 yc = rgb_to_luma_chroma(texture(Source, vTexCoord).rgb, YC_MODEL);
-        yc.x = yc.x * SYS_GAIN_Y + SYS_BIAS_Y;
-        yc.y = yc.y * SYS_GAIN_U + SYS_BIAS_U;
-        yc.z = yc.z * SYS_GAIN_V + SYS_BIAS_V;
+        yc = gain * (yc + bias);
         FragColor = vec4(yc, 1.0);
         return;
     }
