@@ -54,7 +54,6 @@ layout(push_constant) uniform Push
     float MASK_BYPASS;
     float MASK_TYPE;
     float MASK_INTENSITY;
-    float MASK_MONOCHROME;
     float TVL;
     float BEAM_FOCUS;
     float V_LINES_PER_FIELD;
@@ -74,7 +73,6 @@ layout(push_constant) uniform Push
 #define MASK_BYPASS config.MASK_BYPASS
 #define MASK_TYPE config.MASK_TYPE
 #define MASK_INTENSITY config.MASK_INTENSITY
-#define MASK_MONOCHROME config.MASK_MONOCHROME
 #define TVL config.TVL
 #define BEAM_FOCUS config.BEAM_FOCUS
 #define V_LINES_PER_FIELD config.V_LINES_PER_FIELD
@@ -632,12 +630,6 @@ vec3 compute_mask(vec2 screen_uv, float units_x_total, float units_y_total, vec2
             float brightness_ratio = sqrt(1.0 + (sigma.y * sigma.y));
             mask_color /= brightness_ratio;
         }
-    }
-
-    if (MASK_MONOCHROME > 0.5) {
-        float nb = max(mask_color.r, max(mask_color.g, mask_color.b));
-        float mono = nb * nb * (3.0 - 2.0 * nb);
-        mask_color = vec3(mono);
     }
 
     return mask_color;
