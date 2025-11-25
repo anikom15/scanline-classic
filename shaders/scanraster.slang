@@ -62,6 +62,7 @@ layout(push_constant) uniform Push
     float SHORTEN_ODD_FIELD_TIME;
     float SCANRASTER_BYPASS;
     float SCANLINE_BLANK_WEIGHT;
+    float DOUBLE_REFRESH;
 } config;
 
 #define USER_PICTURE config.USER_PICTURE
@@ -80,6 +81,8 @@ layout(push_constant) uniform Push
 
 #define SCANRASTER_BYPASS config.SCANRASTER_BYPASS
 #define SCANLINE_BLANK_WEIGHT config.SCANLINE_BLANK_WEIGHT
+
+#define DOUBLE_REFRESH config.DOUBLE_REFRESH
 
 layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 MVP;
@@ -143,6 +146,7 @@ void main()
 
     // Determine monitor half-resolution (total lines including blanking)
     float design_v_lines = tb.h_freq_hz / config.OriginalFPS;
+    float line = floor(vTexCoord.y * config.OriginalSize.y);
 
     // Determine if we are in progressive or interlaced mode
     bool is_interlaced = (config.OriginalSize.y > 1.5 * design_v_lines);
@@ -151,6 +155,12 @@ void main()
     // Field parity (0 for even, 1 for odd) with user-configurable order
     int field = 0;
     if (is_interlaced) {
+        if (DOUBLE_REFRESH > 0.5) {
+            // Bypass interlacing entirely
+            vec3 color = bt1886_linear(texture(Source, vTexCoord).rgb, bt1886_a, bt1886_b);
+            FragColor = vec4(0.5 * color, 1.0);  // Dim output to represent averaging
+            return;
+        }
         field = int(mod(tb.field + FIELD_ORDER, 2.0));
     }
 
@@ -158,7 +168,7 @@ void main()
     int output_y_px = int(floor(vTexCoord.y * config.OutputSize.y));
 
     // Input line index (integer, with rounding to nearest to avoid edge cases)
-    int input_line = int(floor(tb.line + 0.5));
+    int input_line = int(floor(line + 0.5));
 
     // Compute mask
     float mask = 0.0;

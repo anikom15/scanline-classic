@@ -58,11 +58,12 @@ layout(push_constant) uniform Push
     float USER_COLOR;   // Color (%)
     float USER_TINT;    // Tint (degrees)
     float DECODER_SETUP;
+    float USER_MONOCHROME; // Monochrome mode (off, B&W, sepia)
 } config;
 
 #define USER_COLOR config.USER_COLOR
 #define USER_TINT config.USER_TINT
-
+#define USER_MONOCHROME config.USER_MONOCHROME
 #define BYPASS_COMPOSITE_DEMOD config.BYPASS_COMPOSITE_DEMOD
 
 #define V_FREQ_MODE config.V_FREQ_MODE
@@ -94,7 +95,10 @@ layout(push_constant) uniform Push
 layout(std140, set = 0, binding = 0) uniform UBO
 {
     mat4 MVP;
+    float DECODER_PAL;
 } global;
+
+#define DECODER_PAL global.DECODER_PAL
 
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
@@ -103,7 +107,8 @@ layout(location = 0) out vec2 vTexCoord;
 layout(location = 1) out vec2 sigma;
 layout(location = 2) out float c_gain;
 layout(location = 3) out float c_phase;
-layout(location = 4) out TimebaseConfig tb;
+layout(location = 4) out mat3 toRGB;
+layout(location = 7) out TimebaseConfig tb;
 
 void main()
 {
@@ -133,6 +138,12 @@ void main()
     // Precompute user color gain/phase
     c_gain = 2.0 * USER_COLOR / 100.0;
     c_phase = PI * USER_TINT / 180.0;
+
+    if (DECODER_PAL < 0.5) {
+        toRGB = YPbPr_TO_RGB;
+    } else {
+        toRGB = YUV_TO_RGB;
+    }
 }
 
 #pragma stage fragment
@@ -141,7 +152,8 @@ layout(location = 0) out vec4 FragColor;
 layout(location = 1) in vec2 sigma;
 layout(location = 2) in float c_gain;
 layout(location = 3) in float c_phase;
-layout(location = 4) in TimebaseConfig tb;
+layout(location = 4) in mat3 toRGB;
+layout(location = 7) in TimebaseConfig tb;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
 void main()
@@ -168,16 +180,27 @@ void main()
     
     // Process center sample
     // Coordinate system fix: use output pixel lattice with tb.pixel_time_px to avoid scale-induced shifts
+    float line = floor(vTexCoord.y * config.OriginalSize.y);
+
     float offset0 = baseCenter; // output pixel center index
-    float t0 = tb.line / tb.h_freq_hz + offset0 * tb.pixel_time_px;
+    float t0 = line / tb.h_freq_hz + offset0 * tb.pixel_time_px;
 
     // R is Y, G is C
     vec3 pixel0 = texture(Source, Tex).rgb;
     float phase0 = compute_carrier_phase(t0, tb.sc_freq_hz, tb.field_phase);
-    vec2 carrier0 = sincos_phase(phase0 + c_phase);
+    vec2 carrier0;
 
     float composite0 = pixel0.r;
     float chroma0 = pixel0.g;
+
+    // PAL phase detection
+    vec2 pal_phase = vec2(0.0, floor(mod(line, 2.0)) * PI * DECODER_PAL);
+
+    if (DECODER_PAL < 0.5) {
+        carrier0 = sincos_phase(phase0 + c_phase);
+    } else {
+        carrier0 = sincos_phase(phase0 + vec2(c_phase) + pal_phase);
+    }
 
     // Monitor mode: use center sample directly (bypass filter)
     float y_out = composite0;
@@ -186,8 +209,17 @@ void main()
     vec3 demod0;
 
     demod0.r = composite0;
-    demod0.g = c_gain * 2.0 * chroma0 * carrier0.x;
-    demod0.b = c_gain * 2.0 * chroma0 * carrier0.y;
+    // PAL decoder
+    if (DECODER_PAL > 0.5) {
+        vec2 dy = vec2(0.0, config.OutputSize.w);
+        vec3 pal_delay = texture(Source, Tex - dy).rgb;
+
+        demod0.g = c_gain * 2.0 * (chroma0 + pal_delay.g) * carrier0.x;
+        demod0.b = c_gain * 2.0 * (chroma0 - pal_delay.g) * carrier0.y;
+    } else {
+        demod0.g = c_gain * 2.0 * chroma0 * carrier0.x;
+        demod0.b = c_gain * 2.0 * chroma0 * carrier0.y;
+    }
     
     // Center weights for all filter modes
     float w_y0 = gaussian(Ax, sigma.x);
@@ -210,28 +242,63 @@ void main()
 
         // Right sample (output pixel lattice)
         float offsetR = baseCenter + nf;
-        float tR = tb.line / tb.h_freq_hz + offsetR * tb.pixel_time_px;
+        float tR = line / tb.h_freq_hz + offsetR * tb.pixel_time_px;
         vec3 pixelR = texture(Source, Tex + nf * dx).rgb;
         float phaseR = compute_carrier_phase(tR, tb.sc_freq_hz, tb.field_phase);
-        vec2 carrierR = sincos_phase(phaseR + c_phase);
+        vec2 carrierR;
+        if (DECODER_PAL < 0.5) {
+            carrierR = sincos_phase(phaseR + c_phase);
+        } else {
+            carrierR = sincos_phase(phaseR + vec2(c_phase) + pal_phase);
+        }
         float compositeR = pixelR.r;
         float chromaR = pixelR.g;
-        vec3 demodR = vec3(compositeR,
-                   c_gain * 2.0 * chromaR * carrierR.x,
-                   c_gain * 2.0 * chromaR * carrierR.y);
-        
+        vec3 demodR;
+
+        if (DECODER_PAL > 0.5) {
+            vec2 dy = vec2(0.0, config.OutputSize.w);
+            vec3 pal_delay = texture(Source, Tex - dy).rgb;
+
+            demodR = vec3(
+                compositeR,
+                c_gain * 2.0 * (chromaR + pal_delay.g) * carrierR.x,
+                c_gain * 2.0 * (chromaR - pal_delay.g) * carrierR.y);
+        } else {
+            demodR = vec3(
+                compositeR,
+                c_gain * 2.0 * chromaR * carrierR.x,
+                c_gain * 2.0 * chromaR * carrierR.y);
+        }
 
         // Left sample (output pixel lattice)
         float offsetL = baseCenter - nf;
-        float tL = tb.line / tb.h_freq_hz + offsetL * tb.pixel_time_px;
+        float tL = line / tb.h_freq_hz + offsetL * tb.pixel_time_px;
         vec3 pixelL = texture(Source, Tex - nf * dx).rgb;
         float phaseL = compute_carrier_phase(tL, tb.sc_freq_hz, tb.field_phase);
-        vec2 carrierL = sincos_phase(phaseL + c_phase);
+        vec2 carrierL;
+        if (DECODER_PAL < 0.5) {
+            carrierL = sincos_phase(phaseL + c_phase);
+        } else {
+            carrierL = sincos_phase(phaseL + vec2(c_phase) + pal_phase);
+        }
         float compositeL = pixelL.r;
         float chromaL = pixelL.g;
-        vec3 demodL = vec3(compositeL,
-                   c_gain * 2.0 * chromaL * carrierL.x,
-                   c_gain * 2.0 * chromaL * carrierL.y);
+        vec3 demodL;
+
+        if (DECODER_PAL > 0.5) {
+            vec2 dy = vec2(0.0, config.OutputSize.w);
+            vec3 pal_delay = texture(Source, Tex - dy).rgb;
+
+            demodL = vec3(
+                compositeL,
+                c_gain * 2.0 * (chromaL + pal_delay.g) * carrierL.x,
+                c_gain * 2.0 * (chromaL - pal_delay.g) * carrierL.y);
+        } else {
+            demodL = vec3(
+                compositeL,
+                c_gain * 2.0 * chromaL * carrierL.x,
+                c_gain * 2.0 * chromaL * carrierL.y);
+        }
         
 
         color.r += w_y_r * demodR.r + w_y_l * demodL.r;
@@ -267,13 +334,35 @@ void main()
         }
     }
 
+    if (USER_MONOCHROME > 0.5) {
+        // Monochrome modes
+        float mono;
+
+        if (USER_MONOCHROME < 1.5) {
+            // Standard black & white
+            color.g = 0.0;
+            color.b = 0.0;
+        } else {
+            // Sepia tone
+            vec3 yiq = color;
+
+            yiq.g = 0.1;
+            yiq.b = 0.0;
+            if (DECODER_PAL < 0.5) {
+                color = RGB_TO_YPbPr * YIQ_TO_RGB * yiq;
+            } else {
+                color = RGB_TO_YUV * YIQ_TO_RGB * yiq;
+            }
+        }
+    }
+
     // Correct for setup if necessary
     if (DECODER_SETUP > 0.5) {
         color.r = (color.r - 0.075) / 0.925;
     }
 
     if (BW_MODE < 0.5) {
-        color = YPbPr_TO_RGB * color;
+        color = toRGB * color;
     } else if (BW_MODE < 1.5) {
         color = vec3(y_out + c_out);
     } else if (BW_MODE < 2.5) {

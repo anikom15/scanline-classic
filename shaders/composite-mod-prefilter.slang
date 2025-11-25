@@ -58,6 +58,7 @@ layout(push_constant) uniform Push
     float RAW_Y_CORRECT;
     float RAW_C_CORRECT;
     float ENCODER_SETUP;
+    float PAL;
 } config;
 
 #define BYPASS_COMPOSITE_MOD config.BYPASS_COMPOSITE_MOD
@@ -91,6 +92,7 @@ layout(push_constant) uniform Push
 #define RAW_C_CORRECT config.RAW_C_CORRECT
 
 #define ENCODER_SETUP config.ENCODER_SETUP
+#define PAL config.PAL
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
@@ -167,7 +169,7 @@ void main()
                     (floor(UV.y) + 0.5) * config.OutputSize.w);
     vec2 dx = vec2(config.OutputSize.z, 0.0);
 
-    const float THRESHOLD = 1.0 / 510.0;
+    const float THRESHOLD = 1.0 / 255.0;
     
     // Accumulators: band-stop notch for luma, modulated band-pass for chroma
     float conv_gcos = 0.0; // Luma notch: Σ g(n)*cos(2π f_sc_px n)*x(n)
@@ -182,11 +184,14 @@ void main()
     // which caused horizontal misalignment at scale factors (e.g., 2x). Now we anchor on
     // baseCenter (already an output pixel index + 0.5) and use tb.pixel_time_px (time per output pixel).
     float offset0 = baseCenter; // output pixel index (center)
-    float t0 = tb.line / tb.h_freq_hz + offset0 * tb.pixel_time_px;
+    float line = floor(vTexCoord.y * config.OriginalSize.y);
+    vec2 pal_phase = vec2(0.0, floor(mod(line, 2.0)) * PI * PAL); // PAL phase alternates every line
+
+    float t0 = line / tb.h_freq_hz + offset0 * tb.pixel_time_px;
     
     vec3 pixel0 = texture(Source, Tex).rgb;
     float phase0 = compute_carrier_phase(t0, tb.sc_freq_hz, tb.field_phase);
-    vec2 carrier0 = sincos_phase(phase0);
+    vec2 carrier0 = sincos_phase(phase0 + pal_phase);
     
     float chroma0 = pixel0.g * carrier0.x + pixel0.b * carrier0.y;
 
@@ -232,22 +237,22 @@ void main()
         
         // Right sample (output pixel lattice)
         float offsetR = baseCenter + nf; // center + n output pixels
-        float tR = tb.line / tb.h_freq_hz + offsetR * tb.pixel_time_px;
+        float tR = line / tb.h_freq_hz + offsetR * tb.pixel_time_px;
         
         vec3 pixelR = texture(Source, Tex + float(n) * dx).rgb;
         float phaseR = compute_carrier_phase(tR, tb.sc_freq_hz, tb.field_phase);
-        vec2 carrierR = sincos_phase(phaseR);
+        vec2 carrierR = sincos_phase(phaseR + pal_phase);
         
         float chromaR = pixelR.g * carrierR.x + pixelR.b * carrierR.y;
         float compositeR = y_gain * (pixelR.r + y_offset) + chromaR;
         
         // Left sample (output pixel lattice)
         float offsetL = baseCenter - nf; // center - n output pixels
-        float tL = tb.line / tb.h_freq_hz + offsetL * tb.pixel_time_px;
+        float tL = line / tb.h_freq_hz + offsetL * tb.pixel_time_px;
         
         vec3 pixelL = texture(Source, Tex - float(n) * dx).rgb;
         float phaseL = compute_carrier_phase(tL, tb.sc_freq_hz, tb.field_phase);
-        vec2 carrierL = sincos_phase(phaseL);
+        vec2 carrierL = sincos_phase(phaseL + pal_phase);
         
         float chromaL = pixelL.g * carrierL.x + pixelL.b * carrierL.y;
         float compositeL = y_gain * (pixelL.r + y_offset) + chromaL;
@@ -273,8 +278,10 @@ void main()
     // Reconstruct chroma with modulated Gaussian band-pass (centered at f_sc)
     // Scale to compensate for modulation gain loss (cos^2 average = 0.5; determined empirically)
     float c_bp = 2.0 * c_bp_accum / max(sum_bp, EPS);
+
     // Comb filter path (compute only when needed)
     vec2 color_comb = vec2(0.0);
+
     if (COLOR_FILTER_MODE >= 0.5 && COLOR_FILTER_MODE < 3.5) {
         // Phase accumulated per line (in radians)
         float phase_per_line = 2.0 * PI * tb.sc_freq_hz / tb.h_freq_hz;
@@ -356,12 +363,10 @@ void main()
     if (BW_MODE < 0.5) {
         // Normal output (no user scaling applied here)
     } else if (BW_MODE < 1.5) {
-        color = vec2(composite0, 0.0);
-    } else if (BW_MODE < 2.5) {
         color = vec2(y_out, 0.0);
-    } else if (BW_MODE < 3.5) {
+    } else if (BW_MODE < 2.5) {
         color = vec2(0.0, c_out);
-    } else if (BW_MODE < 4.5) {
+    } else if (BW_MODE < 3.5) {
         color = vec2(y_out, c_out);
     }
 

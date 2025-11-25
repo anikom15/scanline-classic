@@ -299,7 +299,8 @@ void main()
 
     // Center sample
     float offset0 = Tex.x * config.OriginalSize.x;
-    float t0 = tb.line / tb.h_freq_hz + offset0 * tb.pixel_time;
+    float line = floor(vTexCoord.y * config.OriginalSize.y);
+    float t0 = line / tb.h_freq_hz + offset0 * tb.pixel_time;
 
     vec3 pixel0 = texture(Source, Tex).rgb;
     float phase0 = compute_carrier_phase(t0, tb.sc_freq_hz, tb.field_phase);
@@ -348,7 +349,7 @@ void main()
                 break;
 
             float offsetR = (Tex.x + nf * dx.x) * config.OriginalSize.x;
-            float tR = tb.line / tb.h_freq_hz + offsetR * tb.pixel_time;
+            float tR = line / tb.h_freq_hz + offsetR * tb.pixel_time;
             vec3 pixelR = texture(Source, Tex + nf * dx).rgb;
             float phaseR = compute_carrier_phase(tR, tb.sc_freq_hz, tb.field_phase);
             vec2 carrierR = sincos_phase(phaseR);
@@ -360,7 +361,7 @@ void main()
             ycR.b = c_gain * chromaR * 2.0 * carrierR_user.y;
 
             float offsetL = (Tex.x - nf * dx.x) * config.OriginalSize.x;
-            float tL = tb.line / tb.h_freq_hz + offsetL * tb.pixel_time;
+            float tL = line / tb.h_freq_hz + offsetL * tb.pixel_time;
             vec3 pixelL = texture(Source, Tex - nf * dx).rgb;
             float phaseL = compute_carrier_phase(tL, tb.sc_freq_hz, tb.field_phase);
             vec2 carrierL = sincos_phase(phaseL);

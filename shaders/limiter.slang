@@ -274,7 +274,7 @@ void main()
         float emphasis2_center_hz = sharpness_filters.z;
         float emphasis2_sigma = sharpness_filters.w;
 
-        float line = tb.line;
+        float line = floor(vTexCoord.y * config.OutputSize.y);
 
         // Horizontal lattice setup
         vec2 UV = vTexCoord * config.OutputSize.xy;

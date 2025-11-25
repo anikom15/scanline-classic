@@ -23,7 +23,6 @@ const float PAL_FSC = 4.4336187e6;
 // Timebase and subcarrier configuration
 struct TimebaseConfig {
     float field;
-    float line;
     float field_phase;
     float h_freq_hz;
     float sc_freq_hz;
@@ -39,6 +38,11 @@ vec2 sincos_phase(float phase) {
     // This improves accuracy and ensures consistent results
     phase = mod(phase + PI, 2.0 * PI) - PI;
     return vec2(sin(phase), cos(phase));
+}
+
+vec2 sincos_phase(vec2 phase) {
+    phase = mod(phase + PI, 2.0 * PI) - PI;
+    return vec2(sin(phase.x), cos(phase.y));
 }
 
 // Compute carrier phase with precision-preserving normalization
@@ -77,8 +81,7 @@ TimebaseConfig compute_timebase(
     // Field number cycling (retain existing modulus behavior)
     config.field = float(frame_count % 12u);
 
-    // Line index derived from total lines-per-field (includes blanking region)
-    config.line = floor(tex_coord.y * original_size.y);
+    float line = floor(tex_coord.y * original_size.y);
 
     // Vertical frequency selection
     float v_freq;
@@ -108,7 +111,9 @@ TimebaseConfig compute_timebase(
     config.pixel_time = line_time / total_pixels;
 
     // Subcarrier frequency derivation (preserves previous rounding scheme)
-    float subcarrier_div = round(config.h_freq_hz * total_pixels / NTSC_FSC * 100.0) / 100.0;
+    float fsc = v_lines_per_field < 288.0 ? NTSC_FSC : PAL_FSC;
+
+    float subcarrier_div = round(config.h_freq_hz * total_pixels / fsc * 100.0) / 100.0;
     if (sc_freq_mode < 0.5)
         config.sc_freq_hz = config.h_freq_hz * total_pixels / subcarrier_div;
     else if (sc_freq_mode < 1.5)

@@ -695,7 +695,7 @@ void main()
 
     // Interlace detection/compensation
     float interlace_scale = 1.0;
-    if (config.OriginalSize.y > total_v_lines * 1.7)
+    if (config.OriginalSize.y > total_v_lines * 1.5)
         interlace_scale = 2.0;
 
     float active_v_lines = config.OriginalSize.y / interlace_scale;

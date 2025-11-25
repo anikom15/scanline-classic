@@ -23,8 +23,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
-#include "common.h"
-#include "color.h"
+#include "common.inc"
+#include "color.inc"
 #include "bandlimit.inc"
 #include "modulation.inc"
 
@@ -212,7 +212,8 @@ void main()
     
     // Compute current pixel composite signal
     float offset0 = Tex.x * config.OriginalSize.x;
-    float t0 = tb.line * LINE_TIME + offset0 * tb.pixel_time;
+    float line = floor(vTexCoord.y * config.OriginalSize.y);
+    float t0 = line * LINE_TIME + offset0 * tb.pixel_time;
     
     vec3 pixel0 = texture(Source, Tex).rgb;
     float phase0 = compute_carrier_phase(t0, tb.sc_freq_hz, tb.field_phase);
@@ -250,7 +251,7 @@ void main()
         
         // Right sample
         float offsetR = (Tex.x + float(n) * dx.x) * config.OriginalSize.x;
-        float tR = tb.line * LINE_TIME + offsetR * tb.pixel_time;
+        float tR = line * LINE_TIME + offsetR * tb.pixel_time;
         vec3 pixelR = texture(Source, Tex + float(n) * dx).rgb;
         float phaseR = compute_carrier_phase(tR, tb.sc_freq_hz, tb.field_phase);
         vec2 carrierR = sincos_phase(phaseR);
@@ -259,7 +260,7 @@ void main()
         
         // Left sample
         float offsetL = (Tex.x - float(n) * dx.x) * config.OriginalSize.x;
-        float tL = tb.line * LINE_TIME + offsetL * tb.pixel_time;
+        float tL = line * LINE_TIME + offsetL * tb.pixel_time;
         vec3 pixelL = texture(Source, Tex - float(n) * dx).rgb;
         float phaseL = compute_carrier_phase(tL, tb.sc_freq_hz, tb.field_phase);
         vec2 carrierL = sincos_phase(phaseL);
