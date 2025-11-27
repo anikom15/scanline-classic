@@ -1,7 +1,7 @@
 #pragma parameter S_VIDEO_HEADER " —— Service: Composite Input —— " 0.0 0.0 0.0 0.0
 
 #pragma parameter DECODER_SETUP "Setup (off, on)" 1.0 0.0 1.0 1.0
-#pragma parameter DECODER_PAL "PAL decoder (off, on)" 0.0 0.0 1.0 1.0
+#pragma parameter DECODER_TYPE "Decoder type (YIQ, YPbPr, PAL)" 1.0 0.0 2.0 1.0
 
 #pragma parameter BW_MODE "Monitor mode (off, BW, Y, C, Y+C)" 0.0 0.0 4.0 1.0
 

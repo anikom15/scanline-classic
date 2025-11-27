@@ -24,6 +24,10 @@
 
 #pragma parameter BYPASS_PREFILTER "Bypass prefilter (off, on)" 0.0 0.0 1.0 1.0
 #pragma parameter CHROMA_DEMOD_MODE "Chroma mode (true, simple)" 0.0 0.0 1.0 1.0
+#pragma parameter VSB_CHROMA_AWARE "VSB chroma correction (off, on)" 1.0 0.0 1.0 1.0
+#pragma parameter IQ_CUTOFF_MHZ "IQ lowpass cutoff (MHz)" 4.2 2.0 8.0 0.1
+#pragma parameter CHROMA_I_BW_MHZ "Chroma I bandwidth (MHz)" 1.3 0.4 2.0 0.1
+#pragma parameter CHROMA_Q_BW_MHZ "Chroma Q bandwidth (MHz)" 0.4 0.2 1.3 0.1
 
 #pragma name CompositePreFilter
 #pragma format R16G16_SFLOAT
@@ -36,6 +40,10 @@ layout(push_constant) uniform Push
     float OriginalFPS;
     float BYPASS_PREFILTER;
     float CHROMA_DEMOD_MODE;
+    float VSB_CHROMA_AWARE;
+    float IQ_CUTOFF_MHZ;
+    float CHROMA_I_BW_MHZ;
+    float CHROMA_Q_BW_MHZ;
     float V_FREQ_MODE;
     float V_FREQ;
     float V_LINES_PER_FIELD;
@@ -56,6 +64,10 @@ layout(push_constant) uniform Push
 
 #define BYPASS_PREFILTER config.BYPASS_PREFILTER
 #define CHROMA_DEMOD_MODE config.CHROMA_DEMOD_MODE
+#define VSB_CHROMA_AWARE config.VSB_CHROMA_AWARE
+#define IQ_CUTOFF_MHZ config.IQ_CUTOFF_MHZ
+#define CHROMA_I_BW_MHZ config.CHROMA_I_BW_MHZ
+#define CHROMA_Q_BW_MHZ config.CHROMA_Q_BW_MHZ
 
 #define V_FREQ_MODE config.V_FREQ_MODE
 #define V_FREQ config.V_FREQ
@@ -87,7 +99,8 @@ layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
 layout(location = 1) out vec2 sigma;
-layout(location = 2) out TimebaseConfig tb;
+layout(location = 2) out vec2 vsb_chroma_gain;
+layout(location = 3) out TimebaseConfig tb;
 
 void main()
 {
@@ -112,12 +125,20 @@ void main()
     // Precompute Gaussian sigmas, matching composite-mod-prefilter approach
     sigma.x = sigma_tb(tb, max(NOTCH_WIDTH * 0.5, 1e-6), NOTCH_EDGE_ATTEN_DB);
     sigma.y = sigma_tb(tb, max(BANDPASS_WIDTH * 0.5, 1e-6), NOTCH_EDGE_ATTEN_DB);
+
+    // Compute VSB chroma gain factors for adaptive correction
+    // NTSC: I = ±1.3 MHz (default), Q = ±0.4 MHz (default)
+    // PAL/SECAM: typically narrower symmetric chroma
+    // Adapts to arbitrary subcarrier frequency and IQ lowpass cutoff
+    vsb_chroma_gain = compute_vsb_chroma_gain(tb.sc_freq_hz, IQ_CUTOFF_MHZ,
+                                              CHROMA_I_BW_MHZ, CHROMA_Q_BW_MHZ);
 }
 
 #pragma stage fragment
 layout(location = 0) in vec2 vTexCoord;
 layout(location = 1) in vec2 sigma;
-layout(location = 2) in TimebaseConfig tb;
+layout(location = 2) in vec2 vsb_chroma_gain;
+layout(location = 3) in TimebaseConfig tb;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
@@ -210,20 +231,51 @@ void main()
     float notch_response = conv_gcos / max(sum_g, EPS);
     float y_out = NOTCH_Y_CORRECT * (composite0 - alpha * notch_response);
 
-    // Chroma filtering modes
+    // Chroma filtering modes with VSB-aware correction
     float c_out;
     if (CHROMA_DEMOD_MODE < 0.5) {
-        // True chroma demodulation: restore suppressed sideband
-        // Use modulated Gaussian band-pass centered at f_sc as in composite-mod-prefilter
-        // Scale for modulation loss (~0.5 average for cos^2)
-        float c_bp = 2.0 * c_accum / max(sum_c, EPS);
-        c_out = c_bp;
+        // True chroma demodulation: VSB-aware I/Q recovery
+        // NTSC uses quadrature modulation with asymmetric bandwidths:
+        // - I (in-phase): ±1.3 MHz relative to subcarrier (default)
+        // - Q (quadrature): ±0.4 MHz relative to subcarrier (default)
+        // After IQ mod/demod (4.2 MHz lowpass), sidebands become asymmetric (VSB-shaped)
+        
+        float c_bp_raw = c_accum / max(sum_c, EPS);
+        
+        if (VSB_CHROMA_AWARE > 0.5) {
+            // VSB-aware correction: compensate for sideband asymmetry
+            // The bandpass filter extracts composite chroma containing both I and Q
+            // modulated at 90° phase difference. Effective gain depends on sideband preservation.
+            //
+            // I channel: wider bandwidth (±1.3 MHz) → more affected by IQ cutoff
+            // Q channel: narrow bandwidth (±0.4 MHz) → less affected
+            //
+            // Composite chroma gain: weighted average based on energy contribution
+            const float I_WEIGHT = 0.7;  // I carries most luma-chroma cross-energy
+            const float Q_WEIGHT = 0.3;  // Q carries pure color difference
+            float composite_vsb_gain = I_WEIGHT * vsb_chroma_gain.x + Q_WEIGHT * vsb_chroma_gain.y;
+            
+            // Normalize by VSB gain and modulation loss (cos² average = 0.5)
+            c_out = 2.0 * c_bp_raw / composite_vsb_gain;
+        } else {
+            // Legacy DSB assumption: both sidebands fully preserved
+            // Standard modulation loss compensation only
+            c_out = 2.0 * c_bp_raw;
+        }
     } else {
-        // Simple demodulation: Gaussian low-pass at 0.6 MHz, ~6 dB at cutoff
-        // Achieved by choosing BANDPASS_WIDTH small and edge attenuation ~6 dB; reuse g_bp envelopes
-        // Approximate by reducing modulation (use envelope sum only)
-        float c_lp = (c_accum / max(sum_c, EPS)) * 0.5 + composite0 * 0.0;
-        c_out = c_lp;
+        // Simple demodulation: lowpass at Q bandwidth (0.4 MHz default)
+        // Extracts narrow-band chroma without attempting I/Q separation
+        // Less affected by VSB asymmetry since it doesn't rely on wide I bandwidth
+        float c_lp = c_accum / max(sum_c, EPS);
+        
+        if (VSB_CHROMA_AWARE > 0.5) {
+            // Simple mode uses Q-channel VSB correction
+            // Q bandwidth is narrow, typically less affected by IQ cutoff
+            c_out = 2.0 * c_lp / vsb_chroma_gain.y;
+        } else {
+            // Legacy: assume no sideband loss
+            c_out = 2.0 * c_lp;
+        }
     }
 
     FragColor = vec4(vec2(y_out, c_out), vec2(0.0, 1.0));

@@ -13,8 +13,11 @@ float blackman_harris_4term(float n, float N)
     const float a1 = 0.48829;
     const float a2 = 0.14128;
     const float a3 = 0.01168;
-    
-    float x = 2.0 * PI * (n + 0.5 * N) / N;  // Center window at n=0
+
+    float Ne = max(N - 1.0, 1.0);
+    float k = n + 0.5 * Ne;        // center at (N-1)/2
+    float x = 2.0 * PI * k / Ne;   // use N-1 denominator
+
     return a0 - a1 * cos(x) + a2 * cos(2.0 * x) - a3 * cos(3.0 * x);
 }
 

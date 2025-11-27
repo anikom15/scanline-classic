@@ -36,8 +36,9 @@
 #include "menus/parameters/sys-timing.inc"
 #include "menus/parameters/sys-encode.inc"
 
+#pragma parameter BYPASS_COMPOSITE_MOD "Bypass composite modulation (off, on)" 0.0 0.0 1.0 1.0
 #pragma parameter BYPASS_IQ_MOD "Bypass IQ modulation (off, on)" 0.0 0.0 1.0 1.0
-#pragma parameter IQ_RF_NOISE_DB "RF Noise Level (dB below signal, 0=off)" 0.0 0.0 40.0 1.0
+#pragma parameter IQ_RF_NOISE_DB "RF noise floor (dB)" -30.0 -96.0 96.0 1.0
 
 #pragma name IQMod
 #pragma format R16G16_SFLOAT
@@ -49,6 +50,7 @@ layout(push_constant) uniform Push
     uint FrameCount;
     float OriginalFPS;
     float BYPASS_IQ_MOD;
+    float BYPASS_COMPOSITE_MOD;
     float IQ_RF_NOISE_DB;
     float V_FREQ_MODE;
     float V_FREQ;
@@ -61,9 +63,11 @@ layout(push_constant) uniform Push
     float ENCODER_SETUP;
     float PAL;
     float K_VSB;
+    float IQ_ZERO_PHASE_METHOD2;
 } config;
 
 #define BYPASS_IQ_MOD config.BYPASS_IQ_MOD
+#define BYPASS_COMPOSITE_MOD config.BYPASS_COMPOSITE_MOD
 #define IQ_RF_NOISE_DB config.IQ_RF_NOISE_DB
 #define V_FREQ_MODE config.V_FREQ_MODE
 #define V_FREQ config.V_FREQ
@@ -76,6 +80,7 @@ layout(push_constant) uniform Push
 #define ENCODER_SETUP config.ENCODER_SETUP
 #define PAL config.PAL
 #define K_VSB config.K_VSB
+#define IQ_ZERO_PHASE_METHOD2 config.IQ_ZERO_PHASE_METHOD2
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
@@ -194,7 +199,7 @@ float compute_composite_baseband(vec3 pixel, float t, vec2 pal_phase)
 
 void main()
 {
-    if (BYPASS_IQ_MOD > 0.5) {
+    if (BYPASS_COMPOSITE_MOD > 0.5) {
         // Pass through RGB as (R, 0) for debugging
         vec3 rgb = texture(Source, vTexCoord).rgb;
         FragColor = vec4(rgb.r, 0.0, 0.0, 1.0);
@@ -223,20 +228,30 @@ void main()
     vec3 pixel0 = texture(Source, Tex).rgb;
     float composite0 = compute_composite_baseband(pixel0, t0, pal_phase_base);
 
+    if (BYPASS_IQ_MOD > 0.5) {
+        // Output composite baseband in I channel for debugging
+        FragColor = vec4(composite0, 0.0, 0.0, 1.0);
+        return;
+    }
+
     // I channel: VSB-shaped composite via asymmetric bandpass
     // Blackman-Harris 4-term window for ~92 dB stopband rejection
     float i_signal = 0.0;
+    float i_wsum = 0.0;  // Track coefficient sum for normalization
     float coeff0_bp = sinc_bandpass_bh4(-Ax, fc_upper_norm, fc_lower_norm, filter_taps);
     i_signal = coeff0_bp * composite0;
+    i_wsum = coeff0_bp;
     
     // Q channel: Hilbert transform approximation for VSB asymmetry
     // Type III FIR: h[n] = (2/π) · sin²(πn/2) / n for odd n, h[0] = 0
     float q_signal = 0.0;
+    float q_wsum = 0.0;
     
     // Convolve with neighboring pixels
     // Loop limit set to MAX_TAPS (48) for potential unrolling
     for (int n = 1; n <= 48; ++n) {
-        if (n > max_tap) break;
+        if (n > max_tap)
+            break;
         
         float nf = float(n);
         
@@ -248,12 +263,14 @@ void main()
         
         float coeff_r_bp = sinc_bandpass_bh4(nf - Ax, fc_upper_norm, fc_lower_norm, filter_taps);
         
-        // Hilbert coefficient (Type III FIR)
+        // Hilbert coefficient (Type III FIR) - EVALUATE AT SAME OFFSET POSITION
         float hilbert_r = 0.0;
+        float pos_r = nf - Ax;  // Same fractional position as bandpass
         int ni = int(nf);
-        if (ni % 2 == 1) { // Odd samples only
-            float sin_val = sin(PI * nf * 0.5);
-            hilbert_r = (2.0 / PI) * (sin_val * sin_val) / nf;
+        if (ni % 2 == 1) { // Odd samples only for integer part
+            // Continuous extension: h(x) = (2/π) · sin²(πx/2) / x
+            float sin_val = sin(PI * pos_r * 0.5);
+            hilbert_r = (2.0 / PI) * (sin_val * sin_val) / pos_r;
         }
         
         // Left sample
@@ -264,34 +281,46 @@ void main()
         
         float coeff_l_bp = sinc_bandpass_bh4(-nf - Ax, fc_upper_norm, fc_lower_norm, filter_taps);
         
-        // Hilbert is anti-symmetric: h[-n] = -h[n]
-        float hilbert_l = -hilbert_r;
+        // Hilbert at left position - evaluate at fractional offset
+        float pos_l = -nf - Ax;
+        float hilbert_l = 0.0;
+        if (ni % 2 == 1) {
+            float sin_val = sin(PI * pos_l * 0.5);
+            hilbert_l = (2.0 / PI) * (sin_val * sin_val) / pos_l;
+        }
         
         i_signal += coeff_r_bp * composite_r + coeff_l_bp * composite_l;
-        q_signal += hilbert_r * composite_r + hilbert_l * composite_l;
+        i_wsum += coeff_r_bp + coeff_l_bp;
+        // Shape Q with same bandpass to match I bandwidth and group delay
+        q_signal += hilbert_r * coeff_r_bp * composite_r + hilbert_l * coeff_l_bp * composite_l;
+        // Accumulate magnitude-based weights for normalization (odd-only taps contribute)
+        q_wsum += abs(hilbert_r) * abs(coeff_r_bp) + abs(hilbert_l) * abs(coeff_l_bp);
     }
+    
+    // Normalize bandpass filter to maintain unity gain through mod→demod chain
+    i_signal /= max(i_wsum, EPS);
+    // Normalize Q to the same shaped bandwidth
+    q_signal = q_signal / max(q_wsum, EPS);
     
     // Scale Q by K_VSB to model vestigial sideband asymmetry
     // K_VSB ≈ 0.27 for NTSC VSB (vestige is ~27% of full sideband)
     q_signal *= K_VSB;
     
     // Add RF noise dithering if enabled (simulates thermal/shot noise in RF path)
-    if (IQ_RF_NOISE_DB > 0.5) {
-        // Convert dB to linear amplitude: noise_amp = 10^(-dB/20)
-        float noise_amplitude = exp(-IQ_RF_NOISE_DB * 0.1151292546); // ln(10)/20 ≈ 0.1151
-        
-        // Simple hash-based PRNG for per-pixel noise
-        vec2 seed = vTexCoord * config.OutputSize.xy + vec2(config.FrameCount * 0.12345, line * 0.67890);
-        float hash_i = fract(sin(dot(seed, vec2(12.9898, 78.233))) * 43758.5453);
-        float hash_q = fract(sin(dot(seed + vec2(0.314, 0.271), vec2(12.9898, 78.233))) * 43758.5453);
-        
-        // Box-Muller transform for Gaussian noise (approximate)
-        float noise_i = (hash_i - 0.5) * noise_amplitude;
-        float noise_q = (hash_q - 0.5) * noise_amplitude;
-        
-        i_signal += noise_i;
-        q_signal += noise_q;
-    }
+    // Convert dB to linear amplitude: noise_amp = 10^(-dB/20)
+    float noise_amplitude = exp(IQ_RF_NOISE_DB * 0.1151292546); // ln(10)/20 ≈ 0.1151
+    
+    // Simple hash-based PRNG for per-pixel noise
+    vec2 seed = vTexCoord * config.OutputSize.xy + vec2(config.FrameCount * 0.12345, line * 0.67890);
+    float hash_i = fract(sin(dot(seed, vec2(12.9898, 78.233))) * 43758.5453);
+    float hash_q = fract(sin(dot(seed + vec2(0.314, 0.271), vec2(12.9898, 78.233))) * 43758.5453);
+    
+    // Box-Muller transform for Gaussian noise (approximate)
+    float noise_i = (hash_i - 0.5) * noise_amplitude;
+    float noise_q = (hash_q - 0.5) * noise_amplitude;
+    
+    i_signal += noise_i;
+    q_signal += noise_q;
     
     // Output complex IQ: (I, Q) in RG channels
     FragColor = vec4(i_signal, q_signal, 0.0, 1.0);

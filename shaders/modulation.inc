@@ -154,6 +154,60 @@ TimebaseConfig compute_timebase(
     return config;
 }
 
+// Estimate Blackman-Harris 4-term lowpass filter response at given frequency
+// Used for VSB sideband gain estimation in chroma demodulation
+// Returns approximate magnitude response (0.0 = stopband, 1.0 = passband)
+float blackman_harris_lpf_response(float freq_mhz, float cutoff_mhz)
+{
+    // Normalized frequency relative to cutoff
+    float f_norm = freq_mhz / cutoff_mhz;
+    
+    if (f_norm <= 0.9) {
+        // Passband: flat response within 90% of cutoff
+        return 1.0;
+    } else if (f_norm >= 1.2) {
+        // Stopband: ~92 dB rejection ≈ 0 beyond 120% of cutoff
+        return 0.0;
+    } else {
+        // Transition band: smooth cosine taper (approximates BH4 rolloff)
+        // Maps [0.9, 1.2] → [0, π] for smooth transition
+        float t = (f_norm - 0.9) / 0.3;
+        return 0.5 * (1.0 + cos(PI * t));
+    }
+}
+
+// Compute VSB chroma gain factors for arbitrary subcarrier and IQ cutoff
+// Returns vec2(i_gain, q_gain) accounting for sideband attenuation
+// Inputs:
+//   sc_freq_hz      - Subcarrier frequency in Hz
+//   iq_cutoff_mhz   - IQ lowpass cutoff frequency in MHz
+//   i_bw_mhz        - I channel bandwidth (single-sided) in MHz
+//   q_bw_mhz        - Q channel bandwidth (single-sided) in MHz
+vec2 compute_vsb_chroma_gain(float sc_freq_hz, float iq_cutoff_mhz, 
+                             float i_bw_mhz, float q_bw_mhz)
+{
+    float f_sc_mhz = sc_freq_hz * 1.0e-6;
+    
+    // I channel sideband edges
+    float i_lower = f_sc_mhz - i_bw_mhz;
+    float i_upper = f_sc_mhz + i_bw_mhz;
+    float i_lower_gain = blackman_harris_lpf_response(i_lower, iq_cutoff_mhz);
+    float i_upper_gain = blackman_harris_lpf_response(i_upper, iq_cutoff_mhz);
+    
+    // Q channel sideband edges
+    float q_lower = f_sc_mhz - q_bw_mhz;
+    float q_upper = f_sc_mhz + q_bw_mhz;
+    float q_lower_gain = blackman_harris_lpf_response(q_lower, iq_cutoff_mhz);
+    float q_upper_gain = blackman_harris_lpf_response(q_upper, iq_cutoff_mhz);
+    
+    // Average both sidebands (DSB→VSB conversion factor)
+    vec2 gains;
+    gains.x = 0.5 * (i_lower_gain + i_upper_gain);  // I channel
+    gains.y = 0.5 * (q_lower_gain + q_upper_gain);  // Q channel
+    
+    return max(gains, vec2(0.1));  // Prevent divide-by-zero
+}
+
 // Compute Gaussian low-pass sigma (in texels) from timebase and cutoff spec.
 // Inputs:
 //   tb                 - TimebaseConfig with pixel_time_px set

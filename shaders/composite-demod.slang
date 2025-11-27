@@ -95,10 +95,10 @@ layout(push_constant) uniform Push
 layout(std140, set = 0, binding = 0) uniform UBO
 {
     mat4 MVP;
-    float DECODER_PAL;
+    float DECODER_TYPE; // Decoder type (0=YIQ, 1=YPbPr, 2=PAL)
 } global;
 
-#define DECODER_PAL global.DECODER_PAL
+#define DECODER_TYPE global.DECODER_TYPE
 
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
@@ -139,10 +139,17 @@ void main()
     c_gain = 2.0 * USER_COLOR / 100.0;
     c_phase = PI * USER_TINT / 180.0;
 
-    if (DECODER_PAL < 0.5) {
-        toRGB = YPbPr_TO_RGB;
+    // Select appropriate color space conversion matrix
+    // DECODER_TYPE: 0.0=YIQ, 1.0=YPbPr, 2.0=PAL
+    // YIQ: NTSC standard with 33° I axis, 123° Q axis (relative to burst phase)
+    // YUV: PAL standard with U at 0°, V at 90°
+    // YPbPr: Component video standard (equivalent to YUV for our purposes)
+    if (DECODER_TYPE < 0.5) {
+        toRGB = YIQ_TO_RGB;  // YIQ mode
+    } else if (DECODER_TYPE < 1.5) {
+        toRGB = YPbPr_TO_RGB;  // YPbPr mode
     } else {
-        toRGB = YUV_TO_RGB;
+        toRGB = YUV_TO_RGB;  // PAL mode
     }
 }
 
@@ -196,14 +203,29 @@ void main()
     float composite0 = pixel0.r;
     float chroma0 = pixel0.g;
 
-    // PAL phase detection
-    vec2 pal_phase = vec2(0.0, floor(mod(line, 2.0)) * PI * DECODER_PAL);
+    // PAL phase detection (applies to PAL mode only)
+    vec2 pal_phase = vec2(0.0, floor(mod(line, 2.0)) * PI * step(1.5, DECODER_TYPE));
 
-    if (DECODER_PAL < 0.5) {
-        float ph = normalize_phase(phase0 + c_phase);
+    // Compute demodulation phases:
+    // YIQ: I at 33° (0.576 rad) relative to Pr/V, Q at 33° (0.576 rad) relative to Pb/U
+    // YUV/YPbPr: U/Pb at 0°, V/Pr at 90° (1.571 rad)
+    vec2 chroma_phase_offset;
+    if (DECODER_TYPE < 0.5) {
+        // NTSC YIQ phase relationships
+        chroma_phase_offset = vec2(33.0, 33.0) * PI / 180.0;
+    } else {
+        // YUV/YPbPr phase relationships (0° and 90°)
+        chroma_phase_offset = vec2(0.0, PI * 0.5);
+    }
+
+    if (DECODER_TYPE < 1.5) {
+        // YIQ or YPbPr mode (no PAL line alternation)
+        vec2 ph = vec2(phase0) + vec2(c_phase) + chroma_phase_offset;
+        ph = vec2(normalize_phase(ph.x), normalize_phase(ph.y));
         carrier0 = sincos_phase_raw(ph);
     } else {
-        vec2 ph2 = vec2(phase0) + vec2(c_phase) + pal_phase;
+        // PAL mode (line alternation)
+        vec2 ph2 = vec2(phase0) + vec2(c_phase) + pal_phase + chroma_phase_offset;
         ph2 = vec2(normalize_phase(ph2.x), normalize_phase(ph2.y));
         carrier0 = sincos_phase_raw(ph2);
     }
@@ -215,8 +237,8 @@ void main()
     vec3 demod0;
 
     demod0.r = composite0;
-    // PAL decoder
-    if (DECODER_PAL > 0.5) {
+    // PAL decoder with delay line
+    if (DECODER_TYPE > 1.5) {
         vec2 dy = vec2(0.0, config.OutputSize.w);
         vec3 pal_delay = texture(Source, Tex - dy).rgb;
 
@@ -252,11 +274,12 @@ void main()
         float phaseR = phase0 + nf * sc_phase_inc_per_px;
         phaseR = mod(phaseR + PI, 2.0 * PI) - PI;
         vec2 carrierR;
-        if (DECODER_PAL < 0.5) {
-            float phr = normalize_phase(phaseR + c_phase);
+        if (DECODER_TYPE < 1.5) {
+            vec2 phr = vec2(phaseR) + vec2(c_phase) + chroma_phase_offset;
+            phr = vec2(normalize_phase(phr.x), normalize_phase(phr.y));
             carrierR = sincos_phase_raw(phr);
         } else {
-            vec2 phr2 = vec2(phaseR) + vec2(c_phase) + pal_phase;
+            vec2 phr2 = vec2(phaseR) + vec2(c_phase) + pal_phase + chroma_phase_offset;
             phr2 = vec2(normalize_phase(phr2.x), normalize_phase(phr2.y));
             carrierR = sincos_phase_raw(phr2);
         }
@@ -264,7 +287,7 @@ void main()
         float chromaR = pixelR.g;
         vec3 demodR;
 
-        if (DECODER_PAL > 0.5) {
+        if (DECODER_TYPE > 1.5) {
             vec2 dy = vec2(0.0, config.OutputSize.w);
             vec3 pal_delay = texture(Source, Tex - dy).rgb;
 
@@ -285,11 +308,12 @@ void main()
         float phaseL = phase0 - nf * sc_phase_inc_per_px;
         phaseL = mod(phaseL + PI, 2.0 * PI) - PI;
         vec2 carrierL;
-        if (DECODER_PAL < 0.5) {
-            float phl = normalize_phase(phaseL + c_phase);
+        if (DECODER_TYPE < 1.5) {
+            vec2 phl = vec2(phaseL) + vec2(c_phase) + chroma_phase_offset;
+            phl = vec2(normalize_phase(phl.x), normalize_phase(phl.y));
             carrierL = sincos_phase_raw(phl);
         } else {
-            vec2 phl2 = vec2(phaseL) + vec2(c_phase) + pal_phase;
+            vec2 phl2 = vec2(phaseL) + vec2(c_phase) + pal_phase + chroma_phase_offset;
             phl2 = vec2(normalize_phase(phl2.x), normalize_phase(phl2.y));
             carrierL = sincos_phase_raw(phl2);
         }
@@ -297,7 +321,7 @@ void main()
         float chromaL = pixelL.g;
         vec3 demodL;
 
-        if (DECODER_PAL > 0.5) {
+        if (DECODER_TYPE > 1.5) {
             vec2 dy = vec2(0.0, config.OutputSize.w);
             vec3 pal_delay = texture(Source, Tex - dy).rgb;
 
@@ -355,12 +379,26 @@ void main()
             color.g = 0.0;
             color.b = 0.0;
         } else {
-            // Sepia tone
+            // Sepia tone - apply warm tint in YIQ space
             vec3 yiq = color;
 
-            yiq.g = 0.1;
-            yiq.b = 0.0;
-            if (DECODER_PAL < 0.5) {
+            // Convert current color space to YIQ if needed
+            if (DECODER_TYPE > 0.5) {
+                if (DECODER_TYPE < 1.5) {
+                    yiq = RGB_TO_YIQ * YPbPr_TO_RGB * color;
+                } else {
+                    yiq = RGB_TO_YIQ * YUV_TO_RGB * color;
+                }
+            }
+
+            // Apply sepia toning in YIQ
+            yiq.g = 0.1;  // Orange-cyan (I channel)
+            yiq.b = 0.0;  // Green-magenta (Q channel)
+
+            // Convert back to current color space
+            if (DECODER_TYPE < 0.5) {
+                color = yiq;
+            } else if (DECODER_TYPE < 1.5) {
                 color = RGB_TO_YPbPr * YIQ_TO_RGB * yiq;
             } else {
                 color = RGB_TO_YUV * YIQ_TO_RGB * yiq;

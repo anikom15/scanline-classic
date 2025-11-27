@@ -58,6 +58,7 @@ layout(push_constant) uniform Push
     float H_BLANK_INACTIVE_LEN;
     float H_BLANK_INACTIVE_UNIT;
     float K_VSB;
+    // No extra positional parameters needed
 } config;
 
 #define BYPASS_IQ_DEMOD config.BYPASS_IQ_DEMOD
@@ -160,58 +161,47 @@ void main()
 
     // IQ input (RG channels)
     vec2 iq0 = texture(Source, Tex).rg;
-    float i0 = iq0.r;
-    float q0 = iq0.g;
 
     // Convolve I & Q with lowpass windowed-sinc (matched filter)
-    float i_acc = 0.0;
-    float q_acc = 0.0;
-    float wsum = 0.0;
+    vec2 iq_acc = vec2(0.0);  // Combined I/Q accumulator
+    float wsum = 0.0;          // Single weight sum (filters are identical)
     vec2 dx = vec2(config.OutputSize.z, 0.0);
 
-    // Blackman-Harris 4-term window for matched filtering
+    // Central coefficient
     float c0 = sinc_lowpass_bh4(-Ax, fc_lp_norm, filter_taps);
-    i_acc += c0 * i0;
-    q_acc += c0 * q0;
-    wsum  += c0;
+    iq_acc += c0 * iq0;
+    wsum += c0;
 
     int max_tap = int(filter_taps);
-    // Loop limit matches iq-mod.slang MAX_TAPS (48)
     for (int n = 1; n <= 48; ++n) {
         if (n > max_tap) break;
         
         float nf = float(n);
 
         // Right sample
-        vec2 Tex_r = Tex + nf * dx;
-        vec2 iq_r = texture(Source, Tex_r).rg;
+        vec2 iq_r = texture(Source, Tex + nf * dx).rg;
         float cr = sinc_lowpass_bh4(nf - Ax, fc_lp_norm, filter_taps);
 
         // Left sample
-        vec2 Tex_l = Tex - nf * dx;
-        vec2 iq_l = texture(Source, Tex_l).rg;
+        vec2 iq_l = texture(Source, Tex - nf * dx).rg;
         float cl = sinc_lowpass_bh4(-nf - Ax, fc_lp_norm, filter_taps);
 
-        i_acc += cr * iq_r.r + cl * iq_l.r;
-        q_acc += cr * iq_r.g + cl * iq_l.g;
-        wsum  += cr + cl;
+        iq_acc += cr * iq_r + cl * iq_l;
+        wsum += cr + cl;
     }
 
-    // Normalize LPF gain
-    float I = i_acc / max(wsum, EPS);
-    float Q = q_acc / max(wsum, EPS);
+    // Normalize both I and Q with the same weight sum
+    vec2 IQ = iq_acc / max(wsum, EPS);
+    float I = IQ.r;
+    float Q = IQ.g;
 
-    // Demodulation method selection
+    // Demodulation method selection (unchanged)
     float composite;
     if (IQ_DEMOD_METHOD < 0.5) {
-        // Method 0: I channel only (ignores Q, simplest)
         composite = I;
     } else if (IQ_DEMOD_METHOD < 1.5) {
-        // Method 1: Envelope detection (magnitude, suppresses phase errors)
-        composite = length(vec2(I, Q));
+        composite = length(IQ);
     } else {
-        // Method 2: Linear combination (default, preserves VSB asymmetry)
-        // Q was pre-scaled by K_VSB in modulator, so simple addition recovers signal
         composite = I + Q;
     }
 
