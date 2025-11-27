@@ -30,18 +30,32 @@ struct TimebaseConfig {
     float pixel_time_px;
 };
 
+// Phase normalization helper. Keeps phase bounded in [-PI, PI].
+// Prefer calling this at the call site right before trig for best optimizer behavior.
+float normalize_phase(float phase) {
+    return mod(phase + PI, 2.0 * PI) - PI;
+}
+
 // Optimized sincos helper - computes both sin and cos in one call
 // Returns vec2(sin(phase), cos(phase))
-// This is more efficient than calling sin() and cos() separately
+// NOTE: During migration, call sites should pre-normalize using normalize_phase()
+// and use sincos_phase_raw(). This function is kept for backward compatibility
+// and will be simplified to the raw form after all call sites are updated.
 vec2 sincos_phase(float phase) {
-    // Normalize phase to [-PI, PI] once before trig calls
-    // This improves accuracy and ensures consistent results
-    phase = mod(phase + PI, 2.0 * PI) - PI;
     return vec2(sin(phase), cos(phase));
 }
 
+// Raw variant without internal normalization. Caller must ensure phase is bounded.
+vec2 sincos_phase_raw(float phase) {
+    return vec2(sin(phase), cos(phase));
+}
+
+// Vec2 overloads. The convention in this codebase uses phase.x for sin and phase.y for cos.
 vec2 sincos_phase(vec2 phase) {
-    phase = mod(phase + PI, 2.0 * PI) - PI;
+    return vec2(sin(phase.x), cos(phase.y));
+}
+
+vec2 sincos_phase_raw(vec2 phase) {
     return vec2(sin(phase.x), cos(phase.y));
 }
 
@@ -53,7 +67,9 @@ float compute_carrier_phase(float t, float sc_freq_hz, float field_phase) {
     // Normalize by extracting only fractional cycles to keep values small
     float cycles = sc_freq_hz * t;
     float fractional_cycles = fract(cycles);
-    return 2.0 * PI * fractional_cycles + field_phase;
+    float phase = 2.0 * PI * fractional_cycles + field_phase;
+    // Ensure phase is in [-PI, PI] so downstream callers may safely use raw trig
+    return normalize_phase(phase);
 }
 
 // Compute complete timebase configuration for composite/S-Video processing

@@ -1,41 +1,26 @@
 /* Filename: window.inc
 
-   Shared windowed-sinc utilities for IF modulation/demodulation.
-   Contains Kaiser I0 approximation, Kaiser window, and
-   lowpass/bandpass windowed-sinc coefficient helpers.
+   Shared windowed-sinc utilities for IQ modulation/demodulation.
+   Contains Blackman-Harris 4-term window and windowed-sinc coefficient helpers.
 */
 
-// Modified Bessel function I0(x) - polynomial approximation
-float bessel_i0(float x)
+// Blackman-Harris 4-term window
+// Stopband: ~92 dB, mainlobe width = 8π/N
+// Superior phase linearity and stopband rejection compared to Kaiser
+float blackman_harris_4term(float n, float N)
 {
-    float ax = abs(x);
-    if (ax < 3.75) {
-        float y = x / 3.75;
-        y = y * y;
-        return 1.0 + y * (3.5156229 + y * (3.0899424 + y * (1.2067492
-            + y * (0.2659732 + y * (0.0360768 + y * 0.0045813)))));
-    } else {
-        float y = 3.75 / ax;
-        return (exp(ax) / sqrt(ax)) * (0.39894228 + y * (0.01328592
-            + y * (0.00225319 + y * (-0.00157565 + y * (0.00916281
-            + y * (-0.02057706 + y * (0.02635537 + y * (-0.01647633
-            + y * 0.00392377))))))));
-    }
-}
-
-// Kaiser window, safe domain via clamped radius
-float kaiser_window(float n, float N, float beta)
-{
-    float halfN = max(0.5 * N, 1e-6);
-    float r = abs(n) / halfN;  // 0 at center, 1 at edge
-    float t = 1.0 - clamp(r * r, 0.0, 1.0);
-    float denom = max(bessel_i0(beta), 1e-6);
-    float arg = beta * sqrt(t);
-    return bessel_i0(arg) / denom;
+    const float a0 = 0.35875;
+    const float a1 = 0.48829;
+    const float a2 = 0.14128;
+    const float a3 = 0.01168;
+    
+    float x = 2.0 * PI * (n + 0.5 * N) / N;  // Center window at n=0
+    return a0 - a1 * cos(x) + a2 * cos(2.0 * x) - a3 * cos(3.0 * x);
 }
 
 // Windowed-sinc lowpass coefficient (normalized cutoff fc in cycles/sample)
-float sinc_lowpass_coeff(float n, float fc_norm, float beta, float N)
+// Uses Blackman-Harris 4-term window for ~92 dB stopband rejection
+float sinc_lowpass_bh4(float n, float fc_norm, float N)
 {
     float sinc;
     if (abs(n) < EPS) {
@@ -44,12 +29,13 @@ float sinc_lowpass_coeff(float n, float fc_norm, float beta, float N)
         float x = 2.0 * PI * fc_norm * n;
         sinc = sin(x) / (PI * n);
     }
-    float w = kaiser_window(n, N, beta);
+    float w = blackman_harris_4term(n, N);
     return sinc * w;
 }
 
 // Windowed-sinc bandpass coefficient using difference of two lowpass sincs
-float sinc_bandpass_coeff(float n, float fc_upper, float fc_lower, float beta, float N)
+// Uses Blackman-Harris 4-term window for ~92 dB stopband rejection
+float sinc_bandpass_bh4(float n, float fc_upper, float fc_lower, float N)
 {
     float sinc_upper, sinc_lower;
     if (abs(n) < EPS) {
@@ -62,6 +48,6 @@ float sinc_bandpass_coeff(float n, float fc_upper, float fc_lower, float beta, f
         sinc_lower = sin(x_lower) / (PI * n);
     }
     float bandpass_sinc = sinc_upper - sinc_lower;
-    float window = kaiser_window(n, N, beta);
+    float window = blackman_harris_4term(n, N);
     return bandpass_sinc * window;
 }

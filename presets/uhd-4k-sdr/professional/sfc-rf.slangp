@@ -21,11 +21,11 @@ shader3 = ../../../shaders/sys-component.slang
 filter_linear3 = false
 scale_type3 = source
 
-shader4 = ../../../shaders/if-mod.slang
+shader4 = ../../../shaders/iq-mod.slang
 filter_linear4 = false
 scale_type4 = source
 
-shader5 = ../../../shaders/if-demod.slang
+shader5 = ../../../shaders/iq-demod.slang
 filter_linear5 = false
 scale_type5 = source
 

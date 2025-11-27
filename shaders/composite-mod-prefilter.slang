@@ -199,7 +199,9 @@ void main()
     
     vec3 pixel0 = texture(Source, Tex).rgb;
     float phase0 = compute_carrier_phase(t0, tb.sc_freq_hz, tb.field_phase);
-    vec2 carrier0 = sincos_phase(phase0 + pal_phase);
+    vec2 ph0 = vec2(phase0) + pal_phase;
+    ph0 = vec2(normalize_phase(ph0.x), normalize_phase(ph0.y));
+    vec2 carrier0 = sincos_phase_raw(ph0);
     
     float chroma0 = pixel0.g * carrier0.x + pixel0.b * carrier0.y;
 
@@ -248,7 +250,9 @@ void main()
         // Use phase increment for better precision
         float phaseR = phase0 + nf * sc_phase_inc_per_px;
         phaseR = mod(phaseR + PI, 2.0 * PI) - PI;
-        vec2 carrierR = sincos_phase(phaseR + pal_phase);
+        vec2 phr = vec2(phaseR) + pal_phase;
+        phr = vec2(normalize_phase(phr.x), normalize_phase(phr.y));
+        vec2 carrierR = sincos_phase_raw(phr);
         
         float chromaR = pixelR.g * carrierR.x + pixelR.b * carrierR.y;
         float compositeR = y_gain * (pixelR.r + y_offset) + chromaR;
@@ -258,7 +262,9 @@ void main()
         // Use phase increment for better precision
         float phaseL = phase0 - nf * sc_phase_inc_per_px;
         phaseL = mod(phaseL + PI, 2.0 * PI) - PI;
-        vec2 carrierL = sincos_phase(phaseL + pal_phase);
+        vec2 phl = vec2(phaseL) + pal_phase;
+        phl = vec2(normalize_phase(phl.x), normalize_phase(phl.y));
+        vec2 carrierL = sincos_phase_raw(phl);
         
         float chromaL = pixelL.g * carrierL.x + pixelL.b * carrierL.y;
         float compositeL = y_gain * (pixelL.r + y_offset) + chromaL;
@@ -321,9 +327,9 @@ void main()
             texture(Source, Tex + comb_dy_3).rgb);
 
         // Calculate carrier phases with time corrections
-        vec2 carrier_1 = sincos_phase(compute_carrier_phase(t0 - t_offset_1, tb.sc_freq_hz, tb.field_phase));
-        vec2 carrier_2 = sincos_phase(compute_carrier_phase(t0 - t_offset_2, tb.sc_freq_hz, tb.field_phase));
-        vec2 carrier_3 = sincos_phase(compute_carrier_phase(t0 - t_offset_3, tb.sc_freq_hz, tb.field_phase));
+        vec2 carrier_1 = sincos_phase_raw(compute_carrier_phase(t0 - t_offset_1, tb.sc_freq_hz, tb.field_phase));
+        vec2 carrier_2 = sincos_phase_raw(compute_carrier_phase(t0 - t_offset_2, tb.sc_freq_hz, tb.field_phase));
+        vec2 carrier_3 = sincos_phase_raw(compute_carrier_phase(t0 - t_offset_3, tb.sc_freq_hz, tb.field_phase));
 
         // Reconstruct composite signals from taps
         vec3 comb_taps_composite = vec3(

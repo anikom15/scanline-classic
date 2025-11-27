@@ -200,9 +200,12 @@ void main()
     vec2 pal_phase = vec2(0.0, floor(mod(line, 2.0)) * PI * DECODER_PAL);
 
     if (DECODER_PAL < 0.5) {
-        carrier0 = sincos_phase(phase0 + c_phase);
+        float ph = normalize_phase(phase0 + c_phase);
+        carrier0 = sincos_phase_raw(ph);
     } else {
-        carrier0 = sincos_phase(phase0 + vec2(c_phase) + pal_phase);
+        vec2 ph2 = vec2(phase0) + vec2(c_phase) + pal_phase;
+        ph2 = vec2(normalize_phase(ph2.x), normalize_phase(ph2.y));
+        carrier0 = sincos_phase_raw(ph2);
     }
 
     // Monitor mode: use center sample directly (bypass filter)
@@ -250,9 +253,12 @@ void main()
         phaseR = mod(phaseR + PI, 2.0 * PI) - PI;
         vec2 carrierR;
         if (DECODER_PAL < 0.5) {
-            carrierR = sincos_phase(phaseR + c_phase);
+            float phr = normalize_phase(phaseR + c_phase);
+            carrierR = sincos_phase_raw(phr);
         } else {
-            carrierR = sincos_phase(phaseR + vec2(c_phase) + pal_phase);
+            vec2 phr2 = vec2(phaseR) + vec2(c_phase) + pal_phase;
+            phr2 = vec2(normalize_phase(phr2.x), normalize_phase(phr2.y));
+            carrierR = sincos_phase_raw(phr2);
         }
         float compositeR = pixelR.r;
         float chromaR = pixelR.g;
@@ -280,9 +286,12 @@ void main()
         phaseL = mod(phaseL + PI, 2.0 * PI) - PI;
         vec2 carrierL;
         if (DECODER_PAL < 0.5) {
-            carrierL = sincos_phase(phaseL + c_phase);
+            float phl = normalize_phase(phaseL + c_phase);
+            carrierL = sincos_phase_raw(phl);
         } else {
-            carrierL = sincos_phase(phaseL + vec2(c_phase) + pal_phase);
+            vec2 phl2 = vec2(phaseL) + vec2(c_phase) + pal_phase;
+            phl2 = vec2(normalize_phase(phl2.x), normalize_phase(phl2.y));
+            carrierL = sincos_phase_raw(phl2);
         }
         float compositeL = pixelL.r;
         float chromaL = pixelL.g;

@@ -196,6 +196,7 @@ void main()
 
     // Chroma band-pass setup
     float f_sc_px = tb.sc_freq_hz * pixel_time_px;
+    float sc_phase_inc_per_px = 2.0 * PI * tb.sc_freq_hz * pixel_time_px;
     float bw_px = max(BANDPASS_WIDTH * 1.0e6 * pixel_time_px, 1e-6);
     float a_bp = pow(10.0, -NOTCH_EDGE_ATTEN_DB / 20.0);
     float sigma_bp = sqrt(-log(a_bp)) / (sqrt(2.0) * PI * (bw_px * 0.5));
@@ -217,7 +218,7 @@ void main()
     
     vec3 pixel0 = texture(Source, Tex).rgb;
     float phase0 = compute_carrier_phase(t0, tb.sc_freq_hz, tb.field_phase);
-    vec2 carrier0 = sincos_phase(phase0);
+    vec2 carrier0 = sincos_phase_raw(phase0);
     
     float chroma0 = pixel0.g * carrier0.x + pixel0.b * carrier0.y;
     float composite0 = pixel0.r + chroma0;
@@ -250,20 +251,16 @@ void main()
             break;
         
         // Right sample
-        float offsetR = (Tex.x + float(n) * dx.x) * config.OriginalSize.x;
-        float tR = line * LINE_TIME + offsetR * tb.pixel_time;
         vec3 pixelR = texture(Source, Tex + float(n) * dx).rgb;
-        float phaseR = compute_carrier_phase(tR, tb.sc_freq_hz, tb.field_phase);
-        vec2 carrierR = sincos_phase(phaseR);
+        float phaseR = normalize_phase(phase0 + nf * sc_phase_inc_per_px);
+        vec2 carrierR = sincos_phase_raw(phaseR);
         float chromaR = pixelR.g * carrierR.x + pixelR.b * carrierR.y;
         float compositeR = pixelR.r + chromaR;
         
         // Left sample
-        float offsetL = (Tex.x - float(n) * dx.x) * config.OriginalSize.x;
-        float tL = line * LINE_TIME + offsetL * tb.pixel_time;
         vec3 pixelL = texture(Source, Tex - float(n) * dx).rgb;
-        float phaseL = compute_carrier_phase(tL, tb.sc_freq_hz, tb.field_phase);
-        vec2 carrierL = sincos_phase(phaseL);
+        float phaseL = normalize_phase(phase0 - nf * sc_phase_inc_per_px);
+        vec2 carrierL = sincos_phase_raw(phaseL);
         float chromaL = pixelL.g * carrierL.x + pixelL.b * carrierL.y;
         float compositeL = pixelL.r + chromaL;
         
@@ -310,9 +307,9 @@ void main()
         texture(Source, Tex + comb_dy_3).rgb);
 
     // Calculate carrier phases with time corrections
-    vec2 carrier_1 = sincos_phase(compute_carrier_phase(t0 - t_offset_1, tb.sc_freq_hz, tb.field_phase));
-    vec2 carrier_2 = sincos_phase(compute_carrier_phase(t0 - t_offset_2, tb.sc_freq_hz, tb.field_phase));
-    vec2 carrier_3 = sincos_phase(compute_carrier_phase(t0 - t_offset_3, tb.sc_freq_hz, tb.field_phase));
+    vec2 carrier_1 = sincos_phase_raw(compute_carrier_phase(t0 - t_offset_1, tb.sc_freq_hz, tb.field_phase));
+    vec2 carrier_2 = sincos_phase_raw(compute_carrier_phase(t0 - t_offset_2, tb.sc_freq_hz, tb.field_phase));
+    vec2 carrier_3 = sincos_phase_raw(compute_carrier_phase(t0 - t_offset_3, tb.sc_freq_hz, tb.field_phase));
 
     // Reconstruct composite signals
     vec3 comb_taps_composite = vec3(

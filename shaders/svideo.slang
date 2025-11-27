@@ -307,8 +307,9 @@ void main()
 
     vec3 pixel0 = texture(Source, Tex).rgb;
     float phase0 = compute_carrier_phase(t0, tb.sc_freq_hz, tb.field_phase);
-    vec2 carrier0 = sincos_phase(phase0);
-    vec2 carrier0_user = sincos_phase(phase0 + c_phase);
+    vec2 carrier0 = sincos_phase_raw(phase0);
+    float phase0_user = normalize_phase(phase0 + c_phase);
+    vec2 carrier0_user = sincos_phase_raw(phase0_user);
     float chroma0 = pixel0.g * carrier0.x + pixel0.b * carrier0.y;
 
     float y_gain = 1.0;
@@ -355,8 +356,9 @@ void main()
             // Use phase increment for better precision
             float phaseR = phase0 + nf * sc_phase_inc_per_px;
             phaseR = mod(phaseR + PI, 2.0 * PI) - PI;
-            vec2 carrierR = sincos_phase(phaseR);
-            vec2 carrierR_user = sincos_phase(phaseR + c_phase);
+            vec2 carrierR = sincos_phase_raw(phaseR);
+            float phaseR_user = normalize_phase(phaseR + c_phase);
+            vec2 carrierR_user = sincos_phase_raw(phaseR_user);
             float chromaR = pixelR.g * carrierR.x + pixelR.b * carrierR.y;
             vec3 ycR;
             ycR.r = y_gain * (pixelR.r + y_offset);
@@ -367,8 +369,9 @@ void main()
             // Use phase increment for better precision
             float phaseL = phase0 - nf * sc_phase_inc_per_px;
             phaseL = mod(phaseL + PI, 2.0 * PI) - PI;
-            vec2 carrierL = sincos_phase(phaseL);
-            vec2 carrierL_user = sincos_phase(phaseL + c_phase);
+            vec2 carrierL = sincos_phase_raw(phaseL);
+            float phaseL_user = normalize_phase(phaseL + c_phase);
+            vec2 carrierL_user = sincos_phase_raw(phaseL_user);
             float chromaL = pixelL.g * carrierL.x + pixelL.b * carrierL.y;
             vec3 ycL;
             ycL.r = y_gain * (pixelL.r + y_offset);
