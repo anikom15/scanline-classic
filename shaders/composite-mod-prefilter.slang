@@ -1,21 +1,26 @@
 #version 450
 
-/* Filename: composite-mod-prefilter.slang
-
-   Copyright (C) 2025 W. M. Martinez
-
-   This program is free software: you can redistribute it and/or modify
-   it under the terms of the GNU General Public License as published by
-   the Free Software Foundation, either version 3 of the License, or
-   (at your option) any later version.
-
-   This program is distributed in the hope that it will be useful,
-   but WITHOUT ANY WARRANTY; without even the implied warranty of
-   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-   GNU General Public License for more details.
-
-   You should have received a copy of the GNU General Public License
-   along with this program.  If not, see <https://www.gnu.org/licenses/>. */
+// Filename: composite-mod-prefilter.slang
+//
+// Copyright (C) 2025 W. M. Martinez
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+//
+// Composite modulation with separation filter pre-processing
+// ----------------------------------------------------------------
+// Input: Component voltage signal
+// Output: Separated Y and C signals
 
 #include "common.inc"
 #include "color.inc"
@@ -141,7 +146,7 @@ layout(set = 0, binding = 2) uniform sampler2D Source;
 
 void main()
 {
-    if (BYPASS_COMPOSITE_MOD >= 1.0) {
+    if (BYPASS_COMPOSITE_MOD > 0.5) {
         FragColor = vec4(texture(Source, vTexCoord).rgb, 1.0);
         return;
     }
@@ -188,6 +193,9 @@ void main()
     vec2 pal_phase = vec2(0.0, floor(mod(line, 2.0)) * PI * PAL); // PAL phase alternates every line
 
     float t0 = line / tb.h_freq_hz + offset0 * tb.pixel_time_px;
+    
+    // Precompute phase increment per pixel for precision in filter loops
+    float sc_phase_inc_per_px = 2.0 * PI * tb.sc_freq_hz * tb.pixel_time_px;
     
     vec3 pixel0 = texture(Source, Tex).rgb;
     float phase0 = compute_carrier_phase(t0, tb.sc_freq_hz, tb.field_phase);
@@ -236,22 +244,20 @@ void main()
             break;
         
         // Right sample (output pixel lattice)
-        float offsetR = baseCenter + nf; // center + n output pixels
-        float tR = line / tb.h_freq_hz + offsetR * tb.pixel_time_px;
-        
         vec3 pixelR = texture(Source, Tex + float(n) * dx).rgb;
-        float phaseR = compute_carrier_phase(tR, tb.sc_freq_hz, tb.field_phase);
+        // Use phase increment for better precision
+        float phaseR = phase0 + nf * sc_phase_inc_per_px;
+        phaseR = mod(phaseR + PI, 2.0 * PI) - PI;
         vec2 carrierR = sincos_phase(phaseR + pal_phase);
         
         float chromaR = pixelR.g * carrierR.x + pixelR.b * carrierR.y;
         float compositeR = y_gain * (pixelR.r + y_offset) + chromaR;
         
         // Left sample (output pixel lattice)
-        float offsetL = baseCenter - nf; // center - n output pixels
-        float tL = line / tb.h_freq_hz + offsetL * tb.pixel_time_px;
-        
         vec3 pixelL = texture(Source, Tex - float(n) * dx).rgb;
-        float phaseL = compute_carrier_phase(tL, tb.sc_freq_hz, tb.field_phase);
+        // Use phase increment for better precision
+        float phaseL = phase0 - nf * sc_phase_inc_per_px;
+        phaseL = mod(phaseL + PI, 2.0 * PI) - PI;
         vec2 carrierL = sincos_phase(phaseL + pal_phase);
         
         float chromaL = pixelL.g * carrierL.x + pixelL.b * carrierL.y;

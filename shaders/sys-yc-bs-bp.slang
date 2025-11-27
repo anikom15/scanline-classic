@@ -47,8 +47,8 @@
      Output: vec4(Y, C, 0, 1)
 */
 
-#include "common.h"
-#include "color.h"
+#include "common.inc"
+#include "color.inc"
 #include "modulation.inc"
 
 #pragma name SysYCNotchBandpass
@@ -203,7 +203,7 @@ void main(){
     float sigma_notch = sigma_tb(tb, max(NOTCH_W_MHZ * 0.5, 1e-6), NOTCH_EDGE_DB);
     float sigma_bp    = sigma_tb(tb, max(BP_W_MHZ    * 0.5, 1e-6), BP_EDGE_DB);
 
-    const float THRESHOLD = 1.0 / 510.0;
+    const float THRESHOLD = 1.0 / 255.0;
 
     // Accumulators
     float conv_notch = 0.0; // Σ gσ(n)*cos(2π f_sc n)*composite(n)
@@ -227,7 +227,7 @@ void main(){
     sum_bp  += g_bp0;
 
     // Symmetric lobes
-    for(int n=1; n<=32; ++n){
+    for(int n = 1; n <= 20; ++n){
         float nf = float(n);
         // Symmetric distances from kernel center: right = n - Ax, left = n + Ax
         float gN_r = gaussian(nf - Ax, sigma_notch);

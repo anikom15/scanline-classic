@@ -2,7 +2,7 @@
 
 shaders = 14
 
-shader0 = ../../../shaders/menus/menu-composite-sdr.slang
+shader0 = ../../../shaders/menus/menu-composite-wcg.slang
 filter_linear0 = false
 scale_type0 = source
 
@@ -61,18 +61,18 @@ filter_linear11 = false
 scale_type11 = source
 scale11 = 1.0
 
-shader12 = ../../../shaders/color-sdr.slang
+shader12 = ../../../shaders/color-wcg.slang
 filter_linear12 = false
 scale_type12 = source
 scale12 = 1.0
 
-shader13 = ../../../shaders/bezel-sdr.slang
+shader13 = ../../../shaders/bezel-wcg.slang
 filter_linear13 = true
 scale_type13 = viewport
 scale13 = 1.0
   
 textures = BORDER
-BORDER = ../../../share/bezel-trinitron.png
+BORDER = ../../../share/bezel-tv.png
 
 # Signal modification
 ENCODER_SETUP = 0
@@ -99,30 +99,25 @@ SHORTEN_ODD_FIELD_TIME = 1
 
 # Display setup
 DECODER_SETUP = 0
-SCANLINE_BLANK_WEIGHT = 100.0
-TVL = 600.0
-MASK_TYPE = 0.0
-MASK_DIFFUSION = 2.0
-BEAM_FOCUS = 50.0
-MAGNETIC_CORRECTION = 30.0
-DEFLECTION_ANGLE = 90.0
-SCREEN_ANGLE_H = 25.0
-SCREEN_ANGLE_V = 0.0
-TRAPEZOIDAL_CORRECTION = 3.0
-S_CORRECTION_H = 3.0
-S_CORRECTION_V = 3.0
+SCANLINE_BLANK_WEIGHT = 50.0
+TVL = 350.0
+MASK_TYPE = 1.0
+MASK_DIFFUSION = 3.0
+BEAM_FOCUS = 25.0
+MAGNETIC_CORRECTION = 45.0
 
-USER_H_SIZE = 56.0
-USER_V_SIZE = 56.0
+NTSC_CONVERSION = 1.0
+LIMITER_COMPRESSION_POINT = 90.0
+USER_SHARPNESS = 50.0
+USER_H_SIZE = 59.0
+USER_V_SIZE = 59.0
+
+FEEDBACK_FILTER = 0.0
 
 # Phosphor
-PHOSPHOR_MANTISSA_R = 1.0
-PHOSPHOR_MANTISSA_G = 100.0
-PHOSPHOR_MANTISSA_B = 100.0
+PHOSPHOR_MANTISSA_R = 2.0
+PHOSPHOR_MANTISSA_G = 200.0
+PHOSPHOR_MANTISSA_B = 200.0
 
 # Colorimetry (NTSC-J)
 COLORIMETRY_PRESET = 2
-
-# Bezel parameters
-GLOW_DIFFUSION = 4.0
-GLOW_COMPRESSION = 0.7

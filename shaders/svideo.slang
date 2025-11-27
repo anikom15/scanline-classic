@@ -302,6 +302,9 @@ void main()
     float line = floor(vTexCoord.y * config.OriginalSize.y);
     float t0 = line / tb.h_freq_hz + offset0 * tb.pixel_time;
 
+    // Precompute phase increment per pixel for precision in filter loop
+    float sc_phase_inc_per_px = 2.0 * PI * tb.sc_freq_hz * tb.pixel_time;
+
     vec3 pixel0 = texture(Source, Tex).rgb;
     float phase0 = compute_carrier_phase(t0, tb.sc_freq_hz, tb.field_phase);
     vec2 carrier0 = sincos_phase(phase0);
@@ -348,10 +351,10 @@ void main()
             if (wy_r < THRESHOLD && wy_l < THRESHOLD && wc_r < THRESHOLD && wc_l < THRESHOLD)
                 break;
 
-            float offsetR = (Tex.x + nf * dx.x) * config.OriginalSize.x;
-            float tR = line / tb.h_freq_hz + offsetR * tb.pixel_time;
             vec3 pixelR = texture(Source, Tex + nf * dx).rgb;
-            float phaseR = compute_carrier_phase(tR, tb.sc_freq_hz, tb.field_phase);
+            // Use phase increment for better precision
+            float phaseR = phase0 + nf * sc_phase_inc_per_px;
+            phaseR = mod(phaseR + PI, 2.0 * PI) - PI;
             vec2 carrierR = sincos_phase(phaseR);
             vec2 carrierR_user = sincos_phase(phaseR + c_phase);
             float chromaR = pixelR.g * carrierR.x + pixelR.b * carrierR.y;
@@ -360,10 +363,10 @@ void main()
             ycR.g = c_gain * chromaR * 2.0 * carrierR_user.x;
             ycR.b = c_gain * chromaR * 2.0 * carrierR_user.y;
 
-            float offsetL = (Tex.x - nf * dx.x) * config.OriginalSize.x;
-            float tL = line / tb.h_freq_hz + offsetL * tb.pixel_time;
             vec3 pixelL = texture(Source, Tex - nf * dx).rgb;
-            float phaseL = compute_carrier_phase(tL, tb.sc_freq_hz, tb.field_phase);
+            // Use phase increment for better precision
+            float phaseL = phase0 - nf * sc_phase_inc_per_px;
+            phaseL = mod(phaseL + PI, 2.0 * PI) - PI;
             vec2 carrierL = sincos_phase(phaseL);
             vec2 carrierL_user = sincos_phase(phaseL + c_phase);
             float chromaL = pixelL.g * carrierL.x + pixelL.b * carrierL.y;
