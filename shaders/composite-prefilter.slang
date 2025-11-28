@@ -130,8 +130,9 @@ void main()
     // NTSC: I = ±1.3 MHz (default), Q = ±0.4 MHz (default)
     // PAL/SECAM: typically narrower symmetric chroma
     // Adapts to arbitrary subcarrier frequency and IQ lowpass cutoff
-    vsb_chroma_gain = compute_vsb_chroma_gain(tb.sc_freq_hz, IQ_CUTOFF_MHZ,
-                                              CHROMA_I_BW_MHZ, CHROMA_Q_BW_MHZ);
+    vsb_chroma_gain = compute_vsb_chroma_gain(
+        tb.sc_freq_hz, IQ_CUTOFF_MHZ,
+        CHROMA_I_BW_MHZ, CHROMA_Q_BW_MHZ);
 }
 
 #pragma stage fragment

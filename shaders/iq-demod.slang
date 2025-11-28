@@ -17,16 +17,17 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
-// IQ baseband demodulation shader for VSB
+// IQ baseband demodulation shader for VSB (matches new mod pipeline)
 // -----------------------------------------------------------------
-// Input: Complex IQ baseband (R16G16_SFLOAT, RG channels)
+// Input: Complex IQ baseband (R16G16_SFLOAT, RG channels) from iq-mod.slang
 // Output: Recovered composite baseband (R16_SFLOAT)
 //
-// This shader recovers the composite signal from complex IQ:
-// - Applies matched lowpass filtering to I and Q channels
-// - Combines using envelope detection: sqrt(I² + Q²) or linear mix
-// - Kaiser windowed-sinc lowpass for matched filtering
-// - Maintains unity gain through the IQ mod→demod chain
+// Demod strategies:
+// Method 0 (Hilbert): composite = I_lp - Hilbert{Q_lp}
+//   Uses H{H{x}} = -x identity to restore vestigial sideband
+// Method 1 (Weighted): composite = I_lp + alpha * Q_lp
+//   Direct weighted combination where alpha accounts for VSB asymmetry
+// - Blackman-Harris 4-term windowed-sinc lowpass with adaptive taps
 
 #include "common.inc"
 #include "modulation.inc"
@@ -36,7 +37,8 @@
 #include "menus/parameters/sys-encode.inc"
 
 #pragma parameter BYPASS_IQ_DEMOD "Bypass IQ demod (off, on)" 0.0 0.0 1.0 1.0
-#pragma parameter IQ_DEMOD_METHOD "IQ Demod (0=I only, 1=Envelope, 2=Linear)" 2.0 0.0 2.0 1.0
+#pragma parameter IQ_DEMOD_METHOD "Demod method (Hilbert=0 Weighted=1)" 0.0 0.0 1.0 1.0
+#pragma parameter IQ_DEMOD_Q_WEIGHT "Q channel weight (weighted mode)" -0.27 -2.0 2.0 0.01
 
 #pragma name IQDemod
 #pragma format R16_SFLOAT
@@ -49,6 +51,7 @@ layout(push_constant) uniform Push
     float OriginalFPS;
     float BYPASS_IQ_DEMOD;
     float IQ_DEMOD_METHOD;
+    float IQ_DEMOD_Q_WEIGHT;
     float V_FREQ_MODE;
     float V_FREQ;
     float V_LINES_PER_FIELD;
@@ -58,11 +61,11 @@ layout(push_constant) uniform Push
     float H_BLANK_INACTIVE_LEN;
     float H_BLANK_INACTIVE_UNIT;
     float K_VSB;
-    // No extra positional parameters needed
 } config;
 
 #define BYPASS_IQ_DEMOD config.BYPASS_IQ_DEMOD
 #define IQ_DEMOD_METHOD config.IQ_DEMOD_METHOD
+#define IQ_DEMOD_Q_WEIGHT config.IQ_DEMOD_Q_WEIGHT
 #define K_VSB config.K_VSB
 #define V_FREQ_MODE config.V_FREQ_MODE
 #define V_FREQ config.V_FREQ
@@ -79,21 +82,27 @@ layout(std140, set = 0, binding = 0) uniform UBO
 } global;
 
 // VSB baseband parameters (must match iq-mod.slang)
-const float VSB_VESTIGE_MHZ = 0.75;        // Lower sideband vestige width
-const float VSB_FULL_SIDEBAND_MHZ = 4.2;   // Upper sideband full width (NTSC)
+const float VSB_I_CUTOFF_MHZ = 4.2;        // I channel lowpass cutoff
+const float VSB_Q_CUTOFF_MHZ = 0.75;       // Q channel lowpass cutoff
 
-// Blackman-Harris 4-term windowed-sinc lowpass for matched filtering
-// Stopband: ~92 dB (matches modulator)
-const int MIN_TAPS = 20;                   // Match iq-mod.slang
-const int MAX_TAPS = 48;                   // Match iq-mod.slang
+// Blackman-Harris 4-term windowed-sinc lowpass (matched)
+const int MIN_TAPS_I = 16;
+const int MAX_TAPS_I = 40;
+const int MIN_TAPS_Q = 24;
+const int MAX_TAPS_Q = 56;
+
+// Hilbert transform taps for Q->H{Q} (Type III FIR)
+const int HILBERT_TAPS = 31; // odd preferred
 
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
-layout(location = 1) out float fc_lp_norm;     // normalized lowpass cutoff
-layout(location = 2) out float filter_taps;    // adaptive tap count
-layout(location = 4) out TimebaseConfig tb;
+layout(location = 1) out float fc_i_norm;      // I cutoff normalized
+layout(location = 2) out float fc_q_norm;      // Q cutoff normalized
+layout(location = 3) out float taps_i;         // I tap count
+layout(location = 4) out float taps_q;         // Q tap count
+layout(location = 5) out TimebaseConfig tb;
 
 void main()
 {
@@ -117,35 +126,36 @@ void main()
 
     // Compute output texture sample rate
     float sample_rate_hz = config.OutputSize.x * tb.h_freq_hz;
-    float sample_rate_mhz = sample_rate_hz * 1.0e-6;
-    
-    // Compute VSB bandwidth for lowpass cutoff
-    float vsb_bandwidth_mhz = VSB_VESTIGE_MHZ + VSB_FULL_SIDEBAND_MHZ;
-    float lpf_cutoff_hz = vsb_bandwidth_mhz * 1.0e6 * 0.5; // Half-bandwidth for lowpass
-    fc_lp_norm = clamp(lpf_cutoff_hz / sample_rate_hz, 1e-5, 0.49);
-    
-    // Adaptive design based on OutputSize.x (match iq-mod.slang)
-    // Blackman-Harris 4-term: stopband ~92 dB, mainlobe width = 8π/N
+
+    // Normalize per-channel cutoffs
+    fc_i_norm = clamp((VSB_I_CUTOFF_MHZ * 1.0e6) / sample_rate_hz, 0.0, 0.49);
+    fc_q_norm = clamp((VSB_Q_CUTOFF_MHZ * 1.0e6) / sample_rate_hz, 0.0, 0.49);
+
+    // Adaptive taps per channel
     float output_width = config.OutputSize.x;
     float width_factor = clamp((output_width - 720.0) / (1440.0 - 720.0), 0.0, 1.0);
-    
-    // Adaptive tap count: 20-48 taps scaled by resolution (mirror modulator)
-    float adaptive_taps = mix(float(MIN_TAPS), float(MAX_TAPS), width_factor);
-    filter_taps = floor(adaptive_taps * 0.5) * 2.0; // even for symmetry
+    float adaptive_i = mix(float(MIN_TAPS_I), float(MAX_TAPS_I), width_factor);
+    float adaptive_q = mix(float(MIN_TAPS_Q), float(MAX_TAPS_Q), width_factor);
+    taps_i = floor(adaptive_i * 0.5) * 2.0;
+    taps_q = floor(adaptive_q * 0.5) * 2.0;
 }
 
 #pragma stage fragment
 layout(location = 0) in vec2 vTexCoord;
-layout(location = 1) in float fc_lp_norm;
-layout(location = 2) in float filter_taps;
-layout(location = 4) in TimebaseConfig tb;
+layout(location = 1) in float fc_i_norm;
+layout(location = 2) in float fc_q_norm;
+layout(location = 3) in float taps_i;
+layout(location = 4) in float taps_q;
+layout(location = 5) in TimebaseConfig tb;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
 void main()
 {
     if (BYPASS_IQ_DEMOD > 0.5) {
-        FragColor = texture(Source, vTexCoord);
+        // Passthrough I as composite for quick debug
+        vec2 iq_passthru = texture(Source, vTexCoord).rg;
+        FragColor = vec4(iq_passthru.r, 0.0, 0.0, 1.0);
         return;
     }
 
@@ -161,49 +171,82 @@ void main()
 
     // IQ input (RG channels)
     vec2 iq0 = texture(Source, Tex).rg;
-
-    // Convolve I & Q with lowpass windowed-sinc (matched filter)
-    vec2 iq_acc = vec2(0.0);  // Combined I/Q accumulator
-    float wsum = 0.0;          // Single weight sum (filters are identical)
     vec2 dx = vec2(config.OutputSize.z, 0.0);
 
-    // Central coefficient
-    float c0 = sinc_lowpass_bh4(-Ax, fc_lp_norm, filter_taps);
-    iq_acc += c0 * iq0;
-    wsum += c0;
+    // Lowpass I and Q separately (matched to modulator)
+    float I_lp = 0.0, I_w = 0.0;
+    float Q_lp = 0.0, Q_w = 0.0;
+    float Hq = 0.0; // Hilbert of Q with LPF shaping (method 0 only)
+    float Hq_w = 0.0;
 
-    int max_tap = int(filter_taps);
-    for (int n = 1; n <= 48; ++n) {
-        if (n > max_tap) break;
-        
+    // Center coefficients
+    float c0_i = sinc_lowpass_bh4(-Ax, fc_i_norm, taps_i);
+    float c0_q = sinc_lowpass_bh4(-Ax, fc_q_norm, taps_q);
+    I_lp = c0_i * iq0.r; I_w = c0_i;
+    Q_lp = c0_q * iq0.g; Q_w = c0_q;
+    // Hilbert at center is zero for odd kernel, skip
+
+    int max_i = int(taps_i);
+    int max_q = int(taps_q);
+    int max_n = max(max_i, max_q);
+    
+    bool need_hilbert = (IQ_DEMOD_METHOD < 0.5);
+    
+    for (int n = 1; n <= 56; ++n) {
+        if (n > max_n) break;
         float nf = float(n);
 
-        // Right sample
         vec2 iq_r = texture(Source, Tex + nf * dx).rg;
-        float cr = sinc_lowpass_bh4(nf - Ax, fc_lp_norm, filter_taps);
-
-        // Left sample
         vec2 iq_l = texture(Source, Tex - nf * dx).rg;
-        float cl = sinc_lowpass_bh4(-nf - Ax, fc_lp_norm, filter_taps);
 
-        iq_acc += cr * iq_r + cl * iq_l;
-        wsum += cr + cl;
+        if (n <= max_i) {
+            float cr_i = sinc_lowpass_bh4(nf - Ax, fc_i_norm, taps_i);
+            float cl_i = sinc_lowpass_bh4(-nf - Ax, fc_i_norm, taps_i);
+            I_lp += cr_i * iq_r.r + cl_i * iq_l.r;
+            I_w  += cr_i + cl_i;
+        }
+
+        if (n <= max_q) {
+            float cr_q = sinc_lowpass_bh4(nf - Ax, fc_q_norm, taps_q);
+            float cl_q = sinc_lowpass_bh4(-nf - Ax, fc_q_norm, taps_q);
+            float qr = iq_r.g, ql = iq_l.g;
+            Q_lp += cr_q * qr + cl_q * ql;
+            Q_w  += cr_q + cl_q;
+
+            // Hilbert coefficients (Type III FIR), odd-only (method 0 only)
+            if (need_hilbert && ((n & 1) == 1)) {
+                float pos_r = nf - Ax;
+                float pos_l = -nf - Ax;
+                float sr = sin(PI * pos_r * 0.5);
+                float sl = sin(PI * pos_l * 0.5);
+                float h_r = (2.0 / PI) * (sr * sr) / pos_r;
+                float h_l = (2.0 / PI) * (sl * sl) / pos_l;
+                // Apply LPF shaping by multiplying BH4 coeffs
+                Hq += h_r * cr_q * qr + h_l * cl_q * ql;
+                Hq_w += abs(h_r) * abs(cr_q) + abs(h_l) * abs(cl_q);
+            }
+        }
     }
 
-    // Normalize both I and Q with the same weight sum
-    vec2 IQ = iq_acc / max(wsum, EPS);
-    float I = IQ.r;
-    float Q = IQ.g;
-
-    // Demodulation method selection (unchanged)
+    // Normalize
+    I_lp /= max(I_w, EPS);
+    Q_lp /= max(Q_w, EPS);
+    
     float composite;
+    
     if (IQ_DEMOD_METHOD < 0.5) {
-        composite = I;
-    } else if (IQ_DEMOD_METHOD < 1.5) {
-        composite = length(IQ);
+        // Method 0: Hilbert inversion
+        // composite = I_lp - Hilbert{Q_lp}
+        Hq /= max(Hq_w, EPS);
+        composite = I_lp - Hq;
     } else {
-        composite = I + Q;
+        // Method 1: Weighted combination
+        // composite = I_lp + alpha * Q_lp
+        // where alpha ≈ -K_VSB (vestige/full ratio, typically -0.27 for NTSC)
+        // The negative sign accounts for the phase relationship in VSB
+        float alpha = IQ_DEMOD_Q_WEIGHT;
+        composite = I_lp + alpha * Q_lp;
     }
-
+    
     FragColor = vec4(composite, 0.0, 0.0, 1.0);
 }
