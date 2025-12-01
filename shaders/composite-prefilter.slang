@@ -51,14 +51,11 @@ layout(push_constant) uniform Push
     float H_BLANK_INACTIVE_LEN;
     float H_BLANK_INACTIVE_UNIT;
     float COLOR_FILTER_MODE;
-    float NOTCH_WIDTH;
     float BANDPASS_WIDTH;
     float COMB_FILTER_TAPS;
     float NOTCH_COMB_W;
     float BW_MODE;
-    float NOTCH_CENTER_ATTEN_DB;
     float NOTCH_EDGE_ATTEN_DB;
-    float NOTCH_Y_CORRECT;
     float RAW_Y_CORRECT;
     float RAW_C_CORRECT;
 } config;
@@ -76,8 +73,6 @@ layout(push_constant) uniform Push
 
 #define COLOR_FILTER_MODE config.COLOR_FILTER_MODE
 
-#define NOTCH_WIDTH config.NOTCH_WIDTH
-#define NOTCH_CENTER_ATTEN_DB config.NOTCH_CENTER_ATTEN_DB
 #define NOTCH_EDGE_ATTEN_DB config.NOTCH_EDGE_ATTEN_DB
 
 #define BANDPASS_WIDTH config.BANDPASS_WIDTH
@@ -88,8 +83,6 @@ layout(push_constant) uniform Push
 
 #define BW_MODE config.BW_MODE
 
-#define NOTCH_Y_CORRECT config.NOTCH_Y_CORRECT
-    
 #define RAW_Y_CORRECT config.RAW_Y_CORRECT
 #define RAW_C_CORRECT config.RAW_C_CORRECT
 
@@ -102,7 +95,7 @@ layout(std140, set = 0, binding = 0) uniform UBO
 layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
-layout(location = 1) out vec2 sigma;
+layout(location = 1) out float sigma_bp;
 layout(location = 2) out TimebaseConfig tb;
 
 void main()
@@ -125,14 +118,28 @@ void main()
         H_BLANK_INACTIVE_LEN,
         H_BLANK_INACTIVE_UNIT);
 
-    // Precompute per-component sigmas for fragment stage
-    sigma.x = sigma_tb(tb, max(NOTCH_WIDTH * 0.5, 1e-6), NOTCH_EDGE_ATTEN_DB);
-    sigma.y = sigma_tb(tb, max(BANDPASS_WIDTH * 0.5, 1e-6), NOTCH_EDGE_ATTEN_DB);
+    // Analytical bandpass edge attenuation for brightness preservation:
+    // Calculate minimum attenuation needed for -48 dB DC rejection.
+    // User can increase this via NOTCH_EDGE_ATTEN_DB without brightness loss.
+    // Formula: A_edge_min = A_dc * (BW / (2*f_sc))^2
+    const float TARGET_DC_ATTEN_DB = 48.0;
+    float f_sc_mhz = tb.sc_freq_hz * 1.0e-6; // Convert Hz to MHz
+    float bw_to_fsc_ratio = BANDPASS_WIDTH / (2.0 * f_sc_mhz);
+    float bandpass_edge_atten_min = TARGET_DC_ATTEN_DB * bw_to_fsc_ratio * bw_to_fsc_ratio;
+    
+    // Use the maximum of calculated minimum and user parameter
+    // This ensures brightness preservation while allowing user override
+    float bandpass_edge_atten_db = max(bandpass_edge_atten_min, NOTCH_EDGE_ATTEN_DB);
+    
+    // Clamp to reasonable range
+    bandpass_edge_atten_db = clamp(bandpass_edge_atten_db, 0.1, 20.0);
+    
+    sigma_bp = sigma_tb(tb, max(BANDPASS_WIDTH * 0.5, 1e-6), bandpass_edge_atten_db);
 }
 
 #pragma stage fragment
 layout(location = 0) in vec2 vTexCoord;
-layout(location = 1) in vec2 sigma;
+layout(location = 1) in float sigma_bp;
 layout(location = 2) in TimebaseConfig tb;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
@@ -155,20 +162,12 @@ void main()
                     (line + 0.5) * config.OutputSize.w);
     vec2 dx = vec2(config.OutputSize.z, 0.0);
 
-    float A_center_dB = NOTCH_CENTER_ATTEN_DB;
-    float a_center = pow(10.0, -A_center_dB / 20.0);
-    float alpha = clamp(2.0 * (1.0 - a_center), 0.0, 2.0);
-
     const float THRESHOLD = 1.0 / 255.0;
 
     // Center sample - input is already composite baseband from iq-demod.slang
     float composite0 = texture(Source, Tex).r;
 
-    // Luma notch accumulators
-    float conv_gcos = 0.0;
-    float sum_g = 0.0;
-
-    // Chroma accumulators
+    // Chroma bandpass accumulators
     float c_accum = 0.0;
     float sum_c = 0.0;
 
@@ -176,57 +175,41 @@ void main()
     float f_sc_px = tb.sc_freq_hz * tb.pixel_time_px;
 
     // Center weights (include fractional horizontal offset Ax)
-    float g_env0 = gaussian(Ax, sigma.x);
-    sum_g += g_env0;
-    float w_cos0 = g_env0 * cos(2.0 * PI * f_sc_px * Ax);
-
-    float g_bp0 = gaussian(Ax, sigma.y);
+    float g_bp0 = gaussian(Ax, sigma_bp);
     float w_bp0 = g_bp0 * cos(2.0 * PI * f_sc_px * Ax);
 
-    conv_gcos += w_cos0 * composite0;
     c_accum += w_bp0 * composite0;
     sum_c += g_bp0;
 
-    // Symmetric lobed processing with early exit
+    // Bandpass filter: symmetric lobed processing with early exit
     for (int n = 1; n <= 20; ++n) {
         float nf = float(n);
 
-        float g_env_r = gaussian(nf - Ax, sigma.x);
-        float g_env_l = gaussian(nf + Ax, sigma.x);
-        float g_bp_r  = gaussian(nf - Ax, sigma.y);
-        float g_bp_l  = gaussian(nf + Ax, sigma.y);
+        float g_bp_r = gaussian(nf - Ax, sigma_bp);
+        float g_bp_l = gaussian(nf + Ax, sigma_bp);
 
-        if (g_env_r < THRESHOLD && g_env_l < THRESHOLD &&
-            g_bp_r  < THRESHOLD && g_bp_l  < THRESHOLD)
+        if (g_bp_r < THRESHOLD && g_bp_l < THRESHOLD)
             break;
 
         // Right
         vec2 Tex_r = Tex + nf * dx;
         float comp_r = texture(Source, Tex_r).r;
-        float w_notch_r = g_env_r * cos(2.0 * PI * f_sc_px * (nf - Ax));
-        float w_bp_r = g_bp_r  * cos(2.0 * PI * f_sc_px * (nf - Ax));
+        float w_bp_r = g_bp_r * cos(2.0 * PI * f_sc_px * (nf - Ax));
 
         // Left
         vec2 Tex_l = Tex - nf * dx;
         float comp_l = texture(Source, Tex_l).r;
-        float w_notch_l = g_env_l * cos(2.0 * PI * f_sc_px * (nf + Ax));
-        float w_bp_l = g_bp_l  * cos(2.0 * PI * f_sc_px * (nf + Ax));
-
-        conv_gcos += w_notch_r * comp_r + w_notch_l * comp_l;
-        sum_g += g_env_r + g_env_l;
+        float w_bp_l = g_bp_l * cos(2.0 * PI * f_sc_px * (nf + Ax));
 
         c_accum += w_bp_r * comp_r + w_bp_l * comp_l;
         sum_c += g_bp_r + g_bp_l;
     }
 
-    // Normalize luma band-stop notch
-    // Scale to balance white-level (determined empirically)
-    float notch_response = conv_gcos / max(sum_g, EPS);
-    float y_out = NOTCH_Y_CORRECT * (composite0 - alpha * notch_response);
-
     // Reconstruct chroma with modulated Gaussian band-pass (centered at f_sc)
-    // Scale to compensate for modulation gain loss (cos^2 average = 0.5; determined empirically)
     float c_bp = 2.0 * c_accum / max(sum_c, EPS);
+
+    // Complementary luma: ensures Y + C ≈ composite (brightness preserved)
+    float y_out = composite0 - c_bp;
 
     // Comb filter path (compute only when needed)
     vec2 color_comb = vec2(0.0);
@@ -310,7 +293,7 @@ void main()
         // Mix between the notch and comb outputs
         color = mix(vec2(y_out, c_bp), color_comb, NOTCH_COMB_W / 100.0);
     } else if (COLOR_FILTER_MODE < 3.5) {
-        color = vec2(RAW_Y_CORRECT * composite0, RAW_C_CORRECT * composite0);
+        color = vec2(composite0, composite0);
     }
 
     // BW monitor modes: route either luma-only or chroma-only to all channels

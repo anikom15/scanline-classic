@@ -342,19 +342,19 @@ void main()
 
         if (COLOR_FILTER_MODE < 0.5) {
             // Notch filter
-            color.r = FEEDBACK_NOTCH_Y_CORRECT * y_out + c_out - chroma;
+            color.r = y_out + c_out - chroma;
         } else if (COLOR_FILTER_MODE < 1.5) {
             // Comb filter
             color.r = y_out + c_out - chroma;
         } else if (COLOR_FILTER_MODE < 2.5) {
             // Notch + Comb
-            float y_notch = FEEDBACK_NOTCH_Y_CORRECT * y_out + c_out - chroma;
+            float y_notch = y_out + c_out - chroma;
             float y_comb = (y_out + c_out) - chroma;
 
             color.r = 0.5 * (y_notch + y_comb);
         } else {
             // No filter; use composite directly
-            color.r = FEEDBACK_RAW_Y_CORRECT * color.r - chroma;
+            color.r = color.r - chroma;
         }
     }
 
