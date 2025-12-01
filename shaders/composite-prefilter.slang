@@ -1,18 +1,26 @@
 #version 450
 
-// Filename: composite-demod-postfilter.slang
-//
-// Post-filter after IF demodulation:
-// - Applies Gaussian notch (luma) and Gaussian chroma filtering like composite-mod-prefilter.slang
-// - Two chroma modes:
-//   1) True chroma demodulation: modulated Gaussian band-pass around subcarrier to restore suppressed sideband
-//   2) Simple demodulation: Gaussian low-pass at 0.6 MHz with ~6 dB attenuation at cutoff
-//
-// Input: R channel = composite baseband (output of if-demod.slang)
-// Output: R = filtered luma, G = filtered chroma
+// Filename: composite-prefilter.slang
 //
 // Copyright (C) 2025 W. M. Martinez
-// Licensed under GPLv3 or later.
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+//
+// Composite separation filter (without initial modulation)
+// ----------------------------------------------------------------
+// Input: Composite baseband signal (from iq-demod.slang)
+// Output: Separated Y and C signals
 
 #include "common.inc"
 #include "modulation.inc"
@@ -23,11 +31,6 @@
 #include "menus/parameters/composite.inc"
 
 #pragma parameter BYPASS_PREFILTER "Bypass prefilter (off, on)" 0.0 0.0 1.0 1.0
-#pragma parameter CHROMA_DEMOD_MODE "Chroma mode (true, simple)" 0.0 0.0 1.0 1.0
-#pragma parameter VSB_CHROMA_AWARE "VSB chroma correction (off, on)" 1.0 0.0 1.0 1.0
-#pragma parameter IQ_CUTOFF_MHZ "IQ lowpass cutoff (MHz)" 4.2 2.0 8.0 0.1
-#pragma parameter CHROMA_I_BW_MHZ "Chroma I bandwidth (MHz)" 1.3 0.4 2.0 0.1
-#pragma parameter CHROMA_Q_BW_MHZ "Chroma Q bandwidth (MHz)" 0.4 0.2 1.3 0.1
 
 #pragma name CompositePreFilter
 #pragma format R16G16_SFLOAT
@@ -39,11 +42,6 @@ layout(push_constant) uniform Push
     uint FrameCount;
     float OriginalFPS;
     float BYPASS_PREFILTER;
-    float CHROMA_DEMOD_MODE;
-    float VSB_CHROMA_AWARE;
-    float IQ_CUTOFF_MHZ;
-    float CHROMA_I_BW_MHZ;
-    float CHROMA_Q_BW_MHZ;
     float V_FREQ_MODE;
     float V_FREQ;
     float V_LINES_PER_FIELD;
@@ -52,22 +50,20 @@ layout(push_constant) uniform Push
     float SC_FREQ;
     float H_BLANK_INACTIVE_LEN;
     float H_BLANK_INACTIVE_UNIT;
+    float COLOR_FILTER_MODE;
     float NOTCH_WIDTH;
     float BANDPASS_WIDTH;
+    float COMB_FILTER_TAPS;
+    float NOTCH_COMB_W;
+    float BW_MODE;
     float NOTCH_CENTER_ATTEN_DB;
     float NOTCH_EDGE_ATTEN_DB;
     float NOTCH_Y_CORRECT;
     float RAW_Y_CORRECT;
     float RAW_C_CORRECT;
-    float PAL;
 } config;
 
 #define BYPASS_PREFILTER config.BYPASS_PREFILTER
-#define CHROMA_DEMOD_MODE config.CHROMA_DEMOD_MODE
-#define VSB_CHROMA_AWARE config.VSB_CHROMA_AWARE
-#define IQ_CUTOFF_MHZ config.IQ_CUTOFF_MHZ
-#define CHROMA_I_BW_MHZ config.CHROMA_I_BW_MHZ
-#define CHROMA_Q_BW_MHZ config.CHROMA_Q_BW_MHZ
 
 #define V_FREQ_MODE config.V_FREQ_MODE
 #define V_FREQ config.V_FREQ
@@ -78,16 +74,24 @@ layout(push_constant) uniform Push
 #define H_BLANK_INACTIVE_LEN config.H_BLANK_INACTIVE_LEN
 #define H_BLANK_INACTIVE_UNIT config.H_BLANK_INACTIVE_UNIT
 
+#define COLOR_FILTER_MODE config.COLOR_FILTER_MODE
+
 #define NOTCH_WIDTH config.NOTCH_WIDTH
 #define NOTCH_CENTER_ATTEN_DB config.NOTCH_CENTER_ATTEN_DB
 #define NOTCH_EDGE_ATTEN_DB config.NOTCH_EDGE_ATTEN_DB
+
 #define BANDPASS_WIDTH config.BANDPASS_WIDTH
 
+#define COMB_FILTER_TAPS config.COMB_FILTER_TAPS
+
+#define NOTCH_COMB_W config.NOTCH_COMB_W
+
+#define BW_MODE config.BW_MODE
+
 #define NOTCH_Y_CORRECT config.NOTCH_Y_CORRECT
+    
 #define RAW_Y_CORRECT config.RAW_Y_CORRECT
 #define RAW_C_CORRECT config.RAW_C_CORRECT
-
-#define PAL config.PAL
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
@@ -99,8 +103,7 @@ layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
 layout(location = 1) out vec2 sigma;
-layout(location = 2) out vec2 vsb_chroma_gain;
-layout(location = 3) out TimebaseConfig tb;
+layout(location = 2) out TimebaseConfig tb;
 
 void main()
 {
@@ -122,32 +125,22 @@ void main()
         H_BLANK_INACTIVE_LEN,
         H_BLANK_INACTIVE_UNIT);
 
-    // Precompute Gaussian sigmas, matching composite-mod-prefilter approach
+    // Precompute per-component sigmas for fragment stage
     sigma.x = sigma_tb(tb, max(NOTCH_WIDTH * 0.5, 1e-6), NOTCH_EDGE_ATTEN_DB);
     sigma.y = sigma_tb(tb, max(BANDPASS_WIDTH * 0.5, 1e-6), NOTCH_EDGE_ATTEN_DB);
-
-    // Compute VSB chroma gain factors for adaptive correction
-    // NTSC: I = ±1.3 MHz (default), Q = ±0.4 MHz (default)
-    // PAL/SECAM: typically narrower symmetric chroma
-    // Adapts to arbitrary subcarrier frequency and IQ lowpass cutoff
-    vsb_chroma_gain = compute_vsb_chroma_gain(
-        tb.sc_freq_hz, IQ_CUTOFF_MHZ,
-        CHROMA_I_BW_MHZ, CHROMA_Q_BW_MHZ);
 }
 
 #pragma stage fragment
 layout(location = 0) in vec2 vTexCoord;
 layout(location = 1) in vec2 sigma;
-layout(location = 2) in vec2 vsb_chroma_gain;
-layout(location = 3) in TimebaseConfig tb;
+layout(location = 2) in TimebaseConfig tb;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
 void main()
 {
     if (BYPASS_PREFILTER > 0.5) {
-        vec4 s = texture(Source, vTexCoord);
-        FragColor = vec4(s.rg, 0.0, 1.0);
+        FragColor = vec4(texture(Source, vTexCoord).rgb, 1.0);
         return;
     }
 
@@ -163,14 +156,12 @@ void main()
     vec2 dx = vec2(config.OutputSize.z, 0.0);
 
     float A_center_dB = NOTCH_CENTER_ATTEN_DB;
-    float A_edge_dB = NOTCH_EDGE_ATTEN_DB;
     float a_center = pow(10.0, -A_center_dB / 20.0);
     float alpha = clamp(2.0 * (1.0 - a_center), 0.0, 2.0);
 
     const float THRESHOLD = 1.0 / 255.0;
 
-    // Center sample (match composite-mod-prefilter behavior: phase from offset only, not fractional center time)
-    float t0 = line / tb.h_freq_hz + baseCenter * tb.pixel_time_px;
+    // Center sample - input is already composite baseband from iq-demod.slang
     float composite0 = texture(Source, Tex).r;
 
     // Luma notch accumulators
@@ -196,8 +187,8 @@ void main()
     c_accum += w_bp0 * composite0;
     sum_c += g_bp0;
 
-    // Symmetric lobes
-    for (int n = 1; n <= 24; ++n) {
+    // Symmetric lobed processing with early exit
+    for (int n = 1; n <= 20; ++n) {
         float nf = float(n);
 
         float g_env_r = gaussian(nf - Ax, sigma.x);
@@ -228,56 +219,111 @@ void main()
         sum_c += g_bp_r + g_bp_l;
     }
 
-    // Luma notch output
+    // Normalize luma band-stop notch
+    // Scale to balance white-level (determined empirically)
     float notch_response = conv_gcos / max(sum_g, EPS);
     float y_out = NOTCH_Y_CORRECT * (composite0 - alpha * notch_response);
 
-    // Chroma filtering modes with VSB-aware correction
-    float c_out;
-    if (CHROMA_DEMOD_MODE < 0.5) {
-        // True chroma demodulation: VSB-aware I/Q recovery
-        // NTSC uses quadrature modulation with asymmetric bandwidths:
-        // - I (in-phase): ±1.3 MHz relative to subcarrier (default)
-        // - Q (quadrature): ±0.4 MHz relative to subcarrier (default)
-        // After IQ mod/demod (4.2 MHz lowpass), sidebands become asymmetric (VSB-shaped)
-        
-        float c_bp_raw = c_accum / max(sum_c, EPS);
-        
-        if (VSB_CHROMA_AWARE > 0.5) {
-            // VSB-aware correction: compensate for sideband asymmetry
-            // The bandpass filter extracts composite chroma containing both I and Q
-            // modulated at 90° phase difference. Effective gain depends on sideband preservation.
-            //
-            // I channel: wider bandwidth (±1.3 MHz) → more affected by IQ cutoff
-            // Q channel: narrow bandwidth (±0.4 MHz) → less affected
-            //
-            // Composite chroma gain: weighted average based on energy contribution
-            const float I_WEIGHT = 0.7;  // I carries most luma-chroma cross-energy
-            const float Q_WEIGHT = 0.3;  // Q carries pure color difference
-            float composite_vsb_gain = I_WEIGHT * vsb_chroma_gain.x + Q_WEIGHT * vsb_chroma_gain.y;
-            
-            // Normalize by VSB gain and modulation loss (cos² average = 0.5)
-            c_out = 2.0 * c_bp_raw / composite_vsb_gain;
+    // Reconstruct chroma with modulated Gaussian band-pass (centered at f_sc)
+    // Scale to compensate for modulation gain loss (cos^2 average = 0.5; determined empirically)
+    float c_bp = 2.0 * c_accum / max(sum_c, EPS);
+
+    // Comb filter path (compute only when needed)
+    vec2 color_comb = vec2(0.0);
+
+    if (COLOR_FILTER_MODE >= 0.5 && COLOR_FILTER_MODE < 3.5) {
+        // Current line phase at this texel
+        float t0 = line / tb.h_freq_hz + baseCenter * tb.pixel_time_px;
+        float phase0 = compute_carrier_phase(t0, tb.sc_freq_hz, tb.field_phase);
+
+        // Subcarrier phase increment per horizontal pixel (radians/pixel)
+        float sc_phase_inc_per_px = 2.0 * PI * tb.sc_freq_hz * tb.pixel_time_px;
+        // Subcarrier spatial period in pixels
+        float period_px = 2.0 * PI / sc_phase_inc_per_px;
+
+        // Vertical offsets for line taps
+        vec2 comb_dy_1 = vec2(0.0, -1.0 * config.OutputSize.w);
+        vec2 comb_dy_2 = vec2(0.0, -2.0 * config.OutputSize.w);
+        vec2 comb_dy_3 = vec2(0.0, -3.0 * config.OutputSize.w);
+
+        // Compute phase-aligned horizontal shifts for each tap line
+        // Tap 1 (line -1): target phase difference = π (180°)
+        float t1_same = (line - 1.0) / tb.h_freq_hz + baseCenter * tb.pixel_time_px;
+        float phase1_same = compute_carrier_phase(t1_same, tb.sc_freq_hz, tb.field_phase);
+        float dphi1 = normalize_phase(phase1_same - phase0);
+        float dphi_needed1 = dphi1 - PI;
+        float dx1_px = dphi_needed1 / sc_phase_inc_per_px;
+        dx1_px -= round(dx1_px / period_px) * period_px;
+
+        // Tap 2 (line -2): target phase difference = 0 (in-phase)
+        float t2_same = (line - 2.0) / tb.h_freq_hz + baseCenter * tb.pixel_time_px;
+        float phase2_same = compute_carrier_phase(t2_same, tb.sc_freq_hz, tb.field_phase);
+        float dphi2 = normalize_phase(phase2_same - phase0);
+        float dphi_needed2 = dphi2 - 0.0;
+        float dx2_px = dphi_needed2 / sc_phase_inc_per_px;
+        dx2_px -= round(dx2_px / period_px) * period_px;
+
+        // Tap 3 (line -3): target phase difference = π (180°)
+        float t3_same = (line - 3.0) / tb.h_freq_hz + baseCenter * tb.pixel_time_px;
+        float phase3_same = compute_carrier_phase(t3_same, tb.sc_freq_hz, tb.field_phase);
+        float dphi3 = normalize_phase(phase3_same - phase0);
+        float dphi_needed3 = dphi3 - PI;
+        float dx3_px = dphi_needed3 / sc_phase_inc_per_px;
+        dx3_px -= round(dx3_px / period_px) * period_px;
+
+        vec2 dx_norm = vec2(config.OutputSize.z, 0.0);
+
+        // Sample phase-aligned taps
+        vec3 comb_taps_composite = vec3(
+            texture(Source, Tex + comb_dy_1 - dx1_px * dx_norm).r,
+            texture(Source, Tex + comb_dy_2 - dx2_px * dx_norm).r,
+            texture(Source, Tex + comb_dy_3 - dx3_px * dx_norm).r
+        );
+
+        // Apply comb filter combinations
+        if (COMB_FILTER_TAPS < 2) {
+            // 1-tap comb
+            color_comb = 0.5 * vec2(composite0 + comb_taps_composite.x,
+                                     composite0 - comb_taps_composite.x);
+        } else if (COMB_FILTER_TAPS < 3) {
+            // 2-tap comb
+            float y = 0.5 * (0.5 * composite0 + comb_taps_composite.x + 0.5 * comb_taps_composite.y);
+            float c = 0.5 * (0.5 * composite0 - comb_taps_composite.x + 0.5 * comb_taps_composite.y);
+            color_comb = vec2(y, c);
         } else {
-            // Legacy DSB assumption: both sidebands fully preserved
-            // Standard modulation loss compensation only
-            c_out = 2.0 * c_bp_raw;
-        }
-    } else {
-        // Simple demodulation: lowpass at Q bandwidth (0.4 MHz default)
-        // Extracts narrow-band chroma without attempting I/Q separation
-        // Less affected by VSB asymmetry since it doesn't rely on wide I bandwidth
-        float c_lp = c_accum / max(sum_c, EPS);
-        
-        if (VSB_CHROMA_AWARE > 0.5) {
-            // Simple mode uses Q-channel VSB correction
-            // Q bandwidth is narrow, typically less affected by IQ cutoff
-            c_out = 2.0 * c_lp / vsb_chroma_gain.y;
-        } else {
-            // Legacy: assume no sideband loss
-            c_out = 2.0 * c_lp;
+            // 3-tap comb
+            float y = (0.5 * composite0 + comb_taps_composite.x + comb_taps_composite.y + 0.5 * comb_taps_composite.z) / 3.0;
+            float c = (0.5 * composite0 - comb_taps_composite.x + comb_taps_composite.y - 0.5 * comb_taps_composite.z) / 3.0;
+            color_comb = vec2(y, c);
         }
     }
 
-    FragColor = vec4(vec2(y_out, c_out), vec2(0.0, 1.0));
+    // Select color filter mode
+    vec2 color;
+    if (COLOR_FILTER_MODE < 0.5) {
+        // Notch: use band-stop luma and band-pass chroma (now centered at f_sc)
+        color = vec2(y_out, c_bp);
+    } else if (COLOR_FILTER_MODE < 1.5) {
+        color = vec2(color_comb);
+        y_out = color_comb.r;
+    } else if (COLOR_FILTER_MODE < 2.5) {
+        // Mix between the notch and comb outputs
+        color = mix(vec2(y_out, c_bp), color_comb, NOTCH_COMB_W / 100.0);
+    } else if (COLOR_FILTER_MODE < 3.5) {
+        color = vec2(RAW_Y_CORRECT * composite0, RAW_C_CORRECT * composite0);
+    }
+
+    // BW monitor modes: route either luma-only or chroma-only to all channels
+    float c_out = color.g;
+    if (BW_MODE < 0.5) {
+        // Normal output (no user scaling applied here)
+    } else if (BW_MODE < 1.5) {
+        color = vec2(y_out, 0.0);
+    } else if (BW_MODE < 2.5) {
+        color = vec2(0.0, c_out);
+    } else if (BW_MODE < 3.5) {
+        color = vec2(y_out, c_out);
+    }
+
+    FragColor = vec4(color, vec2(0.0, 1.0));
 }

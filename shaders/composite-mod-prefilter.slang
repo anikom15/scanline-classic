@@ -152,17 +152,12 @@ void main()
     }
 
     // Notch design targets
-    float pixel_time_px = tb.pixel_time_px;
-
-    float A_center_dB = NOTCH_CENTER_ATTEN_DB; // center notch depth
-    float A_edge_dB = NOTCH_EDGE_ATTEN_DB;     // attenuation at f0 ± Δ
-
-    float a_center = pow(10.0, -A_center_dB / 20.0); // linear
-    float a_edge = pow(10.0, -A_edge_dB / 20.0);     // linear
+    float A_center_dB = NOTCH_CENTER_ATTEN_DB;
+    float a_center = pow(10.0, -A_center_dB / 20.0);
     float alpha = clamp(2.0 * (1.0 - a_center), 0.0, 2.0);
 
     // Subcarrier cycles per pixel for modulation
-    float f_sc_px = tb.sc_freq_hz * pixel_time_px; // subcarrier cycles per pixel
+    float f_sc_px = tb.sc_freq_hz * tb.pixel_time_px;
 
     // Optimized symmetric lobed approach with early exit
     // Horizontal coordinate handling: nearest pixel center (no Y shift)
@@ -375,10 +370,12 @@ void main()
     if (BW_MODE < 0.5) {
         // Normal output (no user scaling applied here)
     } else if (BW_MODE < 1.5) {
-        color = vec2(y_out, 0.0);
+        color = vec2(y_out, c_out);
     } else if (BW_MODE < 2.5) {
-        color = vec2(0.0, c_out);
+        color = vec2(y_out, 0.0);
     } else if (BW_MODE < 3.5) {
+        color = vec2(0.0, c_out);
+    } else {
         color = vec2(y_out, c_out);
     }
 

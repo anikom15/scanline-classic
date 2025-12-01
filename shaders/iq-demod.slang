@@ -37,8 +37,7 @@
 #include "menus/parameters/sys-encode.inc"
 
 #pragma parameter BYPASS_IQ_DEMOD "Bypass IQ demod (off, on)" 0.0 0.0 1.0 1.0
-#pragma parameter IQ_DEMOD_METHOD "Demod method (Hilbert=0 Weighted=1)" 0.0 0.0 1.0 1.0
-#pragma parameter IQ_DEMOD_Q_WEIGHT "Q channel weight (weighted mode)" -0.27 -2.0 2.0 0.01
+#pragma parameter IQ_DEMOD_Q_WEIGHT "Q channel weight" -0.27 -2.0 2.0 0.01
 
 #pragma name IQDemod
 #pragma format R16_SFLOAT
@@ -50,7 +49,6 @@ layout(push_constant) uniform Push
     uint FrameCount;
     float OriginalFPS;
     float BYPASS_IQ_DEMOD;
-    float IQ_DEMOD_METHOD;
     float IQ_DEMOD_Q_WEIGHT;
     float V_FREQ_MODE;
     float V_FREQ;
@@ -64,7 +62,6 @@ layout(push_constant) uniform Push
 } config;
 
 #define BYPASS_IQ_DEMOD config.BYPASS_IQ_DEMOD
-#define IQ_DEMOD_METHOD config.IQ_DEMOD_METHOD
 #define IQ_DEMOD_Q_WEIGHT config.IQ_DEMOD_Q_WEIGHT
 #define K_VSB config.K_VSB
 #define V_FREQ_MODE config.V_FREQ_MODE
@@ -91,8 +88,7 @@ const int MAX_TAPS_I = 40;
 const int MIN_TAPS_Q = 24;
 const int MAX_TAPS_Q = 56;
 
-// Hilbert transform taps for Q->H{Q} (Type III FIR)
-const int HILBERT_TAPS = 31; // odd preferred
+// Hilbert demod removed; weighted method only
 
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
@@ -176,8 +172,6 @@ void main()
     // Lowpass I and Q separately (matched to modulator)
     float I_lp = 0.0, I_w = 0.0;
     float Q_lp = 0.0, Q_w = 0.0;
-    float Hq = 0.0; // Hilbert of Q with LPF shaping (method 0 only)
-    float Hq_w = 0.0;
 
     // Center coefficients
     float c0_i = sinc_lowpass_bh4(-Ax, fc_i_norm, taps_i);
@@ -189,8 +183,6 @@ void main()
     int max_i = int(taps_i);
     int max_q = int(taps_q);
     int max_n = max(max_i, max_q);
-    
-    bool need_hilbert = (IQ_DEMOD_METHOD < 0.5);
     
     for (int n = 1; n <= 56; ++n) {
         if (n > max_n) break;
@@ -213,18 +205,7 @@ void main()
             Q_lp += cr_q * qr + cl_q * ql;
             Q_w  += cr_q + cl_q;
 
-            // Hilbert coefficients (Type III FIR), odd-only (method 0 only)
-            if (need_hilbert && ((n & 1) == 1)) {
-                float pos_r = nf - Ax;
-                float pos_l = -nf - Ax;
-                float sr = sin(PI * pos_r * 0.5);
-                float sl = sin(PI * pos_l * 0.5);
-                float h_r = (2.0 / PI) * (sr * sr) / pos_r;
-                float h_l = (2.0 / PI) * (sl * sl) / pos_l;
-                // Apply LPF shaping by multiplying BH4 coeffs
-                Hq += h_r * cr_q * qr + h_l * cl_q * ql;
-                Hq_w += abs(h_r) * abs(cr_q) + abs(h_l) * abs(cl_q);
-            }
+            // Hilbert path removed
         }
     }
 
@@ -232,21 +213,10 @@ void main()
     I_lp /= max(I_w, EPS);
     Q_lp /= max(Q_w, EPS);
     
-    float composite;
-    
-    if (IQ_DEMOD_METHOD < 0.5) {
-        // Method 0: Hilbert inversion
-        // composite = I_lp - Hilbert{Q_lp}
-        Hq /= max(Hq_w, EPS);
-        composite = I_lp - Hq;
-    } else {
-        // Method 1: Weighted combination
-        // composite = I_lp + alpha * Q_lp
-        // where alpha ≈ -K_VSB (vestige/full ratio, typically -0.27 for NTSC)
-        // The negative sign accounts for the phase relationship in VSB
-        float alpha = IQ_DEMOD_Q_WEIGHT;
-        composite = I_lp + alpha * Q_lp;
-    }
+    // Weighted demodulation only
+    // composite = I_lp + alpha * Q_lp
+    // where alpha ≈ -K_VSB (vestige/full ratio, typically -0.27 for NTSC)
+    float composite = I_lp + IQ_DEMOD_Q_WEIGHT * Q_lp;
     
     FragColor = vec4(composite, 0.0, 0.0, 1.0);
 }

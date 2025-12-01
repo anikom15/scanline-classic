@@ -206,26 +206,14 @@ void main()
     // PAL phase detection (applies to PAL mode only)
     vec2 pal_phase = vec2(0.0, floor(mod(line, 2.0)) * PI * step(1.5, DECODER_TYPE));
 
-    // Compute demodulation phases:
-    // YIQ: I at 33° (0.576 rad) relative to Pr/V, Q at 33° (0.576 rad) relative to Pb/U
-    // YUV/YPbPr: U/Pb at 0°, V/Pr at 90° (1.571 rad)
-    vec2 chroma_phase_offset;
-    if (DECODER_TYPE < 0.5) {
-        // NTSC YIQ phase relationships
-        chroma_phase_offset = vec2(0.0, 0.0) * PI / 180.0;
-    } else {
-        // YUV/YPbPr phase relationships (0° and 90°)
-        chroma_phase_offset = vec2(0.0, PI * 0.5);
-    }
-
     if (DECODER_TYPE < 1.5) {
         // YIQ or YPbPr mode (no PAL line alternation)
-        vec2 ph = vec2(phase0) + vec2(c_phase) + chroma_phase_offset;
+        vec2 ph = vec2(phase0) + vec2(c_phase);
         ph = vec2(normalize_phase(ph.x), normalize_phase(ph.y));
         carrier0 = sincos_phase_raw(ph);
     } else {
         // PAL mode (line alternation)
-        vec2 ph2 = vec2(phase0) + vec2(c_phase) + pal_phase + chroma_phase_offset;
+        vec2 ph2 = vec2(phase0) + vec2(c_phase) + pal_phase;
         ph2 = vec2(normalize_phase(ph2.x), normalize_phase(ph2.y));
         carrier0 = sincos_phase_raw(ph2);
     }
@@ -275,11 +263,11 @@ void main()
         phaseR = mod(phaseR + PI, 2.0 * PI) - PI;
         vec2 carrierR;
         if (DECODER_TYPE < 1.5) {
-            vec2 phr = vec2(phaseR) + vec2(c_phase) + chroma_phase_offset;
+            vec2 phr = vec2(phaseR) + vec2(c_phase);
             phr = vec2(normalize_phase(phr.x), normalize_phase(phr.y));
             carrierR = sincos_phase_raw(phr);
         } else {
-            vec2 phr2 = vec2(phaseR) + vec2(c_phase) + pal_phase + chroma_phase_offset;
+            vec2 phr2 = vec2(phaseR) + vec2(c_phase) + pal_phase;
             phr2 = vec2(normalize_phase(phr2.x), normalize_phase(phr2.y));
             carrierR = sincos_phase_raw(phr2);
         }
@@ -309,11 +297,11 @@ void main()
         phaseL = mod(phaseL + PI, 2.0 * PI) - PI;
         vec2 carrierL;
         if (DECODER_TYPE < 1.5) {
-            vec2 phl = vec2(phaseL) + vec2(c_phase) + chroma_phase_offset;
+            vec2 phl = vec2(phaseL) + vec2(c_phase);
             phl = vec2(normalize_phase(phl.x), normalize_phase(phl.y));
             carrierL = sincos_phase_raw(phl);
         } else {
-            vec2 phl2 = vec2(phaseL) + vec2(c_phase) + pal_phase + chroma_phase_offset;
+            vec2 phl2 = vec2(phaseL) + vec2(c_phase) + pal_phase;
             phl2 = vec2(normalize_phase(phl2.x), normalize_phase(phl2.y));
             carrierL = sincos_phase_raw(phl2);
         }
