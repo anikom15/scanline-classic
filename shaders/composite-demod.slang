@@ -212,7 +212,7 @@ void main()
     vec2 chroma_phase_offset;
     if (DECODER_TYPE < 0.5) {
         // NTSC YIQ phase relationships
-        chroma_phase_offset = vec2(33.0, 33.0) * PI / 180.0;
+        chroma_phase_offset = vec2(0.0, 0.0) * PI / 180.0;
     } else {
         // YUV/YPbPr phase relationships (0° and 90°)
         chroma_phase_offset = vec2(0.0, PI * 0.5);
@@ -242,11 +242,11 @@ void main()
         vec2 dy = vec2(0.0, config.OutputSize.w);
         vec3 pal_delay = texture(Source, Tex - dy).rgb;
 
-        demod0.g = c_gain * 2.0 * (chroma0 + pal_delay.g) * carrier0.x;
-        demod0.b = c_gain * 2.0 * (chroma0 - pal_delay.g) * carrier0.y;
+        demod0.g = 2.0 * (chroma0 + pal_delay.g) * carrier0.x;
+        demod0.b = 2.0 * (chroma0 - pal_delay.g) * carrier0.y;
     } else {
-        demod0.g = c_gain * 2.0 * chroma0 * carrier0.x;
-        demod0.b = c_gain * 2.0 * chroma0 * carrier0.y;
+        demod0.g = 2.0 * chroma0 * carrier0.x;
+        demod0.b = 2.0 * chroma0 * carrier0.y;
     }
     
     // Center weights for all filter modes
@@ -293,13 +293,13 @@ void main()
 
             demodR = vec3(
                 compositeR,
-                c_gain * 2.0 * (chromaR + pal_delay.g) * carrierR.x,
-                c_gain * 2.0 * (chromaR - pal_delay.g) * carrierR.y);
+                2.0 * (chromaR + pal_delay.g) * carrierR.x,
+                2.0 * (chromaR - pal_delay.g) * carrierR.y);
         } else {
             demodR = vec3(
                 compositeR,
-                c_gain * 2.0 * chromaR * carrierR.x,
-                c_gain * 2.0 * chromaR * carrierR.y);
+                2.0 * chromaR * carrierR.x,
+                2.0 * chromaR * carrierR.y);
         }
 
         // Left sample (output pixel lattice)
@@ -327,13 +327,13 @@ void main()
 
             demodL = vec3(
                 compositeL,
-                c_gain * 2.0 * (chromaL + pal_delay.g) * carrierL.x,
-                c_gain * 2.0 * (chromaL - pal_delay.g) * carrierL.y);
+                2.0 * (chromaL + pal_delay.g) * carrierL.x,
+                2.0 * (chromaL - pal_delay.g) * carrierL.y);
         } else {
             demodL = vec3(
                 compositeL,
-                c_gain * 2.0 * chromaL * carrierL.x,
-                c_gain * 2.0 * chromaL * carrierL.y);
+                2.0 * chromaL * carrierL.x,
+                2.0 * chromaL * carrierL.y);
         }
         
 
@@ -410,6 +410,9 @@ void main()
     if (DECODER_SETUP > 0.5) {
         color.r = (color.r - 0.075) / 0.925;
     }
+
+    // Apply user color
+    color.gb *= vec2(c_gain);
 
     if (BW_MODE < 0.5) {
         color = toRGB * color;
