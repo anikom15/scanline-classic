@@ -35,9 +35,9 @@
 
 #include "menus/parameters/sys-timing.inc"
 #include "menus/parameters/sys-encode.inc"
+#include "menus/parameters/rf.inc"
 
 #pragma parameter BYPASS_IQ_DEMOD "Bypass IQ demod (off, on)" 0.0 0.0 1.0 1.0
-#pragma parameter IQ_DEMOD_Q_WEIGHT "Q channel weight" -0.27 -2.0 2.0 0.01
 
 #pragma name IQDemod
 #pragma format R16_SFLOAT

@@ -12,17 +12,12 @@
 #include "common.inc"
 #include "window.inc"
 
-#pragma parameter BYPASS_NOISE "Bypass noise (off,on)" 0.0 0.0 1.0 1.0
-#pragma parameter NOISE_MODE "Noise mode (fast=0 adv=1)" 0.0 0.0 1.0 1.0
-#pragma parameter NOISE_AWGN_DB "AWGN level (dB)" -30.0 -96.0 0.0 1.0
-#pragma parameter NOISE_PHASE_JITTER_DEG "Phase jitter deg RMS" 0.10 0.0 5.0 0.01
-#pragma parameter NOISE_GHOST1_DB "Ghost1 level (dB)" -40.0 -80.0 0.0 1.0
-#pragma parameter NOISE_GHOST1_PIX "Ghost1 delay (px)" 12.0 0.0 120.0 1.0
-#pragma parameter NOISE_IMPULSE_RATE "Impulse rate (ppm)" 5.0 0.0 200.0 1.0
-#pragma parameter NOISE_IMPULSE_DB "Impulse level (dB)" -10.0 -40.0 0.0 1.0
+#include "menus/parameters/rf.inc"
 
 #pragma name IQNoise
 #pragma format R16G16_SFLOAT
+
+#pragma parameter BYPASS_NOISE "Bypass noise (off,on)" 0.0 0.0 1.0 1.0
 
 layout(push_constant) uniform Push
 {

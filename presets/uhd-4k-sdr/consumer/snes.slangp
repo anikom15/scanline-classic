@@ -1,4 +1,4 @@
-# SFC composite shader set
+# SNES composite shader set
 
 shaders = 15
 
@@ -102,7 +102,7 @@ SC_FREQ_MODE = 0
 SHORTEN_ODD_FIELD_TIME = 1
 
 # Display setup
-DECODER_SETUP = 0
+DECODER_SETUP = 1
 
 NOTCH_EDGE_ATTEN_DB = 6.0
 BANDPASS_WIDTH = 1.2
@@ -127,5 +127,5 @@ PHOSPHOR_MANTISSA_R = 2.0
 PHOSPHOR_MANTISSA_G = 200.0
 PHOSPHOR_MANTISSA_B = 200.0
 
-# Colorimetry (NTSC-J)
-COLORIMETRY_PRESET = 2
+# Colorimetry (NTSC)
+COLORIMETRY_PRESET = 1

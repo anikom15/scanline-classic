@@ -1,4 +1,4 @@
-# SFC composite PAL shader set
+# SNES composite PAL shader set
 
 shaders = 15
 
@@ -107,6 +107,9 @@ SHORTEN_ODD_FIELD_TIME = 0
 DECODER_SETUP = 0
 DECODER_TYPE = 2
 DOUBLE_REFRESH = 1
+
+NOTCH_EDGE_ATTEN_DB = 3.0
+BANDPASS_WIDTH = 2.6
 
 SCANLINE_BLANK_WEIGHT = 100.0
 TVL = 600.0

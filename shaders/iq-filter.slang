@@ -35,6 +35,7 @@
 #include "modulation.inc"
 
 #include "menus/parameters/sys-timing.inc"
+#include "menus/parameters/rf.inc"
 
 // Bypass & control parameters
 #pragma parameter BYPASS_IQ_MOD "Bypass I/Q filtering (off,on)" 0.0 0.0 1.0 1.0
@@ -53,8 +54,6 @@ layout(push_constant) uniform Push
     float BYPASS_IQ_MOD;
     float BYPASS_I_FILTER;
     float BYPASS_Q_FILTER;
-    float UNUSED0;
-    float UNUSED1;
     float V_FREQ_MODE;
     float V_FREQ;
     float V_LINES_PER_FIELD;
@@ -63,6 +62,8 @@ layout(push_constant) uniform Push
     float SC_FREQ;
     float H_BLANK_INACTIVE_LEN;
     float H_BLANK_INACTIVE_UNIT;
+    float USB_BANDWIDTH;
+    float LSB_BANDWIDTH;
 } config;
 
 #define BYPASS_IQ_MOD      config.BYPASS_IQ_MOD
@@ -77,14 +78,17 @@ layout(push_constant) uniform Push
 #define H_BLANK_INACTIVE_LEN  config.H_BLANK_INACTIVE_LEN
 #define H_BLANK_INACTIVE_UNIT config.H_BLANK_INACTIVE_UNIT
 
+#define USB_BANDWIDTH       config.USB_BANDWIDTH
+#define LSB_BANDWIDTH       config.LSB_BANDWIDTH
+
 layout(std140, set = 0, binding = 0) uniform UBO
 {
     mat4 MVP;
 } global;
 
-// VSB baseband parameters (NTSC)
-const float VSB_I_CUTOFF_MHZ = 4.2;        // I channel lowpass cutoff (positive frequencies)
-const float VSB_Q_CUTOFF_MHZ = 0.75;       // Q channel lowpass cutoff (negative frequencies)
+// VSB baseband parameters
+#define VSB_I_CUTOFF_MHZ USB_BANDWIDTH
+#define VSB_Q_CUTOFF_MHZ LSB_BANDWIDTH
 
 // Blackman-Harris 4-term windowed-sinc filter design (asymmetric per channel)
 // We allow more taps for the narrower Q-channel cutoff to keep a clean transition.

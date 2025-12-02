@@ -301,10 +301,12 @@ void main()
     if (BW_MODE < 0.5) {
         // Normal output (no user scaling applied here)
     } else if (BW_MODE < 1.5) {
-        color = vec2(y_out, 0.0);
+        color = vec2(y_out, c_out);
     } else if (BW_MODE < 2.5) {
-        color = vec2(0.0, c_out);
+        color = vec2(y_out, 0.0);
     } else if (BW_MODE < 3.5) {
+        color = vec2(0.0, c_out);
+    } else {
         color = vec2(y_out, c_out);
     }
 
