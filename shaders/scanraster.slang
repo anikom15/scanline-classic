@@ -94,7 +94,13 @@ layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
 layout(location = 1) out float bt1886_a;
 layout(location = 2) out float bt1886_b;
-layout(location = 3) out TimebaseConfig tb;
+layout(location = 3) flat out int padding_top;
+layout(location = 4) flat out int padding_bottom;
+layout(location = 5) flat out int integer_scale;
+layout(location = 6) out float active_region_start;
+layout(location = 7) out float active_region_height;
+layout(location = 8) out float design_v_lines;
+layout(location = 9) out TimebaseConfig tb;
 
 void main()
 {
@@ -124,13 +130,40 @@ void main()
         SC_FREQ,
         H_BLANK_INACTIVE_LEN,
         H_BLANK_INACTIVE_UNIT);
+
+    // Calculate padding needed for vertical centering with integer scaling
+    // Find the largest integer scale factor that fits
+    float exact_scale = config.OutputSize.y / config.OriginalSize.y;
+    integer_scale = int(floor(exact_scale));
+
+    // Calculate scaled input height using integer scale
+    int scaled_input_height = int(config.OriginalSize.y) * integer_scale;
+    int total_padding = int(config.OutputSize.y) - scaled_input_height;
+
+    // If odd padding, add remainder to top
+    padding_top = (total_padding + 1) / 2;
+    padding_bottom = total_padding / 2;
+
+    // Precompute active region parameters for texture coordinate remapping
+    active_region_start = float(padding_top) / config.OutputSize.y;
+    float active_region_end = float(int(config.OutputSize.y) - padding_bottom) / config.OutputSize.y;
+    active_region_height = active_region_end - active_region_start;
+
+    // Precompute design_v_lines for interlacing detection
+    design_v_lines = tb.h_freq_hz / config.OriginalFPS;
 }
 
 #pragma stage fragment
 layout(location = 0) in vec2 vTexCoord;
 layout(location = 1) in float bt1886_a;
 layout(location = 2) in float bt1886_b;
-layout(location = 3) in TimebaseConfig tb;
+layout(location = 3) flat in int padding_top;
+layout(location = 4) flat in int padding_bottom;
+layout(location = 5) flat in int integer_scale;
+layout(location = 6) in float active_region_start;
+layout(location = 7) in float active_region_height;
+layout(location = 8) in float design_v_lines;
+layout(location = 9) in TimebaseConfig tb;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
@@ -144,9 +177,26 @@ void main()
         return;
     }
 
-    // Determine monitor half-resolution (total lines including blanking)
-    float design_v_lines = tb.h_freq_hz / config.OriginalFPS;
-    float line = floor(vTexCoord.y * config.OriginalSize.y);
+    // Output pixel row index (integer)
+    int output_y_px = int(floor(vTexCoord.y * config.OutputSize.y));
+
+    // Check if we're in padding region
+    if (output_y_px < padding_top || output_y_px >= int(config.OutputSize.y) - padding_bottom) {
+        // Render black for padding lines
+        FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+        return;
+    }
+
+    // Adjust output position to account for top padding
+    int adjusted_output_y = output_y_px - padding_top;
+
+    // Remap current Y coordinate from active region to full input texture [0,1]
+    float remapped_y = (vTexCoord.y - active_region_start) / active_region_height;
+    vec2 remapped_texcoord = vec2(vTexCoord.x, remapped_y);
+
+    // Calculate which input line we should be sampling based on adjusted output position
+    float input_line_float = float(adjusted_output_y) / float(integer_scale);
+    int input_line = int(floor(input_line_float + 0.5));
 
     // Determine if we are in progressive or interlaced mode
     bool is_interlaced = (config.OriginalSize.y > 1.5 * design_v_lines);
@@ -157,37 +207,31 @@ void main()
     if (is_interlaced) {
         if (DOUBLE_REFRESH > 0.5) {
             // Bypass interlacing entirely
-            vec3 color = bt1886_linear(texture(Source, vTexCoord).rgb, bt1886_a, bt1886_b);
+            vec3 color = bt1886_linear(texture(Source, remapped_texcoord).rgb, bt1886_a, bt1886_b);
             FragColor = vec4(0.5 * color, 1.0);  // Dim output to represent averaging
             return;
         }
         field = int(mod(tb.field + FIELD_ORDER, 2.0));
     }
 
-    // Output pixel row index (integer)
-    int output_y_px = int(floor(vTexCoord.y * config.OutputSize.y));
-
-    // Input line index (integer, with rounding to nearest to avoid edge cases)
-    int input_line = int(floor(line + 0.5));
-
     // Compute mask
     float mask = 0.0;
 
     if (is_interlaced) {
         // Check if this input line belongs to the current field (even/odd parity)
-        int line_field = input_line & 1;  // Bitwise AND with 1 gives exact parity
+        int line_field = input_line & 1;
         if (line_field == field) {
-            // This line belongs to current field; map it to output
-            int input_line_in_output = int(floor(float(input_line) * config.OutputSize.y / config.OriginalSize.y + 0.5));
-            mask = (output_y_px == input_line_in_output) ? 1.0 : 0.0;
+            // This line belongs to current field; check if we're on the scanline
+            int expected_output = input_line * integer_scale;
+            mask = (adjusted_output_y == expected_output) ? 1.0 : 0.0;
         }
     } else {
-        // Progressive: map all input lines to output
-        int input_line_in_output = int(floor(float(input_line) * config.OutputSize.y / config.OriginalSize.y + 0.5));
-        mask = (output_y_px == input_line_in_output) ? 1.0 : 0.0;
+        // Progressive: check if we're on a scanline for this input line
+        int expected_output = input_line * integer_scale;
+        mask = (adjusted_output_y == expected_output) ? 1.0 : 0.0;
     }
 
-    vec3 color = bt1886_linear(texture(Source, vTexCoord).rgb, bt1886_a, bt1886_b);
+    vec3 color = bt1886_linear(texture(Source, remapped_texcoord).rgb, bt1886_a, bt1886_b);
     vec3 outColor = mix(mix(color, vec3(0.0), scanline_weight), color, mask);
     FragColor = vec4(outColor, 1.0);
 }

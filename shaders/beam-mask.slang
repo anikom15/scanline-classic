@@ -698,7 +698,8 @@ void main()
     if (config.OriginalSize.y > total_v_lines * 1.5)
         interlace_scale = 2.0;
 
-    float active_v_lines = config.OriginalSize.y / interlace_scale;
+    // Accounts for padding from previous shader, e.g. scanraster
+    float active_v_lines = config.SourceSize.y / 2.0;  // Use SourceSize to account for padding
     float active_region_v = active_v_lines / max(total_v_lines, 1.0);
 
     // Aspect ratios for full video (active + blanking)
