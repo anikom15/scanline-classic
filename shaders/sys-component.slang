@@ -190,9 +190,9 @@ void main()
         pow(10.0, SYS_GAIN_U / 20.0),
         pow(10.0, SYS_GAIN_V / 20.0));
     bias = vec3(
-        SYS_BIAS_Y * 7.143e-3,
-        SYS_BIAS_U * 7.143e-3,
-        SYS_BIAS_V * 7.143e-3);
+        SYS_BIAS_Y * 10e-3,
+        SYS_BIAS_U * 10e-3,
+        SYS_BIAS_V * 10e-3);
 }
 
 #pragma stage fragment
