@@ -90,12 +90,12 @@ layout(std140, set = 0, binding = 0) uniform UBO
 #define VSB_I_CUTOFF_MHZ USB_BANDWIDTH
 #define VSB_Q_CUTOFF_MHZ LSB_BANDWIDTH
 
-// Blackman-Harris 4-term windowed-sinc filter design (asymmetric per channel)
-// We allow more taps for the narrower Q-channel cutoff to keep a clean transition.
-const int MIN_TAPS_I = 16;                 // I channel min taps
-const int MAX_TAPS_I = 40;                 // I channel max taps
-const int MIN_TAPS_Q = 24;                 // Q channel min taps
-const int MAX_TAPS_Q = 56;                 // Q channel max taps
+// Hamming windowed-sinc filter design (asymmetric per channel)
+// Stopband: ~43 dB, minimal ringing (~1.5% overshoot)
+// Analytical tap count formula: N = 3.3 / transition_width
+// Transition width = TRANSITION_FACTOR × fc_norm (normalized cutoff)
+const float HAMMING_TRANSITION_CONST = 3.3;  // Hamming -43 dB stopband
+const float TRANSITION_FACTOR = 0.15;        // 15% of cutoff frequency
 
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
@@ -136,20 +136,25 @@ void main()
     fc_i_norm = (VSB_I_CUTOFF_MHZ * 1.0e6) / sample_rate_hz;
     fc_q_norm = (VSB_Q_CUTOFF_MHZ * 1.0e6) / sample_rate_hz;
 
-    // Validation & clamp inside Nyquist
-    fc_i_norm = clamp(fc_i_norm, 0.0, 0.49);
-    fc_q_norm = clamp(fc_q_norm, 0.0, 0.49);
-
-    // Adaptive design based on OutputSize.x ∈ [720, 1440]
-    // Blackman-Harris 4-term: stopband ~92 dB, mainlobe width = 8π/N
-    float output_width = config.OutputSize.x;
-    float width_factor = clamp((output_width - 720.0) / (1440.0 - 720.0), 0.0, 1.0);
-
-    // Adaptive tap counts per channel
-    float adaptive_i = mix(float(MIN_TAPS_I), float(MAX_TAPS_I), width_factor);
-    float adaptive_q = mix(float(MIN_TAPS_Q), float(MAX_TAPS_Q), width_factor);
-    taps_i = floor(adaptive_i * 0.5) * 2.0; // even for symmetry
-    taps_q = floor(adaptive_q * 0.5) * 2.0; // even for symmetry
+    // Analytical tap count design for Hamming window
+    // Formula: N = HAMMING_TRANSITION_CONST / transition_width
+    // Transition band = TRANSITION_FACTOR × cutoff frequency
+    
+    // I channel: wider bandwidth → narrower transition → fewer taps needed
+    float transition_i = TRANSITION_FACTOR * fc_i_norm;
+    float taps_i_calc = HAMMING_TRANSITION_CONST / max(transition_i, 0.01);
+    
+    // Q channel: narrower bandwidth → needs more taps for sharp cutoff
+    float transition_q = TRANSITION_FACTOR * fc_q_norm;
+    float taps_q_calc = HAMMING_TRANSITION_CONST / max(transition_q, 0.01);
+    
+    // Round to even numbers for symmetric FIR
+    taps_i = ceil(taps_i_calc * 0.5) * 2.0;
+    taps_q = ceil(taps_q_calc * 0.5) * 2.0;
+    
+    // Clamp to reasonable bounds (avoid degenerate or excessive tap counts)
+    taps_i = clamp(taps_i, 8.0, 32.0);
+    taps_q = clamp(taps_q, 12.0, 56.0);
 }
 
 #pragma stage fragment
@@ -198,7 +203,7 @@ void main()
         i_wsum = 1.0;
         max_tap_i = 0; // skip loop accumulation
     } else {
-        float coeff0_i = sinc_lowpass_bh4(-Ax, fc_i_norm, taps_i);
+        float coeff0_i = sinc_lowpass_hamming(-Ax, fc_i_norm, taps_i);
         i_signal = coeff0_i * iq0.r;
         i_wsum = coeff0_i;
     }
@@ -210,7 +215,7 @@ void main()
         q_wsum = 1.0;
         max_tap_q = 0;
     } else {
-        float coeff0_q = sinc_lowpass_bh4(-Ax, fc_q_norm, taps_q);
+        float coeff0_q = sinc_lowpass_hamming(-Ax, fc_q_norm, taps_q);
         q_signal = coeff0_q * iq0.g;
         q_wsum = coeff0_q;
     }
@@ -230,16 +235,16 @@ void main()
 
         // Apply lowpass filter coefficients
         if (n <= max_tap_i) {
-            float coeff_r_i = sinc_lowpass_bh4(nf - Ax, fc_i_norm, taps_i);
-            float coeff_l_i = sinc_lowpass_bh4(-nf - Ax, fc_i_norm, taps_i);
+            float coeff_r_i = sinc_lowpass_hamming(nf - Ax, fc_i_norm, taps_i);
+            float coeff_l_i = sinc_lowpass_hamming(-nf - Ax, fc_i_norm, taps_i);
             i_signal += coeff_r_i * iq_r.r + coeff_l_i * iq_l.r;
             i_wsum += coeff_r_i + coeff_l_i;
         }
 
         // Q channel (may use fewer/more taps); skip when beyond taps_q
         if (n <= max_tap_q) {
-            float coeff_r_q = sinc_lowpass_bh4(nf - Ax, fc_q_norm, taps_q);
-            float coeff_l_q = sinc_lowpass_bh4(-nf - Ax, fc_q_norm, taps_q);
+            float coeff_r_q = sinc_lowpass_hamming(nf - Ax, fc_q_norm, taps_q);
+            float coeff_l_q = sinc_lowpass_hamming(-nf - Ax, fc_q_norm, taps_q);
             q_signal += coeff_r_q * iq_r.g + coeff_l_q * iq_l.g;
             q_wsum += coeff_r_q + coeff_l_q;
         }

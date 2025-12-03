@@ -82,11 +82,11 @@ layout(std140, set = 0, binding = 0) uniform UBO
 const float VSB_I_CUTOFF_MHZ = 4.2;        // I channel lowpass cutoff
 const float VSB_Q_CUTOFF_MHZ = 0.75;       // Q channel lowpass cutoff
 
-// Blackman-Harris 4-term windowed-sinc lowpass (matched)
-const int MIN_TAPS_I = 16;
-const int MAX_TAPS_I = 40;
-const int MIN_TAPS_Q = 24;
-const int MAX_TAPS_Q = 56;
+// Hamming windowed-sinc lowpass (matched to iq-filter.slang)
+// Stopband: ~43 dB, minimal ringing (~1.5% overshoot)
+// Analytical tap count formula: N = 3.3 / transition_width
+const float HAMMING_TRANSITION_CONST = 3.3;  // Hamming -43 dB stopband
+const float TRANSITION_FACTOR = 0.15;        // 15% of cutoff frequency
 
 // Hilbert demod removed; weighted method only
 
@@ -127,13 +127,25 @@ void main()
     fc_i_norm = clamp((VSB_I_CUTOFF_MHZ * 1.0e6) / sample_rate_hz, 0.0, 0.49);
     fc_q_norm = clamp((VSB_Q_CUTOFF_MHZ * 1.0e6) / sample_rate_hz, 0.0, 0.49);
 
-    // Adaptive taps per channel
-    float output_width = config.OutputSize.x;
-    float width_factor = clamp((output_width - 720.0) / (1440.0 - 720.0), 0.0, 1.0);
-    float adaptive_i = mix(float(MIN_TAPS_I), float(MAX_TAPS_I), width_factor);
-    float adaptive_q = mix(float(MIN_TAPS_Q), float(MAX_TAPS_Q), width_factor);
-    taps_i = floor(adaptive_i * 0.5) * 2.0;
-    taps_q = floor(adaptive_q * 0.5) * 2.0;
+    // Analytical tap count design for Hamming window
+    // Formula: N = HAMMING_TRANSITION_CONST / transition_width
+    // Transition band = TRANSITION_FACTOR × cutoff frequency
+    
+    // I channel: wider bandwidth → narrower transition → fewer taps needed
+    float transition_i = TRANSITION_FACTOR * fc_i_norm;
+    float taps_i_calc = HAMMING_TRANSITION_CONST / max(transition_i, 0.01);
+    
+    // Q channel: narrower bandwidth → needs more taps for sharp cutoff
+    float transition_q = TRANSITION_FACTOR * fc_q_norm;
+    float taps_q_calc = HAMMING_TRANSITION_CONST / max(transition_q, 0.01);
+    
+    // Round to even numbers for symmetric FIR
+    taps_i = ceil(taps_i_calc * 0.5) * 2.0;
+    taps_q = ceil(taps_q_calc * 0.5) * 2.0;
+    
+    // Clamp to reasonable bounds (avoid degenerate or excessive tap counts)
+    taps_i = clamp(taps_i, 8.0, 32.0);
+    taps_q = clamp(taps_q, 12.0, 56.0);
 }
 
 #pragma stage fragment
@@ -174,8 +186,8 @@ void main()
     float Q_lp = 0.0, Q_w = 0.0;
 
     // Center coefficients
-    float c0_i = sinc_lowpass_bh4(-Ax, fc_i_norm, taps_i);
-    float c0_q = sinc_lowpass_bh4(-Ax, fc_q_norm, taps_q);
+    float c0_i = sinc_lowpass_hamming(-Ax, fc_i_norm, taps_i);
+    float c0_q = sinc_lowpass_hamming(-Ax, fc_q_norm, taps_q);
     I_lp = c0_i * iq0.r; I_w = c0_i;
     Q_lp = c0_q * iq0.g; Q_w = c0_q;
     // Hilbert at center is zero for odd kernel, skip
@@ -192,15 +204,15 @@ void main()
         vec2 iq_l = texture(Source, Tex - nf * dx).rg;
 
         if (n <= max_i) {
-            float cr_i = sinc_lowpass_bh4(nf - Ax, fc_i_norm, taps_i);
-            float cl_i = sinc_lowpass_bh4(-nf - Ax, fc_i_norm, taps_i);
+            float cr_i = sinc_lowpass_hamming(nf - Ax, fc_i_norm, taps_i);
+            float cl_i = sinc_lowpass_hamming(-nf - Ax, fc_i_norm, taps_i);
             I_lp += cr_i * iq_r.r + cl_i * iq_l.r;
             I_w  += cr_i + cl_i;
         }
 
         if (n <= max_q) {
-            float cr_q = sinc_lowpass_bh4(nf - Ax, fc_q_norm, taps_q);
-            float cl_q = sinc_lowpass_bh4(-nf - Ax, fc_q_norm, taps_q);
+            float cr_q = sinc_lowpass_hamming(nf - Ax, fc_q_norm, taps_q);
+            float cl_q = sinc_lowpass_hamming(-nf - Ax, fc_q_norm, taps_q);
             float qr = iq_r.g, ql = iq_l.g;
             Q_lp += cr_q * qr + cl_q * ql;
             Q_w  += cr_q + cl_q;

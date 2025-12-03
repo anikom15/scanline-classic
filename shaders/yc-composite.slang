@@ -28,6 +28,7 @@
 
 #include "menus/parameters/sys-timing.inc"
 #include "menus/parameters/sys-encode.inc"
+#include "menus/parameters/sys-yc.inc"
 #include "menus/parameters/composite.inc"
 
 #pragma name YCComposite
@@ -50,8 +51,8 @@ layout(push_constant) uniform Push
     float SC_FREQ;
     float H_BLANK_INACTIVE_LEN;
     float H_BLANK_INACTIVE_UNIT;
-    float BANDPASS_WIDTH;
-    float NOTCH_EDGE_ATTEN_DB;
+    float CHROMA_BANDPASS_WIDTH;
+    float CHROMA_EDGE_ATTEN_DB;
     float LUMA_LOWPASS_CUTOFF;
     float LUMA_LOWPASS_ATTEN;
     float LUMA_NOTCH_ENABLE;
@@ -67,8 +68,8 @@ layout(push_constant) uniform Push
 #define SC_FREQ config.SC_FREQ
 #define H_BLANK_INACTIVE_LEN config.H_BLANK_INACTIVE_LEN
 #define H_BLANK_INACTIVE_UNIT config.H_BLANK_INACTIVE_UNIT
-#define BANDPASS_WIDTH config.BANDPASS_WIDTH
-#define NOTCH_EDGE_ATTEN_DB config.NOTCH_EDGE_ATTEN_DB
+#define CHROMA_BANDPASS_WIDTH config.CHROMA_BANDPASS_WIDTH
+#define CHROMA_EDGE_ATTEN_DB config.CHROMA_EDGE_ATTEN_DB
 #define LUMA_LOWPASS_CUTOFF config.LUMA_LOWPASS_CUTOFF
 #define LUMA_LOWPASS_ATTEN config.LUMA_LOWPASS_ATTEN
 #define LUMA_NOTCH_ENABLE config.LUMA_NOTCH_ENABLE
@@ -112,17 +113,17 @@ void main()
     // Formula: A_edge_min = A_dc * (BW / (2*f_sc))^2
     const float TARGET_DC_ATTEN_DB = 48.0;
     float f_sc_mhz = tb.sc_freq_hz * 1.0e-6; // Convert Hz to MHz
-    float bw_to_fsc_ratio = BANDPASS_WIDTH / (2.0 * f_sc_mhz);
+    float bw_to_fsc_ratio = CHROMA_BANDPASS_WIDTH / (2.0 * f_sc_mhz);
     float bandpass_edge_atten_min = TARGET_DC_ATTEN_DB * bw_to_fsc_ratio * bw_to_fsc_ratio;
     
     // Use the maximum of calculated minimum and user parameter
     // This ensures brightness preservation while allowing user override
-    float bandpass_edge_atten_db = max(bandpass_edge_atten_min, NOTCH_EDGE_ATTEN_DB);
+    float bandpass_edge_atten_db = max(bandpass_edge_atten_min, CHROMA_EDGE_ATTEN_DB);
     
     // Clamp to reasonable range
     bandpass_edge_atten_db = clamp(bandpass_edge_atten_db, 0.1, 20.0);
     
-    sigma_bp = sigma_tb(tb, max(BANDPASS_WIDTH * 0.5, 1e-6), bandpass_edge_atten_db);
+    sigma_bp = sigma_tb(tb, max(CHROMA_BANDPASS_WIDTH * 0.5, 1e-6), bandpass_edge_atten_db);
     
     // Luma lowpass sigma
     sigma_lp = sigma_tb(tb, max(LUMA_LOWPASS_CUTOFF, 1e-6), LUMA_LOWPASS_ATTEN);
