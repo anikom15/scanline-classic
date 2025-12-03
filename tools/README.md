@@ -1,5 +1,25 @@
 # Tools
 
+## generate-wcg.ps1
+Master script to generate all WCG content (menu shaders and presets) in one step.
+
+Runs both `generate-wcg-menu.ps1` and `generate-wcg-presets.ps1` sequentially.
+
+### Usage
+From the repository root (PowerShell):
+
+```powershell
+# Standard run
+./tools/generate-wcg.ps1
+
+# Verbose logging
+./tools/generate-wcg.ps1 -VerboseLog
+```
+
+### Notes
+- The script is compatible with Windows PowerShell 5.1.
+- Exits with an error code if either step fails.
+
 ## generate-wcg-menu.ps1
 Generates WCG menu shaders from existing SDR menu shaders, and a base WCG menu from `menu-sdr.slang` or `menu.slang`.
 
