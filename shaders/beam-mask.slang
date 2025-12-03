@@ -485,6 +485,11 @@ vec3 compute_mask(vec2 screen_uv, float units_x_total, float units_y_total, vec2
 {
     vec2 sigma = vec2(MASK_DIFFUSION);
 
+    // Scale sigma for Shadow Mask
+    if (MASK_TYPE >= 1.5) {
+        sigma *= 0.625;
+    }
+
     // Continuous unit coordinates for smooth Gaussian weighting
     float x_units = screen_uv.x * units_x_total;
     float y_units = screen_uv.y * units_y_total;

@@ -1,8 +1,8 @@
-# SFC composite shader set
+# Mega Drive composite shader set (Brazil variant)
 
 shaders = 15
 
-shader0 = ../../../shaders/menus/menu-composite-sdr.slang
+shader0 = ../../../shaders/menus/menu-composite-yc-sdr.slang
 filter_linear0 = false
 scale_type0 = source
 
@@ -12,16 +12,16 @@ scale_type1 = source
 
 shader2 = ../../../shaders/sys-rgb-bandlimit.slang
 filter_linear2 = false
-scale_type_x2 = absolute
+scale_type_x2 = source
 scale_type_y2 = source
-scale_x2 = 1024.0
+scale_x2 = 3.0
 scale_y2 = 1.0
 
-shader3 = ../../../shaders/sys-component.slang
+shader3 = ../../../shaders/sys-yc.slang
 filter_linear3 = false
 scale_type3 = source
 
-shader4 = ../../../shaders/composite-mod.slang
+shader4 = ../../../shaders/yc-composite.slang
 filter_linear4 = false
 scale_type4 = source
 
@@ -78,37 +78,38 @@ scale14 = 1.0
 textures = BORDER
 BORDER = ../../../share/bezel-trinitron.png
 
-# SNES signal modification
+# Signal modification
 ENCODER_SETUP = 0
-SYS_BANDWIDTH_R = 5.4
-SYS_BANDWIDTH_G = 5.4
-SYS_BANDWIDTH_B = 5.4
-SYS_CUTOFF_ATTEN_R = 16
-SYS_CUTOFF_ATTEN_G = 16
-SYS_CUTOFF_ATTEN_B = 16
+PAL = 1
+YC_MODEL = 2
 
-# Component processing
-SYS_BANDWIDTH_U = 2.6
-SYS_BANDWIDTH_V = 2.6
-SYS_CUTOFF_ATTEN_Y = 0.0
-SYS_CUTOFF_ATTEN_U = 3.0
-SYS_CUTOFF_ATTEN_V = 3.0
+SYS_BANDWIDTH_R = 6.5
+SYS_BANDWIDTH_G = 6.5
+SYS_BANDWIDTH_B = 6.5
+SYS_CUTOFF_ATTEN_R = 10
+SYS_CUTOFF_ATTEN_G = 10
+SYS_CUTOFF_ATTEN_B = 10
+
+# Y/C Processing
+LUMA_LOWPASS_CUTOFF = 2.1
+LUMA_LOWPASS_ATTEN = 3.0
+LUMA_NOTCH_ENABLE = 1.0
 
 # Timing
 V_LINES_PER_FIELD = 262
-H_BLANK_INACTIVE_LEN = 33.203125
+H_BLANK_INACTIVE_LEN = 20.6896551724
 H_BLANK_INACTIVE_UNIT = 2
-SC_FREQ_MODE = 0
-SHORTEN_ODD_FIELD_TIME = 1
+SC_FREQ_MODE = 1
 
 # Display setup
 DECODER_SETUP = 0
+DECODER_TYPE = 2
 
-NOTCH_EDGE_ATTEN_DB = 6.0
-BANDPASS_WIDTH = 1.2
+NOTCH_EDGE_ATTEN_DB = 3.0
+BANDPASS_WIDTH = 2.6
 
-SCANLINE_BLANK_WEIGHT = 75.0
-TVL = 450.0
+SCANLINE_BLANK_WEIGHT = 100.0
+TVL = 600.0
 MASK_TYPE = 0.0
 MASK_DIFFUSION = 2.0
 BEAM_FOCUS = 50.0
@@ -120,18 +121,17 @@ TRAPEZOIDAL_CORRECTION = 3.0
 S_CORRECTION_H = 3.0
 S_CORRECTION_V = 3.0
 
-NTSC_CONVERSION = 1.0
-LIMITER_COMPRESSION_POINT = 85.0
-USER_SHARPNESS = 50.0
 USER_H_SIZE = 56.0
 USER_V_SIZE = 56.0
 
-FEEDBACK_FILTER = 0.0
-
 # Phosphor
-PHOSPHOR_MANTISSA_R = 2.0
-PHOSPHOR_MANTISSA_G = 200.0
-PHOSPHOR_MANTISSA_B = 200.0
+PHOSPHOR_MANTISSA_R = 1.0
+PHOSPHOR_MANTISSA_G = 100.0
+PHOSPHOR_MANTISSA_B = 100.0
 
-# Colorimetry (NTSC-J)
-COLORIMETRY_PRESET = 2
+# Colorimetry (NTSC)
+COLORIMETRY_PRESET = 1
+
+# Bezel parameters
+GLOW_DIFFUSION = 4.0
+GLOW_COMPRESSION = 0.7
