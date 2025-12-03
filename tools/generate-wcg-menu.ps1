@@ -64,10 +64,11 @@ function Transform-Shader([string]$inputPath, [string]$outputPath) {
         [System.Text.RegularExpressions.RegexOptions]::Multiline
     )
 
-    # Write output
+    # Write output (UTF-8 without BOM)
     $outDir = Split-Path $outputPath -Parent
     if (-not (Test-Path -LiteralPath $outDir)) { New-Item -ItemType Directory -Path $outDir | Out-Null }
-    Set-Content -LiteralPath $outputPath -Value $lines -Encoding UTF8
+    $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+    [System.IO.File]::WriteAllText($outputPath, $lines, $utf8NoBom)
 }
 
 # Discover SDR menu shaders
