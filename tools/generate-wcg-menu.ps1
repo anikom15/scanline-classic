@@ -35,8 +35,8 @@ function Transform-Shader([string]$inputPath, [string]$outputPath) {
     if ($VerboseLog) { Write-Host "Transforming $inputPath -> $outputPath" }
     $lines = Get-Content -LiteralPath $inputPath -Raw -Encoding UTF8 -ErrorAction Stop
 
-    # Update pragma format to 10-bit
-    $lines = ($lines -replace '(?m)^#pragma\s+format\s+\S+', '#pragma format R10G10B10A2_UNORM')
+    # Update pragma format to 10-bit packed (always for WCG)
+    $lines = ($lines -replace '(?m)^#pragma\s+format\s+\S+', '#pragma format A2B10G10R10_UNORM_PACK32')
 
     # Rewrite includes (PowerShell 5.1-safe: use Regex.Replace with MatchEvaluator)
     $pattern = '^\s*#include\s+"([^"]+)"\s*$'
@@ -73,15 +73,25 @@ function Transform-Shader([string]$inputPath, [string]$outputPath) {
 # Discover SDR menu shaders
 $inputs = Get-ChildItem -LiteralPath $MenusDir -Filter 'menu-*-sdr.slang' -File
 
-if (-not $inputs) {
-    Write-Warning "No SDR menu shaders found in $MenusDir"
-    return
-}
-
 foreach ($file in $inputs) {
     $outName = $file.Name -replace '-sdr\.slang$', '-wcg.slang'
     $outPath = Join-Path $file.DirectoryName $outName
     Transform-Shader -inputPath $file.FullName -outputPath $outPath
 }
 
-Write-Host "WCG menu shader generation complete."
+# Also generate base menu-wcg.slang from menu-sdr.slang or menu.slang if present
+$baseSdr = Join-Path $MenusDir 'menu-sdr.slang'
+$baseMenu = Join-Path $MenusDir 'menu.slang'
+if (Test-Path -LiteralPath $baseSdr) {
+    $baseOut = Join-Path $MenusDir 'menu-wcg.slang'
+    Transform-Shader -inputPath $baseSdr -outputPath $baseOut
+} elseif (Test-Path -LiteralPath $baseMenu) {
+    $baseOut = Join-Path $MenusDir 'menu-wcg.slang'
+    Transform-Shader -inputPath $baseMenu -outputPath $baseOut
+}
+
+if (-not $inputs -and -not (Test-Path -LiteralPath $baseSdr) -and -not (Test-Path -LiteralPath $baseMenu)) {
+    Write-Warning "No menu shaders found in $MenusDir"
+} else {
+    Write-Host "WCG menu shader generation complete."
+}
