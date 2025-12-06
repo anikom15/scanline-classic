@@ -33,13 +33,16 @@ layout(push_constant) uniform Push
     vec4 OutputSize;
     uint FrameCount;
     // Timing parameters for timebase computation
+    float V_FREQ_MODE;
     float V_FREQ;
-    float V_LINES_PER_FIELD;
     float SHORTEN_ODD_FIELD_TIME;
     float SC_FREQ_MODE;
     float SC_FREQ;
-    float H_BLANK_INACTIVE_LEN;
-    float H_BLANK_INACTIVE_UNIT;
+    float PIXEL_CLOCK_MODE;
+    float PIXEL_CLOCK;
+    float H_FREQ_MODE;
+    float H_FREQ;
+    float H_BLANK_FUZZ;
     float DISPLAY_COMPONENT_BYPASS;
     float YC_MODEL; // 0=YIQ, 1=YPbPr, 2=YUV, 3=YDbDr, 4=YCbCr
     float DISPLAY_COMPONENT_FILTER_BYPASS;
@@ -55,21 +58,26 @@ layout(push_constant) uniform Push
 #pragma parameter DISPLAY_COMPONENT_HEADER " ==== Display Component Parameters ==== " 0.0 0.0 0.0 0.0
 #pragma parameter DISPLAY_COMPONENT_BYPASS "Display component bypass" 0.0 0.0 1.0 1.0
 #define DISPLAY_COMPONENT_BYPASS config.DISPLAY_COMPONENT_BYPASS
-#pragma parameter V_FREQ "Vertical frequency (Hz)" 59.94 1.0 240.0 0.01
+#pragma parameter V_FREQ_MODE "Vertical frequency mode (0=Auto, 1=NTSC, 2=PAL, 3=PAL-M, 4=Custom)" 1.0 0.0 4.0 1.0
+#define V_FREQ_MODE config.V_FREQ_MODE
+#pragma parameter V_FREQ "Custom vertical frequency (Hz)" 59.94 1.0 240.0 0.01
 #define V_FREQ config.V_FREQ
-#pragma parameter V_LINES_PER_FIELD "Video lines per field" 262.5 0.0 540.0 0.5
-#define V_LINES_PER_FIELD config.V_LINES_PER_FIELD
 #pragma parameter SHORTEN_ODD_FIELD_TIME "Shorten odd field time (0=Off, 1=On)" 0.0 0.0 1.0 1.0
 #define SHORTEN_ODD_FIELD_TIME config.SHORTEN_ODD_FIELD_TIME
 #pragma parameter SC_FREQ_MODE "Subcarrier frequency mode (0=Auto, 1=NTSC, 2=PAL, 3=Custom)" 1.0 0.0 3.0 1.0
 #define SC_FREQ_MODE config.SC_FREQ_MODE
 #pragma parameter SC_FREQ "Custom Subcarrier Frequency (MHz)" 3.579545 0.0 10.0 0.000001
 #define SC_FREQ config.SC_FREQ
-#define H_FREQ_HZ (V_FREQ * V_LINES_PER_FIELD)
-#pragma parameter H_BLANK_INACTIVE_LEN "Horizontal blank inactive length" 138.0 0.0 1000.0 0.1
-#define H_BLANK_INACTIVE_LEN config.H_BLANK_INACTIVE_LEN
-#pragma parameter H_BLANK_INACTIVE_UNIT "Horizontal blank inactive unit (0=px, 1=µs, 2=% active)" 0.0 0.0 2.0 1.0
-#define H_BLANK_INACTIVE_UNIT config.H_BLANK_INACTIVE_UNIT
+#pragma parameter PIXEL_CLOCK_MODE "Pixel clock mode (0=Auto, 1=NTSC, 2=PAL, 3=Divisor, 4=Custom)" 1.0 0.0 4.0 1.0
+#define PIXEL_CLOCK_MODE config.PIXEL_CLOCK_MODE
+#pragma parameter PIXEL_CLOCK "Pixel clock (MHz)" 21.477272 0.1 100.0 0.000001
+#define PIXEL_CLOCK config.PIXEL_CLOCK
+#pragma parameter H_FREQ_MODE "Horizontal frequency mode (0=Auto, 1=NTSC, 2=PAL, 3=Divisor, 4=Custom)" 0.0 0.0 4.0 1.0
+#define H_FREQ_MODE config.H_FREQ_MODE
+#pragma parameter H_FREQ "Custom horizontal frequency (kHz)" 15.734 1.0 100.0 0.001
+#define H_FREQ config.H_FREQ
+#pragma parameter H_BLANK_FUZZ "Horizontal blanking fuzz (cycles)" 0.0 0.0 20.0 0.1
+#define H_BLANK_FUZZ config.H_BLANK_FUZZ
 #pragma parameter YC_MODEL "YC color model (0=YIQ,1=YPbPr,2=YUV,3=YDbDr,4=YCbCr)" 1.0 0.0 4.0 1.0
 #define YC_MODEL config.YC_MODEL
 #pragma parameter DISPLAY_COMPONENT_FILTER_BYPASS "Display component filter bypass" 0.0 0.0 1.0 1.0
@@ -143,14 +151,17 @@ void main()
         vTexCoord,
         config.OriginalSize.xy,
         config.OutputSize.x,
-        V_FREQ,
-        V_LINES_PER_FIELD,
-        SHORTEN_ODD_FIELD_TIME,
+        config.OriginalFPS,
         SC_FREQ_MODE,
         SC_FREQ,
-        H_BLANK_INACTIVE_LEN,
-        H_BLANK_INACTIVE_UNIT
-    );
+        PIXEL_CLOCK,
+        PIXEL_CLOCK_MODE,
+        H_FREQ_MODE,
+        H_FREQ,
+        V_FREQ_MODE,
+        V_FREQ,
+        H_BLANK_FUZZ,
+        SHORTEN_ODD_FIELD_TIME);
     vec3 sigma;
     sigma.x = sigma_tb(tb, config.DISPLAY_BANDWIDTH_Y, config.DISPLAY_CUTOFF_ATTEN_Y);
     sigma.y = sigma_tb(tb, config.DISPLAY_BANDWIDTH_U, config.DISPLAY_CUTOFF_ATTEN_U);

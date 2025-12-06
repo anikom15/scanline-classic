@@ -52,12 +52,14 @@ layout(push_constant) uniform Push
     float IQ_DEMOD_Q_WEIGHT;
     float V_FREQ_MODE;
     float V_FREQ;
-    float V_LINES_PER_FIELD;
     float SHORTEN_ODD_FIELD_TIME;
     float SC_FREQ_MODE;
     float SC_FREQ;
-    float H_BLANK_INACTIVE_LEN;
-    float H_BLANK_INACTIVE_UNIT;
+    float PIXEL_CLOCK_MODE;
+    float PIXEL_CLOCK;
+    float H_FREQ_MODE;
+    float H_FREQ;
+    float H_BLANK_FUZZ;
     float K_VSB;
 } config;
 
@@ -66,12 +68,14 @@ layout(push_constant) uniform Push
 #define K_VSB config.K_VSB
 #define V_FREQ_MODE config.V_FREQ_MODE
 #define V_FREQ config.V_FREQ
-#define V_LINES_PER_FIELD config.V_LINES_PER_FIELD
 #define SHORTEN_ODD_FIELD_TIME config.SHORTEN_ODD_FIELD_TIME
 #define SC_FREQ_MODE config.SC_FREQ_MODE
 #define SC_FREQ config.SC_FREQ
-#define H_BLANK_INACTIVE_LEN config.H_BLANK_INACTIVE_LEN
-#define H_BLANK_INACTIVE_UNIT config.H_BLANK_INACTIVE_UNIT
+#define PIXEL_CLOCK_MODE config.PIXEL_CLOCK_MODE
+#define PIXEL_CLOCK config.PIXEL_CLOCK
+#define H_FREQ_MODE config.H_FREQ_MODE
+#define H_FREQ config.H_FREQ
+#define H_BLANK_FUZZ config.H_BLANK_FUZZ
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
@@ -110,15 +114,17 @@ void main()
         vTexCoord,
         config.OriginalSize.xy,
         config.OutputSize.x,
-        V_FREQ_MODE,
         config.OriginalFPS,
-        V_FREQ,
-        V_LINES_PER_FIELD,
-        SHORTEN_ODD_FIELD_TIME,
         SC_FREQ_MODE,
         SC_FREQ,
-        H_BLANK_INACTIVE_LEN,
-        H_BLANK_INACTIVE_UNIT);
+        PIXEL_CLOCK,
+        PIXEL_CLOCK_MODE,
+        H_FREQ_MODE,
+        H_FREQ,
+        V_FREQ_MODE,
+        V_FREQ,
+        H_BLANK_FUZZ,
+        SHORTEN_ODD_FIELD_TIME);
 
     // Compute output texture sample rate
     float sample_rate_hz = config.OutputSize.x * tb.h_freq_hz;

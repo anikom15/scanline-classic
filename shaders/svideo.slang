@@ -48,17 +48,16 @@
 
     Timebase and subcarrier
     -----------------------
-    Time per pixel and carrier phase are derived to match composite.slang:
-      - H frequency: H_FREQ_HZ = V_FREQ · V_LINES_PER_FIELD
-      - Inactive (blank) pixels are estimated from H_BLANK_INACTIVE_* and added
-        to the active width to get total_pixels.
+    Time per pixel and carrier phase are derived via compute_timebase():
+      - V_LINES_PER_FIELD is computed internally from V_FREQ and core refresh rate
+      - H frequency: H_FREQ_HZ derived from timing mode parameters
+      - Total pixels per line derived from PIXEL_CLOCK and H_FREQ_HZ
       - Pixel time: pixel_time = LINE_TIME / total_pixels, where LINE_TIME = 1/H_FREQ_HZ
       - Subcarrier frequency fSC:
-          SC_FREQ_MODE = 0 (Auto): fSC = H_FREQ_HZ · total_pixels / round(H_FREQ_HZ · total_pixels / NTSC_FSC · 100)/100
+          SC_FREQ_MODE = 0 (Auto): Derived from H rate and pixel clock
           SC_FREQ_MODE = 1 (NTSC): fSC = NTSC_FSC
           SC_FREQ_MODE = 2 (PAL):  fSC = PAL_FSC
           SC_FREQ_MODE = 3 (Custom): fSC = SC_FREQ (MHz) · 1e6
-        Auto tries to keep a stable line-to-subcarrier relationship.
       - Field phase:
           field_phase = mod(FIELD_TIME · field · 2π·fSC - Δt_odd · 2π·fSC, 2π) - π
         with FIELD_TIME = 1/V_FREQ and:
@@ -104,8 +103,8 @@
     ---------------
     - BYPASS_SVIDEO: Bypass shader
     - SVIDEO_FILTER_BYPASS: Use center-sample demod (skip Gaussian)
-    - V_FREQ: Vertical frequency (Hz), e.g., 59.94 NTSC, 50 PAL
-    - V_LINES_PER_FIELD: Lines/field, e.g., 262.5 NTSC, 312.5 PAL
+    - V_FREQ_MODE: Vertical frequency mode (0=Core, 1=NTSC, 2=PAL, 3=From H, 4=Custom)
+    - V_FREQ: Custom vertical frequency (Hz) when mode is Custom
     - SHORTEN_ODD_FIELD_TIME: Enable odd-field timing offset (interlaced behavior)
     - SC_FREQ_MODE:
         0 Auto   • derive from H rate and total pixels
@@ -113,8 +112,11 @@
         2 PAL    • fSC = 4.43361875 MHz
         3 Custom • fSC = SC_FREQ (MHz)
     - SC_FREQ: Custom fSC in MHz when mode is Custom
-    - H_BLANK_INACTIVE_LEN: Horizontal blank length in selected units
-    - H_BLANK_INACTIVE_UNIT: 0=px, 1=µs, 2=% active width
+    - PIXEL_CLOCK_MODE: Pixel clock mode (0=Fixed MHz, 1=Multiple of subcarrier)
+    - PIXEL_CLOCK: Pixel clock in MHz or multiplier (determines total horizontal pixels)
+    - H_FREQ_MODE: Horizontal frequency mode (0=Standard, 1=From pixel clock, 2=Custom)
+    - H_FREQ: Custom H frequency or divisor (kHz or cycles)
+    - H_BLANK_FUZZ: Horizontal blanking adjustment (%)
     - DISPLAY_BANDWIDTH_Y/C: Display bandwidth (MHz) for Y and C
     - DISPLAY_CUTOFF_ATTEN_Y/C: Gaussian cutoff attenuation (dB)
     - BW_MODE: 0=Normal, 1=BW (Y-only), 2=Y, 3=C, 4=Y+C split
@@ -138,12 +140,12 @@
 
     Tuning tips
     -----------
-    - NTSC: SC_FREQ_MODE=1, V_FREQ≈59.94, V_LINES_PER_FIELD=262.5
-    - PAL:  SC_FREQ_MODE=2, V_FREQ=50.00, V_LINES_PER_FIELD=312.5
+    - NTSC: SC_FREQ_MODE=1, V_FREQ_MODE=1 (59.94 Hz, 262.5 lines computed)
+    - PAL:  SC_FREQ_MODE=2, V_FREQ_MODE=2 (50.00 Hz, 312.5 lines computed)
     - Reduce dot crawl/zipper: Increase DISPLAY_CUTOFF_ATTEN_C or reduce DISPLAY_BANDWIDTH_C
     - Sharper luma: Increase DISPLAY_BANDWIDTH_Y, balance with C to avoid color bleeding
-    - If phase jitter appears over long runs, ensure V/H/blanking reflect the source
-      so Auto fSC aligns well; otherwise pick NTSC/PAL mode explicitly.
+    - If phase jitter appears over long runs, ensure timing parameters reflect the source
+      so timebase derivation aligns well; otherwise pick NTSC/PAL mode explicitly.
 */
 
 #include "common.inc"
@@ -170,61 +172,58 @@ layout(push_constant) uniform Push
     float OriginalFPS;
     float V_FREQ_MODE;
     float V_FREQ;
+    float SHORTEN_ODD_FIELD_TIME;
+    float SC_FREQ_MODE;
+    float SC_FREQ;
+    float PIXEL_CLOCK_MODE;
+    float PIXEL_CLOCK;
+    float H_FREQ_MODE;
+    float H_FREQ;
+    float H_BLANK_FUZZ;
+} config;
+
+#define V_FREQ_MODE config.V_FREQ_MODE
+#define V_FREQ config.V_FREQ
+#define SHORTEN_ODD_FIELD_TIME config.SHORTEN_ODD_FIELD_TIME
+#define SC_FREQ_MODE config.SC_FREQ_MODE
+#define SC_FREQ config.SC_FREQ
+#define PIXEL_CLOCK_MODE config.PIXEL_CLOCK_MODE
+#define PIXEL_CLOCK config.PIXEL_CLOCK
+#define H_FREQ_MODE config.H_FREQ_MODE
+#define H_FREQ config.H_FREQ
+#define H_BLANK_FUZZ config.H_BLANK_FUZZ
+
+layout(std140, set = 0, binding = 0) uniform UBO
+{
+    mat4 MVP;
     float BYPASS_SVIDEO;
+    float SVIDEO_FILTER_BYPASS;
     float USER_COLOR;
     float USER_TINT;
     float USER_SHARPNESS;
     float USER_MONOCHROME;
-    float SVIDEO_FILTER_BYPASS;
-    float V_LINES_PER_FIELD;
-    float SHORTEN_ODD_FIELD_TIME;
-    float H_BLANK_INACTIVE_LEN;
-    float H_BLANK_INACTIVE_UNIT;
     float DISPLAY_BANDWIDTH_Y;
     float DISPLAY_BANDWIDTH_C;
     float DISPLAY_CUTOFF_ATTEN_Y;
     float DISPLAY_CUTOFF_ATTEN_C;
     float BW_MODE;
-    float SC_FREQ;          // Custom subcarrier frequency (MHz)
-    float SC_FREQ_MODE;     // 0=Auto, 1=NTSC, 2=PAL, 3=Custom
     float ENCODER_SETUP;
     float DECODER_SETUP;
-} config;
-
-#define BYPASS_SVIDEO config.BYPASS_SVIDEO
-#define SVIDEO_FILTER_BYPASS config.SVIDEO_FILTER_BYPASS
-
-#define V_FREQ_MODE config.V_FREQ_MODE
-#define V_FREQ config.V_FREQ
-
-#define USER_COLOR config.USER_COLOR
-#define USER_TINT config.USER_TINT
-#define USER_SHARPNESS config.USER_SHARPNESS
-#define USER_MONOCHROME config.USER_MONOCHROME
-
-#define V_LINES_PER_FIELD config.V_LINES_PER_FIELD
-#define SHORTEN_ODD_FIELD_TIME config.SHORTEN_ODD_FIELD_TIME
-#define SC_FREQ_MODE config.SC_FREQ_MODE
-#define SC_FREQ config.SC_FREQ
-
-#define H_BLANK_INACTIVE_LEN config.H_BLANK_INACTIVE_LEN
-#define H_BLANK_INACTIVE_UNIT config.H_BLANK_INACTIVE_UNIT
-
-#define DISPLAY_BANDWIDTH_Y config.DISPLAY_BANDWIDTH_Y
-#define DISPLAY_BANDWIDTH_C config.DISPLAY_BANDWIDTH_C
-
-#define DISPLAY_CUTOFF_ATTEN_Y config.DISPLAY_CUTOFF_ATTEN_Y
-#define DISPLAY_CUTOFF_ATTEN_C config.DISPLAY_CUTOFF_ATTEN_C
-
-#define BW_MODE config.BW_MODE
-
-#define ENCODER_SETUP config.ENCODER_SETUP
-#define DECODER_SETUP config.DECODER_SETUP
-
-layout(std140, set = 0, binding = 0) uniform UBO
-{
-    mat4 MVP;
 } global;
+
+#define BYPASS_SVIDEO global.BYPASS_SVIDEO
+#define SVIDEO_FILTER_BYPASS global.SVIDEO_FILTER_BYPASS
+#define USER_COLOR global.USER_COLOR
+#define USER_TINT global.USER_TINT
+#define USER_SHARPNESS global.USER_SHARPNESS
+#define USER_MONOCHROME global.USER_MONOCHROME
+#define DISPLAY_BANDWIDTH_Y global.DISPLAY_BANDWIDTH_Y
+#define DISPLAY_BANDWIDTH_C global.DISPLAY_BANDWIDTH_C
+#define DISPLAY_CUTOFF_ATTEN_Y global.DISPLAY_CUTOFF_ATTEN_Y
+#define DISPLAY_CUTOFF_ATTEN_C global.DISPLAY_CUTOFF_ATTEN_C
+#define BW_MODE global.BW_MODE
+#define ENCODER_SETUP global.ENCODER_SETUP
+#define DECODER_SETUP global.DECODER_SETUP
 
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
@@ -246,15 +245,17 @@ void main()
         vTexCoord,
         config.OriginalSize.xy,
         config.OutputSize.x,
-        V_FREQ_MODE,
         config.OriginalFPS,
-        V_FREQ,
-        V_LINES_PER_FIELD,
-        SHORTEN_ODD_FIELD_TIME,
         SC_FREQ_MODE,
         SC_FREQ,
-        H_BLANK_INACTIVE_LEN,
-        H_BLANK_INACTIVE_UNIT);
+        PIXEL_CLOCK,
+        PIXEL_CLOCK_MODE,
+        H_FREQ_MODE,
+        H_FREQ,
+        V_FREQ_MODE,
+        V_FREQ,
+        H_BLANK_FUZZ,
+        SHORTEN_ODD_FIELD_TIME);
 
     // Precompute per-component sigmas for fragment stage
     sigma.x = sigma_tb(tb, DISPLAY_BANDWIDTH_Y, DISPLAY_CUTOFF_ATTEN_Y);

@@ -57,12 +57,16 @@ layout(push_constant) uniform Push
     float OriginalFPS;
 
     // Timing parameters for timebase computation
-    float V_LINES_PER_FIELD;
+    float V_FREQ_MODE;
+    float V_FREQ;
     float SHORTEN_ODD_FIELD_TIME;
     float SC_FREQ_MODE;
     float SC_FREQ;
-    float H_BLANK_INACTIVE_LEN;
-    float H_BLANK_INACTIVE_UNIT;
+    float PIXEL_CLOCK_MODE;
+    float PIXEL_CLOCK;
+    float H_FREQ_MODE;
+    float H_FREQ;
+    float H_BLANK_FUZZ;
 
     // Bypasses
     float SYS_COMPONENT_BYPASS;        // 0 or 1
@@ -78,26 +82,22 @@ layout(push_constant) uniform Push
     float SYS_CUTOFF_ATTEN_Y;  // default 3 dB
     float SYS_CUTOFF_ATTEN_U;  // default 2 dB
     float SYS_CUTOFF_ATTEN_V;  // default 2 dB
-
-    // Post-filter gain/bias per component
-    float SYS_GAIN_Y;
-    float SYS_GAIN_U;
-    float SYS_GAIN_V;
-    float SYS_BIAS_Y;
-    float SYS_BIAS_U;
-    float SYS_BIAS_V;
 } config;
 
 // Short-hand macros
 #define SYS_COMPONENT_BYPASS config.SYS_COMPONENT_BYPASS
 #define SYS_COMPONENT_FILTER_BYPASS config.SYS_COMPONENT_FILTER_BYPASS
 
-#define V_LINES_PER_FIELD config.V_LINES_PER_FIELD
+#define V_FREQ_MODE config.V_FREQ_MODE
+#define V_FREQ config.V_FREQ
 #define SHORTEN_ODD_FIELD_TIME config.SHORTEN_ODD_FIELD_TIME
 #define SC_FREQ_MODE config.SC_FREQ_MODE
 #define SC_FREQ config.SC_FREQ
-#define H_BLANK_INACTIVE_LEN config.H_BLANK_INACTIVE_LEN
-#define H_BLANK_INACTIVE_UNIT config.H_BLANK_INACTIVE_UNIT
+#define PIXEL_CLOCK_MODE config.PIXEL_CLOCK_MODE
+#define PIXEL_CLOCK config.PIXEL_CLOCK
+#define H_FREQ_MODE config.H_FREQ_MODE
+#define H_FREQ config.H_FREQ
+#define H_BLANK_FUZZ config.H_BLANK_FUZZ
 
 #define YC_MODEL config.YC_MODEL
 
@@ -108,23 +108,26 @@ layout(push_constant) uniform Push
 #define SYS_CUTOFF_ATTEN_U config.SYS_CUTOFF_ATTEN_U
 #define SYS_CUTOFF_ATTEN_V config.SYS_CUTOFF_ATTEN_V
 
-#define SYS_GAIN_Y config.SYS_GAIN_Y
-#define SYS_GAIN_U config.SYS_GAIN_U
-#define SYS_GAIN_V config.SYS_GAIN_V
 
-#define SYS_BIAS_Y config.SYS_BIAS_Y
-#define SYS_BIAS_U config.SYS_BIAS_U
-#define SYS_BIAS_V config.SYS_BIAS_V
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
     mat4 MVP;
-    float V_FREQ_MODE;
-    float V_FREQ;
+    // Post-filter gain/bias per component
+    float SYS_GAIN_Y;
+    float SYS_GAIN_U;
+    float SYS_GAIN_V;
+    float SYS_BIAS_Y;
+    float SYS_BIAS_U;
+    float SYS_BIAS_V;
 } global;
 
-#define V_FREQ_MODE global.V_FREQ_MODE
-#define V_FREQ global.V_FREQ
+#define SYS_GAIN_Y global.SYS_GAIN_Y
+#define SYS_GAIN_U global.SYS_GAIN_U
+#define SYS_GAIN_V global.SYS_GAIN_V
+#define SYS_BIAS_Y global.SYS_BIAS_Y
+#define SYS_BIAS_U global.SYS_BIAS_U
+#define SYS_BIAS_V global.SYS_BIAS_V
 
 // Convert RGB to selected luma-chroma space.
 // For YDbDr: RGB -> YUV -> scale (U,V) to (Db,Dr).
@@ -170,15 +173,17 @@ void main()
         vTexCoord,
         config.OriginalSize.xy,
         config.OutputSize.x,
-        V_FREQ_MODE,
         config.OriginalFPS,
-        V_FREQ,
-        V_LINES_PER_FIELD,
-        SHORTEN_ODD_FIELD_TIME,
         SC_FREQ_MODE,
         SC_FREQ,
-        H_BLANK_INACTIVE_LEN,
-        H_BLANK_INACTIVE_UNIT);
+        PIXEL_CLOCK,
+        PIXEL_CLOCK_MODE,
+        H_FREQ_MODE,
+        H_FREQ,
+        V_FREQ_MODE,
+        V_FREQ,
+        H_BLANK_FUZZ,
+        SHORTEN_ODD_FIELD_TIME);
 
     sigma.x = sigma_tb(tb, SYS_BANDWIDTH_Y, SYS_CUTOFF_ATTEN_Y);
     sigma.y = sigma_tb(tb, SYS_BANDWIDTH_U, SYS_CUTOFF_ATTEN_U);

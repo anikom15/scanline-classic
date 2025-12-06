@@ -40,12 +40,14 @@ layout(push_constant) uniform Push
     float BYPASS_COMPOSITE_DEMOD;
     float V_FREQ_MODE;
     float V_FREQ;
-    float V_LINES_PER_FIELD;
     float SHORTEN_ODD_FIELD_TIME;
     float SC_FREQ_MODE;
     float SC_FREQ;
-    float H_BLANK_INACTIVE_LEN;
-    float H_BLANK_INACTIVE_UNIT;
+    float PIXEL_CLOCK_MODE;
+    float PIXEL_CLOCK;
+    float H_FREQ_MODE;
+    float H_FREQ;
+    float H_BLANK_FUZZ;
     float COLOR_FILTER_MODE;
     float DISPLAY_BANDWIDTH_Y;
     float DISPLAY_BANDWIDTH_C;
@@ -57,23 +59,22 @@ layout(push_constant) uniform Push
     float BW_MODE;
     float USER_COLOR;   // Color (%)
     float USER_TINT;    // Tint (degrees)
-    float DECODER_SETUP;
-    float USER_MONOCHROME; // Monochrome mode (off, B&W, sepia)
 } config;
 
 #define USER_COLOR config.USER_COLOR
 #define USER_TINT config.USER_TINT
-#define USER_MONOCHROME config.USER_MONOCHROME
 #define BYPASS_COMPOSITE_DEMOD config.BYPASS_COMPOSITE_DEMOD
 
 #define V_FREQ_MODE config.V_FREQ_MODE
 #define V_FREQ config.V_FREQ
-#define V_LINES_PER_FIELD config.V_LINES_PER_FIELD
 #define SHORTEN_ODD_FIELD_TIME config.SHORTEN_ODD_FIELD_TIME
 #define SC_FREQ_MODE config.SC_FREQ_MODE
 #define SC_FREQ config.SC_FREQ
-#define H_BLANK_INACTIVE_LEN config.H_BLANK_INACTIVE_LEN
-#define H_BLANK_INACTIVE_UNIT config.H_BLANK_INACTIVE_UNIT
+#define PIXEL_CLOCK_MODE config.PIXEL_CLOCK_MODE
+#define PIXEL_CLOCK config.PIXEL_CLOCK
+#define H_FREQ_MODE config.H_FREQ_MODE
+#define H_FREQ config.H_FREQ
+#define H_BLANK_FUZZ config.H_BLANK_FUZZ
 
 #define COLOR_FILTER_MODE config.COLOR_FILTER_MODE
 
@@ -90,15 +91,17 @@ layout(push_constant) uniform Push
 
 #define BW_MODE config.BW_MODE
 
-#define DECODER_SETUP config.DECODER_SETUP
-
 layout(std140, set = 0, binding = 0) uniform UBO
 {
     mat4 MVP;
     float DECODER_TYPE; // Decoder type (0=YIQ, 1=YPbPr, 2=PAL)
+    float DECODER_SETUP;
+    float USER_MONOCHROME; // Monochrome mode (off, B&W, sepia)
 } global;
 
 #define DECODER_TYPE global.DECODER_TYPE
+#define DECODER_SETUP global.DECODER_SETUP
+#define USER_MONOCHROME global.USER_MONOCHROME
 
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
@@ -121,15 +124,17 @@ void main()
         vTexCoord,
         config.OriginalSize.xy,
         config.OutputSize.x,
-        V_FREQ_MODE,
         config.OriginalFPS,
-        V_FREQ,
-        V_LINES_PER_FIELD,
-        SHORTEN_ODD_FIELD_TIME,
         SC_FREQ_MODE,
         SC_FREQ,
-        H_BLANK_INACTIVE_LEN,
-        H_BLANK_INACTIVE_UNIT);
+        PIXEL_CLOCK,
+        PIXEL_CLOCK_MODE,
+        H_FREQ_MODE,
+        H_FREQ,
+        V_FREQ_MODE,
+        V_FREQ,
+        H_BLANK_FUZZ,
+        SHORTEN_ODD_FIELD_TIME);
 
     // Precompute per-component sigmas for fragment stage
     sigma.x = sigma_tb(tb, DISPLAY_BANDWIDTH_Y, DISPLAY_CUTOFF_ATTEN_Y);

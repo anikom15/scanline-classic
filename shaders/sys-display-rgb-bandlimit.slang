@@ -49,53 +49,45 @@ layout(push_constant) uniform Push
     uint FrameCount;
     float OriginalFPS;
     float SYS_DISPLAY_RGB_BANDLIMIT_BYPASS;
-    float V_LINES_PER_FIELD;
-    float V_INTERLACE_LINES;
+    float V_FREQ_MODE;
+    float V_FREQ;
+    float SHORTEN_ODD_FIELD_TIME;
     float SC_FREQ_MODE;
     float SC_FREQ;
-    float H_BLANK_INACTIVE_LEN;
-    float H_BLANK_INACTIVE_UNIT;
-    float SHORTEN_ODD_FIELD_TIME;
+    float PIXEL_CLOCK_MODE;
+    float PIXEL_CLOCK;
+    float H_FREQ_MODE;
+    float H_FREQ;
+    float H_BLANK_FUZZ;
     float SYS_BANDWIDTH_R;
     float SYS_BANDWIDTH_G;
     float SYS_BANDWIDTH_B;
-    float SYS_CUTOFF_ATTEN_R;
-    float SYS_CUTOFF_ATTEN_G;
-    float SYS_CUTOFF_ATTEN_B;
     float DISPLAY_BANDLIMIT_R;
     float DISPLAY_BANDLIMIT_G;
     float DISPLAY_BANDLIMIT_B;
-    float DISPLAY_CUTOFF_ATTEN_R;
-    float DISPLAY_CUTOFF_ATTEN_G;
-    float DISPLAY_CUTOFF_ATTEN_B;
     float USER_BLUE_ONLY;
     float DISPLAY_RGB_AMP_BYPASS;
 } config;
 
 #define SYS_DISPLAY_RGB_BANDLIMIT_BYPASS config.SYS_DISPLAY_RGB_BANDLIMIT_BYPASS
-#define V_LINES_PER_FIELD config.V_LINES_PER_FIELD
-#define V_INTERLACE_LINES config.V_INTERLACE_LINES
+#define V_FREQ_MODE config.V_FREQ_MODE
+#define V_FREQ config.V_FREQ
+#define SHORTEN_ODD_FIELD_TIME config.SHORTEN_ODD_FIELD_TIME
 #define SC_FREQ_MODE config.SC_FREQ_MODE
 #define SC_FREQ config.SC_FREQ
-#define H_BLANK_INACTIVE_LEN config.H_BLANK_INACTIVE_LEN
-#define H_BLANK_INACTIVE_UNIT config.H_BLANK_INACTIVE_UNIT
-#define SHORTEN_ODD_FIELD_TIME config.SHORTEN_ODD_FIELD_TIME
+#define PIXEL_CLOCK_MODE config.PIXEL_CLOCK_MODE
+#define PIXEL_CLOCK config.PIXEL_CLOCK
+#define H_FREQ_MODE config.H_FREQ_MODE
+#define H_FREQ config.H_FREQ
+#define H_BLANK_FUZZ config.H_BLANK_FUZZ
 
 #define SYS_BANDWIDTH_R config.SYS_BANDWIDTH_R
 #define SYS_BANDWIDTH_G config.SYS_BANDWIDTH_G
 #define SYS_BANDWIDTH_B config.SYS_BANDWIDTH_B
 
-#define SYS_CUTOFF_ATTEN_R config.SYS_CUTOFF_ATTEN_R
-#define SYS_CUTOFF_ATTEN_G config.SYS_CUTOFF_ATTEN_G
-#define SYS_CUTOFF_ATTEN_B config.SYS_CUTOFF_ATTEN_B
-
 #define DISPLAY_BANDLIMIT_R config.DISPLAY_BANDLIMIT_R
 #define DISPLAY_BANDLIMIT_G config.DISPLAY_BANDLIMIT_G
 #define DISPLAY_BANDLIMIT_B config.DISPLAY_BANDLIMIT_B
-
-#define DISPLAY_CUTOFF_ATTEN_R config.DISPLAY_CUTOFF_ATTEN_R
-#define DISPLAY_CUTOFF_ATTEN_G config.DISPLAY_CUTOFF_ATTEN_G
-#define DISPLAY_CUTOFF_ATTEN_B config.DISPLAY_CUTOFF_ATTEN_B
 
 #define USER_BLUE_ONLY config.USER_BLUE_ONLY
 
@@ -110,12 +102,13 @@ layout(std140, set = 0, binding = 0) uniform UBO
     float DISPLAY_GAIN_R;
     float DISPLAY_GAIN_G;
     float DISPLAY_GAIN_B;
-    float V_FREQ_MODE;
-    float V_FREQ;
+    float SYS_CUTOFF_ATTEN_R;
+    float SYS_CUTOFF_ATTEN_G;
+    float SYS_CUTOFF_ATTEN_B;
+    float DISPLAY_CUTOFF_ATTEN_R;
+    float DISPLAY_CUTOFF_ATTEN_G;
+    float DISPLAY_CUTOFF_ATTEN_B;
 } global;
-
-#define V_FREQ_MODE global.V_FREQ_MODE
-#define V_FREQ global.V_FREQ
 
 #define DISPLAY_BIAS_R global.DISPLAY_BIAS_R
 #define DISPLAY_BIAS_G global.DISPLAY_BIAS_G
@@ -124,6 +117,14 @@ layout(std140, set = 0, binding = 0) uniform UBO
 #define DISPLAY_GAIN_R global.DISPLAY_GAIN_R
 #define DISPLAY_GAIN_G global.DISPLAY_GAIN_G
 #define DISPLAY_GAIN_B global.DISPLAY_GAIN_B
+
+#define SYS_CUTOFF_ATTEN_R global.SYS_CUTOFF_ATTEN_R
+#define SYS_CUTOFF_ATTEN_G global.SYS_CUTOFF_ATTEN_G
+#define SYS_CUTOFF_ATTEN_B global.SYS_CUTOFF_ATTEN_B
+
+#define DISPLAY_CUTOFF_ATTEN_R global.DISPLAY_CUTOFF_ATTEN_R
+#define DISPLAY_CUTOFF_ATTEN_G global.DISPLAY_CUTOFF_ATTEN_G
+#define DISPLAY_CUTOFF_ATTEN_B global.DISPLAY_CUTOFF_ATTEN_B
 
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
@@ -145,15 +146,17 @@ void main()
         vTexCoord,
         config.OriginalSize.xy,
         config.OutputSize.x,
-        V_FREQ_MODE,
         config.OriginalFPS,
-        V_FREQ,
-        V_LINES_PER_FIELD,
-        SHORTEN_ODD_FIELD_TIME,
         SC_FREQ_MODE,
         SC_FREQ,
-        H_BLANK_INACTIVE_LEN,
-        H_BLANK_INACTIVE_UNIT);
+        PIXEL_CLOCK,
+        PIXEL_CLOCK_MODE,
+        H_FREQ_MODE,
+        H_FREQ,
+        V_FREQ_MODE,
+        V_FREQ,
+        H_BLANK_FUZZ,
+        SHORTEN_ODD_FIELD_TIME);
 
     vec3 sigma_sys;
     vec3 sigma_disp;

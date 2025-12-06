@@ -2,12 +2,14 @@
 
 #pragma parameter TIMING_HEADER " —— System: Timing —— " 0.0 0.0 0.0 0.0
 
-#pragma parameter V_FREQ_MODE "Vertical sync mode (0=Auto, 1=NTSC, 2=PAL, 3=Custom)" 0.0 0.0 3.0 1.0
-#pragma parameter V_FREQ "Custom vertical sync rate (Hz)" 59.94 0.0 240.0 0.0001
-#pragma parameter V_LINES_PER_FIELD "Vertical lines per field" 262.0 0.0 540.0 1.0
-#pragma parameter SC_FREQ_MODE "Subcarrier frequency mode (0=Auto, 1=NTSC, 2=PAL, 3=Custom)" 1.0 0.0 3.0 1.0
-#pragma parameter SC_FREQ "Custom subcarrier frequency (MHz)" 3.579545 0.0 10.0 0.000001
-#pragma parameter H_BLANK_INACTIVE_LEN "Horizontal blank+inactive length" 138.0 0.0 1000.0 0.1
-#pragma parameter H_BLANK_INACTIVE_UNIT "Horizontal blank+inactive unit (0=px, 1=µs, 2=% active)" 0.0 0.0 2.0 1.0
-#pragma parameter FIELD_ORDER "Field order (0=odd first, 1=even first)" 0.0 0.0 2.0 1.0
-#pragma parameter SHORTEN_ODD_FIELD_TIME "Shorten odd field time (0=Off, 1=On)" 0.0 0.0 1.0 1.0
+#pragma parameter SC_FREQ_MODE "Subcarrier frequency mode (auto, NTSC, PAL, PAL-M, custom)" 0.0 0.0 4.0 1.0
+#pragma parameter SC_FREQ "Custom subcarrier frequency (MHz)" 3.579545 0.0 10.0 0.01
+#pragma parameter PIXEL_CLOCK_MODE "Pixel clock mode (fixed, multiple of subcarrier)" 0.0 0.0 1.0 1.0
+#pragma parameter PIXEL_CLOCK "Pixel clock frequency (MHz) / multiplier" 13.5 0.0 500.0 0.01
+#pragma parameter H_FREQ_MODE "Horizontal frequency mode (standard, PC divisor, custom)" 0.0 0.0 2.0 1.0
+#pragma parameter H_FREQ "Custom horizontal frequency (kHz) / divisor" 15.734 0.0 100.0 0.01
+#pragma parameter V_FREQ_MODE "Vertical sync mode (auto, NTSC, PAL, H freq divisor, custom)" 0.0 0.0 4.0 1.0
+#pragma parameter V_FREQ "Custom vertical sync rate (Hz) / divisor" 59.94 0.0 240.0 0.01
+#pragma parameter H_BLANK_FUZZ "Horizontal blanking fuzz factor (%)" 82.8 0.0 100.0 0.1
+#pragma parameter FIELD_ORDER "Field order (odd first, even first)" 0.0 0.0 2.0 1.0
+#pragma parameter SHORTEN_ODD_FIELD_TIME "Shorten odd field time (off, on)" 0.0 0.0 1.0 1.0

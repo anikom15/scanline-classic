@@ -38,12 +38,16 @@ layout(push_constant) uniform Push
     vec4 OutputSize;
     uint FrameCount;
     float OriginalFPS;
-    float V_LINES_PER_FIELD;
+    float V_FREQ_MODE;
+    float V_FREQ;
     float SHORTEN_ODD_FIELD_TIME;
     float SC_FREQ_MODE;
     float SC_FREQ;
-    float H_BLANK_INACTIVE_LEN;
-    float H_BLANK_INACTIVE_UNIT;
+    float PIXEL_CLOCK_MODE;
+    float PIXEL_CLOCK;
+    float H_FREQ_MODE;
+    float H_FREQ;
+    float H_BLANK_FUZZ;
     float DISPLAY_RGB_FILTER_BYPASS;
     float DISPLAY_RGB_AMP_BYPASS;
     float DISPLAY_BANDLIMIT_R;
@@ -52,24 +56,22 @@ layout(push_constant) uniform Push
     float DISPLAY_CUTOFF_ATTEN_R;
     float DISPLAY_CUTOFF_ATTEN_G;
     float DISPLAY_CUTOFF_ATTEN_B;
-    float DISPLAY_GAIN_R;
-    float DISPLAY_GAIN_G;
-    float DISPLAY_GAIN_B;
-    float DISPLAY_BIAS_R;
-    float DISPLAY_BIAS_G;
-    float DISPLAY_BIAS_B;
     float USER_BLUE_ONLY;
 } config;
 
 #define DISPLAY_RGB_FILTER_BYPASS config.DISPLAY_RGB_FILTER_BYPASS
 #define DISPLAY_RGB_AMP_BYPASS config.DISPLAY_RGB_AMP_BYPASS
 
-#define V_LINES_PER_FIELD config.V_LINES_PER_FIELD
+#define V_FREQ_MODE config.V_FREQ_MODE
+#define V_FREQ config.V_FREQ
 #define SHORTEN_ODD_FIELD_TIME config.SHORTEN_ODD_FIELD_TIME
 #define SC_FREQ_MODE config.SC_FREQ_MODE
 #define SC_FREQ config.SC_FREQ
-#define H_BLANK_INACTIVE_LEN config.H_BLANK_INACTIVE_LEN
-#define H_BLANK_INACTIVE_UNIT config.H_BLANK_INACTIVE_UNIT
+#define PIXEL_CLOCK_MODE config.PIXEL_CLOCK_MODE
+#define PIXEL_CLOCK config.PIXEL_CLOCK
+#define H_FREQ_MODE config.H_FREQ_MODE
+#define H_FREQ config.H_FREQ
+#define H_BLANK_FUZZ config.H_BLANK_FUZZ
 
 #define DISPLAY_BANDLIMIT_R config.DISPLAY_BANDLIMIT_R
 #define DISPLAY_BANDLIMIT_G config.DISPLAY_BANDLIMIT_G
@@ -79,25 +81,28 @@ layout(push_constant) uniform Push
 #define DISPLAY_CUTOFF_ATTEN_G config.DISPLAY_CUTOFF_ATTEN_G
 #define DISPLAY_CUTOFF_ATTEN_B config.DISPLAY_CUTOFF_ATTEN_B
 
-#define DISPLAY_GAIN_R config.DISPLAY_GAIN_R
-#define DISPLAY_GAIN_G config.DISPLAY_GAIN_G
-#define DISPLAY_GAIN_B config.DISPLAY_GAIN_B
 
-#define DISPLAY_BIAS_R config.DISPLAY_BIAS_R
-#define DISPLAY_BIAS_G config.DISPLAY_BIAS_G
-#define DISPLAY_BIAS_B config.DISPLAY_BIAS_B
 
 #define USER_BLUE_ONLY config.USER_BLUE_ONLY
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
     mat4 MVP;
-    float V_FREQ_MODE;
-    float V_FREQ;
+    float DISPLAY_GAIN_R;
+    float DISPLAY_GAIN_G;
+    float DISPLAY_GAIN_B;
+    float DISPLAY_BIAS_R;
+    float DISPLAY_BIAS_G;
+    float DISPLAY_BIAS_B;
 } global;
 
-#define V_FREQ_MODE global.V_FREQ_MODE
-#define V_FREQ global.V_FREQ
+#define DISPLAY_GAIN_R global.DISPLAY_GAIN_R
+#define DISPLAY_GAIN_G global.DISPLAY_GAIN_G
+#define DISPLAY_GAIN_B global.DISPLAY_GAIN_B
+
+#define DISPLAY_BIAS_R global.DISPLAY_BIAS_R
+#define DISPLAY_BIAS_G global.DISPLAY_BIAS_G
+#define DISPLAY_BIAS_B global.DISPLAY_BIAS_B
 
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
@@ -118,15 +123,17 @@ void main()
         vTexCoord,
         config.OriginalSize.xy,
         config.OutputSize.x,
-        V_FREQ_MODE,
         config.OriginalFPS,
-        V_FREQ,
-        V_LINES_PER_FIELD,
-        SHORTEN_ODD_FIELD_TIME,
         SC_FREQ_MODE,
         SC_FREQ,
-        H_BLANK_INACTIVE_LEN,
-        H_BLANK_INACTIVE_UNIT);
+        PIXEL_CLOCK,
+        PIXEL_CLOCK_MODE,
+        H_FREQ_MODE,
+        H_FREQ,
+        V_FREQ_MODE,
+        V_FREQ,
+        H_BLANK_FUZZ,
+        SHORTEN_ODD_FIELD_TIME);
 
     sigma.x = sigma_tb(tb, DISPLAY_BANDLIMIT_R, DISPLAY_CUTOFF_ATTEN_R);
     sigma.y = sigma_tb(tb, DISPLAY_BANDLIMIT_G, DISPLAY_CUTOFF_ATTEN_G);

@@ -62,18 +62,42 @@ layout(push_constant) uniform Push
     vec4 OutputSize;
     uint FrameCount;
     float OriginalFPS;    // Vertical frequency (Hz)
-    float V_LINES_PER_FIELD;
+    float V_FREQ_MODE;
+    float V_FREQ;
     float SHORTEN_ODD_FIELD_TIME;
     float SC_FREQ_MODE;
     float SC_FREQ;        // Custom subcarrier frequency (MHz)
-    float H_BLANK_INACTIVE_LEN;
-    float H_BLANK_INACTIVE_UNIT;
+    float PIXEL_CLOCK_MODE;
+    float PIXEL_CLOCK;
+    float H_FREQ_MODE;
+    float H_FREQ;
+    float H_BLANK_FUZZ;
 
     // User video adjustments
     float USER_GAMMA;
     // User sharpness (percentage 0-100 from user-common.inc)
     float USER_SHARPNESS;
-    
+} config;
+
+#define V_FREQ_MODE config.V_FREQ_MODE
+#define V_FREQ config.V_FREQ
+#define SHORTEN_ODD_FIELD_TIME config.SHORTEN_ODD_FIELD_TIME
+#define SC_FREQ_MODE config.SC_FREQ_MODE
+#define SC_FREQ config.SC_FREQ
+#define PIXEL_CLOCK_MODE config.PIXEL_CLOCK_MODE
+#define PIXEL_CLOCK config.PIXEL_CLOCK
+#define H_FREQ_MODE config.H_FREQ_MODE
+#define H_FREQ config.H_FREQ
+#define H_BLANK_FUZZ config.H_BLANK_FUZZ
+
+#define USER_GAMMA config.USER_GAMMA
+#define USER_SHARPNESS config.USER_SHARPNESS
+
+
+layout(std140, set = 0, binding = 0) uniform UBO
+{
+    mat4 MVP;
+    float W_Y;
     // Color conversion circuitry (RGB matrix type)
     float NTSC_CONVERSION;
     float NTSC_CONVERSION_WEIGHT;
@@ -85,33 +109,6 @@ layout(push_constant) uniform Push
     float B_X;
     float B_Y;
     float W_X;
-} config;
-
-#define V_LINES_PER_FIELD config.V_LINES_PER_FIELD
-#define SHORTEN_ODD_FIELD_TIME config.SHORTEN_ODD_FIELD_TIME
-#define SC_FREQ_MODE config.SC_FREQ_MODE
-#define SC_FREQ config.SC_FREQ
-#define H_BLANK_INACTIVE_LEN config.H_BLANK_INACTIVE_LEN
-#define H_BLANK_INACTIVE_UNIT config.H_BLANK_INACTIVE_UNIT
-
-#define USER_GAMMA config.USER_GAMMA
-#define USER_SHARPNESS config.USER_SHARPNESS
-
-#define NTSC_CONVERSION config.NTSC_CONVERSION
-#define NTSC_CONVERSION_WEIGHT config.NTSC_CONVERSION_WEIGHT
-#define COLORIMETRY_PRESET config.COLORIMETRY_PRESET
-#define R_X config.R_X
-#define R_Y config.R_Y
-#define G_X config.G_X
-#define G_Y config.G_Y
-#define B_X config.B_X
-#define B_Y config.B_Y
-#define W_X config.W_X
-
-layout(std140, set = 0, binding = 0) uniform UBO
-{
-    mat4 MVP;
-    float W_Y;
 
     // Limiter
     float SHARPNENER_BYPASS;
@@ -121,11 +118,20 @@ layout(std140, set = 0, binding = 0) uniform UBO
     float LIMITER_MAX_OUTPUT;
     float LIMITER_DEBUG_OUT_OF_RANGE;
 
-    float V_FREQ_MODE;
-    float V_FREQ;
 } global;
 
 #define W_Y global.W_Y
+
+#define NTSC_CONVERSION global.NTSC_CONVERSION
+#define NTSC_CONVERSION_WEIGHT global.NTSC_CONVERSION_WEIGHT
+#define COLORIMETRY_PRESET global.COLORIMETRY_PRESET
+#define R_X global.R_X
+#define R_Y global.R_Y
+#define G_X global.G_X
+#define G_Y global.G_Y
+#define B_X global.B_X
+#define B_Y global.B_Y
+#define W_X global.W_X
 
 #define SHARPNENER_BYPASS global.SHARPNENER_BYPASS
 
@@ -134,9 +140,6 @@ layout(std140, set = 0, binding = 0) uniform UBO
 #define LIMITER_COMPRESSION_POINT global.LIMITER_COMPRESSION_POINT
 #define LIMITER_MAX_OUTPUT global.LIMITER_MAX_OUTPUT
 #define LIMITER_DEBUG_OUT_OF_RANGE global.LIMITER_DEBUG_OUT_OF_RANGE
-
-#define V_FREQ_MODE global.V_FREQ_MODE
-#define V_FREQ global.V_FREQ
 
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
@@ -231,15 +234,17 @@ void main()
         vTexCoord,
         config.OriginalSize.xy,
         config.OutputSize.x,
-        V_FREQ_MODE,
         config.OriginalFPS,
-        V_FREQ,
-        V_LINES_PER_FIELD,
-        SHORTEN_ODD_FIELD_TIME,
         SC_FREQ_MODE,
         SC_FREQ,
-        H_BLANK_INACTIVE_LEN,
-        H_BLANK_INACTIVE_UNIT);
+        PIXEL_CLOCK,
+        PIXEL_CLOCK_MODE,
+        H_FREQ_MODE,
+        H_FREQ,
+        V_FREQ_MODE,
+        V_FREQ,
+        H_BLANK_FUZZ,
+        SHORTEN_ODD_FIELD_TIME);
 
     // Emphasis design parameters using timebase
     if (SHARPNENER_BYPASS < 0.5) {

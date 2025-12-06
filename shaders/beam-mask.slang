@@ -56,18 +56,17 @@ layout(push_constant) uniform Push
     float MASK_INTENSITY;
     float TVL;
     float BEAM_FOCUS;
-    float V_LINES_PER_FIELD;
     float SC_FREQ_MODE;
     float SC_FREQ;
-    float H_BLANK_INACTIVE_LEN;
-    float H_BLANK_INACTIVE_UNIT;
+    float PIXEL_CLOCK_MODE;
+    float PIXEL_CLOCK;
+    float H_FREQ_MODE;
+    float H_FREQ;
+    float H_BLANK_FUZZ;
     float MASK_DIFFUSION;
     float ASPECT;
     float MASK_FRAME_DEBUG;
     float MASK_DEBUG_PADDING;
-    // ---- Geometry/user viewport controls ----
-    float USER_H_SIZE;           // % (50 = 1.0)
-    float USER_V_SIZE;           // % (50 = 1.0)
 } config;
 
 #define MASK_BYPASS config.MASK_BYPASS
@@ -75,22 +74,24 @@ layout(push_constant) uniform Push
 #define MASK_INTENSITY config.MASK_INTENSITY
 #define TVL config.TVL
 #define BEAM_FOCUS config.BEAM_FOCUS
-#define V_LINES_PER_FIELD config.V_LINES_PER_FIELD
 #define SC_FREQ_MODE config.SC_FREQ_MODE
 #define SC_FREQ config.SC_FREQ
-#define H_BLANK_INACTIVE_LEN config.H_BLANK_INACTIVE_LEN
-#define H_BLANK_INACTIVE_UNIT config.H_BLANK_INACTIVE_UNIT
+#define PIXEL_CLOCK_MODE config.PIXEL_CLOCK_MODE
+#define PIXEL_CLOCK config.PIXEL_CLOCK
+#define H_FREQ_MODE config.H_FREQ_MODE
+#define H_FREQ config.H_FREQ
+#define H_BLANK_FUZZ config.H_BLANK_FUZZ
 #define MASK_DIFFUSION config.MASK_DIFFUSION
 #define ASPECT config.ASPECT
 #define MASK_FRAME_DEBUG config.MASK_FRAME_DEBUG
 #define MASK_DEBUG_PADDING config.MASK_DEBUG_PADDING
 
-// Geometry macro bindings
-#define USER_H_SIZE            config.USER_H_SIZE
-#define USER_V_SIZE            config.USER_V_SIZE
-
 layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 MVP;
+    // ---- Geometry/user viewport controls ----
+    float USER_H_SIZE;            // % (50 = 1.0)
+    float USER_V_SIZE;            // % (50 = 1.0)
+
     float TRAPEZOIDAL_CORRECTION; // %
     float CORNER_CORRECTION;      // %
     float MAGNETIC_CORRECTION;    // % (0..100)
@@ -111,6 +112,10 @@ layout(std140, set = 0, binding = 0) uniform UBO {
     float V_FREQ_MODE;
     float V_FREQ;
 } global;
+
+// Geometry macro bindings
+#define USER_H_SIZE global.USER_H_SIZE
+#define USER_V_SIZE global.USER_V_SIZE
 
 #define GEOMETRY_BYPASS global.GEOMETRY_BYPASS
 #define FILTER_BYPASS global.FILTER_BYPASS
@@ -663,15 +668,17 @@ void main()
         vTexCoord,
         config.OriginalSize.xy,
         config.OutputSize.x,
-        V_FREQ_MODE,
         config.OriginalFPS,
-        V_FREQ,
-        V_LINES_PER_FIELD,
-        SHORTEN_ODD_FIELD_TIME,
         SC_FREQ_MODE,
         SC_FREQ,
-        H_BLANK_INACTIVE_LEN,
-        H_BLANK_INACTIVE_UNIT);
+        PIXEL_CLOCK,
+        PIXEL_CLOCK_MODE,
+        H_FREQ_MODE,
+        H_FREQ,
+        V_FREQ_MODE,
+        V_FREQ,
+        H_BLANK_FUZZ,
+        SHORTEN_ODD_FIELD_TIME);
 }
 
 #pragma stage fragment
@@ -683,20 +690,12 @@ layout(set = 0, binding = 1) uniform sampler2D Source;
 
 void main()
 {
-    // Horizontal inactive pixels (blanking)
-    float inactive_pixels_h;
-    if (H_BLANK_INACTIVE_UNIT < 0.5)
-        inactive_pixels_h = H_BLANK_INACTIVE_LEN;
-    else if (H_BLANK_INACTIVE_UNIT < 1.5)
-        inactive_pixels_h = H_BLANK_INACTIVE_LEN * 1.0e-6 * tb.h_freq_hz * config.OriginalSize.x;
-    else
-        inactive_pixels_h = H_BLANK_INACTIVE_LEN / 100.0 * config.OriginalSize.x;
-
-    float total_h_pixels = config.OriginalSize.x + inactive_pixels_h;
+    // Horizontal inactive pixels (blanking) - use h_pixels from timebase
+    float total_h_pixels = tb.h_pixels;
     float active_region_h = config.OriginalSize.x / max(total_h_pixels, 1.0);
 
     // Vertical inactive (blanking) lines
-    float total_v_lines = V_LINES_PER_FIELD;
+    float total_v_lines = tb.v_lines_per_field;
 
     // Interlace detection/compensation
     float interlace_scale = 1.0;

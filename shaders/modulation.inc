@@ -18,7 +18,16 @@
 // Shared modulation and demodulation functions for composite and S-Video processing
 
 const float NTSC_FSC = 3.579545e6;
-const float PAL_FSC = 4.4336187e6;
+const float PAL_FSC = 4.433618750e6;
+const float PAL_M_FSC = 3.575611e6;
+
+#define NTSC_H_FREQ (NTSC_FSC / 227.5) // ≈15.734 kHz
+const float PAL_H_FREQ = 15.625e3;
+#define PAL_M_H_FREQ (PAL_M_FSC / 227.25) // ≈15.734 kHz
+
+const float NTSC_V_FREQ = 59.94;
+const float PAL_V_FREQ = 50.0;
+const float PAL_M_V_FREQ = 59.94;
 
 // Timebase and subcarrier configuration
 struct TimebaseConfig {
@@ -28,6 +37,8 @@ struct TimebaseConfig {
     float sc_freq_hz;
     float pixel_time;
     float pixel_time_px;
+    float h_pixels;
+    float v_lines_per_field;
 };
 
 // Phase normalization helper. Keeps phase bounded in [-PI, PI].
@@ -82,15 +93,17 @@ TimebaseConfig compute_timebase(
     vec2 tex_coord,
     vec2 original_size,
     float output_width,
-    float v_freq_mode,
-    float auto_v_freq,
-    float custom_v_freq,
-    float v_lines_per_field,
-    float shorten_odd_field_time,
+    float core_refresh_hz,
     float sc_freq_mode,
     float sc_freq_custom_mhz,
-    float h_blank_inactive_len,
-    float h_blank_inactive_unit)
+    float pixel_clock_mhz,
+    float pixel_clock_mode,
+    float h_freq_mode,
+    float h_freq_custom_khz,
+    float v_freq_mode,
+    float custom_v_freq,
+    float h_blank_fuzz,
+    float shorten_odd_field_time)
 {
     TimebaseConfig config;
 
@@ -99,45 +112,97 @@ TimebaseConfig compute_timebase(
 
     float line = floor(tex_coord.y * original_size.y);
 
-    // Vertical frequency selection
-    float v_freq;
-    if (v_freq_mode < 0.5)
-        v_freq = auto_v_freq;
-    else if (v_freq_mode < 1.5)
-        v_freq = 59.94; // NTSC standard
-    else if (v_freq_mode < 2.5)
-        v_freq = 50.0; // PAL standard
-    else
-        v_freq = custom_v_freq;
-
-    // Horizontal timing
-    config.h_freq_hz = v_freq * v_lines_per_field;
-    float line_time = 1.0 / config.h_freq_hz;
-
-    // Inactive (blank) pixel span computation (horizontal)
-    float inactive_pixels;
-    if (h_blank_inactive_unit < 0.5)
-        inactive_pixels = h_blank_inactive_len;
-    else if (h_blank_inactive_unit < 1.5)
-        inactive_pixels = h_blank_inactive_len * 1.0e-6 * config.h_freq_hz * original_size.x;
-    else
-        inactive_pixels = h_blank_inactive_len / 100.0 * original_size.x;
-
-    float total_pixels = original_size.x + inactive_pixels;
-    config.pixel_time = line_time / total_pixels;
-
-    // Subcarrier frequency derivation (preserves previous rounding scheme)
-    float fsc = v_lines_per_field < 288.0 ? NTSC_FSC : PAL_FSC;
-
-    float subcarrier_div = round(config.h_freq_hz * total_pixels / fsc * 100.0) / 100.0;
-    if (sc_freq_mode < 0.5)
-        config.sc_freq_hz = config.h_freq_hz * total_pixels / subcarrier_div;
-    else if (sc_freq_mode < 1.5)
+    int standard;
+    // Subcarrier frequency derivation
+    if (sc_freq_mode < 0.5) {
+        // Auto mode: choose based on refresh rate
+        if (core_refresh_hz > 55.0) {
+            config.sc_freq_hz = NTSC_FSC;
+            standard = 0;
+        } else {
+            config.sc_freq_hz = PAL_FSC;
+            standard = 1;
+        }
+    } else if (sc_freq_mode < 1.5) {
         config.sc_freq_hz = NTSC_FSC;
-    else if (sc_freq_mode < 2.5)
+        standard = 0;
+    } else if (sc_freq_mode < 2.5) {
         config.sc_freq_hz = PAL_FSC;
-    else
+        standard = 1;
+    } else if (sc_freq_mode < 3.5) {
+        config.sc_freq_hz = PAL_M_FSC;
+        standard = 2;
+    } else {
         config.sc_freq_hz = sc_freq_custom_mhz * 1.0e6;
+        standard = 3;
+    }
+
+    // Pixel clock derivation
+    float pixel_clock_hz;
+    if (pixel_clock_mode < 0.5) {
+        // Fixed
+        pixel_clock_hz = pixel_clock_mhz * 1.0e6;
+    } else {
+        // Multiple of subcarrier
+        float multiplier = pixel_clock_mhz;
+        pixel_clock_hz = config.sc_freq_hz * multiplier;
+    }
+
+    // Horizontal frequency derivation
+    if (h_freq_mode < 0.5) {
+        // Standard
+        if (standard == 0) {
+            config.h_freq_hz = NTSC_H_FREQ;
+        } else if (standard == 1) {
+            config.h_freq_hz = PAL_H_FREQ;
+        } else if (standard == 2) {
+            config.h_freq_hz = PAL_M_H_FREQ;
+        } else {
+            // Guess from core refresh rate
+            if (core_refresh_hz > 55.0)
+                config.h_freq_hz = NTSC_H_FREQ;
+            else
+                config.h_freq_hz = PAL_H_FREQ;
+        }
+    } else if (h_freq_mode < 1.5) {
+        // From pixel clock
+        float divisor = h_freq_custom_khz;
+        config.h_freq_hz = pixel_clock_hz / divisor;
+    } else {
+        // Custom
+        config.h_freq_hz = h_freq_custom_khz * 1.0e3;
+    }
+
+    // Derive number of lines per field
+    if (v_freq_mode < 3.5 || v_freq_mode > 4.5) {
+        config.v_lines_per_field = round(2.0 * config.h_freq_hz / core_refresh_hz) / 2.0;
+    } else {
+        // Divisor is the same as number of lines per field
+        config.v_lines_per_field = custom_v_freq;
+    }
+
+    // Vertical field frequency derivation
+    float v_freq;
+    if (v_freq_mode < 0.5) {
+        v_freq = config.h_freq_hz / config.v_lines_per_field;
+    } else if (v_freq_mode < 1.5) {
+        v_freq = NTSC_V_FREQ;
+    } else if (v_freq_mode < 2.5) {
+        v_freq = PAL_V_FREQ;
+    } else if (v_freq_mode < 3.5) {
+        float divisor = custom_v_freq;
+        v_freq = config.h_freq_hz / divisor;
+    } else {
+        v_freq = custom_v_freq;
+    }
+
+    // Calculate pixel time and total horizontal pixels
+    float total_cycles = pixel_clock_hz / config.h_freq_hz;
+    h_blank_fuzz /= 100.0;  // Convert percentage to fraction
+    float clock_factor = round(total_cycles * h_blank_fuzz / original_size.x);
+    float total_pixels = total_cycles / clock_factor;
+
+    config.pixel_time = 1.0 / config.h_freq_hz / total_pixels;
 
     // Field phase (odd-field timing tweak retained)
     float field_time = 1.0 / v_freq;
@@ -150,6 +215,9 @@ TimebaseConfig compute_timebase(
 
     // Per-output-pixel time (cycles-per-pixel scaling)
     config.pixel_time_px = config.pixel_time * (original_size.x / output_width);
+
+    // Total horizontal pixels (active + blanking)
+    config.h_pixels = total_pixels;
 
     return config;
 }

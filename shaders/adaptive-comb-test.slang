@@ -39,12 +39,16 @@ layout(push_constant) uniform Push
     uint FrameCount;
     float OriginalFPS;
     float BYPASS_ADAPTIVE_COMB;
-    float V_LINES_PER_FIELD;
+    float V_FREQ_MODE;
+    float V_FREQ;
     float SHORTEN_ODD_FIELD_TIME;
     float SC_FREQ_MODE;
     float SC_FREQ;
-    float H_BLANK_INACTIVE_LEN;
-    float H_BLANK_INACTIVE_UNIT;
+    float PIXEL_CLOCK_MODE;
+    float PIXEL_CLOCK;
+    float H_FREQ_MODE;
+    float H_FREQ;
+    float H_BLANK_FUZZ;
     float NOTCH_WIDTH;
     float BANDPASS_WIDTH;
     float COMB_FILTER_TAPS;
@@ -57,13 +61,11 @@ layout(push_constant) uniform Push
 #pragma parameter BYPASS_ADAPTIVE_COMB "Bypass (0=Off, 1=On)" 0.0 0.0 1.0 1.0
 #define BYPASS_ADAPTIVE_COMB config.BYPASS_ADAPTIVE_COMB
 
-//#pragma parameter V_FREQ "Vertical frequency (Hz)" 59.94 1.0 240.0 0.01
-//#define V_FREQ config.V_FREQ
+#pragma parameter V_FREQ_MODE "Vertical frequency mode (0=Auto, 1=NTSC, 2=PAL, 3=PAL-M, 4=Custom)" 1.0 0.0 4.0 1.0
+#define V_FREQ_MODE config.V_FREQ_MODE
 
-#define V_FREQ config.OriginalFPS
-
-#pragma parameter V_LINES_PER_FIELD "Video lines per field" 262.5 0.0 540.0 0.5
-#define V_LINES_PER_FIELD config.V_LINES_PER_FIELD
+#pragma parameter V_FREQ "Custom vertical frequency (Hz)" 59.94 1.0 240.0 0.01
+#define V_FREQ config.V_FREQ
 
 #pragma parameter SHORTEN_ODD_FIELD_TIME "Shorten odd field time (0=Off, 1=On)" 0.0 0.0 1.0 1.0
 #define SHORTEN_ODD_FIELD_TIME config.SHORTEN_ODD_FIELD_TIME
@@ -74,12 +76,20 @@ layout(push_constant) uniform Push
 #pragma parameter SC_FREQ "Custom Subcarrier Frequency (MHz)" 3.579545 0.0 10.0 0.000001
 #define SC_FREQ config.SC_FREQ
 
-#define H_FREQ_HZ (V_FREQ * V_LINES_PER_FIELD)
+#pragma parameter PIXEL_CLOCK_MODE "Pixel clock mode (0=Auto, 1=NTSC, 2=PAL, 3=Divisor, 4=Custom)" 1.0 0.0 4.0 1.0
+#define PIXEL_CLOCK_MODE config.PIXEL_CLOCK_MODE
 
-#pragma parameter H_BLANK_INACTIVE_LEN "Horizontal blank inactive length" 138.0 0.0 1000.0 0.1
-#define H_BLANK_INACTIVE_LEN config.H_BLANK_INACTIVE_LEN
-#pragma parameter H_BLANK_INACTIVE_UNIT "Horizontal blank inactive unit (0=px, 1=µs, 2=% active)" 0.0 0.0 2.0 1.0
-#define H_BLANK_INACTIVE_UNIT config.H_BLANK_INACTIVE_UNIT
+#pragma parameter PIXEL_CLOCK "Pixel clock (MHz)" 21.477272 0.1 100.0 0.000001
+#define PIXEL_CLOCK config.PIXEL_CLOCK
+
+#pragma parameter H_FREQ_MODE "Horizontal frequency mode (0=Auto, 1=NTSC, 2=PAL, 3=Divisor, 4=Custom)" 0.0 0.0 4.0 1.0
+#define H_FREQ_MODE config.H_FREQ_MODE
+
+#pragma parameter H_FREQ "Custom horizontal frequency (kHz)" 15.734 1.0 100.0 0.001
+#define H_FREQ config.H_FREQ
+
+#pragma parameter H_BLANK_FUZZ "Horizontal blanking fuzz (cycles)" 0.0 0.0 20.0 0.1
+#define H_BLANK_FUZZ config.H_BLANK_FUZZ
 
 #pragma parameter NOTCH_WIDTH "Notch band-stop width (MHz)" 2.6 0.01 10.0 0.01
 #define NOTCH_WIDTH config.NOTCH_WIDTH
@@ -172,16 +182,19 @@ void main()
     TimebaseConfig tb = compute_timebase(
         float(config.FrameCount),
         vTexCoord,
-        // Updated: pass original_width and output_width explicitly
-        config.OriginalSize.x,
+        vec2(config.OriginalSize.x, config.OriginalSize.y),
         config.OutputSize.x,
-        V_FREQ,
-        V_LINES_PER_FIELD,
-        SHORTEN_ODD_FIELD_TIME,
+        config.OriginalFPS,
         SC_FREQ_MODE,
         SC_FREQ,
-        H_BLANK_INACTIVE_LEN,
-        H_BLANK_INACTIVE_UNIT);
+        PIXEL_CLOCK,
+        PIXEL_CLOCK_MODE,
+        H_FREQ_MODE,
+        H_FREQ,
+        V_FREQ_MODE,
+        V_FREQ,
+        H_BLANK_FUZZ,
+        SHORTEN_ODD_FIELD_TIME);
 
     // Notch filter setup
     float pixel_time_px = tb.pixel_time * (config.OriginalSize.x * config.OutputSize.z);
