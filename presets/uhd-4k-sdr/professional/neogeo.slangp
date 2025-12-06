@@ -1,4 +1,6 @@
-# Nintendo Super System (SNES) shaders set
+# Neo-Geo AES shader set
+#
+# Timing is different from MVS
 
 shaders = 10
 
@@ -12,9 +14,9 @@ scale_type1 = source
 
 shader2 = ../../../shaders/sys-display-rgb-bandlimit.slang
 filter_linear2 = false
-scale_type_x2 = absolute
+scale_type_x2 = source
 scale_type_y2 = source
-scale_x2 = 1024.0
+scale_x2 = 3.0
 scale_y2 = 1.0
 
 shader3 = ../../../shaders/limiter.slang
@@ -56,10 +58,16 @@ scale_type9 = viewport
 scale9 = 1.0
 
 textures = BORDER
-BORDER = ../../../share/bezel-tv.png
+BORDER = ../../../share/bezel-trinitron.png
 
 # Signal modification
 ENCODER_SETUP = 0
+
+# Neo-Geo color output is a bit hot
+SYS_GAIN_R = 0.6
+SYS_GAIN_G = 0.6
+SYS_GAIN_B = 0.6
+
 SYS_BANDWIDTH_R = 5.4
 SYS_BANDWIDTH_G = 5.4
 SYS_BANDWIDTH_B = 5.4
@@ -68,22 +76,27 @@ SYS_CUTOFF_ATTEN_G = 16
 SYS_CUTOFF_ATTEN_B = 16
 
 # Timing
-PIXEL_CLOCK_MODE = 1
-PIXEL_CLOCK = 6.0
+PIXEL_CLOCK_MODE = 0
+PIXEL_CLOCK = 24.167829
 H_FREQ_MODE = 1
-H_FREQ = 1364.0
-SHORTEN_ODD_FIELD_TIME = 1
+H_FREQ = 1536.0
 
 # Display setup
 DECODER_SETUP = 0
-SCANLINE_BLANK_WEIGHT = 75.0
-TVL = 450.0
-MASK_TYPE = 1.0
+SCANLINE_BLANK_WEIGHT = 100.0
+TVL = 600.0
+MASK_TYPE = 0.0
 MASK_DIFFUSION = 2.0
-MAGNETIC_CORRECTION = 45.0
+MAGNETIC_CORRECTION = 30.0
+DEFLECTION_ANGLE = 90.0
+SCREEN_ANGLE_H = 25.0
+SCREEN_ANGLE_V = 0.0
+TRAPEZOIDAL_CORRECTION = 3.0
+S_CORRECTION_H = 3.0
+S_CORRECTION_V = 3.0
 
-USER_H_SIZE = 59.0
-USER_V_SIZE = 59.0
+USER_H_SIZE = 56.0
+USER_V_SIZE = 56.0
 
 # Phosphor
 PHOSPHOR_MANTISSA_R = 1.0
@@ -92,3 +105,7 @@ PHOSPHOR_MANTISSA_B = 100.0
 
 # Colorimetry (NTSC-J)
 COLORIMETRY_PRESET = 2
+
+# Bezel parameters
+GLOW_DIFFUSION = 4.0
+GLOW_COMPRESSION = 0.7

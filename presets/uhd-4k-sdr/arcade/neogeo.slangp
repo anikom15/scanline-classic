@@ -1,4 +1,4 @@
-# Nintendo Super System (SNES) shaders set
+# Neo-Geo MVS shader set
 
 shaders = 10
 
@@ -12,9 +12,9 @@ scale_type1 = source
 
 shader2 = ../../../shaders/sys-display-rgb-bandlimit.slang
 filter_linear2 = false
-scale_type_x2 = absolute
+scale_type_x2 = source
 scale_type_y2 = source
-scale_x2 = 1024.0
+scale_x2 = 3.0
 scale_y2 = 1.0
 
 shader3 = ../../../shaders/limiter.slang
@@ -60,19 +60,24 @@ BORDER = ../../../share/bezel-tv.png
 
 # Signal modification
 ENCODER_SETUP = 0
-SYS_BANDWIDTH_R = 5.4
-SYS_BANDWIDTH_G = 5.4
-SYS_BANDWIDTH_B = 5.4
-SYS_CUTOFF_ATTEN_R = 16
-SYS_CUTOFF_ATTEN_G = 16
-SYS_CUTOFF_ATTEN_B = 16
+
+# Neo-Geo color output is a bit hot
+SYS_GAIN_R = 0.6
+SYS_GAIN_G = 0.6
+SYS_GAIN_B = 0.6
+
+SYS_BANDWIDTH_R = 6.0
+SYS_BANDWIDTH_G = 6.0
+SYS_BANDWIDTH_B = 6.0
+SYS_CUTOFF_ATTEN_R = 19
+SYS_CUTOFF_ATTEN_G = 19
+SYS_CUTOFF_ATTEN_B = 19
 
 # Timing
-PIXEL_CLOCK_MODE = 1
-PIXEL_CLOCK = 6.0
+PIXEL_CLOCK_MODE = 0
+PIXEL_CLOCK = 24.0
 H_FREQ_MODE = 1
-H_FREQ = 1364.0
-SHORTEN_ODD_FIELD_TIME = 1
+H_FREQ = 1536.0
 
 # Display setup
 DECODER_SETUP = 0
