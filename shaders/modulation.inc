@@ -39,6 +39,8 @@ struct TimebaseConfig {
     float pixel_time_px;
     float h_pixels;
     float v_lines_per_field;
+    float v_lines_per_frame;
+    float is_interlaced;
 };
 
 // Phase normalization helper. Keeps phase bounded in [-PI, PI].
@@ -181,6 +183,37 @@ TimebaseConfig compute_timebase(
         config.v_lines_per_field = custom_v_freq;
     }
 
+    // Detect interlacing early: original height significantly larger than lines per field
+    // Interlaced: original_size.y ≈ 2 × v_lines_per_field (e.g., 480 vs 262.5)
+    // Progressive: original_size.y ≈ v_lines_per_field
+    float interlace_ratio = original_size.y / config.v_lines_per_field;
+    bool is_interlaced = (interlace_ratio > 1.5);
+    config.is_interlaced = is_interlaced ? 1.0 : 0.0;
+
+    // Detect NTSC vs PAL based on vertical frequency
+    // NTSC: ~59.94-60 Hz, PAL: ~50 Hz
+    bool is_ntsc = (core_refresh_hz > 55.0 && config.v_lines_per_field < 350.0);
+    bool is_pal = (!is_ntsc && config.v_lines_per_field < 350.0);
+
+    // Calculate lines per frame
+    if (is_ntsc) {
+        config.v_lines_per_frame = 526.0;
+    } else if (is_pal) {
+        config.v_lines_per_frame = 626.0;
+    } else {
+        config.v_lines_per_frame = config.v_lines_per_field * 2.0 + 2.0;
+    }
+
+    // For interlaced content, add one extra line to even fields (field 0, 2, 4, ...)
+    // This simulates the extra scanline in the second field of interlaced video
+    if (is_interlaced) {
+        float field_parity = mod(config.field, 2.0);
+        if (field_parity < 0.5) {
+            // Even field: add one line
+            config.v_lines_per_field += 1.0;
+        }
+    }
+
     // Vertical field frequency derivation
     float v_freq;
     if (v_freq_mode < 0.5) {
@@ -204,13 +237,32 @@ TimebaseConfig compute_timebase(
 
     config.pixel_time = 1.0 / config.h_freq_hz / total_pixels;
 
-    // Field phase (odd-field timing tweak retained)
+    // Field phase with intelligent odd-field timing adjustment
     float field_time = 1.0 / v_freq;
     config.field_phase = field_time * config.field * 2.0 * PI * config.sc_freq_hz;
-
-    float odd_time_adjust = original_size.x / 256.0 * config.pixel_time;
-    config.field_phase -= ceil(config.field / 2.0) * odd_time_adjust
-        * shorten_odd_field_time * 2.0 * PI * config.sc_freq_hz;
+    
+    // Apply odd-field timing adjustment based on standard and scan type
+    float odd_field_adjust = 0.0;
+    if (shorten_odd_field_time > 0.5) {
+        float odd_time_adjust = original_size.x / 256.0 * config.pixel_time;
+        
+        if (is_ntsc) {
+            // NTSC: Apply shortening only for progressive scan
+            if (!is_interlaced) {
+                odd_field_adjust = -odd_time_adjust;
+            }
+            // Interlaced NTSC: bypass (no adjustment)
+        } else {
+            // PAL: Different behavior based on scan type
+            if (is_interlaced) {
+                // Interlaced PAL: lengthen odd field (positive adjustment)
+                odd_field_adjust = odd_time_adjust;
+            }
+            // Progressive PAL: bypass (no adjustment)
+        }
+    }
+    
+    config.field_phase += ceil(config.field / 2.0) * odd_field_adjust * 2.0 * PI * config.sc_freq_hz;
     config.field_phase = mod(config.field_phase, 2.0 * PI) - PI;
 
     // Per-output-pixel time (cycles-per-pixel scaling)

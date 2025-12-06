@@ -694,21 +694,19 @@ void main()
     float total_h_pixels = tb.h_pixels;
     float active_region_h = config.OriginalSize.x / max(total_h_pixels, 1.0);
 
-    // Vertical inactive (blanking) lines
-    float total_v_lines = tb.v_lines_per_field;
-
-    // Interlace detection/compensation
-    float interlace_scale = 1.0;
-    if (config.OriginalSize.y > total_v_lines * 1.5)
-        interlace_scale = 2.0;
+    // Vertical inactive (blanking) lines - use v_lines_per_frame from timebase
+    float total_v_lines = tb.v_lines_per_frame;
 
     // Accounts for padding from previous shader, e.g. scanraster
-    float active_v_lines = config.SourceSize.y / 2.0;  // Use SourceSize to account for padding
+    float active_v_lines = config.SourceSize.y;
     float active_region_v = active_v_lines / max(total_v_lines, 1.0);
+
+    // Account for interlacing in vertical active region
+    float interlace_factor = (tb.is_interlaced > 0.5) ? 1.0 : 2.0;
 
     // Aspect ratios for full video (active + blanking)
     float dar = config.OriginalAspect;
-    float sar = config.OriginalSize.x / (config.OriginalSize.y / interlace_scale);
+    float sar = config.OriginalSize.x / config.SourceSize.y;
     float par = dar / max(sar, EPS);
 
     // Full video aspect (active + blanking) - represents the ideal aspect including padding

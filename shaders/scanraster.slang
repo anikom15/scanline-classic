@@ -53,10 +53,11 @@ layout(push_constant) uniform Push
     float USER_PICTURE;
     float USER_BRIGHTNESS;
 
+    float V_LINES_PER_FIELD;
     float SC_FREQ_MODE;
     float SC_FREQ;
-    float PIXEL_CLOCK_MODE;
     float PIXEL_CLOCK;
+    float PIXEL_CLOCK_MODE;
     float H_FREQ_MODE;
     float H_FREQ;
     float H_BLANK_FUZZ;
@@ -73,10 +74,11 @@ layout(push_constant) uniform Push
 #define V_FREQ_MODE config.V_FREQ_MODE
 #define V_FREQ config.V_FREQ
 
+#define V_LINES_PER_FIELD config.V_LINES_PER_FIELD
 #define SC_FREQ_MODE config.SC_FREQ_MODE
 #define SC_FREQ config.SC_FREQ
-#define PIXEL_CLOCK_MODE config.PIXEL_CLOCK_MODE
 #define PIXEL_CLOCK config.PIXEL_CLOCK
+#define PIXEL_CLOCK_MODE config.PIXEL_CLOCK_MODE
 #define H_FREQ_MODE config.H_FREQ_MODE
 #define H_FREQ config.H_FREQ
 #define H_BLANK_FUZZ config.H_BLANK_FUZZ
@@ -103,8 +105,7 @@ layout(location = 4) flat out int padding_bottom;
 layout(location = 5) flat out int integer_scale;
 layout(location = 6) out float active_region_start;
 layout(location = 7) out float active_region_height;
-layout(location = 8) out float design_v_lines;
-layout(location = 9) out TimebaseConfig tb;
+layout(location = 8) out TimebaseConfig tb;
 
 void main()
 {
@@ -154,9 +155,6 @@ void main()
     active_region_start = float(padding_top) / config.OutputSize.y;
     float active_region_end = float(int(config.OutputSize.y) - padding_bottom) / config.OutputSize.y;
     active_region_height = active_region_end - active_region_start;
-
-    // Precompute design_v_lines for interlacing detection
-    design_v_lines = tb.h_freq_hz / config.OriginalFPS;
 }
 
 #pragma stage fragment
@@ -168,8 +166,7 @@ layout(location = 4) flat in int padding_bottom;
 layout(location = 5) flat in int integer_scale;
 layout(location = 6) in float active_region_start;
 layout(location = 7) in float active_region_height;
-layout(location = 8) in float design_v_lines;
-layout(location = 9) in TimebaseConfig tb;
+layout(location = 8) in TimebaseConfig tb;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
@@ -205,7 +202,7 @@ void main()
     int input_line = int(floor(input_line_float + 0.5));
 
     // Determine if we are in progressive or interlaced mode
-    bool is_interlaced = (config.OriginalSize.y > 1.5 * design_v_lines);
+    bool is_interlaced = (tb.is_interlaced > 0.5);
     float scanline_weight = SCANLINE_BLANK_WEIGHT * 0.01;
 
     // Field parity (0 for even, 1 for odd) with user-configurable order
