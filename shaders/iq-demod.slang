@@ -201,10 +201,13 @@ void main()
     int max_i = int(taps_i);
     int max_q = int(taps_q);
     int max_n = max(max_i, max_q);
+    const float TAP_THRESHOLD = 1.0 / 255.0;  // 8-bit LSB threshold
     
     for (int n = 1; n <= 56; ++n) {
         if (n > max_n) break;
         float nf = float(n);
+
+        float coeff_mag = 0.0;
 
         vec2 iq_r = texture(Source, Tex + nf * dx).rg;
         vec2 iq_l = texture(Source, Tex - nf * dx).rg;
@@ -214,6 +217,7 @@ void main()
             float cl_i = sinc_lowpass_hamming(-nf - Ax, fc_i_norm, taps_i);
             I_lp += cr_i * iq_r.r + cl_i * iq_l.r;
             I_w  += cr_i + cl_i;
+            coeff_mag = max(coeff_mag, abs(cr_i) + abs(cl_i));
         }
 
         if (n <= max_q) {
@@ -222,9 +226,13 @@ void main()
             float qr = iq_r.g, ql = iq_l.g;
             Q_lp += cr_q * qr + cl_q * ql;
             Q_w  += cr_q + cl_q;
+            coeff_mag = max(coeff_mag, abs(cr_q) + abs(cl_q));
 
             // Hilbert path removed
         }
+
+        if (coeff_mag < FILTER_THRESHOLD)
+            break;
     }
 
     // Normalize

@@ -86,7 +86,7 @@ void main()
     float q_analytic = 0.0;
     float q_wsum = 0.0;
 
-    for (int n = 1; n <= HILBERT_TAPS; n += 2) {
+    for (int n = 1; n <= 31; n += 2) {
         float nf = float(n);
 
         // Right sample
@@ -101,6 +101,10 @@ void main()
         
         q_analytic += h_r * comp_r + h_l * comp_l;
         q_wsum += abs(h_r) + abs(h_l);
+
+        // Early exit once coefficients fall below significance
+        if (abs(h_r) < FILTER_THRESHOLD && abs(h_l) < FILTER_THRESHOLD)
+            break;
     }
     q_analytic /= max(q_wsum, EPS);
 

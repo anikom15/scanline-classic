@@ -227,6 +227,7 @@ void main()
     }
     
     // Convolve both channels with neighboring samples (single texture fetch per offset)
+    const float TAP_THRESHOLD = 1.0 / 255.0;  // 8-bit LSB threshold
     for (int n = 1; n <= 56; ++n) {
         if (n > max_tap)
             break;
@@ -239,12 +240,15 @@ void main()
         vec2 iq_r = texture(Source, tex_r).rg;
         vec2 iq_l = texture(Source, tex_l).rg;
 
+        float coeff_mag = 0.0;
+
         // Apply lowpass filter coefficients
         if (n <= max_tap_i) {
             float coeff_r_i = sinc_lowpass_hamming(nf - Ax, fc_i_norm, taps_i);
             float coeff_l_i = sinc_lowpass_hamming(-nf - Ax, fc_i_norm, taps_i);
             i_signal += coeff_r_i * iq_r.r + coeff_l_i * iq_l.r;
             i_wsum += coeff_r_i + coeff_l_i;
+            coeff_mag = max(coeff_mag, abs(coeff_r_i) + abs(coeff_l_i));
         }
 
         // Q channel (may use fewer/more taps); skip when beyond taps_q
@@ -253,7 +257,11 @@ void main()
             float coeff_l_q = sinc_lowpass_hamming(-nf - Ax, fc_q_norm, taps_q);
             q_signal += coeff_r_q * iq_r.g + coeff_l_q * iq_l.g;
             q_wsum += coeff_r_q + coeff_l_q;
+            coeff_mag = max(coeff_mag, abs(coeff_r_q) + abs(coeff_l_q));
         }
+
+        if (coeff_mag < FILTER_THRESHOLD)
+            break;
     }
     
     // Normalize filters to maintain unity gain

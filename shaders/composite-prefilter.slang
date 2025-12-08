@@ -170,7 +170,7 @@ void main()
     vec2 dx = vec2(config.OutputSize.z, 0.0);
 
     const float THRESHOLD = 1.0 / 255.0;
-
+    
     // Center sample - input is already composite baseband from iq-demod.slang
     float composite0 = texture(Source, Tex).r;
 
@@ -202,7 +202,7 @@ void main()
         sum_notch += g_notch0;
 
         // Bandpass + notch filter: shared symmetric lobed processing with early exit
-        for (int n = 1; n <= 64; ++n) {
+        for (int n = 1; n <= 24; ++n) {
             float nf = float(n);
 
             float g_bp_r = gaussian(nf - Ax, sigma_bp);
@@ -210,7 +210,7 @@ void main()
             float g_notch_r = gaussian(nf - Ax, sigma_notch);
             float g_notch_l = gaussian(nf + Ax, sigma_notch);
 
-            if (g_bp_r < THRESHOLD && g_bp_l < THRESHOLD && g_notch_r < THRESHOLD && g_notch_l < THRESHOLD)
+            if (g_bp_r < FILTER_THRESHOLD && g_bp_l < FILTER_THRESHOLD && g_notch_r < FILTER_THRESHOLD && g_notch_l < FILTER_THRESHOLD)
                 break;
 
             // Right

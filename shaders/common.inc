@@ -17,6 +17,7 @@
 
 const float EPS = 1.19209289551e-7;
 const float PI = 3.14159265359;
+const float FILTER_THRESHOLD = 1.0 / 255.0;  // 8-bit LSB threshold for early loop exit
 const vec3 BLACK = vec3(0.0, 0.0, 0.0);
 const vec3 WHITE = vec3(1.0, 1.0, 1.0);
 const vec3 RED = vec3(1.0, 0.0, 0.0);

@@ -32,15 +32,15 @@ vec3 bandlimit_convolve_gaussian_x(vec2 vTexCoord, vec4 OutputSize, sampler2D So
 
     const float THRESHOLD = 1.0 / 255.0;
 
-    for (int n = 1; n <= 20; ++n) {
+    for (int n = 1; n <= 16; ++n) {
         float nf = float(n);
 
         // Correct symmetric distances
         vec3 wr = gaussian3(nf - Ax, sigma); // right
         vec3 wl = gaussian3(nf + Ax, sigma); // left
 
-        if (all(lessThan(wr, vec3(THRESHOLD))) &&
-            all(lessThan(wl, vec3(THRESHOLD))))
+        if (all(lessThan(wr, vec3(FILTER_THRESHOLD))) &&
+            all(lessThan(wl, vec3(FILTER_THRESHOLD))))
             break;
 
         vec3 pr = texture(Source, Tex + nf * dx).rgb;

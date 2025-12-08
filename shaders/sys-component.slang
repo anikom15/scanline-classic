@@ -230,7 +230,7 @@ void main()
     // Follows a lobe technique similar to bandlimit_convolve_gaussian_x,
     // but transforms each sample to the selected color model and applies
     // component-wise weights/sigmas.
-    const float THRESHOLD = 1.0 / 510.0;
+    const float THRESHOLD = 1.0 / 255.0;  // 8-bit LSB threshold
 
     // Horizontal coordinate handling using nearest pixel center (no vertical shift)
     vec2 UV  = vTexCoord * config.OutputSize.xy;
@@ -256,10 +256,8 @@ void main()
     accum += vec3(wy * yc_c.x, wu * yc_c.y, wv * yc_c.z);
     wsum  += vec3(wy, wu, wv);
 
-    // Symmetric lobes
-    // Limited to 32 iterations for faster shader compilation
-    // Gaussian weights fall off rapidly, so early exit handles quality
-    for (int n = 1; n <= 32; ++n) {
+    // Symmetric lobes with early exit
+    for (int n = 1; n <= 24; ++n) {
         float nf = float(n);
         // Symmetric distances: right = n - Ax, left = n + Ax
         float wy_r = gaussian(nf - Ax, sigma.x);
@@ -270,9 +268,9 @@ void main()
         float wv_l = gaussian(nf + Ax, sigma.z);
 
         // Early out if all components negligible on both sides
-        if (wy_r < THRESHOLD && wy_l < THRESHOLD &&
-            wu_r < THRESHOLD && wu_l < THRESHOLD &&
-            wv_r < THRESHOLD && wv_l < THRESHOLD)
+        if (wy_r < FILTER_THRESHOLD && wy_l < FILTER_THRESHOLD &&
+            wu_r < FILTER_THRESHOLD && wu_l < FILTER_THRESHOLD &&
+            wv_r < FILTER_THRESHOLD && wv_l < FILTER_THRESHOLD)
             break;
 
         vec3 rgbr = texture(Source, Tex + nf * dx).rgb;

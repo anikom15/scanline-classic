@@ -180,8 +180,6 @@ void main()
     vec2 dx = vec2(config.OutputSize.z, 0.0);
 
     const float THRESHOLD = 1.0 / 255.0;
-    
-    vec3 color = vec3(0.0);
     vec3 wsum = vec3(0.0);
     
     // Process center sample
@@ -252,8 +250,8 @@ void main()
         float w_y_l = gaussian(nf + Ax, sigma.x);
         float w_c_r = gaussian(nf - Ax, sigma.y);
         float w_c_l = gaussian(nf + Ax, sigma.y);
-        if (w_y_r < THRESHOLD && w_y_l < THRESHOLD &&
-            w_c_r < THRESHOLD && w_c_l < THRESHOLD)
+        if (w_y_r < FILTER_THRESHOLD && w_y_l < FILTER_THRESHOLD &&
+            w_c_r < FILTER_THRESHOLD && w_c_l < FILTER_THRESHOLD)
             break;
 
         // Right sample (output pixel lattice)
