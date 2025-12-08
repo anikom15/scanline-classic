@@ -54,10 +54,10 @@ layout(push_constant) uniform Push
     float H_BLANK_FUZZ;
     float COLOR_FILTER_MODE;
     float BANDPASS_WIDTH;
-    float COMB_FILTER_TAPS;
-    float NOTCH_COMB_W;
     float BW_MODE;
     float BANDPASS_ATTEN_DB;
+    float COMB_FILTER_LUMA_ADAPT;
+    float COMB_FILTER_CHROMA_ADAPT;
 } config;
 
 #define BYPASS_PREFILTER config.BYPASS_PREFILTER
@@ -75,13 +75,11 @@ layout(push_constant) uniform Push
 
 #define COLOR_FILTER_MODE config.COLOR_FILTER_MODE
 
+#define COMB_FILTER_LUMA_ADAPT config.COMB_FILTER_LUMA_ADAPT
+#define COMB_FILTER_CHROMA_ADAPT config.COMB_FILTER_CHROMA_ADAPT
+
 #define BANDPASS_ATTEN_DB config.BANDPASS_ATTEN_DB
-
 #define BANDPASS_WIDTH config.BANDPASS_WIDTH
-
-#define COMB_FILTER_TAPS config.COMB_FILTER_TAPS
-
-#define NOTCH_COMB_W config.NOTCH_COMB_W
 
 #define BW_MODE config.BW_MODE
 
@@ -144,6 +142,14 @@ layout(location = 3) in TimebaseConfig tb;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
+// Compute correlation coefficient between two samples
+// Simple point correlation: returns signed similarity in [-1, 1]
+float compute_point_correlation(float ref, float cmp) {
+    float diff = abs(ref - cmp);
+    float sum = ref + cmp;
+    return 1.0 - (diff / max(sum, EPS));
+}
+
 void main()
 {
     if (BYPASS_PREFILTER > 0.5) {
@@ -167,11 +173,11 @@ void main()
     // Center sample - input is already composite baseband from iq-demod.slang
     float composite0 = texture(Source, Tex).r;
 
-    // Notch/bandpass filtering (only compute when needed for modes 0 or 2)
+    // Notch/bandpass filtering (always computed for modes < 0.5 and as fallback)
     float y_notch = 0.0;
     float c_notch = 0.0;
     
-    if (COLOR_FILTER_MODE < 0.5 || (COLOR_FILTER_MODE >= 1.5 && COLOR_FILTER_MODE < 2.5)) {
+    if (COLOR_FILTER_MODE < 0.5 || COLOR_FILTER_MODE >= 2.0) {
         // Chroma bandpass accumulators
         float c_accum = 0.0;
         float sum_c = 0.0;
@@ -236,10 +242,10 @@ void main()
         c_notch = c_bp;
     }
 
-    // Comb filter path (compute only when needed)
+    // Comb filter path (only compute for COLOR_FILTER_MODE >= 1.0)
     vec2 color_comb = vec2(0.0);
 
-    if (COLOR_FILTER_MODE >= 0.5 && COLOR_FILTER_MODE < 3.5) {
+    if (COLOR_FILTER_MODE >= 1.0) {
         // Current line phase at this texel
         float t0 = line / tb.h_freq_hz + baseCenter * tb.pixel_time_px;
         float phase0 = compute_carrier_phase(t0, tb.sc_freq_hz, tb.field_phase);
@@ -251,58 +257,47 @@ void main()
 
         // Vertical offsets for line taps
         vec2 comb_dy_1 = vec2(0.0, -1.0 * config.OutputSize.w);
-        vec2 comb_dy_2 = vec2(0.0, -2.0 * config.OutputSize.w);
-        vec2 comb_dy_3 = vec2(0.0, -3.0 * config.OutputSize.w);
 
         // Compute phase-aligned horizontal shifts for each tap line
-        // Tap 1 (line -1): target phase difference = π (180°)
-        float t1_same = (line - 1.0) / tb.h_freq_hz + baseCenter * tb.pixel_time_px;
-        float phase1_same = compute_carrier_phase(t1_same, tb.sc_freq_hz, tb.field_phase);
-        float dphi1 = normalize_phase(phase1_same - phase0);
+        // Tap 1 (line -1): target phase difference = π (180°) relative to current line
+        float t1 = (line - 1.0) / tb.h_freq_hz + baseCenter * tb.pixel_time_px;
+        float phase1 = compute_carrier_phase(t1, tb.sc_freq_hz, tb.field_phase);
+        float dphi1 = normalize_phase(phase1 - phase0);
         float dphi_needed1 = dphi1 - PI;
         float dx1_px = dphi_needed1 / sc_phase_inc_per_px;
         dx1_px -= round(dx1_px / period_px) * period_px;
 
-        // Tap 2 (line -2): target phase difference = 0 (in-phase)
-        float t2_same = (line - 2.0) / tb.h_freq_hz + baseCenter * tb.pixel_time_px;
-        float phase2_same = compute_carrier_phase(t2_same, tb.sc_freq_hz, tb.field_phase);
-        float dphi2 = normalize_phase(phase2_same - phase0);
-        float dphi_needed2 = dphi2 - 0.0;
-        float dx2_px = dphi_needed2 / sc_phase_inc_per_px;
-        dx2_px -= round(dx2_px / period_px) * period_px;
-
-        // Tap 3 (line -3): target phase difference = π (180°)
-        float t3_same = (line - 3.0) / tb.h_freq_hz + baseCenter * tb.pixel_time_px;
-        float phase3_same = compute_carrier_phase(t3_same, tb.sc_freq_hz, tb.field_phase);
-        float dphi3 = normalize_phase(phase3_same - phase0);
-        float dphi_needed3 = dphi3 - PI;
-        float dx3_px = dphi_needed3 / sc_phase_inc_per_px;
-        dx3_px -= round(dx3_px / period_px) * period_px;
-
         vec2 dx_norm = vec2(config.OutputSize.z, 0.0);
 
         // Sample phase-aligned taps
-        vec3 comb_taps_composite = vec3(
-            texture(Source, Tex + comb_dy_1 - dx1_px * dx_norm).r,
-            texture(Source, Tex + comb_dy_2 - dx2_px * dx_norm).r,
-            texture(Source, Tex + comb_dy_3 - dx3_px * dx_norm).r
-        );
+        float comb_taps_composite = texture(Source, Tex + comb_dy_1 - dx1_px * dx_norm).r;
 
-        // Apply comb filter combinations
-        if (COMB_FILTER_TAPS < 2) {
-            // 1-tap comb
-            color_comb = 0.5 * vec2(composite0 + comb_taps_composite.x,
-                                     composite0 - comb_taps_composite.x);
-        } else if (COMB_FILTER_TAPS < 3) {
-            // 2-tap comb
-            float y = 0.5 * (0.5 * composite0 + comb_taps_composite.x + 0.5 * comb_taps_composite.y);
-            float c = 0.5 * (0.5 * composite0 - comb_taps_composite.x + 0.5 * comb_taps_composite.y);
-            color_comb = vec2(y, c);
-        } else {
-            // 3-tap comb
-            float y = (0.5 * composite0 + comb_taps_composite.x + comb_taps_composite.y + 0.5 * comb_taps_composite.z) / 3.0;
-            float c = (0.5 * composite0 - comb_taps_composite.x + comb_taps_composite.y - 0.5 * comb_taps_composite.z) / 3.0;
-            color_comb = vec2(y, c);
+        if (COLOR_FILTER_MODE >= 0.5) {
+            // Mode 1: Simple comb filter using parallel single-tap filter
+            
+            // Single-tap filter
+            float y1 = 0.5 * (composite0 + comb_taps_composite);
+            float c1 = 0.5 * (composite0 - comb_taps_composite);
+
+            if (COLOR_FILTER_MODE >= 1.5) {
+                // Mode 2: Adaptive comb filter using magnitude-based correlation
+                // Measure raw line similarity using magnitude correlation
+                float composite_corr = compute_point_correlation(abs(composite0), abs(comb_taps_composite));
+
+                // Use luma threshold for Y decision, chroma threshold for C decision
+                if (composite_corr > COMB_FILTER_LUMA_ADAPT)
+                    color_comb.r = y1;
+                else
+                    color_comb.r = y_notch;
+                    
+                if (composite_corr > COMB_FILTER_CHROMA_ADAPT)
+                    color_comb.g = c1;
+                else
+                    color_comb.g = c_notch;
+            } else {
+                // Fixed-weight simple comb filter output
+                color_comb = vec2(y1, c1);
+            }
         }
     }
 
@@ -312,20 +307,20 @@ void main()
     float c_out;
     
     if (COLOR_FILTER_MODE < 0.5) {
-        // Mode 0: Notch filter output
+        // Mode 0: Notch filter output only
         y_out = y_notch;
         c_out = c_notch;
         color = vec2(y_out, c_out);
     } else if (COLOR_FILTER_MODE < 1.5) {
-        // Mode 1: Comb filter only (no notch component)
+        // Mode 1: Simple comb filter (fixed weights, no adaptation)
         y_out = color_comb.r;
         c_out = color_comb.g;
         color = vec2(y_out, c_out);
-    } else if (COLOR_FILTER_MODE < 2.5) {
-        // Mode 2: Mix between notch and comb
-        color = mix(vec2(y_notch, c_notch), color_comb, NOTCH_COMB_W / 100.0);
-        y_out = color.r;
-        c_out = color.g;
+    } else {
+        // Mode 2: Adaptive comb filter with notch fallback
+        y_out = color_comb.r;
+        c_out = color_comb.g;
+        color = vec2(y_out, c_out);
     }
 
     // BW monitor modes: route either luma-only or chroma-only to all channels

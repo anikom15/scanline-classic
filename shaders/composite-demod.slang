@@ -49,6 +49,7 @@ layout(push_constant) uniform Push
     float H_FREQ;
     float H_BLANK_FUZZ;
     float COLOR_FILTER_MODE;
+    float COMB_FILTER_2D;
     float DISPLAY_BANDWIDTH_Y;
     float DISPLAY_BANDWIDTH_C;
     float DISPLAY_CUTOFF_ATTEN_Y;
@@ -74,6 +75,7 @@ layout(push_constant) uniform Push
 #define H_BLANK_FUZZ config.H_BLANK_FUZZ
 
 #define COLOR_FILTER_MODE config.COLOR_FILTER_MODE
+#define COMB_FILTER_2D config.COMB_FILTER_2D
 
 #define DISPLAY_BANDWIDTH_Y config.DISPLAY_BANDWIDTH_Y
 #define DISPLAY_BANDWIDTH_C config.DISPLAY_BANDWIDTH_C
@@ -337,22 +339,24 @@ void main()
 
     float chroma = color.g * carrier0.x + color.b * carrier0.y;
 
-    if (COLOR_FILTER_MODE < 0.5) {
-        // Notch
-    } else if (COLOR_FILTER_MODE < 1.5) {
-        // Comb filter
-        color.r = bypass - chroma;
-        chroma = bypass - color.r;
-        color.gb = 2.0 * chroma * carrier0;
-    } else {
-        // Notch + Comb
-        float y_notch = color.r;
-        vec2 c_notch = color.gb;
-        float y_comb = bypass - chroma;
-        chroma = bypass - color.r;
-        vec2 c_comb = 2.0 * chroma * carrier0;
+    if (COMB_FILTER_2D > 0.5) {
+        if (COLOR_FILTER_MODE < 0.5) {
+            // Notch
+        } else if (COLOR_FILTER_MODE < 1.5) {
+            // Comb filter
+            color.r = bypass - chroma;
+            chroma = bypass - color.r;
+            color.gb = 2.0 * chroma * carrier0;
+        } else if (COLOR_FILTER_MODE < 2.5) {
+            // Notch + Comb
+            float y_notch = color.r;
+            vec2 c_notch = color.gb;
+            float y_comb = bypass - chroma;
+            chroma = bypass - color.r;
+            vec2 c_comb = 2.0 * chroma * carrier0;
 
-        color = 0.5 * (vec3(y_notch, c_notch) + vec3(y_comb, c_comb));
+            color = 0.5 * (vec3(y_notch, c_notch) + vec3(y_comb, c_comb));
+        }
     }
 
     if (USER_MONOCHROME > 0.5) {
