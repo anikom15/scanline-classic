@@ -300,12 +300,12 @@ void main()
     vec3 wsum  = vec3(0.0);
 
     // Center sample
-    float offset0 = Tex.x * config.OriginalSize.x;
+    float offset0 = baseCenter;
     float line = floor(vTexCoord.y * config.OriginalSize.y);
     float t0 = line / tb.h_freq_hz + offset0 * tb.pixel_time;
 
     // Precompute phase increment per pixel for precision in filter loop
-    float sc_phase_inc_per_px = 2.0 * PI * tb.sc_freq_hz * tb.pixel_time;
+    float sc_phase_inc_per_px = 2.0 * PI * tb.sc_freq_hz * tb.pixel_time_px;
 
     vec3 pixel0 = texture(Source, Tex).rgb;
     float phase0 = compute_carrier_phase(t0, tb.sc_freq_hz, tb.field_phase);
@@ -328,8 +328,8 @@ void main()
 
     vec3 yc0;
     yc0.r = y_out;
-    yc0.g = c_gain * chroma0 * 2.0 * carrier0_user.x;
-    yc0.b = c_gain * chroma0 * 2.0 * carrier0_user.y;
+    yc0.g = chroma0 * 2.0 * carrier0_user.x;
+    yc0.b = chroma0 * 2.0 * carrier0_user.y;
 
     vec3 color;
 
@@ -364,8 +364,8 @@ void main()
             float chromaR = pixelR.g * carrierR.x + pixelR.b * carrierR.y;
             vec3 ycR;
             ycR.r = y_gain * (pixelR.r + y_offset);
-            ycR.g = c_gain * chromaR * 2.0 * carrierR_user.x;
-            ycR.b = c_gain * chromaR * 2.0 * carrierR_user.y;
+            ycR.g = chromaR * 2.0 * carrierR_user.x;
+            ycR.b = chromaR * 2.0 * carrierR_user.y;
 
             vec3 pixelL = texture(Source, Tex - nf * dx).rgb;
             // Use phase increment for better precision
@@ -377,8 +377,8 @@ void main()
             float chromaL = pixelL.g * carrierL.x + pixelL.b * carrierL.y;
             vec3 ycL;
             ycL.r = y_gain * (pixelL.r + y_offset);
-            ycL.g = c_gain * chromaL * 2.0 * carrierL_user.x;
-            ycL.b = c_gain * chromaL * 2.0 * carrierL_user.y;
+            ycL.g = chromaL * 2.0 * carrierL_user.x;
+            ycL.b = chromaL * 2.0 * carrierL_user.y;
 
             accum.x += wy_r * ycR.x + wy_l * ycL.x;
             accum.y += wc_r * ycR.y + wc_l * ycL.y;
@@ -417,6 +417,9 @@ void main()
         color.r = (color.r - 0.075) / 0.925;
         y_out = (y_out - 0.075) / 0.925;
     }
+
+    // Apply user color
+    color.gb *= vec2(c_gain);
 
     // Convert to RGB
     if (BW_MODE < 0.5) {

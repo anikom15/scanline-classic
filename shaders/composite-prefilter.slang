@@ -53,9 +53,11 @@ layout(push_constant) uniform Push
     float H_FREQ;
     float H_BLANK_FUZZ;
     float COLOR_FILTER_MODE;
+    float NOTCH_WIDTH;
+    float NOTCH_ATTEN_DB;
     float BANDPASS_WIDTH;
-    float BW_MODE;
     float BANDPASS_ATTEN_DB;
+    float BW_MODE;
     float COMB_FILTER_LUMA_ADAPT;
     float COMB_FILTER_CHROMA_ADAPT;
 } config;
@@ -75,11 +77,14 @@ layout(push_constant) uniform Push
 
 #define COLOR_FILTER_MODE config.COLOR_FILTER_MODE
 
-#define COMB_FILTER_LUMA_ADAPT config.COMB_FILTER_LUMA_ADAPT
-#define COMB_FILTER_CHROMA_ADAPT config.COMB_FILTER_CHROMA_ADAPT
+#define NOTCH_WIDTH config.NOTCH_WIDTH
+#define NOTCH_ATTEN_DB config.NOTCH_ATTEN_DB
 
 #define BANDPASS_ATTEN_DB config.BANDPASS_ATTEN_DB
 #define BANDPASS_WIDTH config.BANDPASS_WIDTH
+
+#define COMB_FILTER_LUMA_ADAPT config.COMB_FILTER_LUMA_ADAPT
+#define COMB_FILTER_CHROMA_ADAPT config.COMB_FILTER_CHROMA_ADAPT
 
 #define BW_MODE config.BW_MODE
 
@@ -127,11 +132,7 @@ void main()
     bandpass_edge_atten_db = clamp(bandpass_edge_atten_db, 0.1, 20.0);
 
     sigma_bp = sigma_tb(tb, max(BANDPASS_WIDTH, 1e-6), bandpass_edge_atten_db);
-    
-    // Fixed notch width independent of bandpass
-    // Centered at fSC with fixed 0.6 MHz width for consistent sharpness
-    float notch_width = 0.6;  // MHz
-    sigma_notch = sigma_tb(tb, notch_width, 6.0);
+    sigma_notch = sigma_tb(tb, NOTCH_WIDTH, NOTCH_ATTEN_DB);
 }
 
 #pragma stage fragment

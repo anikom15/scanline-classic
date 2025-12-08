@@ -7,7 +7,10 @@
 
 #pragma parameter COLOR_FILTER_MODE "Filter mode (notch, simple comb, adaptive comb)" 0.0 0.0 2.0 1.0
 
-#pragma parameter BANDPASS_WIDTH "Chroma bandpass width (MHz)" 2.6 0.01 15.0 0.01
+#pragma parameter NOTCH_WIDTH "Luma notch filter width (MHz)" 0.6 0.01 5.0 0.01
+#pragma parameter NOTCH_ATTEN_DB "Luma notch filter attenuation (dB)" 6.0 0.0 30.0 0.1
+
+#pragma parameter BANDPASS_WIDTH "Chroma bandpass width (MHz)" 1.3 0.01 15.0 0.01
 #pragma parameter BANDPASS_ATTEN_DB "Chroma bandpass attenuation (dB)" 2.0 0.0 20.0 0.1
 
 #pragma parameter COMB_FILTER_LUMA_ADAPT "Comb filter luma correlation factor" 0.7 0.0 1.0 0.01
