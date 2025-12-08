@@ -2,7 +2,7 @@
 
 shaders = 19
 
-shader0 = ../../../shaders/menus/menu-rf-sdr.slang
+shader0 = ../../../shaders/menus/menu-rf-yc-sdr.slang
 filter_linear0 = false
 scale_type0 = source
 
@@ -108,6 +108,12 @@ SYS_BANDWIDTH_B = 5.4
 SYS_CUTOFF_ATTEN_R = 16
 SYS_CUTOFF_ATTEN_G = 16
 SYS_CUTOFF_ATTEN_B = 16
+
+# Y/C processing
+LUMA_LOWPASS_CUTOFF = 4.4
+LUMA_LOWPASS_ATTEN = 3.0
+LUMA_NOTCH_ENABLE = 1.0
+CHROMA_BANDPASS_WIDTH = 3.2
 
 # Timing
 PIXEL_CLOCK_MODE = 0

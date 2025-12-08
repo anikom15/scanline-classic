@@ -1,4 +1,4 @@
-# Sega Genesis RF shader set
+# Mega Drive II RF shader set (PAL-G)
 
 shaders = 19
 
@@ -62,7 +62,7 @@ filter_linear13 = false
 scale_type_x13 = source
 scale_type_y13 = absolute
 scale_x13 = 1.0
-scale_y13 = 480.0
+scale_y13 = 576.0
 alias13 = PHOSPHOR
 
 shader14 = ../../../shaders/beam-mask.slang
@@ -96,7 +96,11 @@ BORDER = ../../../share/bezel-trinitron.png
 
 # Signal modification
 ENCODER_SETUP = 0
-YC_MODEL = 0
+PAL = 1
+YC_MODEL = 2
+
+USB_BANDWIDTH = 5.0
+
 SYS_BANDWIDTH_R = 6.5
 SYS_BANDWIDTH_G = 6.5
 SYS_BANDWIDTH_B = 6.5
@@ -105,26 +109,28 @@ SYS_CUTOFF_ATTEN_G = 10
 SYS_CUTOFF_ATTEN_B = 10
 
 # Y/C Processing
-LUMA_LOWPASS_CUTOFF = 4.0
-LUMA_LOWPASS_ATTEN = 3.0
 LUMA_NOTCH_ENABLE = 1.0
 
 # Timing
 SC_FREQ_MODE = 4
-SC_FREQ = 3.579545
+SC_FREQ = 4.43361866667
 PIXEL_CLOCK_MODE = 0
-PIXEL_CLOCK = 53.693175
+PIXEL_CLOCK = 53.203424
 H_FREQ_MODE = 1
 H_FREQ = 3420
-
 # Display setup
-DECODER_SETUP = 1
-DECODER_TYPE = 0
+DECODER_SETUP = 0
+DECODER_TYPE = 2
+DOUBLE_REFRESH = 1
+
+NOTCH_EDGE_ATTEN_DB = 3.0
+BANDPASS_WIDTH = 2.6
+
 SCANLINE_BLANK_WEIGHT = 100.0
 TVL = 600.0
 MASK_TYPE = 0.0
 MASK_DIFFUSION = 2.0
-MAGNETIC_CORRECTION = 30.0
+MAGNETIC_CORRECTION = 20.0
 DEFLECTION_ANGLE = 90.0
 SCREEN_ANGLE_H = 25.0
 SCREEN_ANGLE_V = 0.0
@@ -140,8 +146,8 @@ PHOSPHOR_MANTISSA_R = 1.0
 PHOSPHOR_MANTISSA_G = 100.0
 PHOSPHOR_MANTISSA_B = 100.0
 
-# Colorimetry (NTSC)
-COLORIMETRY_PRESET = 1
+# Colorimetry (EBU)
+COLORIMETRY_PRESET = 3
 
 # Bezel parameters
 GLOW_DIFFUSION = 4.0

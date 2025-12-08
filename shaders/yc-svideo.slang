@@ -1,6 +1,6 @@
 #version 450
 
-/* Filename: svideo.slang
+/* Filename: yc-svideo.slang
 
    Copyright (C) 2025 W. M. Martinez
 
@@ -18,25 +18,23 @@
    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
-    S-Video (Y/C) demodulation + low-pass reconstruction
+    S-Video (Y/C) demodulation + low-pass reconstruction (YC input variant)
 
     Overview
     --------
-    This shader simulates an S-Video (Y/C) signal path and reconstructs baseband
-    luma/chroma suitable for downstream display processing. The input texture is
-    interpreted as:
+    This shader is a variant of svideo.slang that accepts YC input directly,
+    skipping the initial modulation step. The input texture is interpreted as:
       - R: Luma (Y)
-      - G: Quadrature chroma component (U-like, 90°)
-      - B: In-phase chroma component (V-like, 0°)
-    These baseband U/V components are modulated against a color subcarrier to
-    form a scalar chroma signal c(t) at the local carrier phase. The shader then
-    demodulates and low-pass filters chroma to reject 2·fSC images and recover
+      - G: Chroma (C) - already modulated against the color subcarrier
+      - B: unused
+    
+    The shader demodulates chroma to reject 2·fSC images and recover
     U′/V′, while luma is filtered independently with a higher bandwidth.
 
     Signal model
     ------------
     Let ω = 2π·fSC and φ = field_phase. For a given sample time t:
-      c(t) = U·sin(ωt + φ) + V·cos(ωt + φ)
+      c(t) = input chroma (already modulated)
     We estimate baseband chroma via quadrature demod + low-pass:
       U_est = 2·LPF{ c(t)·sin(ωt + φ) }
       V_est = 2·LPF{ c(t)·cos(ωt + φ) }
@@ -73,12 +71,10 @@
         where t = line · LINE_TIME + x · pixel_time.
       2) Form local sin/cos with a single paired call:
           carrier = (sin(phase), cos(phase))
-      3) Chroma projection:
-          chroma = U · carrier.x + V · carrier.y
-      4) Remodulate for quadrature LP extraction (per sample):
+      3) Chroma demodulation (per sample):
           U′_sample = 2 · chroma · carrier.x
           V′_sample = 2 · chroma · carrier.y
-      5) Accumulate symmetric Gaussian lobes horizontally with σY/σC.
+      4) Accumulate symmetric Gaussian lobes horizontally with σY/σC.
         Early exit once both weights fall below THRESHOLD.
 
     Output mapping
@@ -94,7 +90,7 @@
     -------------------------
     - Carrier math is optimized via:
         • phase = 2π·fract(fSC·t) + field_phase  (keeps phase bounded)
-        • a single “sincos” pair (sincos_phase) per sample
+        • a single "sincos" pair (sincos_phase) per sample
       This avoids large-argument trig loss and removes repeated mod() calls.
     - Gaussian accumulation does up to 32 taps per side with early exit. σY/σC
       and THRESHOLD control cost/quality.
@@ -130,7 +126,7 @@
         • modulation.inc: sincos_phase(), compute_carrier_phase()
     - Coordinates:
         • Timing uses OriginalSize.{x,y} for subcarrier derivation and line index,
-          matching composite.slang’s behavior.
+          matching composite.slang's behavior.
         • Sampling uses OutputSize to locate the current pixel, then converts to Source space.
     - Threshold:
         • THRESHOLD = 1/510 controls early exit on both Y/C lobes.
@@ -158,7 +154,7 @@
 #include "menus/parameters/svideo.inc"
 #include "menus/parameters/sys-encode.inc"
 
-#pragma name SVideo
+#pragma name YCSVideo
 #pragma format R16G16B16A16_SFLOAT
 
 #pragma parameter BYPASS_SVIDEO "Bypass S-Video processing (0=Off, 1=On)" 0.0 0.0 1.0 1.0
@@ -217,13 +213,11 @@ layout(std140, set = 0, binding = 0) uniform UBO
     mat4 MVP;
     float BYPASS_SVIDEO;
     float SVIDEO_FILTER_BYPASS;
-    float ENCODER_SETUP;
     float DECODER_SETUP;
 } global;
 
 #define BYPASS_SVIDEO global.BYPASS_SVIDEO
 #define SVIDEO_FILTER_BYPASS global.SVIDEO_FILTER_BYPASS
-#define ENCODER_SETUP global.ENCODER_SETUP
 #define DECODER_SETUP global.DECODER_SETUP
 
 #pragma stage vertex
@@ -307,23 +301,18 @@ void main()
     // Precompute phase increment per pixel for precision in filter loop
     float sc_phase_inc_per_px = 2.0 * PI * tb.sc_freq_hz * tb.pixel_time;
 
+    // Center sample
     vec3 pixel0 = texture(Source, Tex).rgb;
+    
     float phase0 = compute_carrier_phase(t0, tb.sc_freq_hz, tb.field_phase);
-    vec2 carrier0 = sincos_phase_raw(phase0);
-    float phase0_user = normalize_phase(phase0 + c_phase);
+    float phase0_user = phase0 + c_phase;
     vec2 carrier0_user = sincos_phase_raw(phase0_user);
-    float chroma0 = pixel0.g * carrier0.x + pixel0.b * carrier0.y;
-
-    float y_gain = 1.0;
-    float y_offset = 0.0;
-
-    if (ENCODER_SETUP > 0.5) {
-        y_gain = 0.925;
-        y_offset = 0.075;
-    }
+    // YC input: R=Y, G=C (modulated chroma), B=unused
+    // Demodulate the modulated chroma using the local carrier
+    float chroma0 = pixel0.g;
 
     // Monitor mode: use center sample directly (bypass filter)
-    float y_out = y_gain * (pixel0.r + y_offset);
+    float y_out = pixel0.r;
     float c_out = chroma0;
 
     vec3 yc0;
@@ -357,26 +346,26 @@ void main()
             vec3 pixelR = texture(Source, Tex + nf * dx).rgb;
             // Use phase increment for better precision
             float phaseR = phase0 + nf * sc_phase_inc_per_px;
-            phaseR = mod(phaseR + PI, 2.0 * PI) - PI;
-            vec2 carrierR = sincos_phase_raw(phaseR);
             float phaseR_user = normalize_phase(phaseR + c_phase);
             vec2 carrierR_user = sincos_phase_raw(phaseR_user);
-            float chromaR = pixelR.g * carrierR.x + pixelR.b * carrierR.y;
+            // YC input: R=Y, G=C (modulated chroma), B=unused
+            // Demodulate the modulated chroma using the local carrier
+            float chromaR = pixelR.g;
             vec3 ycR;
-            ycR.r = y_gain * (pixelR.r + y_offset);
+            ycR.r = pixelR.r;
             ycR.g = c_gain * chromaR * 2.0 * carrierR_user.x;
             ycR.b = c_gain * chromaR * 2.0 * carrierR_user.y;
 
             vec3 pixelL = texture(Source, Tex - nf * dx).rgb;
             // Use phase increment for better precision
             float phaseL = phase0 - nf * sc_phase_inc_per_px;
-            phaseL = mod(phaseL + PI, 2.0 * PI) - PI;
-            vec2 carrierL = sincos_phase_raw(phaseL);
             float phaseL_user = normalize_phase(phaseL + c_phase);
             vec2 carrierL_user = sincos_phase_raw(phaseL_user);
-            float chromaL = pixelL.g * carrierL.x + pixelL.b * carrierL.y;
+            // YC input: R=Y, G=C (modulated chroma), B=unused
+            // Demodulate the modulated chroma using the local carrier
+            float chromaL = pixelL.g;
             vec3 ycL;
-            ycL.r = y_gain * (pixelL.r + y_offset);
+            ycL.r = pixelL.r;
             ycL.g = c_gain * chromaL * 2.0 * carrierL_user.x;
             ycL.b = c_gain * chromaL * 2.0 * carrierL_user.y;
 

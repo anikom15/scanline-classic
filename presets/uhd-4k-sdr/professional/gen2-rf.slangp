@@ -1,4 +1,4 @@
-# Sega Genesis RF shader set
+# Sega Genesis Model 2 RF shader set
 
 shaders = 19
 
@@ -105,8 +105,6 @@ SYS_CUTOFF_ATTEN_G = 10
 SYS_CUTOFF_ATTEN_B = 10
 
 # Y/C Processing
-LUMA_LOWPASS_CUTOFF = 4.0
-LUMA_LOWPASS_ATTEN = 3.0
 LUMA_NOTCH_ENABLE = 1.0
 
 # Timing

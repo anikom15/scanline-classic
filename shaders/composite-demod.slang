@@ -53,9 +53,6 @@ layout(push_constant) uniform Push
     float DISPLAY_BANDWIDTH_C;
     float DISPLAY_CUTOFF_ATTEN_Y;
     float DISPLAY_CUTOFF_ATTEN_C;
-    float FEEDBACK_FILTER;
-    float FEEDBACK_NOTCH_Y_CORRECT;
-    float FEEDBACK_RAW_Y_CORRECT;
     float BW_MODE;
     float USER_COLOR;   // Color (%)
     float USER_TINT;    // Tint (degrees)
@@ -83,11 +80,6 @@ layout(push_constant) uniform Push
 
 #define DISPLAY_CUTOFF_ATTEN_Y config.DISPLAY_CUTOFF_ATTEN_Y
 #define DISPLAY_CUTOFF_ATTEN_C config.DISPLAY_CUTOFF_ATTEN_C
-
-#define FEEDBACK_FILTER config.FEEDBACK_FILTER
-
-#define FEEDBACK_NOTCH_Y_CORRECT config.FEEDBACK_NOTCH_Y_CORRECT
-#define FEEDBACK_RAW_Y_CORRECT config.FEEDBACK_RAW_Y_CORRECT
 
 #define BW_MODE config.BW_MODE
 
@@ -207,6 +199,7 @@ void main()
 
     float composite0 = pixel0.r;
     float chroma0 = pixel0.g;
+    float bypass = pixel0.b;
 
     // PAL phase detection (applies to PAL mode only)
     vec2 pal_phase = vec2(0.0, floor(mod(line, 2.0)) * PI * step(1.5, DECODER_TYPE));
@@ -342,25 +335,24 @@ void main()
     // Normalize
     color /= max(wsum, vec3(EPS));
 
-    if (FEEDBACK_FILTER >= 0.5) {
-        float chroma = color.g * carrier0.x + color.b * carrier0.y;
+    float chroma = color.g * carrier0.x + color.b * carrier0.y;
 
-        if (COLOR_FILTER_MODE < 0.5) {
-            // Notch filter
-            color.r = y_out + c_out - chroma;
-        } else if (COLOR_FILTER_MODE < 1.5) {
-            // Comb filter
-            color.r = y_out + c_out - chroma;
-        } else if (COLOR_FILTER_MODE < 2.5) {
-            // Notch + Comb
-            float y_notch = y_out + c_out - chroma;
-            float y_comb = (y_out + c_out) - chroma;
+    if (COLOR_FILTER_MODE < 0.5) {
+        // Notch
+    } else if (COLOR_FILTER_MODE < 1.5) {
+        // Comb filter
+        color.r = bypass - chroma;
+        chroma = bypass - color.r;
+        color.gb = 2.0 * chroma * carrier0;
+    } else {
+        // Notch + Comb
+        float y_notch = color.r;
+        vec2 c_notch = color.gb;
+        float y_comb = bypass - chroma;
+        chroma = bypass - color.r;
+        vec2 c_comb = 2.0 * chroma * carrier0;
 
-            color.r = 0.5 * (y_notch + y_comb);
-        } else {
-            // No filter; use composite directly
-            color.r = color.r - chroma;
-        }
+        color = 0.5 * (vec3(y_notch, c_notch) + vec3(y_comb, c_comb));
     }
 
     if (USER_MONOCHROME > 0.5) {
@@ -410,7 +402,7 @@ void main()
     if (BW_MODE < 0.5) {
         color = toRGB * color;
     } else if (BW_MODE < 1.5) {
-        color = vec3(y_out + c_out);
+        color = vec3(bypass);
     } else if (BW_MODE < 2.5) {
         color = vec3(y_out);
     } else if (BW_MODE < 3.5) {
@@ -419,5 +411,5 @@ void main()
         color = vec3(y_out, c_out, c_out);
     }
 
-    FragColor = vec4(clamp(color, 0.0, 1.0), 1.0);
+    FragColor = vec4(color, 1.0);
 }

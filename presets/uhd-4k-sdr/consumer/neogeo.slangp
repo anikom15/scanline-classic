@@ -2,7 +2,7 @@
 
 shaders = 15
 
-shader0 = ../../../shaders/menus/menu-composite-sdr.slang
+shader0 = ../../../shaders/menus/menu-composite-yc-sdr.slang
 filter_linear0 = false
 scale_type0 = source
 
@@ -17,11 +17,11 @@ scale_type_y2 = source
 scale_x2 = 1024.0
 scale_y2 = 1.0
 
-shader3 = ../../../shaders/sys-component.slang
+shader3 = ../../../shaders/sys-yc.slang
 filter_linear3 = false
 scale_type3 = source
 
-shader4 = ../../../shaders/composite-mod.slang
+shader4 = ../../../shaders/yc-composite.slang
 filter_linear4 = false
 scale_type4 = source
 
@@ -92,6 +92,12 @@ SYS_BANDWIDTH_B = 5.4
 SYS_CUTOFF_ATTEN_R = 16
 SYS_CUTOFF_ATTEN_G = 16
 SYS_CUTOFF_ATTEN_B = 16
+
+# Y/C processing
+LUMA_LOWPASS_CUTOFF = 4.4
+LUMA_LOWPASS_ATTEN = 3.0
+LUMA_NOTCH_ENABLE = 1.0
+CHROMA_BANDPASS_WIDTH = 3.2
 
 # Timing
 PIXEL_CLOCK_MODE = 0

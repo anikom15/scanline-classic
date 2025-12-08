@@ -29,10 +29,9 @@
 #include "menus/parameters/sys-timing.inc"
 #include "menus/parameters/sys-encode.inc"
 #include "menus/parameters/sys-yc.inc"
-#include "menus/parameters/composite.inc"
 
 #pragma name YCComposite
-#pragma format R16_SFLOAT
+#pragma format R16G16_SFLOAT
 
 #pragma parameter BYPASS_YC_FILTER "Bypass Y/C filter (off, on)" 0.0 0.0 1.0 1.0
 
@@ -58,6 +57,7 @@ layout(push_constant) uniform Push
     float LUMA_LOWPASS_CUTOFF;
     float LUMA_LOWPASS_ATTEN;
     float LUMA_NOTCH_ENABLE;
+    float YC_MONITOR;
 } config;
 
 #define BYPASS_YC_FILTER config.BYPASS_YC_FILTER
@@ -77,6 +77,8 @@ layout(push_constant) uniform Push
 #define LUMA_LOWPASS_CUTOFF config.LUMA_LOWPASS_CUTOFF
 #define LUMA_LOWPASS_ATTEN config.LUMA_LOWPASS_ATTEN
 #define LUMA_NOTCH_ENABLE config.LUMA_NOTCH_ENABLE
+
+#define YC_MONITOR config.YC_MONITOR
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
@@ -129,7 +131,7 @@ void main()
     // Clamp to reasonable range
     bandpass_edge_atten_db = clamp(bandpass_edge_atten_db, 0.1, 20.0);
     
-    sigma_bp = sigma_tb(tb, max(CHROMA_BANDPASS_WIDTH * 0.5, 1e-6), bandpass_edge_atten_db);
+    sigma_bp = sigma_tb(tb, max(CHROMA_BANDPASS_WIDTH, 1e-6), bandpass_edge_atten_db);
     
     // Luma lowpass sigma
     sigma_lp = sigma_tb(tb, max(LUMA_LOWPASS_CUTOFF, 1e-6), LUMA_LOWPASS_ATTEN);
@@ -236,6 +238,16 @@ void main()
     float y_out = (LUMA_NOTCH_ENABLE > 0.5) ? y_notch : y_lp;
 
     // Sum Y+C to create composite output (notch-filtered luma + bandpass chroma)
-    float composite_out = y_out + c_bp;
-    FragColor = vec4(composite_out, 0.0, 0.0, 1.0);
+    vec2 color;
+    if (YC_MONITOR < 0.5) {
+        color = vec2(y_out + c_bp, 0.0);
+    } else if (YC_MONITOR < 1.5) {
+        color = vec2(y_out, 0.0);
+    } else if (YC_MONITOR < 2.5) {
+        color = vec2(c_bp, 0.0);
+    } else {
+        color = vec2(y_out, c_bp);
+    }
+
+    FragColor = vec4(color, 0.0, 1.0);
 }
