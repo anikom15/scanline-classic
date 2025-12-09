@@ -238,6 +238,8 @@ void main()
     // Center weights for all filter modes
     float w_y0 = gaussian(Ax, sigma.x);
     float w_c0 = gaussian(Ax, sigma.y);
+
+    vec3 color = vec3(0.0);
     
     color += vec3(w_y0 * demod0.r, w_c0 * demod0.g, w_c0 * demod0.b);
     wsum += vec3(w_y0, w_c0, w_c0);
