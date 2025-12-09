@@ -297,9 +297,6 @@ void main()
     float line = floor(vTexCoord.y * config.OriginalSize.y);
     float t0 = line / tb.h_freq_hz + baseCenter * tb.pixel_time;
 
-    // Precompute phase increment per pixel for precision in filter loop
-    float sc_phase_inc_per_px = 2.0 * PI * tb.sc_freq_hz * tb.pixel_time_px;
-
     // Center sample
     vec3 pixel0 = texture(Source, Tex).rgb;
     
@@ -343,8 +340,9 @@ void main()
                 break;
 
             vec3 pixelR = texture(Source, Tex + nf * dx).rgb;
-            // Use phase increment for better precision
-            float phaseR = phase0 + nf * sc_phase_inc_per_px;
+            // Compute exact phase at right tap position to avoid drift
+            float tR = line / tb.h_freq_hz + (baseCenter + nf) * tb.pixel_time_px;
+            float phaseR = compute_carrier_phase(tR, tb.sc_freq_hz, tb.field_phase);
             float phaseR_user = normalize_phase(phaseR + c_phase);
             vec2 carrierR_user = sincos_phase_raw(phaseR_user);
             // YC input: R=Y, G=C (modulated chroma), B=unused
@@ -356,8 +354,9 @@ void main()
             ycR.b = chromaR * 2.0 * carrierR_user.y;
 
             vec3 pixelL = texture(Source, Tex - nf * dx).rgb;
-            // Use phase increment for better precision
-            float phaseL = phase0 - nf * sc_phase_inc_per_px;
+            // Compute exact phase at left tap position to avoid drift
+            float tL = line / tb.h_freq_hz + (baseCenter - nf) * tb.pixel_time_px;
+            float phaseL = compute_carrier_phase(tL, tb.sc_freq_hz, tb.field_phase);
             float phaseL_user = normalize_phase(phaseL + c_phase);
             vec2 carrierL_user = sincos_phase_raw(phaseL_user);
             // YC input: R=Y, G=C (modulated chroma), B=unused

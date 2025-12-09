@@ -189,9 +189,6 @@ void main()
     float offset0 = baseCenter; // output pixel center index
     float t0 = line / tb.h_freq_hz + offset0 * tb.pixel_time_px;
 
-    // Precompute phase increment per pixel for precision in filter loop
-    float sc_phase_inc_per_px = 2.0 * PI * tb.sc_freq_hz * tb.pixel_time_px;
-
     // R is Y, G is C
     vec3 pixel0 = texture(Source, Tex).rgb;
     float phase0 = compute_carrier_phase(t0, tb.sc_freq_hz, tb.field_phase);
@@ -201,20 +198,13 @@ void main()
     float chroma0 = pixel0.g;
     float bypass = pixel0.b;
 
-    // PAL phase detection (applies to PAL mode only)
-    vec2 pal_phase = vec2(0.0, floor(mod(line, 2.0)) * PI * step(1.5, DECODER_TYPE));
+    // Compute phase-neutral carrier (PAL delay line handles alternation via add/subtract)
+    vec2 ph = vec2(phase0) + vec2(c_phase);
+    ph = vec2(normalize_phase(ph.x), normalize_phase(ph.y));
+    carrier0 = sincos_phase_raw(ph);
 
-    if (DECODER_TYPE < 1.5) {
-        // YIQ or YPbPr mode (no PAL line alternation)
-        vec2 ph = vec2(phase0) + vec2(c_phase);
-        ph = vec2(normalize_phase(ph.x), normalize_phase(ph.y));
-        carrier0 = sincos_phase_raw(ph);
-    } else {
-        // PAL mode (line alternation)
-        vec2 ph2 = vec2(phase0) + vec2(c_phase) + pal_phase;
-        ph2 = vec2(normalize_phase(ph2.x), normalize_phase(ph2.y));
-        carrier0 = sincos_phase_raw(ph2);
-    }
+    // PAL V polarity correction: delay line subtraction produces alternating sign
+    float pal_v_sign = 1.0 - 2.0 * mod(line, 2.0) * step(1.5, DECODER_TYPE);
 
     // Monitor mode: use center sample directly (bypass filter)
     float y_out = composite0;
@@ -229,7 +219,7 @@ void main()
         vec3 pal_delay = texture(Source, Tex - dy).rgb;
 
         demod0.g = 2.0 * (chroma0 + pal_delay.g) * carrier0.x;
-        demod0.b = 2.0 * (chroma0 - pal_delay.g) * carrier0.y;
+        demod0.b = pal_v_sign * 2.0 * (chroma0 - pal_delay.g) * carrier0.y;
     } else {
         demod0.g = 2.0 * chroma0 * carrier0.x;
         demod0.b = 2.0 * chroma0 * carrier0.y;
@@ -258,31 +248,25 @@ void main()
 
         // Right sample (output pixel lattice)
         vec3 pixelR = texture(Source, Tex + nf * dx).rgb;
-        // Use phase increment for better precision
-        float phaseR = phase0 + nf * sc_phase_inc_per_px;
-        phaseR = mod(phaseR + PI, 2.0 * PI) - PI;
-        vec2 carrierR;
-        if (DECODER_TYPE < 1.5) {
-            vec2 phr = vec2(phaseR) + vec2(c_phase);
-            phr = vec2(normalize_phase(phr.x), normalize_phase(phr.y));
-            carrierR = sincos_phase_raw(phr);
-        } else {
-            vec2 phr2 = vec2(phaseR) + vec2(c_phase) + pal_phase;
-            phr2 = vec2(normalize_phase(phr2.x), normalize_phase(phr2.y));
-            carrierR = sincos_phase_raw(phr2);
-        }
+        // Compute exact phase at right tap position to avoid drift
+        float tR = line / tb.h_freq_hz + (offset0 + nf) * tb.pixel_time_px;
+        float phaseR = compute_carrier_phase(tR, tb.sc_freq_hz, tb.field_phase);
+        vec2 phr = vec2(phaseR) + vec2(c_phase);
+        phr = vec2(normalize_phase(phr.x), normalize_phase(phr.y));
+        vec2 carrierR = sincos_phase_raw(phr);
         float compositeR = pixelR.r;
         float chromaR = pixelR.g;
         vec3 demodR;
 
         if (DECODER_TYPE > 1.5) {
+            // Aligned PAL delay: fetch from previous line at aligned horizontal position
             vec2 dy = vec2(0.0, config.OutputSize.w);
-            vec3 pal_delay = texture(Source, Tex - dy).rgb;
+            vec3 pal_delay = texture(Source, Tex + nf * dx - dy).rgb;
 
             demodR = vec3(
                 compositeR,
-                2.0 * (chromaR + pal_delay.g) * carrierR.x,
-                2.0 * (chromaR - pal_delay.g) * carrierR.y);
+                (chromaR + pal_delay.g) * carrierR.x,
+                pal_v_sign * (chromaR - pal_delay.g) * carrierR.y);
         } else {
             demodR = vec3(
                 compositeR,
@@ -292,31 +276,25 @@ void main()
 
         // Left sample (output pixel lattice)
         vec3 pixelL = texture(Source, Tex - nf * dx).rgb;
-        // Use phase increment for better precision
-        float phaseL = phase0 - nf * sc_phase_inc_per_px;
-        phaseL = mod(phaseL + PI, 2.0 * PI) - PI;
-        vec2 carrierL;
-        if (DECODER_TYPE < 1.5) {
-            vec2 phl = vec2(phaseL) + vec2(c_phase);
-            phl = vec2(normalize_phase(phl.x), normalize_phase(phl.y));
-            carrierL = sincos_phase_raw(phl);
-        } else {
-            vec2 phl2 = vec2(phaseL) + vec2(c_phase) + pal_phase;
-            phl2 = vec2(normalize_phase(phl2.x), normalize_phase(phl2.y));
-            carrierL = sincos_phase_raw(phl2);
-        }
+        // Compute exact phase at left tap position to avoid drift
+        float tL = line / tb.h_freq_hz + (offset0 - nf) * tb.pixel_time_px;
+        float phaseL = compute_carrier_phase(tL, tb.sc_freq_hz, tb.field_phase);
+        vec2 phl = vec2(phaseL) + vec2(c_phase);
+        phl = vec2(normalize_phase(phl.x), normalize_phase(phl.y));
+        vec2 carrierL = sincos_phase_raw(phl);
         float compositeL = pixelL.r;
         float chromaL = pixelL.g;
         vec3 demodL;
 
         if (DECODER_TYPE > 1.5) {
+            // Aligned PAL delay: fetch from previous line at aligned horizontal position
             vec2 dy = vec2(0.0, config.OutputSize.w);
-            vec3 pal_delay = texture(Source, Tex - dy).rgb;
+            vec3 pal_delay = texture(Source, Tex - nf * dx - dy).rgb;
 
             demodL = vec3(
                 compositeL,
-                2.0 * (chromaL + pal_delay.g) * carrierL.x,
-                2.0 * (chromaL - pal_delay.g) * carrierL.y);
+                (chromaL + pal_delay.g) * carrierL.x,
+                pal_v_sign * (chromaL - pal_delay.g) * carrierL.y);
         } else {
             demodL = vec3(
                 compositeL,

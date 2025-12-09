@@ -263,20 +263,25 @@ void main()
         if (g_env_r < THRESHOLD && g_env_l < THRESHOLD && g_bp_r < THRESHOLD && g_bp_l < THRESHOLD)
             break;
         
-        // Right sample
-        vec3 pixelR = texture(Source, Tex + float(n) * dx).rgb;
-        float phaseR = normalize_phase(phase0 + nf * sc_phase_inc_per_px);
+        // Right sample: compute exact phase for chroma reconstruction
+        float t_r = line / tb.h_freq_hz + (offset0 + nf) * tb.pixel_time_px;
+        float phaseR = compute_carrier_phase(t_r, tb.sc_freq_hz, tb.field_phase);
         vec2 carrierR = sincos_phase_raw(phaseR);
+        
+        vec3 pixelR = texture(Source, Tex + float(n) * dx).rgb;
         float chromaR = pixelR.g * carrierR.x + pixelR.b * carrierR.y;
         float compositeR = pixelR.r + chromaR;
         
-        // Left sample
-        vec3 pixelL = texture(Source, Tex - float(n) * dx).rgb;
-        float phaseL = normalize_phase(phase0 - nf * sc_phase_inc_per_px);
+        // Left sample: compute exact phase for chroma reconstruction
+        float t_l = line / tb.h_freq_hz + (offset0 - nf) * tb.pixel_time_px;
+        float phaseL = compute_carrier_phase(t_l, tb.sc_freq_hz, tb.field_phase);
         vec2 carrierL = sincos_phase_raw(phaseL);
+        
+        vec3 pixelL = texture(Source, Tex - float(n) * dx).rgb;
         float chromaL = pixelL.g * carrierL.x + pixelL.b * carrierL.y;
         float compositeL = pixelL.r + chromaL;
         
+        // Filter weights use relative phase for proper filter design
         float w_notch_r = g_env_r * cos(2.0 * PI * f_sc_px * (nf + Ax));
         float w_notch_l = g_env_l * cos(2.0 * PI * f_sc_px * (nf - Ax));
         conv_gcos += w_notch_r * compositeR + w_notch_l * compositeL;
