@@ -1,7 +1,6 @@
 # Generates WCG menu shaders from SDR menu shaders.
 # Rules:
 # - Output filename: replace "-sdr" with "-wcg".
-# - Change pragma format to 10-bit: R10G10B10A2_UNORM.
 # - For each include:
 #   * Skip includes that end with -sdr or -hdr before extension.
 #   * If a sibling include exists with -wcg appended before extension, use that instead.
@@ -34,9 +33,6 @@ function Should-SkipInclude([string]$includePath) {
 function Transform-Shader([string]$inputPath, [string]$outputPath) {
     if ($VerboseLog) { Write-Host "Transforming $inputPath -> $outputPath" }
     $lines = Get-Content -LiteralPath $inputPath -Raw -Encoding UTF8 -ErrorAction Stop
-
-    # Update pragma format to 10-bit packed (always for WCG)
-    $lines = ($lines -replace '(?m)^#pragma\s+format\s+\S+', '#pragma format A2B10G10R10_UNORM_PACK32')
 
     # Rewrite includes (PowerShell 5.1-safe: use Regex.Replace with MatchEvaluator)
     $pattern = '^\s*#include\s+"([^"]+)"\s*$'

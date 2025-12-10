@@ -47,6 +47,4 @@
 #include "parameters/sys-yc.inc"
 #include "parameters/debug-common.inc"
 
-#pragma format R8G8B8A8_UNORM
-
 #include "menu-base.slang"

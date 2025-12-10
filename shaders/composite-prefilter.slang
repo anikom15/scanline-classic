@@ -279,10 +279,8 @@ void main()
             // Single-tap filter
             float y1 = 0.5 * (composite0 + comb_taps_composite);
             float c1 = 0.5 * (composite0 - comb_taps_composite);
-
             if (COLOR_FILTER_MODE >= 1.5) {
                 // Mode 2: Adaptive comb filter using magnitude-based correlation
-                // Measure raw line similarity using magnitude correlation
                 float composite_corr = compute_point_correlation(abs(composite0), abs(comb_taps_composite));
 
                 // Smoothly mix using +/-0.05 transition around adapt thresholds
@@ -290,6 +288,7 @@ void main()
                 float chroma_w = smoothstep(COMB_FILTER_CHROMA_ADAPT - 0.05, COMB_FILTER_CHROMA_ADAPT + 0.05, composite_corr);
 
                 color_comb.r = mix(y_notch, y1, luma_w);
+                color_comb.g = mix(c_notch, c1, chroma_w);
                 color_comb.g = mix(c_notch, c1, chroma_w);
             } else {
                 // Fixed-weight simple comb filter output

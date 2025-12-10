@@ -21,6 +21,7 @@
 // Helper to be used by #include
 
 #pragma name Menu
+#pragma format R8G8B8A8_UNORM
 
 layout(push_constant) uniform Push
 {
