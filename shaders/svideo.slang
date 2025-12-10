@@ -305,9 +305,10 @@ void main()
     float t0 = line / tb.h_freq_hz + offset0 * tb.pixel_time;
 
     vec3 pixel0 = texture(Source, Tex).rgb;
-    float phase0 = compute_carrier_phase(t0, tb.sc_freq_hz, tb.field_phase);
-    vec2 carrier0 = sincos_phase_raw(phase0);
+    float phase_inc_px = 2.0 * PI * tb.sc_freq_hz * tb.pixel_time_px;
+    float phase0 = normalize_phase(compute_carrier_phase(t0, tb.sc_freq_hz, tb.field_phase));
     float phase0_user = normalize_phase(phase0 + c_phase);
+    vec2 carrier0 = sincos_phase_raw(phase0);
     vec2 carrier0_user = sincos_phase_raw(phase0_user);
     float chroma0 = pixel0.g * carrier0.x + pixel0.b * carrier0.y;
 
@@ -353,10 +354,9 @@ void main()
 
             vec3 pixelR = texture(Source, Tex + nf * dx).rgb;
             // Compute exact phase at right tap position to avoid drift
-            float tR = line / tb.h_freq_hz + (offset0 + nf) * tb.pixel_time_px;
-            float phaseR = compute_carrier_phase(tR, tb.sc_freq_hz, tb.field_phase);
+            float phaseR = normalize_phase(phase0 + phase_inc_px * nf);
+            float phaseR_user = normalize_phase(phase0_user + phase_inc_px * nf);
             vec2 carrierR = sincos_phase_raw(phaseR);
-            float phaseR_user = normalize_phase(phaseR + c_phase);
             vec2 carrierR_user = sincos_phase_raw(phaseR_user);
             float chromaR = pixelR.g * carrierR.x + pixelR.b * carrierR.y;
             vec3 ycR;
@@ -366,10 +366,9 @@ void main()
 
             vec3 pixelL = texture(Source, Tex - nf * dx).rgb;
             // Compute exact phase at left tap position to avoid drift
-            float tL = line / tb.h_freq_hz + (offset0 - nf) * tb.pixel_time_px;
-            float phaseL = compute_carrier_phase(tL, tb.sc_freq_hz, tb.field_phase);
+            float phaseL = normalize_phase(phase0 - phase_inc_px * nf);
+            float phaseL_user = normalize_phase(phase0_user - phase_inc_px * nf);
             vec2 carrierL = sincos_phase_raw(phaseL);
-            float phaseL_user = normalize_phase(phaseL + c_phase);
             vec2 carrierL_user = sincos_phase_raw(phaseL_user);
             float chromaL = pixelL.g * carrierL.x + pixelL.b * carrierL.y;
             vec3 ycL;

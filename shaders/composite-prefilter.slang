@@ -144,7 +144,7 @@ layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
 // Compute correlation coefficient between two samples
-// Simple point correlation: returns signed similarity in [-1, 1]
+// Simple point correlation: returns similarity in [0, 1]
 float compute_point_correlation(float ref, float cmp) {
     float diff = abs(ref - cmp);
     float sum = ref + cmp;
@@ -285,16 +285,12 @@ void main()
                 // Measure raw line similarity using magnitude correlation
                 float composite_corr = compute_point_correlation(abs(composite0), abs(comb_taps_composite));
 
-                // Use luma threshold for Y decision, chroma threshold for C decision
-                if (composite_corr > COMB_FILTER_LUMA_ADAPT)
-                    color_comb.r = y1;
-                else
-                    color_comb.r = y_notch;
-                    
-                if (composite_corr > COMB_FILTER_CHROMA_ADAPT)
-                    color_comb.g = c1;
-                else
-                    color_comb.g = c_notch;
+                // Smoothly mix using +/-0.05 transition around adapt thresholds
+                float luma_w = smoothstep(COMB_FILTER_LUMA_ADAPT - 0.05, COMB_FILTER_LUMA_ADAPT + 0.05, composite_corr);
+                float chroma_w = smoothstep(COMB_FILTER_CHROMA_ADAPT - 0.05, COMB_FILTER_CHROMA_ADAPT + 0.05, composite_corr);
+
+                color_comb.r = mix(y_notch, y1, luma_w);
+                color_comb.g = mix(c_notch, c1, chroma_w);
             } else {
                 // Fixed-weight simple comb filter output
                 color_comb = vec2(y1, c1);

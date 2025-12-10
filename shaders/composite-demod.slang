@@ -57,6 +57,7 @@ layout(push_constant) uniform Push
     float BW_MODE;
     float USER_COLOR;   // Color (%)
     float USER_TINT;    // Tint (degrees)
+    float PAL_DECODER_MODE;  // PAL decoder mode (0=simple, 1=delay-line, 2=adaptive)
 } config;
 
 #define USER_COLOR config.USER_COLOR
@@ -84,6 +85,7 @@ layout(push_constant) uniform Push
 #define DISPLAY_CUTOFF_ATTEN_C config.DISPLAY_CUTOFF_ATTEN_C
 
 #define BW_MODE config.BW_MODE
+#define PAL_DECODER_MODE config.PAL_DECODER_MODE
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
@@ -191,7 +193,11 @@ void main()
 
     // R is Y, G is C
     vec3 pixel0 = texture(Source, Tex).rgb;
-    float phase0 = compute_carrier_phase(t0, tb.sc_freq_hz, tb.field_phase);
+    float phase_inc_px = 2.0 * PI * tb.sc_freq_hz * tb.pixel_time_px;
+    float phase0_full = compute_carrier_phase(t0, tb.sc_freq_hz, tb.field_phase) + c_phase;
+    float phase_prev_center = compute_carrier_phase(t0 - (1.0 / tb.h_freq_hz), tb.sc_freq_hz, tb.field_phase);
+    phase0_full = normalize_phase(phase0_full);
+    phase_prev_center = normalize_phase(phase_prev_center);
     vec2 carrier0;
 
     float composite0 = pixel0.r;
@@ -199,12 +205,42 @@ void main()
     float bypass = pixel0.b;
 
     // Compute phase-neutral carrier (PAL delay line handles alternation via add/subtract)
-    vec2 ph = vec2(phase0) + vec2(c_phase);
-    ph = vec2(normalize_phase(ph.x), normalize_phase(ph.y));
-    carrier0 = sincos_phase_raw(ph);
+    carrier0 = sincos_phase_raw(vec2(phase0_full));
 
     // PAL V polarity correction: delay line subtraction produces alternating sign
     float pal_v_sign = 1.0 - 2.0 * mod(line, 2.0) * step(1.5, DECODER_TYPE);
+
+    // Delay-line control flags and offsets
+    bool use_delay_line = PAL_DECODER_MODE > 0.5;
+    float dx_phase_offset_px = 0.0;
+    float system_phase_shift = 0.0;
+
+    // Compute phase offset correction for delay-line (constant per system)
+    if (DECODER_TYPE > 1.5 && use_delay_line) {
+        // Calculate intrinsic system phase shift per line (independent of user hue)
+        float cycles_per_line = tb.sc_freq_hz / tb.h_freq_hz;
+        float frac_cycles = fract(cycles_per_line);
+        system_phase_shift = 2.0 * PI * frac_cycles;
+        if (system_phase_shift > PI) {
+            system_phase_shift -= 2.0 * PI;
+        }
+
+        // Correct for system phase shift to achieve ideal 0° or 180° alignment
+        float sc_phase_inc_per_px = 2.0 * PI * tb.sc_freq_hz * tb.pixel_time_px;
+        float phase_from_zero = abs(system_phase_shift);
+        float phase_from_180 = min(abs(system_phase_shift - PI), abs(system_phase_shift + PI));
+
+        // Determine target phase (0° or 180° based on which is closer)
+        float target_phase = (phase_from_zero < phase_from_180) ? 0.0 : PI;
+        float phase_correction_needed = target_phase - system_phase_shift;
+
+        // Horizontal offset in pixels to achieve target phase
+        dx_phase_offset_px = phase_correction_needed / sc_phase_inc_per_px;
+
+        // Reduce to one subcarrier period to avoid excessive offsets
+        float period_px = 2.0 * PI / sc_phase_inc_per_px;
+        dx_phase_offset_px -= round(dx_phase_offset_px / period_px) * period_px;
+    }
 
     // Monitor mode: use center sample directly (bypass filter)
     float y_out = composite0;
@@ -213,14 +249,65 @@ void main()
     vec3 demod0;
 
     demod0.r = composite0;
-    // PAL decoder with delay line
+    
+    // PAL decoder mode selection (phase-corrected delay-line, simple, or adaptive)
     if (DECODER_TYPE > 1.5) {
-        vec2 dy = vec2(0.0, config.OutputSize.w);
-        vec3 pal_delay = texture(Source, Tex - dy).rgb;
+        bool effective_delay_line = use_delay_line;
 
-        demod0.g = 2.0 * (chroma0 + pal_delay.g) * carrier0.x;
-        demod0.b = pal_v_sign * 2.0 * (chroma0 - pal_delay.g) * carrier0.y;
+        // ADAPTIVE: blend delay-line with correlation based on phase error magnitude
+        if (PAL_DECODER_MODE > 1.5) {
+            // Check for external phase error (e.g., incorrect hue knob)
+            float actual_phase_shift = normalize_phase(phase0_full - phase_prev_center);
+            float phase_error = normalize_phase(actual_phase_shift - system_phase_shift);
+            float phase_error_mag = abs(phase_error);
+            
+            const float PHASE_ERROR_MIN = 0.017453; // 1 degree in radians
+            const float PHASE_ERROR_MAX = 0.087266; // 5 degrees in radians
+            
+            // Blend factor: 0 = correlation decides, 1 = force delay-line
+            float phase_blend = smoothstep(PHASE_ERROR_MIN, PHASE_ERROR_MAX, phase_error_mag);
+            
+            vec2 dy = vec2(0.0, config.OutputSize.w);
+            vec3 pal_prev = texture(Source, Tex - dy).rgb;
+            
+            float corr_numerator = chroma0 * pal_prev.g;
+            float corr_denominator = abs(chroma0) + abs(pal_prev.g) + 0.001;
+            float correlation = corr_numerator / corr_denominator;
+            
+            const float CORRELATION_MIN = 0.45;
+            const float CORRELATION_MAX = 0.55;
+            float correlation_weight = smoothstep(CORRELATION_MIN, CORRELATION_MAX, correlation);
+            
+            // Compute both methods
+            vec2 dx_norm = vec2(config.OutputSize.z, 0.0);
+            vec3 pal_delay = texture(Source, Tex - dy - dx_phase_offset_px * dx_norm).rgb;
+            
+            vec2 simple_uv = vec2(
+                2.0 * chroma0 * carrier0.x,
+                pal_v_sign * 2.0 * chroma0 * carrier0.y);
+            
+            vec2 delay_uv = vec2(
+                (chroma0 + pal_delay.g) * carrier0.x,
+                pal_v_sign * (chroma0 - pal_delay.g) * carrier0.y);
+            
+            // Use max to prioritize delay-line whenever either cue is strong
+            float delay_weight = max(phase_blend, correlation_weight);
+            demod0.gb = mix(simple_uv, delay_uv, delay_weight);
+        } else if (use_delay_line) {
+            // DELAY: Phase-corrected PAL delay-line demodulation
+            vec2 dy = vec2(0.0, config.OutputSize.w);
+            vec2 dx_norm = vec2(config.OutputSize.z, 0.0);
+            vec3 pal_delay = texture(Source, Tex - dy - dx_phase_offset_px * dx_norm).rgb;
+
+            demod0.g = (chroma0 + pal_delay.g) * carrier0.x;
+            demod0.b = pal_v_sign * (chroma0 - pal_delay.g) * carrier0.y;
+        } else {
+            // SIMPLE: Direct demodulation without delay-line
+            demod0.g = 2.0 * chroma0 * carrier0.x;
+            demod0.b = pal_v_sign * 2.0 * chroma0 * carrier0.y;
+        }
     } else {
+        // Non-PAL decoders (YIQ, YPbPr)
         demod0.g = 2.0 * chroma0 * carrier0.x;
         demod0.b = 2.0 * chroma0 * carrier0.y;
     }
@@ -249,24 +336,71 @@ void main()
         // Right sample (output pixel lattice)
         vec3 pixelR = texture(Source, Tex + nf * dx).rgb;
         // Compute exact phase at right tap position to avoid drift
-        float tR = line / tb.h_freq_hz + (offset0 + nf) * tb.pixel_time_px;
-        float phaseR = compute_carrier_phase(tR, tb.sc_freq_hz, tb.field_phase);
-        vec2 phr = vec2(phaseR) + vec2(c_phase);
-        phr = vec2(normalize_phase(phr.x), normalize_phase(phr.y));
-        vec2 carrierR = sincos_phase_raw(phr);
+        float phaseR_full = normalize_phase(phase0_full + phase_inc_px * nf);
+        float phase_prev_R = normalize_phase(phase_prev_center + phase_inc_px * nf);
+        vec2 carrierR = sincos_phase_raw(vec2(phaseR_full));
         float compositeR = pixelR.r;
         float chromaR = pixelR.g;
         vec3 demodR;
 
         if (DECODER_TYPE > 1.5) {
-            // Aligned PAL delay: fetch from previous line at aligned horizontal position
-            vec2 dy = vec2(0.0, config.OutputSize.w);
-            vec3 pal_delay = texture(Source, Tex + nf * dx - dy).rgb;
+            bool effective_delay_line = use_delay_line;
 
-            demodR = vec3(
-                compositeR,
-                (chromaR + pal_delay.g) * carrierR.x,
-                pal_v_sign * (chromaR - pal_delay.g) * carrierR.y);
+            // ADAPTIVE: blend delay-line with correlation based on phase error magnitude
+            if (PAL_DECODER_MODE > 1.5) {
+                // Check for external phase error at this sample position
+                float actual_phase_shift = normalize_phase(phaseR_full - phase_prev_R);
+                float phase_error = normalize_phase(actual_phase_shift - system_phase_shift);
+                float phase_error_mag = abs(phase_error);
+                
+                const float PHASE_ERROR_MIN = 0.017453; // 1 degree in radians
+                const float PHASE_ERROR_MAX = 0.087266; // 5 degrees in radians
+                
+                float phase_blend = smoothstep(PHASE_ERROR_MIN, PHASE_ERROR_MAX, phase_error_mag);
+                
+                vec2 dy = vec2(0.0, config.OutputSize.w);
+                vec3 pal_prev = texture(Source, Tex + nf * dx - dy).rgb;
+                
+                float corr_numerator = chromaR * pal_prev.g;
+                float corr_denominator = abs(chromaR) + abs(pal_prev.g) + 0.001;
+                float correlation = corr_numerator / corr_denominator;
+                
+                const float CORRELATION_MIN = 0.5;
+                const float CORRELATION_MAX = 0.7;
+                float correlation_weight = smoothstep(CORRELATION_MIN, CORRELATION_MAX, correlation);
+                
+                vec2 dx_norm = vec2(config.OutputSize.z, 0.0);
+                vec3 pal_delay = texture(Source, Tex + nf * dx - dy - dx_phase_offset_px * dx_norm).rgb;
+                
+                vec2 simple_uv = vec2(
+                    2.0 * chromaR * carrierR.x,
+                    pal_v_sign * 2.0 * chromaR * carrierR.y);
+                
+                vec2 delay_uv = vec2(
+                    (chromaR + pal_delay.g) * carrierR.x,
+                    pal_v_sign * (chromaR - pal_delay.g) * carrierR.y);
+                
+                float delay_weight = max(phase_blend, correlation_weight);
+                vec2 mixed_uv = mix(simple_uv, delay_uv, delay_weight);
+                
+                demodR = vec3(compositeR, mixed_uv.x, mixed_uv.y);
+            } else if (use_delay_line) {
+                // DELAY: Phase-corrected PAL delay-line
+                vec2 dy = vec2(0.0, config.OutputSize.w);
+                vec2 dx_norm = vec2(config.OutputSize.z, 0.0);
+                vec3 pal_delay = texture(Source, Tex + nf * dx - dy - dx_phase_offset_px * dx_norm).rgb;
+
+                demodR = vec3(
+                    compositeR,
+                    (chromaR + pal_delay.g) * carrierR.x,
+                    pal_v_sign * (chromaR - pal_delay.g) * carrierR.y);
+            } else {
+                // SIMPLE: Direct demodulation
+                demodR = vec3(
+                    compositeR,
+                    2.0 * chromaR * carrierR.x,
+                    pal_v_sign * 2.0 * chromaR * carrierR.y);
+            }
         } else {
             demodR = vec3(
                 compositeR,
@@ -277,24 +411,71 @@ void main()
         // Left sample (output pixel lattice)
         vec3 pixelL = texture(Source, Tex - nf * dx).rgb;
         // Compute exact phase at left tap position to avoid drift
-        float tL = line / tb.h_freq_hz + (offset0 - nf) * tb.pixel_time_px;
-        float phaseL = compute_carrier_phase(tL, tb.sc_freq_hz, tb.field_phase);
-        vec2 phl = vec2(phaseL) + vec2(c_phase);
-        phl = vec2(normalize_phase(phl.x), normalize_phase(phl.y));
-        vec2 carrierL = sincos_phase_raw(phl);
+        float phaseL_full = normalize_phase(phase0_full - phase_inc_px * nf);
+        float phase_prev_L = normalize_phase(phase_prev_center - phase_inc_px * nf);
+        vec2 carrierL = sincos_phase_raw(vec2(phaseL_full));
         float compositeL = pixelL.r;
         float chromaL = pixelL.g;
         vec3 demodL;
 
         if (DECODER_TYPE > 1.5) {
-            // Aligned PAL delay: fetch from previous line at aligned horizontal position
-            vec2 dy = vec2(0.0, config.OutputSize.w);
-            vec3 pal_delay = texture(Source, Tex - nf * dx - dy).rgb;
+            bool effective_delay_line = use_delay_line;
 
-            demodL = vec3(
-                compositeL,
-                (chromaL + pal_delay.g) * carrierL.x,
-                pal_v_sign * (chromaL - pal_delay.g) * carrierL.y);
+            // ADAPTIVE: blend delay-line with correlation based on phase error magnitude
+            if (PAL_DECODER_MODE > 1.5) {
+                // Check for external phase error at this sample position
+                float actual_phase_shift = normalize_phase(phaseL_full - phase_prev_L);
+                float phase_error = normalize_phase(actual_phase_shift - system_phase_shift);
+                float phase_error_mag = abs(phase_error);
+                
+                const float PHASE_ERROR_MIN = 0.017453; // 1 degree in radians
+                const float PHASE_ERROR_MAX = 0.087266; // 5 degrees in radians
+                
+                float phase_blend = smoothstep(PHASE_ERROR_MIN, PHASE_ERROR_MAX, phase_error_mag);
+                
+                vec2 dy = vec2(0.0, config.OutputSize.w);
+                vec3 pal_prev = texture(Source, Tex - nf * dx - dy).rgb;
+                
+                float corr_numerator = chromaL * pal_prev.g;
+                float corr_denominator = abs(chromaL) + abs(pal_prev.g) + 0.001;
+                float correlation = corr_numerator / corr_denominator;
+                
+                const float CORRELATION_MIN = 0.5;
+                const float CORRELATION_MAX = 0.7;
+                float correlation_weight = smoothstep(CORRELATION_MIN, CORRELATION_MAX, correlation);
+                
+                vec2 dx_norm = vec2(config.OutputSize.z, 0.0);
+                vec3 pal_delay = texture(Source, Tex - nf * dx - dy - dx_phase_offset_px * dx_norm).rgb;
+                
+                vec2 simple_uv = vec2(
+                    2.0 * chromaL * carrierL.x,
+                    pal_v_sign * 2.0 * chromaL * carrierL.y);
+                
+                vec2 delay_uv = vec2(
+                    (chromaL + pal_delay.g) * carrierL.x,
+                    pal_v_sign * (chromaL - pal_delay.g) * carrierL.y);
+                
+                float delay_weight = max(phase_blend, correlation_weight);
+                vec2 mixed_uv = mix(simple_uv, delay_uv, delay_weight);
+                
+                demodL = vec3(compositeL, mixed_uv.x, mixed_uv.y);
+            } else if (use_delay_line) {
+                // DELAY: Phase-corrected PAL delay-line
+                vec2 dy = vec2(0.0, config.OutputSize.w);
+                vec2 dx_norm = vec2(config.OutputSize.z, 0.0);
+                vec3 pal_delay = texture(Source, Tex - nf * dx - dy - dx_phase_offset_px * dx_norm).rgb;
+
+                demodL = vec3(
+                    compositeL,
+                    (chromaL + pal_delay.g) * carrierL.x,
+                    pal_v_sign * (chromaL - pal_delay.g) * carrierL.y);
+            } else {
+                // SIMPLE: Direct demodulation
+                demodL = vec3(
+                    compositeL,
+                    2.0 * chromaL * carrierL.x,
+                    pal_v_sign * 2.0 * chromaL * carrierL.y);
+            }
         } else {
             demodL = vec3(
                 compositeL,

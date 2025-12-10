@@ -2,10 +2,11 @@
 
 #pragma parameter DECODER_SETUP "Setup (off, on)" 1.0 0.0 1.0 1.0
 #pragma parameter DECODER_TYPE "Decoder type (YIQ, YPbPr, PAL)" 1.0 0.0 2.0 1.0
+#pragma parameter PAL_DECODER_MODE "PAL Decoder Mode (simple, delay-line, adaptive)" 2.0 0.0 2.0 1.0
 
 #pragma parameter BW_MODE "Monitor mode (off, BW, Y, C, Y+C)" 0.0 0.0 4.0 1.0
 
-#pragma parameter COLOR_FILTER_MODE "Filter mode (notch, simple comb, adaptive comb)" 0.0 0.0 2.0 1.0
+#pragma parameter COLOR_FILTER_MODE "Filter mode (notch, simple comb, adaptive comb)" 2.0 0.0 2.0 1.0
 
 #pragma parameter NOTCH_WIDTH "Luma notch filter width (MHz)" 0.6 0.01 5.0 0.01
 #pragma parameter NOTCH_ATTEN_DB "Luma notch filter attenuation (dB)" 6.0 0.0 30.0 0.1

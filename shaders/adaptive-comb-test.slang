@@ -230,7 +230,8 @@ void main()
     float t0 = line * LINE_TIME + offset0 * tb.pixel_time;
     
     vec3 pixel0 = texture(Source, Tex).rgb;
-    float phase0 = compute_carrier_phase(t0, tb.sc_freq_hz, tb.field_phase);
+    float phase_inc_px = 2.0 * PI * tb.sc_freq_hz * tb.pixel_time_px;
+    float phase0 = normalize_phase(compute_carrier_phase(t0, tb.sc_freq_hz, tb.field_phase));
     vec2 carrier0 = sincos_phase_raw(phase0);
     
     float chroma0 = pixel0.g * carrier0.x + pixel0.b * carrier0.y;
@@ -264,8 +265,7 @@ void main()
             break;
         
         // Right sample: compute exact phase for chroma reconstruction
-        float t_r = line / tb.h_freq_hz + (offset0 + nf) * tb.pixel_time_px;
-        float phaseR = compute_carrier_phase(t_r, tb.sc_freq_hz, tb.field_phase);
+        float phaseR = normalize_phase(phase0 + phase_inc_px * nf);
         vec2 carrierR = sincos_phase_raw(phaseR);
         
         vec3 pixelR = texture(Source, Tex + float(n) * dx).rgb;
@@ -273,8 +273,7 @@ void main()
         float compositeR = pixelR.r + chromaR;
         
         // Left sample: compute exact phase for chroma reconstruction
-        float t_l = line / tb.h_freq_hz + (offset0 - nf) * tb.pixel_time_px;
-        float phaseL = compute_carrier_phase(t_l, tb.sc_freq_hz, tb.field_phase);
+        float phaseL = normalize_phase(phase0 - phase_inc_px * nf);
         vec2 carrierL = sincos_phase_raw(phaseL);
         
         vec3 pixelL = texture(Source, Tex - float(n) * dx).rgb;
