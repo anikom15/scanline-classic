@@ -38,10 +38,10 @@
 #pragma parameter GEOMETRY_BYPASS "Bypass beam geometry" 0.0 0.0 1.0 1.0
 #pragma parameter FILTER_BYPASS "Bypass beam filter" 0.0 0.0 1.0 1.0
 #pragma parameter MASK_BYPASS "Bypass CRT mask" 0.0 0.0 1.0 1.0
-#pragma parameter MASK_DEBUG_PADDING "Show timing regions" 0.0 0.0 1.0 1.0
 #pragma parameter MASK_FRAME_DEBUG "Mask frame debug (0=Off, 1=On)" 0.0 0.0 1.0 1.0
-#pragma parameter MASK_DEBUG_PAD "Highlight padding (yellow)" 0.0 0.0 1.0 1.0
 #pragma parameter BEAM_DEBUG_OUT_OF_RANGE "Beam-mask: Show out-of-range colors" 0.0 0.0 1.0 1.0
+
+#pragma parameter DAR_SCALE "Display Aspect Ratio Scale" 1.0 0.1 5.0 0.01
 
 layout(push_constant) uniform Push
 {
@@ -66,7 +66,6 @@ layout(push_constant) uniform Push
     float MASK_DIFFUSION;
     float ASPECT;
     float MASK_FRAME_DEBUG;
-    float MASK_DEBUG_PADDING;
 } config;
 
 #define MASK_BYPASS config.MASK_BYPASS
@@ -84,7 +83,6 @@ layout(push_constant) uniform Push
 #define MASK_DIFFUSION config.MASK_DIFFUSION
 #define ASPECT config.ASPECT
 #define MASK_FRAME_DEBUG config.MASK_FRAME_DEBUG
-#define MASK_DEBUG_PADDING config.MASK_DEBUG_PADDING
 
 layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 MVP;
@@ -104,13 +102,14 @@ layout(std140, set = 0, binding = 0) uniform UBO {
     float UNDERSCAN;        // %
     float S_CORRECTION_H;   // %
     float S_CORRECTION_V;   // %
-    float MASK_DEBUG_PAD;
     float GEOMETRY_BYPASS;
     float FILTER_BYPASS;
     float BEAM_DEBUG_OUT_OF_RANGE;
 
     float V_FREQ_MODE;
     float V_FREQ;
+
+    float DAR_SCALE;
 } global;
 
 // Geometry macro bindings
@@ -133,11 +132,12 @@ layout(std140, set = 0, binding = 0) uniform UBO {
 #define S_CORRECTION_H global.S_CORRECTION_H
 #define S_CORRECTION_V global.S_CORRECTION_V
 
-#define MASK_DEBUG_PAD global.MASK_DEBUG_PAD
 #define BEAM_DEBUG_OUT_OF_RANGE global.BEAM_DEBUG_OUT_OF_RANGE
 
 #define V_FREQ_MODE global.V_FREQ_MODE
 #define V_FREQ global.V_FREQ
+
+#define DAR_SCALE global.DAR_SCALE
 
 // Bicubic texture sampling (4x4 Mitchell-Netravali)
 // Matches implementation style from crt-geometry.slang
@@ -226,37 +226,29 @@ float cyclicDist(float x, float center, float period)
     return min(d, period - d);
 }
 
-// Map from framebuffer UV to input active texture coordinates, applying
+// Map from framebuffer UV to input texture coordinates, applying
 // display framing, physical distortions, and electronic service geometry.
 // Inputs:
 //  - vTexCoord: source framebuffer UV in [0,1]
 //  - maskAR: selected display aspect ratio (e.g., 4/3, 16/9)
-//  - full_aspect: aspect of the full video frame (active + padding)
-//  - active_region_h/v: normalized width/height of the active video within full frame
+//  - full_aspect: aspect of the full video frame
 // Outputs:
-//  - inside: whether the pixel is within the full video bounds after geometry
-//  - in_active: whether the pixel is inside the active region after geometry
-//  - input_tex: UV inside the active region to sample the source texture
+//  - input_tex: UV to sample the source texture
 void apply_geometry_pipeline(
-    vec2 vTexCoord,
+    vec2 uv,
     float maskAR,
     float full_aspect,
-    float active_region_h,
-    float active_region_v,
-    out bool inside,
-    out bool in_active,
     out vec2 input_tex)
 {
     // Start in full-video square space, then remap X into display-geometry space (maskAR)
-    vec2 uv_frame = clamp(vTexCoord, 0.0, 1.0);
-    vec2 uv_screen = uv_frame * 2.0 - 1.0;  // [-1,1] in texture space
-    vec2 sq = vec2(uv_screen.x * full_aspect, uv_screen.y);
-    float to_mask = maskAR / max(full_aspect, EPS);
+    vec2 uv_screen = uv * 2.0 - 1.0;  // [-1,1] in texture space
+    vec2 sq = vec2(uv_screen.x, uv_screen.y / full_aspect);
+    float to_mask = max(full_aspect, EPS) / maskAR;
     sq.x *= to_mask;
 
     // Physical distortions (pincushion and magnetic) - tied to mask/tube
-    // We divide the deflection angle by 5 to get a reasonable range for typical CRTs
-    float theta_defl = radians(DEFLECTION_ANGLE / 5.0);
+    // We divide the deflection angle by 4 to get a reasonable range for typical CRTs
+    float theta_defl = radians(DEFLECTION_ANGLE / 6.0);
     if (DEFLECTION_ANGLE > 4.0) {
         if (DEFLECTION_ANGLE <= 60.0) {
             sq = pincushion_theta(sq, theta_defl, theta_defl);
@@ -303,29 +295,9 @@ void apply_geometry_pipeline(
     }
 
     // Convert back from display-geometry space to full-video square space, then to normalized
-    float to_full = max(full_aspect, EPS) / maskAR;
-    sq.x *= to_full;
-    vec2 uv_full = vec2(sq.x / full_aspect, sq.y);
-    vec2 tex = uv_full * 0.5 + 0.5; // full video area [0,1]
-
-    // Inside full video bounds after geometry
-    inside = (tex.x >= 0.0 && tex.x <= 1.0 && tex.y >= 0.0 && tex.y <= 1.0);
-
-    // Active region bounds within full video space
-    float x_active_min = (1.0 - active_region_h) * 0.5;
-    float x_active_max = 1.0 - x_active_min;
-    float y_active_min = (1.0 - active_region_v) * 0.5;
-    float y_active_max = 1.0 - y_active_min;
-
-    in_active = (tex.x >= x_active_min && tex.x <= x_active_max &&
-                 tex.y >= y_active_min && tex.y <= y_active_max);
-
-    // Remap to input active texture coordinates only if inside active region
-    input_tex = vec2(
-        (tex.x - x_active_min) / max(active_region_h, EPS),
-        (tex.y - y_active_min) / max(active_region_v, EPS)
-    );
-    input_tex = clamp(input_tex, 0.0, 1.0);
+    sq.x /= to_mask;
+    vec2 uv_full = vec2(sq.x, sq.y * full_aspect);
+    input_tex = uv_full * 0.5 + 0.5; // full video area [0,1]
 }
 
 // ---- Mask computation with numerical integration for anti-aliasing ----
@@ -335,20 +307,20 @@ vec3 integrate_aperture_grille_numerical(float x_min, float x_max, float sigma_x
 {
     vec3 sum = vec3(0.0);
     float step = (x_max - x_min) / float(samples);
-    
+
     for (int i = 0; i < samples; ++i) {
         float x = x_min + (float(i) + 0.5) * step;
-        
+
         // Evaluate Gaussian at each RGB stripe center (0, 2, 4 in 6-unit cycle)
         float dr = cyclicDist(mod(x - 0.5, 6.0), 0.0, 6.0);
         float dg = cyclicDist(mod(x - 0.5, 6.0), 2.0, 6.0);
         float db = cyclicDist(mod(x - 0.5, 6.0), 4.0, 6.0);
-        
+
         sum.r += exp(-0.5 * dr*dr / (sigma_x*sigma_x));
         sum.g += exp(-0.5 * dg*dg / (sigma_x*sigma_x));
         sum.b += exp(-0.5 * db*db / (sigma_x*sigma_x));
     }
-    
+
     return sum / float(samples);
 }
 
@@ -361,65 +333,65 @@ vec3 integrate_slot_mask_numerical(
     // Vertical weights at sample points (slot mask has 3-unit vertical cycle)
     vec3 v_weights = vec3(0.0);
     float step_y = (y_max - y_min) / float(samples_y);
-    
+
     for (int j = 0; j < samples_y; ++j) {
         float y = y_min + (float(j) + 0.5) * step_y;
         float vc = mod(y - 0.5, 3.0);
-        
+
         float w0 = exp(-0.5 * pow(cyclicDist(vc, 0.0, 3.0), 2.0) / (sigma_v * sigma_v));
         float w1 = exp(-0.5 * pow(cyclicDist(vc, 1.0, 3.0), 2.0) / (sigma_v * sigma_v));
         float w2 = exp(-0.5 * pow(cyclicDist(vc, 2.0, 3.0), 2.0) / (sigma_v * sigma_v));
-        
+
         v_weights += vec3(w0, w1, w2);
     }
     v_weights /= float(samples_y);
-    
+
     // Horizontal integration for each vertical row pattern (18-unit cycle)
     float step_x = (x_max - x_min) / float(samples_x);
     vec3 row0 = vec3(0.0), row1 = vec3(0.0), row2 = vec3(0.0);
-    
+
     for (int i = 0; i < samples_x; ++i) {
         float x = x_min + (float(i) + 0.5) * step_x;
         float cycle = mod(x - 0.5, 18.0);
-        
+
         // Row 0: RGB at 6, 8, 10 and 12, 14, 16
         vec2 dR0 = vec2(cyclicDist(cycle, 6.0, 18.0), cyclicDist(cycle, 12.0, 18.0));
         vec2 dG0 = vec2(cyclicDist(cycle, 8.0, 18.0), cyclicDist(cycle, 14.0, 18.0));
         vec2 dB0 = vec2(cyclicDist(cycle, 10.0, 18.0), cyclicDist(cycle, 16.0, 18.0));
-        
+
         row0 += vec3(
             exp(-0.5 * dR0.x * dR0.x / (sigma_x * sigma_x)) + exp(-0.5 * dR0.y * dR0.y / (sigma_x * sigma_x)),
             exp(-0.5 * dG0.x * dG0.x / (sigma_x * sigma_x)) + exp(-0.5 * dG0.y * dG0.y / (sigma_x * sigma_x)),
             exp(-0.5 * dB0.x * dB0.x / (sigma_x * sigma_x)) + exp(-0.5 * dB0.y * dB0.y / (sigma_x * sigma_x))
         );
-        
+
         // Row 1: RGB at 0, 2, 4 and 12, 14, 16
         vec2 dR1 = vec2(cyclicDist(cycle, 0.0, 18.0), cyclicDist(cycle, 12.0, 18.0));
         vec2 dG1 = vec2(cyclicDist(cycle, 2.0, 18.0), cyclicDist(cycle, 14.0, 18.0));
         vec2 dB1 = vec2(cyclicDist(cycle, 4.0, 18.0), cyclicDist(cycle, 16.0, 18.0));
-        
+
         row1 += vec3(
             exp(-0.5 * dR1.x * dR1.x / (sigma_x * sigma_x)) + exp(-0.5 * dR1.y * dR1.y / (sigma_x * sigma_x)),
             exp(-0.5 * dG1.x * dG1.x / (sigma_x * sigma_x)) + exp(-0.5 * dG1.y * dG1.y / (sigma_x * sigma_x)),
             exp(-0.5 * dB1.x * dB1.x / (sigma_x * sigma_x)) + exp(-0.5 * dB1.y * dB1.y / (sigma_x * sigma_x))
         );
-        
+
         // Row 2: RGB at 0, 2, 4 and 6, 8, 10
         vec2 dR2 = vec2(cyclicDist(cycle, 0.0, 18.0), cyclicDist(cycle, 6.0, 18.0));
         vec2 dG2 = vec2(cyclicDist(cycle, 2.0, 18.0), cyclicDist(cycle, 8.0, 18.0));
         vec2 dB2 = vec2(cyclicDist(cycle, 4.0, 18.0), cyclicDist(cycle, 10.0, 18.0));
-        
+
         row2 += vec3(
             exp(-0.5 * dR2.x * dR2.x / (sigma_x * sigma_x)) + exp(-0.5 * dR2.y * dR2.y / (sigma_x * sigma_x)),
             exp(-0.5 * dG2.x * dG2.x / (sigma_x * sigma_x)) + exp(-0.5 * dG2.y * dG2.y / (sigma_x * sigma_x)),
             exp(-0.5 * dB2.x * dB2.x / (sigma_x * sigma_x)) + exp(-0.5 * dB2.y * dB2.y / (sigma_x * sigma_x))
         );
     }
-    
+
     row0 /= float(samples_x);
     row1 /= float(samples_x);
     row2 /= float(samples_x);
-    
+
     // Combine: weighted average of rows
     return v_weights.x * row0 + v_weights.y * row1 + v_weights.z * row2;
 }
@@ -432,56 +404,56 @@ vec3 integrate_shadow_mask_numerical(
 {
     // Shadow mask: 6-unit horizontal, 4-unit vertical cycle
     // Two rows: row 0 at y=0 (RGB at x=0,2,4), row 2 at y=2 (BRG at x=1,3,5)
-    
+
     // Vertical weights
     vec2 v_weights = vec2(0.0);
     float step_y = (y_max - y_min) / float(samples_y);
-    
+
     for (int j = 0; j < samples_y; ++j) {
         float y = y_min + (float(j) + 0.5) * step_y;
         float vc = mod(y - 1.0, 4.0);
-        
+
         float w0 = exp(-0.5 * pow(cyclicDist(vc, 0.0, 4.0), 2.0) / (sigma_y * sigma_y));
         float w2 = exp(-0.5 * pow(cyclicDist(vc, 2.0, 4.0), 2.0) / (sigma_y * sigma_y));
-        
+
         v_weights += vec2(w0, w2);
     }
     v_weights /= float(samples_y);
-    
+
     // Horizontal integration
     float step_x = (x_max - x_min) / float(samples_x);
     vec3 row0 = vec3(0.0), row2 = vec3(0.0);
-    
+
     for (int i = 0; i < samples_x; ++i) {
         float x = x_min + (float(i) + 0.5) * step_x;
         float cycle = mod(x - 0.5, 6.0);
-        
+
         // Row 0: R=0, G=2, B=4
         float dR0 = cyclicDist(cycle, 0.0, 6.0);
         float dG0 = cyclicDist(cycle, 2.0, 6.0);
         float dB0 = cyclicDist(cycle, 4.0, 6.0);
-        
+
         row0 += vec3(
             exp(-0.5 * dR0*dR0 / (sigma_x*sigma_x)),
             exp(-0.5 * dG0*dG0 / (sigma_x*sigma_x)),
             exp(-0.5 * dB0*dB0 / (sigma_x*sigma_x))
         );
-        
+
         // Row 2: B=1, R=3, G=5
         float dB2 = cyclicDist(cycle, 1.0, 6.0);
         float dR2 = cyclicDist(cycle, 3.0, 6.0);
         float dG2 = cyclicDist(cycle, 5.0, 6.0);
-        
+
         row2 += vec3(
             exp(-0.5 * dR2*dR2 / (sigma_x*sigma_x)),
             exp(-0.5 * dG2*dG2 / (sigma_x*sigma_x)),
             exp(-0.5 * dB2*dB2 / (sigma_x*sigma_x))
         );
     }
-    
+
     row0 /= float(samples_x);
     row2 /= float(samples_x);
-    
+
     return v_weights.x * row0 + v_weights.y * row2;
 }
 
@@ -505,10 +477,10 @@ vec3 compute_mask(vec2 screen_uv, float units_x_total, float units_y_total, vec2
     // Case 3: pixels_per_unit < 1/3 → Passthrough (pattern nearly unresolvable)
     const float INTEGRATION_THRESHOLD = 1.0;
     const float PASSTHROUGH_THRESHOLD = 1.0 / 3.0;
-    
-    bool use_integration_x = (pixels_per_unit.x >= PASSTHROUGH_THRESHOLD && 
+
+    bool use_integration_x = (pixels_per_unit.x >= PASSTHROUGH_THRESHOLD &&
                               pixels_per_unit.x < INTEGRATION_THRESHOLD);
-    bool use_integration_y = (pixels_per_unit.y >= PASSTHROUGH_THRESHOLD && 
+    bool use_integration_y = (pixels_per_unit.y >= PASSTHROUGH_THRESHOLD &&
                               pixels_per_unit.y < INTEGRATION_THRESHOLD);
     bool passthrough_x = pixels_per_unit.x < PASSTHROUGH_THRESHOLD;
     bool passthrough_y = pixels_per_unit.y < PASSTHROUGH_THRESHOLD;
@@ -516,7 +488,7 @@ vec3 compute_mask(vec2 screen_uv, float units_x_total, float units_y_total, vec2
     // Pixel extent in unit space
     float pixel_width_units = 1.0 / max(pixels_per_unit.x, EPS);
     float pixel_height_units = 1.0 / max(pixels_per_unit.y, EPS);
-    
+
     // Pixel bounds in unit space (centered on current position)
     float x_min = x_units - pixel_width_units * 0.5;
     float x_max = x_units + pixel_width_units * 0.5;
@@ -524,10 +496,10 @@ vec3 compute_mask(vec2 screen_uv, float units_x_total, float units_y_total, vec2
     float y_max = y_units + pixel_height_units * 0.5;
 
     vec3 mask_color;
-    
+
     if (MASK_TYPE < 0.5) {
         // Aperture grille (6-unit horizontal cycle, R G B at 0, 2, 4)
-        
+
         if (passthrough_x) {
             // Case 3: Resolution too low, disable mask
             mask_color = vec3(1.0);
@@ -542,11 +514,11 @@ vec3 compute_mask(vec2 screen_uv, float units_x_total, float units_y_total, vec2
             float dr = cyclicDist(cycle, 0.0, 6.0);
             float dg = cyclicDist(cycle, 2.0, 6.0);
             float db = cyclicDist(cycle, 4.0, 6.0);
-            
+
             float gauss_rx = exp(-0.5 * dr*dr / (sigma.x*sigma.x));
             float gauss_gx = exp(-0.5 * dg*dg / (sigma.x*sigma.x));
             float gauss_bx = exp(-0.5 * db*db / (sigma.x*sigma.x));
-            
+
             mask_color = vec3(gauss_rx, gauss_gx, gauss_bx);
         }
     } else if (MASK_TYPE < 1.5) {
@@ -690,108 +662,74 @@ layout(set = 0, binding = 1) uniform sampler2D Source;
 
 void main()
 {
-    // Horizontal inactive pixels (blanking) - use h_pixels from timebase
+    // Horizontal timing from timebase
     float total_h_pixels = tb.h_pixels;
-    float active_region_h = config.OriginalSize.x / max(total_h_pixels, 1.0);
+    float total_v_lines = tb.is_interlaced < 0.5 ? tb.v_lines_per_field : tb.v_lines_per_frame;
 
-    // Vertical inactive (blanking) lines - use v_lines_per_frame from timebase
-    float total_v_lines = tb.v_lines_per_frame;
+    // Aspect ratios for full video
+    float original_dar = config.OriginalAspect;
+    float original_sar = config.OriginalSize.x / config.OriginalSize.y;
+    float original_par = original_dar / max(original_sar, EPS);
 
-    // Accounts for padding from previous shader, e.g. scanraster
-    float active_v_lines = config.SourceSize.y;
-    float active_region_v = active_v_lines / max(total_v_lines, 1.0);
+    float full_dar = original_par * total_h_pixels / max(total_v_lines, 1.0);
+    float full_sar = total_h_pixels / max(total_v_lines, 1.0);
+    float full_par = full_dar / max(full_sar, EPS);
 
-    // Account for interlacing in vertical active region
-    float interlace_factor = (tb.is_interlaced > 0.5) ? 1.0 : 2.0;
+    // When there's padding, adjust full aspect to account for it
+    float h_scale = floor(config.SourceSize.x / total_h_pixels);
+    float v_scale = floor(config.SourceSize.y / total_v_lines);
 
-    // Aspect ratios for full video (active + blanking)
-    float dar = config.OriginalAspect;
-    float sar = config.OriginalSize.x / config.SourceSize.y;
-    float par = dar / max(sar, EPS);
+    // Calculate the active (non-padded) dimensions in the input texture
+    float active_width = floor(total_h_pixels) * h_scale;
+    float active_height = floor(total_v_lines) * v_scale;
 
-    // Full video aspect (active + blanking) - represents the ideal aspect including padding
-    float full_aspect = par * total_h_pixels / max(total_v_lines, 1.0);
+    float source_sar = config.SourceSize.x / config.SourceSize.y;
+    float active_sar = active_width / max(active_height, 1.0);
+    float source_dar = full_dar * source_sar / active_sar;
+    source_dar *= DAR_SCALE;
 
-    // Work directly in source texture space (no initial scaling needed)
-    vec2 uv_frame = vTexCoord;
+    // Calculate active region bounds in texture UV space (centered)
+    float active_left = (config.SourceSize.x - active_width) * 0.5 / config.SourceSize.x;
+    float active_right = (config.SourceSize.x + active_width) * 0.5 / config.SourceSize.x;
+    float active_top = (config.SourceSize.y - active_height) * 0.5 / config.SourceSize.y;
+    float active_bottom = (config.SourceSize.y + active_height) * 0.5 / config.SourceSize.y;
 
-    // Initial inside test: are we within the full video frame (including padding)?
-    bool inside_initial = (uv_frame.x >= 0.0 && uv_frame.x <= 1.0 &&
-                           uv_frame.y >= 0.0 && uv_frame.y <= 1.0);
+    // Expand vTexCoord so active region UVs map to [0,1]
+    float norm_x = (vTexCoord.x - active_left) / max(active_right - active_left, EPS);
+    float norm_y = (vTexCoord.y - active_top) / max(active_bottom - active_top, EPS);
+    vec2 active_uv = vec2(norm_x, norm_y);
 
-    uv_frame = clamp(uv_frame, 0.0, 1.0);
-
-    // Optional timing padding debug (inside the frame)
-    if (MASK_DEBUG_PADDING > 0.5) {
-        vec3 debug_color = vec3(0.0);
-        if (inside_initial) {
-            bool in_h_padding = (uv_frame.x < (1.0 - active_region_h) * 0.5) ||
-                                (uv_frame.x > 1.0 - (1.0 - active_region_h) * 0.5);
-            bool in_v_padding = (uv_frame.y < (1.0 - active_region_v) * 0.5) ||
-                                (uv_frame.y > 1.0 - (1.0 - active_region_v) * 0.5);
-
-            if (!in_h_padding && !in_v_padding) {
-                vec2 active_sample = vec2(
-                    (uv_frame.x - (1.0 - active_region_h) * 0.5) / max(active_region_h, EPS),
-                    (uv_frame.y - (1.0 - active_region_v) * 0.5) / max(active_region_v, EPS)
-                );
-                active_sample = clamp(active_sample, 0.0, 1.0);
-                debug_color = texture(Source, active_sample).rgb;
-            }
-            if (in_h_padding || in_v_padding) {
-                debug_color = mix(debug_color, vec3(1.0, 1.0, 0.0), 0.5);
-            }
-        } else {
-            float outsideGray = (MASK_FRAME_DEBUG > 0.5) ? 0.5 : 0.0;
-            debug_color = vec3(outsideGray);
-        }
-        FragColor = vec4(debug_color, 1.0);
-        return;
-    }
-
-    // ---- Unified geometry pipeline in a subroutine ----
-    bool inside;
-    bool in_active;
-    vec2 input_tex;
-
-    if (GEOMETRY_BYPASS >= 1.0) {
-        // Geometry bypass: treat vTexCoord as direct input
-        inside = (vTexCoord.x >= 0.0 && vTexCoord.x <= 1.0 &&
-                  vTexCoord.y >= 0.0 && vTexCoord.y <= 1.0);
-        in_active = inside;
-        input_tex = clamp(vTexCoord, 0.0, 1.0);
+    // ---- Geometry pipeline ----
+    vec2 geometry_uv;
+    if (GEOMETRY_BYPASS > 0.5) {
+        geometry_uv = active_uv;
     } else {
         apply_geometry_pipeline(
-            uv_frame,
+            active_uv,
             maskAR,
-            full_aspect,
-            active_region_h,
-            active_region_v,
-            inside,
-            in_active,
-            input_tex);
+            source_dar,
+            geometry_uv);
     }
+
+    // Remap from geometry UVs to input texture UVs
+    vec2 input_uv = vec2(
+        active_left + geometry_uv.x * (active_right - active_left),
+        active_top + geometry_uv.y * (active_bottom - active_top)
+    );
 
     // Bicubic resample from input texture using BEAM_FOCUS
     float focus = clamp(BEAM_FOCUS * 0.01, 0.0, 1.0);
     float C = -1.0 / 3.0 * focus * focus + 5.0 / 6.0 * focus;
     float B = 1.0 - 2.0 * C;
-    // Base color: sample content inside frame; outside use debug gray or black
-    float outsideGray = (MASK_FRAME_DEBUG > 0.5) ? 0.5 : 0.0;
-    vec3 inside_color;
-    if (in_active) {
-        if (FILTER_BYPASS < 0.5) {
-            inside_color = sample_bicubic(Source, input_tex, 1.0 / config.SourceSize.xy, B, C);
-        } else {
-            inside_color = texture(Source, input_tex).rgb;
-        }
-    } else {
-        // Render padding (blanking) as black
-        inside_color = vec3(0.0);
-    }
-    vec3 color = inside ? inside_color : vec3(outsideGray);
 
-    // If mask is bypassed, still honor framing but skip mask application
+    vec3 color;
+    if (FILTER_BYPASS < 0.5) {
+        color = sample_bicubic(Source, input_uv, 1.0 / config.SourceSize.xy, B, C);
+    } else {
+        color = texture(Source, input_uv).rgb;
+    }
+
+    // If mask is bypassed, return color as-is
     if (MASK_BYPASS >= 1.0) {
         FragColor = vec4(color, 1.0);
         return;
@@ -814,18 +752,6 @@ void main()
         units_y_total = tvl / maskAR * 2.5;
     } else {
         units_y_total = tvl / maskAR * 6.0;
-    }
-
-    if (MASK_DEBUG_PAD > 0.5) {
-        bool is_padding = inside && !in_active;
-        if (is_padding) {
-            // Padding area: yellow
-            color = vec3(0.18, 0.18, 0.0);
-        } else if (!inside) {
-            // Outside full video frame: gray
-            color = vec3(0.18);
-        }
-        // else: active content, show normally with mask
     }
 
     float mask_intensity = MASK_INTENSITY * 0.01;

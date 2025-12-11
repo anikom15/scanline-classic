@@ -34,8 +34,8 @@
 #pragma format R8G8B8A8_UNORM
 
 #pragma parameter FRAME_VIZ_ACTIVE "Show active content" 1.0 0.0 1.0 1.0
-#pragma parameter FRAME_VIZ_BLANKING "Show frame blanking (yellow)" 1.0 0.0 1.0 1.0
-#pragma parameter FRAME_VIZ_PADDING "Show padding (magenta)" 1.0 0.0 1.0 1.0
+#pragma parameter FRAME_VIZ_BLANKING "Show frame blanking (yellow)" 0.0 0.0 1.0 1.0
+#pragma parameter FRAME_VIZ_PADDING "Show padding (magenta)" 0.0 0.0 1.0 1.0
 
 // Push constants
 layout(push_constant) uniform Push
