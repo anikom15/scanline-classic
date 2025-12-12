@@ -230,25 +230,20 @@ float cyclicDist(float x, float center, float period)
 // display framing, physical distortions, and electronic service geometry.
 // Inputs:
 //  - vTexCoord: source framebuffer UV in [0,1]
-//  - maskAR: selected display aspect ratio (e.g., 4/3, 16/9)
-//  - full_aspect: aspect of the full video frame
+//  - dar: selected display aspect ratio (e.g., 4/3, 16/9)
 // Outputs:
 //  - input_tex: UV to sample the source texture
 void apply_geometry_pipeline(
     vec2 uv,
-    float maskAR,
-    float full_aspect,
+    float dar,
     out vec2 input_tex)
 {
-    // Start in full-video square space, then remap X into display-geometry space (maskAR)
+    // Start in full-video square space
     vec2 uv_screen = uv * 2.0 - 1.0;  // [-1,1] in texture space
-    vec2 sq = vec2(uv_screen.x, uv_screen.y / full_aspect);
-    float to_mask = max(full_aspect, EPS) / maskAR;
-    sq.x *= to_mask;
+    vec2 sq = vec2(uv_screen.x, uv_screen.y / dar);
 
-    // Physical distortions (pincushion and magnetic) - tied to mask/tube
-    // We divide the deflection angle by 4 to get a reasonable range for typical CRTs
-    float theta_defl = radians(DEFLECTION_ANGLE / 6.0);
+    // --- Physical distortions (pincushion and magnetic) ---
+    float theta_defl = radians(DEFLECTION_ANGLE / 4.0);
     if (DEFLECTION_ANGLE > 4.0) {
         if (DEFLECTION_ANGLE <= 60.0) {
             sq = pincushion_theta(sq, theta_defl, theta_defl);
@@ -256,34 +251,19 @@ void apply_geometry_pipeline(
             sq = pincushion_nl_theta(sq, theta_defl, theta_defl);
         }
     }
-
     float mag_corr = MAGNETIC_CORRECTION * 0.01;
     if (mag_corr > 0.0) {
         sq = magnetic_correction(sq, mag_corr, 2.0 * theta_defl);
     }
 
-    // Electronic positioning/sizing and service corrections (all in square space)
-    float display_aspect = maskAR;
-    float content_aspect = full_aspect;
-
-    // Calculate scaling to fit content within display aspect
-    float aspect_fit_scale_x = 1.0;
-    float aspect_fit_scale_y = 1.0;
-    if (content_aspect > display_aspect) {
-        // Content is wider than display - need pillarbox (shrink horizontally)
-        aspect_fit_scale_x = display_aspect / content_aspect;
-    } else {
-        // Content is taller than display - need letterbox (shrink vertically)
-        aspect_fit_scale_y = content_aspect / display_aspect;
-    }
-
-    float sx = (USER_H_SIZE / 50.0) / aspect_fit_scale_x;
-    float sy = (USER_V_SIZE / 50.0) / aspect_fit_scale_y;
+    // --- Electronic positioning/sizing and service corrections (all in square space) ---
+    float sx = USER_H_SIZE / 50.0;
+    float sy = USER_V_SIZE / 50.0;
     float ox = (USER_H_POS - 50.0) / 50.0;
     float oy = (USER_V_POS - 50.0) / 50.0;
     float underscan_scale = (USER_UNDERSCAN_TOGGLE > 0.5) ? (1.0 - (UNDERSCAN * 0.01)) : 1.0;
-    // Offset/scale in display-geometry units (maskAR for X)
-    sq = (sq - vec2(ox * maskAR, oy)) / (vec2(sx, sy) * underscan_scale);
+    // Offset/scale in display-geometry units (dar for X)
+    sq = (sq - vec2(ox * dar, oy)) / (vec2(sx, sy) * underscan_scale);
 
     // Electronic service corrections (trapezoid, corner, S-corrections)
     float trap = TRAPEZOIDAL_CORRECTION * 0.01;
@@ -295,8 +275,7 @@ void apply_geometry_pipeline(
     }
 
     // Convert back from display-geometry space to full-video square space, then to normalized
-    sq.x /= to_mask;
-    vec2 uv_full = vec2(sq.x, sq.y * full_aspect);
+    vec2 uv_full = vec2(sq.x, sq.y * dar);
     input_tex = uv_full * 0.5 + 0.5; // full video area [0,1]
 }
 
@@ -699,6 +678,24 @@ void main()
     float norm_y = (vTexCoord.y - active_top) / max(active_bottom - active_top, EPS);
     vec2 active_uv = vec2(norm_x, norm_y);
 
+    // Fill to mask border (zoom): scale so the smaller axis fills the mask border
+    vec2 uv_zoom = 2.0 * active_uv - 1.0;
+    float content_aspect = source_dar;
+    float target_aspect = maskAR;
+    vec2 scale = vec2(1.0);
+
+    if (content_aspect > target_aspect) {
+        // Content is wider: scale x up (crop sides)
+        scale.x = content_aspect / target_aspect;
+        scale *= config.SourceSize.y / active_height;
+    } else {
+        // Content is taller: scale y up (crop top/bottom)
+        scale.y = target_aspect / content_aspect;
+        scale *= config.SourceSize.x / active_width;
+    }
+    uv_zoom /= scale;
+    active_uv = 0.5 * (uv_zoom + 1.0);
+
     // ---- Geometry pipeline ----
     vec2 geometry_uv;
     if (GEOMETRY_BYPASS > 0.5) {
@@ -707,7 +704,6 @@ void main()
         apply_geometry_pipeline(
             active_uv,
             maskAR,
-            source_dar,
             geometry_uv);
     }
 

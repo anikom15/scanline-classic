@@ -265,8 +265,11 @@ TimebaseConfig compute_timebase(
     config.field_phase += ceil(config.field / 2.0) * odd_field_adjust * 2.0 * PI * config.sc_freq_hz;
     config.field_phase = mod(config.field_phase, 2.0 * PI) - PI;
 
+    // Scale ouput_width to be a multiple of original_size.x to avoid incorrect pixel time
+    float h_scale = max(floor(output_width / total_pixels), 1.0);
+
     // Per-output-pixel time (cycles-per-pixel scaling)
-    config.pixel_time_px = config.pixel_time * (original_size.x / output_width);
+    config.pixel_time_px = config.pixel_time / h_scale;
 
     // Total horizontal pixels (active + blanking)
     config.h_pixels = total_pixels;
