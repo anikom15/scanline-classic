@@ -1,0 +1,13 @@
+{
+    "root_path" : "../../../shaders",
+    "shaders" : {
+        "menu" : "menus/menu-sdr.slang",
+        "frame" : "frame.slang"
+    },
+    "options" : {
+        "frame": {
+            "scale_type" : ["absolute"],
+            "scale": [858.0, 526.0]
+        }
+    }
+}

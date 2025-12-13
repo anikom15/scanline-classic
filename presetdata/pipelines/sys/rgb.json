@@ -1,0 +1,8 @@
+{
+    "root_path" : "../../../shaders",
+    "shaders" : {
+        "amp" : "sys-rgb-amp.slang",
+        "bandlimit" : "sys-display-rgb-bandlimit.slang",
+        "limiter" : "limiter.slang"
+    }
+}

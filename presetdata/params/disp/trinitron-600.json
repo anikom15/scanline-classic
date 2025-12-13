@@ -1,0 +1,20 @@
+{
+    "rootpath" : "../../../share",
+    "parameters" : {
+        "BORDER" : "bezel-tritinron.png",
+        "SCANLINE_BLANK_WEIGHT" : 100.0,
+        "TVL" : 600.0,
+        "MASK_TYPE" : 0.0,
+        "MASK_DIFFUSION" : 2.0,
+        "MAGNETIC_CORRECTION" : 30.0,
+        "DEFLECTION_ANGLE" : 90.0,
+        "SCREEN_ANGLE_H" : 25.0,
+        "SCREEN_ANGLE_V" : 0.0,
+        "TRAPEZOIDAL_CORRECTION" : 3.0,
+        "USER_H_SIZE" : 56.0,
+        "USER_V_SIZE" : 56.0,
+        "PHOSPHOR_MANTISSA_R" : 1.0,
+        "PHOSPHOR_MANTISSA_G" : 100.0,
+        "PHOSPHOR_MANTISSA_B" : 100.0
+    }
+}
