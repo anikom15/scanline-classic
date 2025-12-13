@@ -1,0 +1,18 @@
+{
+    "root_path" : "../../../shaders",
+    "shaders" : {
+        "linear" : "crt-linear.slang",
+        "beam-mask" : "beam-mask.slang",
+        "phosphor" : "phosphor-trichrome.slang",
+        "curve" : "curve.slang"
+    },
+    "options" : {
+        "linear" : {
+            "alias" : "PHOSPHOR"
+        },
+        "beam-mask" : {
+            "scale_type" : ["viewport"],
+            "scale" : [0.75, 1.0]
+        }
+    }
+}
