@@ -3,6 +3,8 @@ out/
 shaders/menus/*-wcg.slang
 presets/uhd-4k-wcg/
 
+*.code-workspace
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
