@@ -1,10 +1,10 @@
 {
     "root_path" : "../../../shaders",
     "shaders" : {
-        "linear" : "crt-linear.slang",
-        "beam-mask" : "beam-mask.slang",
-        "phosphor" : "phosphor-trichrome.slang",
-        "curve" : "curve.slang"
+        "linear" : "crt-linear",
+        "beam-mask" : "beam-mask",
+        "phosphor" : "phosphor-trichrome",
+        "curve" : "curve"
     },
     "options" : {
         "linear" : {

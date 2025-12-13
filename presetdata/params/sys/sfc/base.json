@@ -8,6 +8,12 @@
         "SYS_CUTOFF_ATTEN_G" : 16.0,
         "SYS_CUTOFF_ATTEN_B" : 16.0,
 
+        "SYS_BANDWIDTH_U" : 2.6,
+        "SYS_BANDWIDTH_V" : 2.6,
+        "SYS_CUTOFF_ATTEN_Y" : 0.0,
+        "SYS_CUTOFF_ATTEN_U" : 3.0,
+        "SYS_CUTOFF_ATTEN_V" : 3.0,
+
         "PIXEL_CLOCK_MODE" : 1.0,
         "PIXEL_CLOCK" : 6.0,
         "H_FREQ_MODE" : 1.0,

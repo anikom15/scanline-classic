@@ -1,7 +1,7 @@
 {
     "rootpath" : "../../../share",
     "parameters" : {
-        "BORDER" : "bezel-tritinron.png",
+        "BORDER" : "bezel-trinitron.png",
         "SCANLINE_BLANK_WEIGHT" : 100.0,
         "TVL" : 600.0,
         "MASK_TYPE" : 0.0,

@@ -1,8 +1,8 @@
 {
     "root_path" : "../../../shaders",
     "shaders" : {
-        "color" : "color-sdr.slang",
-        "bezel" : "bezel-sdr.slang"
+        "color" : "color-sdr",
+        "bezel" : "bezel-sdr"
     },
     "options" : {
         "bezel": {

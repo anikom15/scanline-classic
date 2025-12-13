@@ -13,7 +13,7 @@
   "parameter_root" : "params",
   "parameter_sets" : [
     "sys/sfc/base.json",
-    "disp/ntsc.json",
+    "disp/ntscj.json",
     "disp/trinitron-600.json"
   ],
   "parameter_overrides" : {

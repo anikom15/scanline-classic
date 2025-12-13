@@ -1,0 +1,21 @@
+{
+  "filename" : "sfc_sfcjr",
+  "type" : "consumer",
+  "title" : "Super Famicom composite shader set",
+  "description" : "All models included an A/V cable with the console.",
+  "pipeline_root" : "pipelines",
+  "pipelines" : [
+    "misc/pre.json",
+    "sys/component-composite.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_root" : "params",
+  "parameter_sets" : [
+    "sys/sfc/base.json",
+    "disp/ntscj.json",
+    "disp/trinitron-600.json"
+  ],
+  "parameter_overrides" : {
+  }
+}

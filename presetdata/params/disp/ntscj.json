@@ -1,5 +1,4 @@
 {
-    "includes" : ["ntsc.json"],
     "parameters" : {
         "DECODER_SETUP" : 0.0,
         "COLORIMETRY_PRESET" : 2.0
