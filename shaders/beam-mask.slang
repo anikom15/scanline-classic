@@ -687,11 +687,13 @@ void main()
     if (content_aspect > target_aspect) {
         // Content is wider: scale x up (crop sides)
         scale.x = content_aspect / target_aspect;
-        scale *= config.SourceSize.y / active_height;
+        // Uncomment to crop out padding fully
+        //scale *= config.SourceSize.y / active_height;
     } else {
         // Content is taller: scale y up (crop top/bottom)
         scale.y = target_aspect / content_aspect;
-        scale *= config.SourceSize.x / active_width;
+        // Uncomment to crop out padding fully
+        //scale *= config.SourceSize.x / active_width;
     }
     uv_zoom /= scale;
     active_uv = 0.5 * (uv_zoom + 1.0);
