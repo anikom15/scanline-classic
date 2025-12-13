@@ -13,6 +13,7 @@ PRESETS_OUT = os.path.join(OUT, 'presets', 'uhd-4k-sdr')
 top_files = ['README.md', 'COPYING', 'NEWS']
 
 def prepare_out_folder(verbose=False):
+    # Remove OUT first
     if os.path.exists(OUT):
         if verbose:
             print(f"Removing existing folder: {OUT}")
@@ -20,6 +21,16 @@ def prepare_out_folder(verbose=False):
     if verbose:
         print(f"Creating folder: {PRESETS_OUT}")
     os.makedirs(PRESETS_OUT, exist_ok=True)
+
+    # Copy share directory
+    share_src = os.path.join(ROOT, 'share')
+    share_dst = os.path.join(OUT, 'share')
+    if os.path.exists(share_src):
+        if verbose:
+            print(f"Copying {share_src} to {share_dst}")
+        shutil.copytree(share_src, share_dst, dirs_exist_ok=True)
+    else:
+        print(f"Warning: share directory not found at {share_src}")
 
     # Copy top-level files
     for fname in top_files:
