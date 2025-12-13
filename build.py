@@ -95,7 +95,7 @@ def main():
     prepare_out_folder(verbose=verbose)
     run_presetgen(verbose=verbose)
 
-    # Run generate_wcg_menu.py and generate_wcg_presets.py on the out folder
+    # Only run generate_wcg_menu.py and generate_wcg_presets.py on the 'out' folder
     scripts_dir = os.path.join(ROOT, 'scripts')
     python_exec = get_python_executable()
 
@@ -108,10 +108,10 @@ def main():
         print(f"Running: {' '.join(str(x) for x in cmd)}")
         subprocess.run(cmd, check=True)
 
-    # Run menu script as before
+    # Run menu script only on the 'out' folder
     run_script('generate_wcg_menu.py', ['--out-dir', OUT])
 
-    # Run presets script with explicit root/input/output dirs
+    # Run presets script only on the 'out' folder
     run_script('generate_wcg_presets.py', [
         '--root-dir', OUT,
         '--input-dir', os.path.join(OUT, 'presets', 'uhd-4k-sdr'),
