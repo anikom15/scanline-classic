@@ -1,0 +1,3 @@
+[submodule "external/presetgen"]
+	path = external/presetgen
+	url = https://github.com/anikom15/presetgen.git
