@@ -1,7 +1,7 @@
 test
 out/
-shaders/menus/*-wcg.slang
-presets/uhd-4k-wcg/
+
+install.bat
 
 *.code-workspace
 
