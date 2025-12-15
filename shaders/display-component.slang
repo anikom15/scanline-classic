@@ -17,8 +17,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
-#include "common.h"
-#include "color.h"
+#include "common.inc"
+#include "color.inc"
 #include "bandlimit.inc"
 #include "modulation.inc"
 
@@ -98,18 +98,43 @@ layout(std140, set = 0, binding = 0) uniform UBO
 layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
+layout(location = 1) out vec3 sigma;
+layout(location = 2) out TimebaseConfig tb;
 
 void main()
 {
-   gl_Position = global.MVP * Position;
-   vTexCoord = TexCoord;
+    gl_Position = global.MVP * Position;
+    vTexCoord = TexCoord;
+
+    // Precompute per-component sigmas (in texels) from MHz/dB specs.
+    tb = compute_timebase(
+        config.FrameCount,
+        vTexCoord,
+        config.OriginalSize.xy,
+        config.OutputSize.xy,
+        config.OriginalFPS,
+        SC_FREQ_MODE,
+        SC_FREQ,
+        PIXEL_CLOCK,
+        PIXEL_CLOCK_MODE,
+        H_FREQ_MODE,
+        H_FREQ,
+        V_FREQ_MODE,
+        V_FREQ,
+        H_BLANK_FUZZ,
+        SHORTEN_ODD_FIELD_TIME);
+
+    sigma.x = sigma_tb(tb, config.DISPLAY_BANDWIDTH_Y, config.DISPLAY_CUTOFF_ATTEN_Y);
+    sigma.y = sigma_tb(tb, config.DISPLAY_BANDWIDTH_U, config.DISPLAY_CUTOFF_ATTEN_U);
+    sigma.z = sigma_tb(tb, config.DISPLAY_BANDWIDTH_V, config.DISPLAY_CUTOFF_ATTEN_V);
 }
 
 #pragma stage fragment
 layout(location = 0) in vec2 vTexCoord;
 layout(location = 0) out vec4 FragColor;
+layout(location = 1) in vec3 sigma;
+layout(location = 2) in TimebaseConfig tb;
 layout(set = 0, binding = 2) uniform sampler2D Source;
-
 
 // Helper: decode from selected luma-chroma model to RGB
 vec3 decode_luma_chroma_to_rgb(vec3 yc, float model) {
@@ -145,37 +170,16 @@ void main()
         return;
     }
 
-    // Precompute per-component sigmas (in texels) from MHz/dB specs.
-    TimebaseConfig tb = compute_timebase(
-        float(config.FrameCount),
-        vTexCoord,
-        config.OriginalSize.xy,
-        config.OutputSize.x,
-        config.OriginalFPS,
-        SC_FREQ_MODE,
-        SC_FREQ,
-        PIXEL_CLOCK,
-        PIXEL_CLOCK_MODE,
-        H_FREQ_MODE,
-        H_FREQ,
-        V_FREQ_MODE,
-        V_FREQ,
-        H_BLANK_FUZZ,
-        SHORTEN_ODD_FIELD_TIME);
-    vec3 sigma;
-    sigma.x = sigma_tb(tb, config.DISPLAY_BANDWIDTH_Y, config.DISPLAY_CUTOFF_ATTEN_Y);
-    sigma.y = sigma_tb(tb, config.DISPLAY_BANDWIDTH_U, config.DISPLAY_CUTOFF_ATTEN_U);
-    sigma.z = sigma_tb(tb, config.DISPLAY_BANDWIDTH_V, config.DISPLAY_CUTOFF_ATTEN_V);
-
-    const float THRESHOLD = 1.0 / 510.0;
+    const float FILTER_THRESHOLD = 1.0 / 255.0;
 
     // Horizontal coordinate handling using nearest pixel-center addressing
     vec2 UV  = vTexCoord * config.OutputSize.xy;
     float baseIndex = floor(UV.x + 0.5);   // nearest pixel index
     float baseCenter = baseIndex + 0.5;    // pixel center position
     float Ax = UV.x - baseCenter;          // offset from center in [-0.5, 0.5]
-    vec2 Tex = vec2(baseCenter * config.OutputSize.z,
-                    (floor(UV.y) + 0.5) * config.OutputSize.w);
+    vec2 Tex = vec2(
+        baseCenter * config.OutputSize.z,
+        (floor(UV.y) + 0.5) * config.OutputSize.w);
     vec2 dx  = vec2(config.OutputSize.z, 0.0);
 
     // Accumulators and weights for Y, U/Db, V/Dr
@@ -200,9 +204,9 @@ void main()
         float wu_l = gaussian(nf + Ax, sigma.y);
         float wv_r = gaussian(nf - Ax, sigma.z);
         float wv_l = gaussian(nf + Ax, sigma.z);
-        if (wy_r < THRESHOLD && wy_l < THRESHOLD &&
-            wu_r < THRESHOLD && wu_l < THRESHOLD &&
-            wv_r < THRESHOLD && wv_l < THRESHOLD)
+        if (wy_r < FILTER_THRESHOLD && wy_l < FILTER_THRESHOLD &&
+            wu_r < FILTER_THRESHOLD && wu_l < FILTER_THRESHOLD &&
+            wv_r < FILTER_THRESHOLD && wv_l < FILTER_THRESHOLD)
             break;
         vec3 yc_r = texture(Source, Tex + nf * dx).rgb;
         vec3 yc_l = texture(Source, Tex - nf * dx).rgb;

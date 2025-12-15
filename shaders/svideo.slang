@@ -245,7 +245,7 @@ void main()
         config.FrameCount,
         vTexCoord,
         config.OriginalSize.xy,
-        config.OutputSize.x,
+        config.OutputSize.xy,
         config.OriginalFPS,
         SC_FREQ_MODE,
         SC_FREQ,
@@ -301,7 +301,7 @@ void main()
 
     // Center sample
     float offset0 = baseCenter;
-    float line = floor(vTexCoord.y * config.OriginalSize.y);
+    float line = floor(UV.y) / tb.pixels_per_line;
     float t0 = line / tb.h_freq_hz + offset0 * tb.pixel_time;
 
     vec3 pixel0 = texture(Source, Tex).rgb;

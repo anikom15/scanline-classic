@@ -31,6 +31,8 @@
 #include "menus/parameters/composite.inc"
 
 #pragma parameter BYPASS_PREFILTER "Bypass prefilter (off, on)" 0.0 0.0 1.0 1.0
+#pragma parameter COMB_ADJUST_X "Comb filter phase adjustment X (texels)" 0.0 -10.0 10.0 0.01
+#pragma parameter COMB_ADJUST_Y "Comb filter phase adjustment Y (texels)" 0.0 -10.0 10.0 0.01
 
 #pragma name CompositePreFilter
 #pragma format R16G16B16A16_SFLOAT
@@ -60,7 +62,12 @@ layout(push_constant) uniform Push
     float BW_MODE;
     float COMB_FILTER_LUMA_ADAPT;
     float COMB_FILTER_CHROMA_ADAPT;
+    float COMB_ADJUST_X;
+    float COMB_ADJUST_Y;
 } config;
+
+#define COMB_ADJUST_X config.COMB_ADJUST_X
+#define COMB_ADJUST_Y config.COMB_ADJUST_Y
 
 #define BYPASS_PREFILTER config.BYPASS_PREFILTER
 
@@ -110,7 +117,7 @@ void main()
         config.FrameCount,
         vTexCoord,
         config.OriginalSize.xy,
-        config.OutputSize.x,
+        config.OutputSize.xy,
         config.OriginalFPS,
         SC_FREQ_MODE,
         SC_FREQ,
@@ -160,17 +167,16 @@ void main()
 
     // Input composite baseband from previous stage
     vec2 UV = vTexCoord * config.OutputSize.xy;
-    float line = floor(UV.y);
+    float line = floor(UV.y) / tb.pixels_per_line;
     float baseIndex = floor(UV.x);
     float baseCenter = baseIndex + 0.5;
     float Ax = UV.x - baseCenter;
 
-    vec2 Tex = vec2(baseCenter * config.OutputSize.z,
-                    (line + 0.5) * config.OutputSize.w);
+    vec2 Tex = vec2(
+        baseCenter * config.OutputSize.z,
+        (floor(UV.y) + 0.5) * config.OutputSize.w);
     vec2 dx = vec2(config.OutputSize.z, 0.0);
-
-    const float THRESHOLD = 1.0 / 255.0;
-    
+  
     // Center sample - input is already composite baseband from iq-demod.slang
     float composite0 = texture(Source, Tex).r;
 
@@ -247,31 +253,44 @@ void main()
     vec2 color_comb = vec2(0.0);
 
     if (COLOR_FILTER_MODE >= 1.0) {
-        // Current line phase at this texel
-        float t0 = line / tb.h_freq_hz + baseCenter * tb.pixel_time_px;
-        float phase0 = compute_carrier_phase(t0, tb.sc_freq_hz, tb.field_phase);
+        float prev_line = line - 1.0;
+        float comb_dy_1 = -tb.pixels_per_line;
 
-        // Subcarrier phase increment per horizontal pixel (radians/pixel)
+        // Calculate intrinsic system phase shift per line (independent of user hue)
+        float cycles_per_line = tb.sc_freq_hz / tb.h_freq_hz;
+        float frac_cycles = fract(cycles_per_line);
+        float system_phase_shift = 2.0 * PI * frac_cycles;
+        if (system_phase_shift > PI) {
+            system_phase_shift -= 2.0 * PI;
+        }
+
+        // Correct for system phase shift to achieve ideal 0° or 180° alignment
         float sc_phase_inc_per_px = 2.0 * PI * tb.sc_freq_hz * tb.pixel_time_px;
-        // Subcarrier spatial period in pixels
+        float phase_from_zero = abs(system_phase_shift);
+        float phase_from_180 = min(abs(system_phase_shift - PI), abs(system_phase_shift + PI));
+
+        // Determine target phase (0° or 180° based on which is closer)
+        float target_phase = (phase_from_zero < phase_from_180) ? 0.0 : PI;
+        float phase_correction_needed = target_phase - system_phase_shift;
+
+        // Horizontal offset in pixels to achieve target phase
+        float dx_phase_offset_px = phase_correction_needed / sc_phase_inc_per_px;
+
+        // Reduce to one subcarrier period to avoid excessive offsets
         float period_px = 2.0 * PI / sc_phase_inc_per_px;
+        dx_phase_offset_px -= round(dx_phase_offset_px / period_px) * period_px;
 
-        // Vertical offsets for line taps
-        vec2 comb_dy_1 = vec2(0.0, -1.0 * config.OutputSize.w);
+        // Scale to pixels per texel
+        float h_scale = max(floor(config.OutputSize.x / tb.h_pixels), 1.0);
+        dx_phase_offset_px -= 1.5;
+        dx_phase_offset_px += COMB_ADJUST_X;
+        dx_phase_offset_px *= 1.0 / (tb.h_pixels * h_scale);
+        comb_dy_1 *= config.OutputSize.w;
 
-        // Compute phase-aligned horizontal shifts for each tap line
-        // Tap 1 (line -1): target phase difference = π (180°) relative to current line
-        float t1 = (line - 1.0) / tb.h_freq_hz + baseCenter * tb.pixel_time_px;
-        float phase1 = compute_carrier_phase(t1, tb.sc_freq_hz, tb.field_phase);
-        float dphi1 = normalize_phase(phase1 - phase0);
-        float dphi_needed1 = dphi1 - PI;
-        float dx1_px = dphi_needed1 / sc_phase_inc_per_px;
-        dx1_px -= round(dx1_px / period_px) * period_px;
-
-        vec2 dx_norm = vec2(config.OutputSize.z, 0.0);
+        vec2 dx = vec2(dx_phase_offset_px, comb_dy_1 + COMB_ADJUST_Y);
 
         // Sample phase-aligned taps
-        float comb_taps_composite = texture(Source, Tex + comb_dy_1 - dx1_px * dx_norm).r;
+        float comb_taps_composite = texture(Source, Tex + dx).r;
 
         if (COLOR_FILTER_MODE >= 0.5) {
             // Mode 1: Simple comb filter using parallel single-tap filter

@@ -83,7 +83,7 @@ void main()
         config.FrameCount,
         vTexCoord,
         config.OriginalSize.xy,
-        config.OutputSize.x,
+        config.OutputSize.xy,
         config.OriginalFPS,
         SC_FREQ_MODE,
         SC_FREQ,
@@ -106,11 +106,12 @@ layout(set = 0, binding = 2) uniform sampler2D Source;
 void main()
 {
     vec2 UV = vTexCoord * config.OutputSize.xy;
-    float line = floor(UV.y);
+    float line = floor(UV.y) / tb.pixels_per_line;
     float baseIndex = floor(UV.x);
     float baseCenter = baseIndex + 0.5;
-    vec2 Tex = vec2(baseCenter * config.OutputSize.z,
-                    (line + 0.5) * config.OutputSize.w);
+    vec2 Tex = vec2(
+        baseCenter * config.OutputSize.z,
+        (floor(UV.y) + 0.5) * config.OutputSize.w);
 
     vec3 pixel0 = texture(Source, Tex).rgb;
     float t0 = line / tb.h_freq_hz + baseCenter * tb.pixel_time_px;

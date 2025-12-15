@@ -119,7 +119,7 @@ void main()
         config.FrameCount,
         vTexCoord,
         config.OriginalSize.xy,
-        config.OutputSize.x,
+        config.OutputSize.xy,
         config.OriginalFPS,
         SC_FREQ_MODE,
         SC_FREQ,
@@ -174,19 +174,19 @@ void main()
     // Optimized symmetric lobed approach with early exit
     // Horizontal coordinate handling: nearest pixel center (no Y shift)
     vec2 UV = vTexCoord * config.OutputSize.xy;
+    float line = floor(UV.y) / tb.pixels_per_line;
     float baseIndex = floor(UV.x); // nearest pixel index
     float baseCenter = baseIndex + 0.5;  // pixel center coordinate
     float Ax = UV.x - baseCenter;        // offset in [-0.5, 0.5]
-    vec2 Tex = vec2(baseCenter * config.OutputSize.z,
-                    (floor(UV.y) + 0.5) * config.OutputSize.w);
+    vec2 Tex = vec2(
+        baseCenter * config.OutputSize.z,
+        (floor(UV.y) + 0.5) * config.OutputSize.w);
     vec2 dx = vec2(config.OutputSize.z, 0.0);
 
     const float THRESHOLD = 1.0 / 255.0;
     vec3 wsum = vec3(0.0);
     
     // Process center sample
-    // Coordinate system fix: use output pixel lattice with tb.pixel_time_px to avoid scale-induced shifts
-    float line = floor(vTexCoord.y * config.OriginalSize.y);
 
     float offset0 = baseCenter; // output pixel center index
     float t0 = line / tb.h_freq_hz + offset0 * tb.pixel_time_px;
@@ -267,7 +267,7 @@ void main()
             // Blend factor: 0 = correlation decides, 1 = force delay-line
             float phase_blend = smoothstep(PHASE_ERROR_MIN, PHASE_ERROR_MAX, phase_error_mag);
             
-            vec2 dy = vec2(0.0, config.OutputSize.w);
+            vec2 dy = vec2(0.0, config.OutputSize.w * tb.pixels_per_line);
             vec3 pal_prev = texture(Source, Tex - dy).rgb;
             
             float corr_numerator = chroma0 * pal_prev.g;
@@ -295,7 +295,7 @@ void main()
             demod0.gb = mix(simple_uv, delay_uv, delay_weight);
         } else if (use_delay_line) {
             // DELAY: Phase-corrected PAL delay-line demodulation
-            vec2 dy = vec2(0.0, config.OutputSize.w);
+            vec2 dy = vec2(0.0, config.OutputSize.w * tb.pixels_per_line);
             vec2 dx_norm = vec2(config.OutputSize.z, 0.0);
             vec3 pal_delay = texture(Source, Tex - dy - dx_phase_offset_px * dx_norm).rgb;
 
@@ -358,7 +358,7 @@ void main()
                 
                 float phase_blend = smoothstep(PHASE_ERROR_MIN, PHASE_ERROR_MAX, phase_error_mag);
                 
-                vec2 dy = vec2(0.0, config.OutputSize.w);
+                vec2 dy = vec2(0.0, config.OutputSize.w * tb.pixels_per_line);
                 vec3 pal_prev = texture(Source, Tex + nf * dx - dy).rgb;
                 
                 float corr_numerator = chromaR * pal_prev.g;
@@ -386,7 +386,7 @@ void main()
                 demodR = vec3(compositeR, mixed_uv.x, mixed_uv.y);
             } else if (use_delay_line) {
                 // DELAY: Phase-corrected PAL delay-line
-                vec2 dy = vec2(0.0, config.OutputSize.w);
+                vec2 dy = vec2(0.0, config.OutputSize.w * tb.pixels_per_line);
                 vec2 dx_norm = vec2(config.OutputSize.z, 0.0);
                 vec3 pal_delay = texture(Source, Tex + nf * dx - dy - dx_phase_offset_px * dx_norm).rgb;
 
@@ -433,7 +433,7 @@ void main()
                 
                 float phase_blend = smoothstep(PHASE_ERROR_MIN, PHASE_ERROR_MAX, phase_error_mag);
                 
-                vec2 dy = vec2(0.0, config.OutputSize.w);
+                vec2 dy = vec2(0.0, config.OutputSize.w * tb.pixels_per_line);
                 vec3 pal_prev = texture(Source, Tex - nf * dx - dy).rgb;
                 
                 float corr_numerator = chromaL * pal_prev.g;
@@ -461,7 +461,7 @@ void main()
                 demodL = vec3(compositeL, mixed_uv.x, mixed_uv.y);
             } else if (use_delay_line) {
                 // DELAY: Phase-corrected PAL delay-line
-                vec2 dy = vec2(0.0, config.OutputSize.w);
+                vec2 dy = vec2(0.0, config.OutputSize.w * tb.pixels_per_line);
                 vec2 dx_norm = vec2(config.OutputSize.z, 0.0);
                 vec3 pal_delay = texture(Source, Tex - nf * dx - dy - dx_phase_offset_px * dx_norm).rgb;
 

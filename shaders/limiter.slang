@@ -233,7 +233,7 @@ void main()
         config.FrameCount,
         vTexCoord,
         config.OriginalSize.xy,
-        config.OutputSize.x,
+        config.OutputSize.xy,
         config.OriginalFPS,
         SC_FREQ_MODE,
         SC_FREQ,
@@ -279,15 +279,15 @@ void main()
         float emphasis2_center_hz = sharpness_filters.z;
         float emphasis2_sigma = sharpness_filters.w;
 
-        float line = floor(vTexCoord.y * config.OutputSize.y);
-
         // Horizontal lattice setup
         vec2 UV = vTexCoord * config.OutputSize.xy;
+        float line = floor(UV.y) / tb.pixels_per_line;
         float baseIndex = floor(UV.x);
         float baseCenter = baseIndex + 0.5;
         float Ax = UV.x - baseCenter; // [-0.5,0.5]
-        vec2 TexCenter = vec2(baseCenter * config.OutputSize.z,
-                              (floor(UV.y) + 0.5) * config.OutputSize.w);
+        vec2 TexCenter = vec2(
+            baseCenter * config.OutputSize.z,
+            (floor(UV.y) + 0.5) * config.OutputSize.w);
         vec2 dx = vec2(config.OutputSize.z, 0.0);
 
         float t0 = line / tb.h_freq_hz + baseCenter * tb.pixel_time_px;
@@ -303,16 +303,14 @@ void main()
         float wsum = w_emphasis0;
         float wsum2 = w_emphasis2_0;
 
-        const float THRESHOLD = 1.0 / 255.0;
-
         for (int n = 1; n <= 10; ++n) {
             float nf = float(n);
             float w_emphasis_r = gaussian(nf - Ax, emphasis_sigma);
             float w_emphasis_l = gaussian(nf + Ax, emphasis_sigma);
             float w_emphasis2_r = gaussian(nf - Ax, emphasis2_sigma);
             float w_emphasis2_l = gaussian(nf + Ax, emphasis2_sigma);
-            if (w_emphasis_r < THRESHOLD && w_emphasis_l < THRESHOLD &&
-                w_emphasis2_r < THRESHOLD && w_emphasis2_l < THRESHOLD)
+            if (w_emphasis_r < FILTER_THRESHOLD && w_emphasis_l < FILTER_THRESHOLD &&
+                w_emphasis2_r < FILTER_THRESHOLD && w_emphasis2_l < FILTER_THRESHOLD)
                 break;
 
             float offsetR = baseCenter + nf;
@@ -333,8 +331,8 @@ void main()
             wsum2 += w_emphasis2_r + w_emphasis2_l;
         }
 
-        band_color /= max(wsum, THRESHOLD);
-        band2_color /= max(wsum2, THRESHOLD);
+        band_color /= max(wsum, FILTER_THRESHOLD);
+        band2_color /= max(wsum2, FILTER_THRESHOLD);
 
         float demod_mod = 2.0 * cos(emphasis_phase0);
         vec3 emphasis_component = band_color * demod_mod;

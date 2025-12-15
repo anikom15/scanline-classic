@@ -41,6 +41,7 @@ struct TimebaseConfig {
     float v_lines_per_field;
     float v_lines_per_frame;
     float is_interlaced;
+    float pixels_per_line;
 };
 
 // Phase normalization helper. Keeps phase bounded in [-PI, PI].
@@ -94,7 +95,7 @@ TimebaseConfig compute_timebase(
     uint frame_count,
     vec2 tex_coord,
     vec2 original_size,
-    float output_width,
+    vec2 output_size,
     float core_refresh_hz,
     float sc_freq_mode,
     float sc_freq_custom_mhz,
@@ -265,14 +266,17 @@ TimebaseConfig compute_timebase(
     config.field_phase += ceil(config.field / 2.0) * odd_field_adjust * 2.0 * PI * config.sc_freq_hz;
     config.field_phase = mod(config.field_phase, 2.0 * PI) - PI;
 
-    // Scale ouput_width to be a multiple of original_size.x to avoid incorrect pixel time
-    float h_scale = max(floor(output_width / total_pixels), 1.0);
+    // Scale factors for output size
+    float h_scale = max(floor(output_size.x / total_pixels), 1.0);
+    float v_scale = max(floor(output_size.y / config.v_lines_per_field), 1.0);
 
     // Per-output-pixel time (cycles-per-pixel scaling)
     config.pixel_time_px = config.pixel_time / h_scale;
 
     // Total horizontal pixels (active + blanking)
     config.h_pixels = total_pixels;
+
+    config.pixels_per_line = v_scale;
 
     return config;
 }

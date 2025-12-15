@@ -113,7 +113,7 @@ void main()
         config.FrameCount,
         vTexCoord,
         config.OriginalSize.xy,
-        config.OutputSize.x,
+        config.OutputSize.xy,
         config.OriginalFPS,
         SC_FREQ_MODE,
         SC_FREQ,
@@ -174,14 +174,14 @@ void main()
     }
 
     vec2 UV = vTexCoord * config.OutputSize.xy;
-    float line = floor(UV.y);
+    float line = floor(UV.y) / tb.pixels_per_line;
     float baseIndex = floor(UV.x);
     float baseCenter = baseIndex + 0.5;
     float Ax = UV.x - baseCenter;
 
     vec2 Tex = vec2(
         baseCenter * config.OutputSize.z,
-        (line + 0.5) * config.OutputSize.w);
+        (floor(UV.y) + 0.5) * config.OutputSize.w);
 
     // IQ input (RG channels)
     vec2 iq0 = texture(Source, Tex).rg;
@@ -196,15 +196,16 @@ void main()
     float c0_q = sinc_lowpass_hamming(-Ax, fc_q_norm, taps_q);
     I_lp = c0_i * iq0.r; I_w = c0_i;
     Q_lp = c0_q * iq0.g; Q_w = c0_q;
+    
     // Hilbert at center is zero for odd kernel, skip
 
     int max_i = int(taps_i);
     int max_q = int(taps_q);
     int max_n = max(max_i, max_q);
-    const float TAP_THRESHOLD = 1.0 / 255.0;  // 8-bit LSB threshold
     
     for (int n = 1; n <= 56; ++n) {
-        if (n > max_n) break;
+        if (n > max_n)
+            break;
         float nf = float(n);
 
         float coeff_mag = 0.0;
@@ -227,8 +228,6 @@ void main()
             Q_lp += cr_q * qr + cl_q * ql;
             Q_w  += cr_q + cl_q;
             coeff_mag = max(coeff_mag, abs(cr_q) + abs(cl_q));
-
-            // Hilbert path removed
         }
 
         if (coeff_mag < FILTER_THRESHOLD)

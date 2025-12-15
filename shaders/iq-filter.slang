@@ -121,7 +121,7 @@ void main()
         config.FrameCount,
         vTexCoord,
         config.OriginalSize.xy,
-        config.OutputSize.x,
+        config.OutputSize.xy,
         config.OriginalFPS,
         SC_FREQ_MODE,
         SC_FREQ,
@@ -179,14 +179,14 @@ void main()
     // Input here is already composite→analytic
 
     vec2 UV = vTexCoord * config.OutputSize.xy;
-    float line = floor(UV.y);
+    float line = floor(UV.y) / tb.pixels_per_line;
     float baseIndex = floor(UV.x);
     float baseCenter = baseIndex + 0.5;
     float Ax = UV.x - baseCenter;
     
     vec2 Tex = vec2(
         baseCenter * config.OutputSize.z,
-        (line + 0.5) * config.OutputSize.w);
+        (floor(UV.y) + 0.5) * config.OutputSize.w);
 
     float offset0 = baseCenter;
     vec2 dx = vec2(config.OutputSize.z, 0.0);
@@ -201,6 +201,7 @@ void main()
         FragColor = vec4(iq0.r, iq0.g, 0.0, 1.0); // pass-through analytic
         return;
     }
+
     // Apply asymmetric lowpass filtering for VSB to the analytic input
     float i_signal = 0.0;
     float i_wsum = 0.0;
@@ -227,7 +228,6 @@ void main()
     }
     
     // Convolve both channels with neighboring samples (single texture fetch per offset)
-    const float TAP_THRESHOLD = 1.0 / 255.0;  // 8-bit LSB threshold
     for (int n = 1; n <= 56; ++n) {
         if (n > max_tap)
             break;
@@ -267,9 +267,7 @@ void main()
     // Normalize filters to maintain unity gain
     i_signal /= max(i_wsum, EPS);
     q_signal /= max(q_wsum, EPS);
-    
-    // Noise processing moved to separate pass: iq-noise.slang
-    
+      
     // Output complex IQ: (I, Q) in RG channels
     FragColor = vec4(i_signal, q_signal, 0.0, 1.0);
 }
