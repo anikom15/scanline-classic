@@ -65,14 +65,15 @@ def get_python_executable():
 
 def run_presetgen(verbose=False):
     python_exec = get_python_executable()
-    # Find all files in presetdata (no subdirectories)
-    input_files = [
-        os.path.join(PRESETDATA, f)
-        for f in os.listdir(PRESETDATA)
-        if os.path.isfile(os.path.join(PRESETDATA, f))
-    ]
+    # Find all JSON files in presetdata/input/ and its subdirectories
+    input_dir = os.path.join(PRESETDATA, 'input')
+    input_files = []
+    for root, dirs, files in os.walk(input_dir):
+        for f in files:
+            if f.lower().endswith('.json'):
+                input_files.append(os.path.join(root, f))
     if not input_files:
-        print("No input files found in presetdata.")
+        print(f"No input JSON files found in {input_dir}.")
         return
     # Call presetgen.py for each input file
     for infile in input_files:
