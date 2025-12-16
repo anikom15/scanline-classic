@@ -1,0 +1,9 @@
+{
+    "parameters" : {
+        "YC_MODEL" : 2.0,
+        "PAL" : 1.0,
+        "SC_FREQ_MODE" : 3.0,
+        "V_FREQ_MODE" : 3.0,
+        "V_FREQ" : 262.0
+    }
+}

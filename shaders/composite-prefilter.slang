@@ -253,9 +253,6 @@ void main()
     vec2 color_comb = vec2(0.0);
 
     if (COLOR_FILTER_MODE >= 1.0) {
-        float prev_line = line - 1.0;
-        float comb_dy_1 = -tb.pixels_per_line;
-
         // Calculate intrinsic system phase shift per line (independent of user hue)
         float cycles_per_line = tb.sc_freq_hz / tb.h_freq_hz;
         float frac_cycles = fract(cycles_per_line);
@@ -264,13 +261,9 @@ void main()
             system_phase_shift -= 2.0 * PI;
         }
 
-        // Correct for system phase shift to achieve ideal 0° or 180° alignment
+        // Correct for system phase shift to achieve ideal 180° alignment
         float sc_phase_inc_per_px = 2.0 * PI * tb.sc_freq_hz * tb.pixel_time_px;
-        float phase_from_zero = abs(system_phase_shift);
-        float phase_from_180 = min(abs(system_phase_shift - PI), abs(system_phase_shift + PI));
-
-        // Determine target phase (0° or 180° based on which is closer)
-        float target_phase = (phase_from_zero < phase_from_180) ? 0.0 : PI;
+        float target_phase = PI;
         float phase_correction_needed = target_phase - system_phase_shift;
 
         // Horizontal offset in pixels to achieve target phase
@@ -280,17 +273,10 @@ void main()
         float period_px = 2.0 * PI / sc_phase_inc_per_px;
         dx_phase_offset_px -= round(dx_phase_offset_px / period_px) * period_px;
 
-        // Scale to pixels per texel
-        float h_scale = max(floor(config.OutputSize.x / tb.h_pixels), 1.0);
-        dx_phase_offset_px -= 1.5;
-        dx_phase_offset_px += COMB_ADJUST_X;
-        dx_phase_offset_px *= 1.0 / (tb.h_pixels * h_scale);
-        comb_dy_1 *= config.OutputSize.w;
-
-        vec2 dx = vec2(dx_phase_offset_px, comb_dy_1 + COMB_ADJUST_Y);
+        vec2 dxy = vec2(-dx_phase_offset_px * config.OutputSize.z, -tb.pixels_per_line * config.OutputSize.w);
 
         // Sample phase-aligned taps
-        float comb_taps_composite = texture(Source, Tex + dx).r;
+        float comb_taps_composite = texture(Source, Tex + dxy).r;
 
         if (COLOR_FILTER_MODE >= 0.5) {
             // Mode 1: Simple comb filter using parallel single-tap filter

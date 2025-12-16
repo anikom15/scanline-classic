@@ -1,0 +1,10 @@
+{
+    "rootpath" : "../../../share",
+    "parameters" : {
+        "USER_SHARPNESS" : 50.0,
+        "NTSC_CONVERSION" : 1.0,
+        "LIMITER_COMPRESSION_POINT" : 85.0,
+        "BANDPASS_ATTEN_DB" : 6.0,
+        "BANDPASS_WIDTH" : 0.6
+    }
+}

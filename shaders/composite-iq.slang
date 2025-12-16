@@ -78,8 +78,7 @@ void main()
     vec2 UV = vTexCoord_in * config.OutputSize.xy;
     float baseCenter = floor(UV.x) + 0.5;
     float Ax = UV.x - baseCenter;
-    float line_y = floor(UV.y);
-    vec2 Tex = vec2(baseCenter * config.OutputSize.z, (line_y + 0.5) * config.OutputSize.w);
+    vec2 Tex = vec2(baseCenter * config.OutputSize.z, (floor(UV.y) + 0.5) * config.OutputSize.w);
     vec2 dx = vec2(config.OutputSize.z, 0.0);
 
     float i_analytic = texture(Source, Tex).r;

@@ -18,6 +18,9 @@
         "PIXEL_CLOCK" : 6.0,
         "H_FREQ_MODE" : 1.0,
         "H_FREQ" : 1364.0,
-        "SHORTEN_ODD_FIELD_TIME" : 1.0
+        "SHORTEN_ODD_FIELD_TIME" : 1.0,
+
+        "COLOR_FILTER_MODE" : 0.0,
+        "PAL_DECODER_MODE" : 0.0
     }
 }

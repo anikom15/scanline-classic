@@ -127,7 +127,7 @@ void main()
         SHORTEN_ODD_FIELD_TIME);
 
     // Compute output texture sample rate
-    float sample_rate_hz = config.OutputSize.x * tb.h_freq_hz;
+    float sample_rate_hz = 1.0 / tb.pixel_time_px;
 
     // Normalize per-channel cutoffs
     fc_i_norm = clamp((VSB_I_CUTOFF_MHZ * 1.0e6) / sample_rate_hz, 0.0, 0.49);

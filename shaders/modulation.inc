@@ -236,7 +236,7 @@ TimebaseConfig compute_timebase(
     float clock_factor = round(total_cycles * h_blank_fuzz / original_size.x);
     float total_pixels = total_cycles / clock_factor;
 
-    config.pixel_time = 1.0 / config.h_freq_hz / total_pixels;
+    config.pixel_time = 1.0 / (config.h_freq_hz * total_pixels);
 
     // Field phase with intelligent odd-field timing adjustment
     float field_time = 1.0 / v_freq;

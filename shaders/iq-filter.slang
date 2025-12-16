@@ -135,8 +135,8 @@ void main()
         SHORTEN_ODD_FIELD_TIME);
 
     // Compute output texture sample rate
-    // Sample rate = pixels per line × line frequency
-    float sample_rate_hz = config.OutputSize.x * tb.h_freq_hz;
+    // Sample rate = 1 / pixel_time_px (seconds per pixel)
+    float sample_rate_hz = 1.0 / tb.pixel_time_px;
     
     // Normalize cutoff frequencies to sample rate (cycles per sample)
     fc_i_norm = (VSB_I_CUTOFF_MHZ * 1.0e6) / sample_rate_hz;

@@ -1,0 +1,17 @@
+{
+    "root_path" : "../../../shaders",
+    "shaders" : {
+        "amp" : "sys-rgb-amp",
+        "sys-bandlimit" : "sys-rgb-bandlimit",
+        "component" : "sys-component",
+        "mod" : "composite-mod",
+        "composite-iq" : "composite-iq",
+        "iq-filter" : "iq-filter",
+        "iq-noise" : "iq-noise",
+        "iq-demod" : "iq-demod",
+        "prefilter" : "composite-prefilter",
+        "demod" : "composite-demod",
+        "disp-bandlimit" : "display-rgb-bandlimit",
+        "limiter" : "limiter"
+    }
+}
