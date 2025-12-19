@@ -1,5 +1,11 @@
 # NTSC Composite Video Theory
 
+Copyright (c)  2025  W. M. Martinez.
+
+Copying and distribution of this file, with or without modification,
+are permitted in any medium without royalty provided the copyright
+notice and this notice are preserved.  This file is offered as-is,
+without any warranty.
 ## Overview
 
 The National Television System Committee (NTSC) standard defines analog color television transmission used primarily in North America, Japan, and parts of South America. NTSC encodes luminance (brightness) and chrominance (color) information into a single composite signal through quadrature amplitude modulation of a color subcarrier. Understanding this encoding and decoding process is essential for accurate composite video simulation.
@@ -272,7 +278,7 @@ RF output is the lowest-quality analog connection, exhibiting all composite arti
 
 The shader's NTSC simulation pipeline:
 
-1. **Encoding** (`composite-mod-prefilter.slang`, `composite.slang`, `rf-ntsc.slang`):
+1. **Encoding** (`composite-mod/prefilter.slang`, `composite-iq.slang`, `iq-*.slang`):
    - RGB → YIQ colorspace conversion
    - Optional prefiltering to reduce cross-color
    - Quadrature modulation onto 3.579545 MHz subcarrier
@@ -299,7 +305,3 @@ The shader faithfully reproduces NTSC artifacts (dot crawl, rainbowing, chroma p
 - ITU-R Recommendation BT.601: Studio Encoding Parameters of Digital Television for Standard 4:3 and Wide-Screen 16:9 Aspect Ratios
 - Poynton, Charles. "YUV and Luminance Considered Harmful." In *Digital Video and HD*, 2012.
 - Benson, K. Blair, and Jerry Whitaker. *Television Engineering Handbook*, McGraw-Hill, 1992.
-
----
-
-*This document provides theoretical background for NTSC composite simulation in Scanline Classic. For tuning guidance, see `doc/performance/composite.md`, `composite-demod.md`, `rf-ntsc.md`, and `svideo.md`.*

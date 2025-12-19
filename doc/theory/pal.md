@@ -1,5 +1,12 @@
 # PAL Composite Video Theory
 
+Copyright (c)  2025  W. M. Martinez.
+
+Copying and distribution of this file, with or without modification,
+are permitted in any medium without royalty provided the copyright
+notice and this notice are preserved.  This file is offered as-is,
+without any warranty.
+
 ## Overview
 
 Phase Alternating Line (PAL) is the color television standard developed in Germany by Walter Bruch and adopted across Europe, Australia, parts of Asia, Africa, and South America starting in 1967. PAL addresses several key NTSC weaknesses—particularly phase distortion sensitivity—through a line-alternating phase technique while maintaining similar quadrature amplitude modulation principles.
@@ -295,7 +302,3 @@ The shader faithfully reproduces PAL's characteristic look: stable hue, Hannover
 - Bruch, Walter. "PAL—A Colour Television System for Europe." *EBU Review*, 1963.
 - Benson, K. Blair, and Jerry Whitaker. *Television Engineering Handbook*, McGraw-Hill, 1992.
 - Poynton, Charles. *Digital Video and HD: Algorithms and Interfaces*, Morgan Kaufmann, 2012.
-
----
-
-*This document provides theoretical background for PAL composite simulation in Scanline Classic. For tuning guidance, see `doc/performance/composite-pal.md` and related shader performance notes.*

@@ -1,5 +1,12 @@
 # Theory Documentation
 
+Copyright (c)  2025  W. M. Martinez.
+
+Copying and distribution of this file, with or without modification,
+are permitted in any medium without royalty provided the copyright
+notice and this notice are preserved.  This file is offered as-is,
+without any warranty.
+
 This folder contains in-depth technical documentation on the television and display technologies simulated by Scanline Classic. These documents are written in a professional, academic tone and provide the theoretical foundation for understanding shader parameters and their real-world counterparts.
 
 ## Contents
@@ -51,8 +58,6 @@ In-depth examination of the Phase Alternating Line standard:
 
 - **README.md**: User-facing quick start and parameter descriptions
 - **doc/PARAMETERS.md**: Parameter cheatsheet with typical values
-- **doc/performance/**: Per-shader performance tuning and quality profiles
-- **doc/performance/COMPILE_TIME.md**: Compile-time optimization analysis
 - **doc/theory/** (this folder): Deep technical background for understanding *why* parameters exist and their real-world basis
 
 ## Usage

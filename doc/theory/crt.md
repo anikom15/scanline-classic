@@ -1,5 +1,12 @@
 # CRT Display Theory
 
+Copyright (c)  2025  W. M. Martinez.
+
+Copying and distribution of this file, with or without modification,
+are permitted in any medium without royalty provided the copyright
+notice and this notice are preserved.  This file is offered as-is,
+without any warranty.
+
 ## Overview
 
 Cathode ray tube (CRT) displays generate images by directing one or more electron beams across a phosphor-coated screen. The physical properties of this electromechanical process—beam deflection, phosphor persistence, aperture grille structures, and geometric distortion—form the basis for accurate CRT simulation in the Scanline Classic shader set.
@@ -221,7 +228,3 @@ Monochrome displays use a single phosphor type, typically:
 - SMPTE 170M: Composite analog video signal (NTSC)
 - Benson, K. Blair, and Jerry Whitaker. *Television Engineering Handbook*. McGraw-Hill, 1992.
 - Poynton, Charles. *Digital Video and HD: Algorithms and Interfaces*. Morgan Kaufmann, 2012.
-
----
-
-*This document provides theoretical background for CRT simulation parameters in Scanline Classic. For practical tuning guidance, see the main README and doc/performance/ notes.*

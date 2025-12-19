@@ -2,6 +2,7 @@ test
 out/
 
 install.bat
+merge.bat
 
 *.code-workspace
 

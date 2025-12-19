@@ -1,5 +1,12 @@
 # Gaussian Low-Pass Filter Design Guide
 
+Copyright (c)  2025  W. M. Martinez.
+
+Copying and distribution of this file, with or without modification,
+are permitted in any medium without royalty provided the copyright
+notice and this notice are preserved.  This file is offered as-is,
+without any warranty.
+
 ## Overview
 
 The shaders in this collection use Gaussian filters for anti-aliasing and bandwidth limiting. This document explains the mathematical foundation, design principles, and practical parameter selection for the `sigma_tb()` function in `src/modulation.inc`.

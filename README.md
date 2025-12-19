@@ -1,13 +1,7 @@
 # Scanline Classic
 
-A general purpose RetroArch shader with an emphasis on realism while
-maintaining a high degree of flexibility and aesthetic quality. 
+Copyright (c)  2023-2025  W. M. Martinez
 
-Version 5.0
-
-README Edition 6
-
-Copyright (C) 2023-2024 W. M. Martinez
 Permission is granted to copy, distribute and/or modify this document
 under the terms of the GNU Free Documentation License, Version 1.3
 or any later version published by the Free Software Foundation;
@@ -15,122 +9,90 @@ with no Invariant Sections, no Front-Cover Texts, and no Back-Cover Texts.
 A copy of the license is included in the section entitled "GNU
 Free Documentation License".
 
+Full, up-to-date source code is available at
+https://github.com/anikom15/scanline-classic
+
+A general purpose RetroArch shader with an emphasis on realism while
+maintaining a high degree of flexibility and aesthetic quality. 
+
+Version 6.0
+
+README Edition 7
+
 ## Quick start
 
-If you're new to Scanline Classic, start here. This gets you from zero to a great-looking image in a minute or two.
+## Preset Overview
 
-1) Install
-- Copy this entire folder (all .slangp files plus the `src/` directory) into your RetroArch shaders directory. On Windows, a typical path is:
-  - `C:\Program Files\RetroArch\shaders\shaders_slang\scanline-classic` or your portable RetroArch install's `shaders\shaders_slang` folder.
+Scanline Classic provides a wide range of presets tailored for both consumer and professional video systems. Presets are organized by system and signal type, and are found in the `presets` folder of your install location. Below is an overview of the available presets:
 
-2) Load a preset
-- In RetroArch: Quick Menu -> Shaders -> Load -> navigate into `scanline-classic` and pick a preset that fits your content/display:
-  - For 240p NTSC consoles (curved): `trinitron-ntsc.slangp`
-  - For 240p NTSC consoles (flat): `flat-ntsc.slangp`
-  - For PAL 288p consoles: `trinitron-pal.slangp` or `flat-pal.slangp`
-  - For PC-style CRTs (480p–1200p): `svga.slangp`, `xga.slangp`, `xga2.slangp`, `sxga.slangp`, or `uga.slangp`
-  - For HDTV scanlines (720p/1080i/1080p): `hdtv.slangp` or `hdtv-projector.slangp`
-  - For monochrome looks: `green-monitor-*.slangp`, `amber-monitor-*.slangp`, or `bw-monitor-*.slangp`
-  - For system-specific signal simulation (composite/S-Video/RF): see `sys-slangp/` presets like `sfc-snes-composite.slangp`, `twinfc-nes.slangp`, etc.
+### Consumer Presets
 
-3) Recommended RetroArch video settings
-- Video -> Output:
-  - Use your display’s native resolution and refresh rate
-  - VSync: On
-- Video -> Scaling:
-  - Aspect Ratio: Core provided (or 4:3 for most 240p consoles)
-  - Integer Scale: Off (recommended with geometry/curvature); try On if you prefer pixel-perfect scaling
-  - Bilinear Filtering: Off (let the shader control filtering)
-- After loading a preset, select: Quick Menu -> Shaders -> Apply Changes
+- **sfc.slangp**: Super Famicom (Japan) base preset
+- **snes.slangp**: Super Nintendo (North America) base preset
+- **snes-br.slangp**: Super Nintendo (Brazil) base preset
+- **snes-eu.slangp**: Super Nintendo (Europe) base preset
 
-4) Tune the look (optional, fast)
-- Quick Menu -> Shaders -> Parameters:
-  - FOCUS: Lower = softer (shadow/slot mask vibe), ~0.5 = Trinitron-like, 1.0 = very sharp (good for mono monitors)
-  - MASK_TYPE: 1.0 disables; try 24.0 on 4K+ displays for a Trinitron-style grille. Avoid masks on dim or <1080p panels.
-  - SCAN_TYPE / MAX_SCAN_RATE / LINE_DOUBLER: choose progressive vs interlaced behavior for your target system
-  - GEOMETRY: DEFLECTION_ANGLE and SCREEN_ANGLE_X/Y control curvature; set to 0 for a flat tube look
+### Professional Presets
 
-5) Save for later
-- Quick Menu -> Shaders -> Save -> Save Game Preset (or Save Core Preset) so it auto-loads next time.
+- **sfc-composite.slangp**: Super Famicom (Japan) with composite video signal simulation
+- **sfc-rf.slangp**: Super Famicom (Japan) with RF signal simulation
+- **sfc-rgb.slangp**: Super Famicom (Japan) with RGB signal simulation
+- **sfc-svideo.slangp**: Super Famicom (Japan) with S-Video signal simulation
+- **snes-composite.slangp**: Super Nintendo (North America) with composite video
+- **snes-svideo.slangp**: Super Nintendo (North America) with S-Video
+- **snes-rf.slangp**: Super Nintendo (North America) with RF
+- **snes-eu-composite.slangp**: Super Nintendo (Europe) with composite video
+- **snes-eu-rf.slangp**: Super Nintendo (Europe) with RF
+- **snes-gb-rf.slangp**: Super Nintendo (Game Boy) with RF
+- **snes-br.slangp**: Super Nintendo (Brazil) professional preset
 
-Performance tips
-- Prefer the single-pass `scanline-basic.slangp` (via `basic/` preset) on very low-end GPUs.
-- Parameter cheatsheet: see [doc/PARAMETERS.md](doc/PARAMETERS.md) for common settings and quick guidance.
-- Compile-time analysis: see [doc/performance/COMPILE_TIME.md](doc/performance/COMPILE_TIME.md) for loop caps and optimization rationale.
-- For per-shader parameter impact and quality trade-offs see [`doc/performance/`](doc/performance/).
+Each preset is designed to closely match the characteristics of the original hardware and signal path, including colorimetry, geometry, and signal artifacts. Use these as starting points for your own customizations or as reference-quality emulation targets.
 
-## Installation
+For more details on each preset and its intended use, see the corresponding `.json` file in `presetdata/input/consumer/` or `presetdata/input/professional/`
+in the source code distribution.
 
-Simply copy all SLANGP files and the src/ directory to a folder in your
-shader directory and configure RetroArch to load the SLANGP file as
-needed.  If you need additional help, check the RetroArch documentation.
+## RetroArch Usage Guidance
+
+For best results with Scanline Classic presets in RetroArch:
+
+- Set **Aspect Ratio** to **16:9** in Video > Scaling. This ensures correct geometry for most presets and modern displays.
+- Set **Integer Scale** to **Off**. This allows the shader's geometry and curvature controls to work as intended and avoids unwanted cropping or pillarboxing.
+- After loading a preset, go to **Quick Menu > Shaders > Apply Changes** to activate it.
+- To save your configuration for future sessions, use **Quick Menu > Shaders > Save > Save Game Preset** (for per-game) or **Save Core Preset** (for all games on the current core).
+
+These settings help ensure the presets display as designed and make it easy to recall your preferred look.
+
+## Building the Shader Presets
+
+The presets are built dynamically from a Python script, `build.py`.  See `external/presetgen` for dependency information.
+After building, the shaders can be found in the `out` directory.
 
 ## Usage
 
-The following presets are provided:
+### Shaders
 
-* basic.slangp: Preset for Scanline Basic.
+* **beam-mask.slang**: Beam mask simulation for CRT effects.
+* **bezel-base.slang, bezel-sdr.slang, bezel-wcg.slang**: Bezel overlay shaders for standard dynamic range (SDR) and wide color gamut (WCG) displays.
+* **color-base.slang, color-sdr.slang, color-wcg.slang**: Color processing shaders for SDR and WCG output.
+* **composite-demod.slang, composite-iq.slang, composite-mod.slang, composite-prefilter.slang**: Composite video signal simulation and processing.
+* **crt-linear.slang**: Linear CRT simulation pass.
+* **curve.slang**: Screen curvature simulation.
+* **display-component.slang, display-rgb-bandlimit.slang**: Output stage and bandlimiting for component/RGB signals.
+* **frame.slang**: Frame effects and overlays.
+* **iq-demod.slang, iq-filter.slang, iq-noise.slang**: I/Q demodulation and noise simulation for analog signals.
+* **limiter.slang**: Output limiter for signal range.
+* **phosphor-chroma.slang, phosphor-luma.slang, phosphor-trichrome.slang**: Phosphor decay and color simulation.
+* **stock.slang**: Stock/utility shader pass.
+* **svideo.slang, yc-composite.slang, yc-svideo.slang**: S-Video and Y/C signal simulation.
+* **sys-component.slang, sys-display-rgb-bandlimit.slang, sys-rgb-amp.slang, sys-rgb-bandlimit.slang, sys-yc.slang**: System-level signal and bandlimit simulation.
 
-* bwtv-p4.slangp: Black and White NTSC television, up to 480i.
+### Includes
 
-* ntsc.slangp: Color NTSC television (SMPTE C primaries) up to 480i.
 
-* pal.slangp: PAL television; compared to NTSC, green is more blue, and
-  red is less orange.  Blank scanlines are thinner.  Up to 576i.
 
-* trinitron-\*.slangp: Less geometric distortion.
+### SDR and WCG Shaders
 
-* flat-\*.slangp: No geometric distortion.
-
-* hdtv.slangp: Up to 1080i (Good for adding scanlines to 720p content).
-
-* vga.slangp: Multi-scan CRT up to 480p.
-
-* svga.slangp: Multi-scan CRT up to 600p.
-
-* xga.slangp: Multi-scan CRT up to 768i.
-
-* xga2.slangp: Multi-scan CRT up to 768p.
-
-* sxga.slangp: Multi-scan CRT up to 1024p.
-
-* uga.slangp: Multi-scan CRT up to 1200p.  As far as I know, this is the
-  highest resolution standard computer monitor CRTs were capable of.
-
-Additional presets are provided for more esoteric use cases.
-
-Presets by folder
-- Root: General-purpose TV/monitor presets (NTSC/PAL, Trinitron/flat, HDTV, multi-scan PC CRTs)
-- `sys-slangp/`: System-centric presets (e.g., SNES composite/S-Video/RF) that set sensible signal parameters for those platforms
-- `tv-slangp/`: Additional TV-style presets, including BW phosphor variants
-- `basic/`: Lightweight presets around `scanline-basic`
-
-The following shaders are provided:
-
-* scanline-advanced.slang: Advanced, general purpose shader with all
-  possibilites, enabling the most flexibility at the cost of
-  performance and increased complexity.
-
-* scanline-basic.slang: Lightweight single-pass shader.
-
-* scanline-chroma.slang: Transforms luminance values to RGB for final
-  output.
-
-* scanline-luma.slang: Transforms source RGB values to Y depending on
-  color mode.  Phosphor decay is processed here.
-
-The following headers are provide:
-
-* color.h: Color correction functions
-
-* common.h: General purpose convenience variables and functions
-
-* filter.h: Operations for upscaling
-
-* geometry.h: Operations related to geometry, simulating
-  three-dimensional screen distortions
-
-* subpixel\_masks.h: Shadow mask patterns
+**SDR (Standard Dynamic Range) shaders** (e.g., `*-sdr.slang`) are designed for typical displays with standard color gamuts and brightness. **WCG (Wide Color Gamut) shaders** (e.g., `*-wcg.slang`) are optimized for displays that support a wider color space and higher dynamic range, providing richer and more accurate color reproduction. Use the WCG variants if your display supports wide color gamuts (such as DCI-P3 or BT.2020), otherwise use the SDR versions for best compatibility.
 
 ## Bugs
 

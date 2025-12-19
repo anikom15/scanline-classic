@@ -1,5 +1,12 @@
 # Filter Loop Optimization and Design
 
+Copyright (c)  2025  W. M. Martinez.
+
+Copying and distribution of this file, with or without modification,
+are permitted in any medium without royalty provided the copyright
+notice and this notice are preserved.  This file is offered as-is,
+without any warranty.
+
 ## Overview
 
 The scanline-classic shader suite uses optimized filter loops with early-exit logic to balance performance and compile time while meeting strict frequency response constraints. All filters use symmetric tap pairs (left + right per iteration) for bandwidth efficiency.

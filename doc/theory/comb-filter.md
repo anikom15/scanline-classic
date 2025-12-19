@@ -1,5 +1,12 @@
 # Comb Filter Technology in Television: A Brief History
 
+Copyright (c)  2025  W. M. Martinez.
+
+Copying and distribution of this file, with or without modification,
+are permitted in any medium without royalty provided the copyright
+notice and this notice are preserved.  This file is offered as-is,
+without any warranty.
+
 ## Pre-1980: Early Composite Video Separation
 
 Before the 1980s, most consumer televisions used simple filtering methods to separate luminance (Y) and chrominance (C) in composite video signals. The most common approach was the use of a notch filter to attenuate the chroma subcarrier frequency, paired with a band-pass filter to extract chroma. These analog filters were cost-effective but suffered from cross-color and dot-crawl artifacts, especially on high-frequency content and color transitions.
@@ -72,13 +79,10 @@ The shader `composite-mod-prefilter.slang` implements a modern, analytical appro
 - See the implementation in `src/composite-mod-prefilter.slang` and supporting functions in `src/bandlimit.inc` and `src/modulation.inc`.
 
 ### Comb Filter Operation
-The comb filter in `composite-mod-prefilter.slang` mimics the physical principle of line comb filters found in analog and digital TVs. It samples previous scanlines, applies phase correction to account for subcarrier drift, and combines signals to cancel chroma or luma components. The number of taps (lines) is configurable, allowing for classic 2-line or 3-line comb filtering.
+The comb filter in `composite-prefilter.slang` mimics the physical principle of line comb filters found in analog and digital TVs. It samples previous scanlines, applies phase correction to account for subcarrier drift, and combines signals to cancel chroma or luma components.
 
 - The shader reconstructs the composite signal for each tap, applies phase correction, and blends the results according to the selected filter mode (`COLOR_FILTER_MODE`).
 - This digital implementation parallels the delay-line comb filters used in real TVs, but with precise phase control and the ability to mix comb and notch outputs for optimal separation.
 
 ### Relation to Physical Comb Filters
 While the shader's comb filter logic is inspired by physical delay-line filters, it benefits from the precision and flexibility of digital processing. Analog comb filters are limited by physical tolerances, group delay, and noise, whereas the shader can apply exact phase corrections and tap weights. The result is a highly controllable and artifact-resistant separation of Y and C, suitable for emulation and video processing.
-
-### Experimental Adaptive Comb Filter Alternative
-For advanced scenarios, the repository includes `adaptive-comb-test.slang`, an experimental shader that adaptively blends between notch and comb filtering based on real-time correlation analysis. This approach is analogous to motion-adaptive comb filters in late-model TVs, dynamically selecting the best separation method for each pixel depending on scene content and motion. See `src/adaptive-comb-test.slang` for details.
