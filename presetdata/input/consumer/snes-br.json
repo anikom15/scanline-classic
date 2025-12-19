@@ -1,8 +1,8 @@
 {
-  "filename" : "snes-rf_snesmini-rf",
-  "type" : "professional",
-  "title" : "SNES RF shader set",
-  "description" : "NTSC-M variant",
+  "filename" : "snes-br",
+  "type" : "consumer",
+  "title" : "SNES RF shader set (Brazil variant)",
+  "description" : "The Brazilian variant of the SNES came with an RF modulator.",
   "pipeline_root" : "../../pipelines",
   "pipelines" : [
     "misc/menu-rf.json",
@@ -14,12 +14,11 @@
   "parameter_root" : "../../params",
   "parameter_sets" : [
     "sys/sfc/base.json",
-    "sys/sfc/ntsc.json",
-    "misc/rf-ntsc.json",
-    "disp/ntsc.json",
-    "disp/rf-ntsc.json",
-    "disp/trinitron.json",
-    "disp/tvl-600.json"
+    "sys/sfc/palm.json",
+    "disp/palm.json",
+    "disp/tv.json",
+    "disp/consumer-color-palm.json",
+    "disp/tvl-450.json"
   ],
   "parameter_overrides" : {
   }

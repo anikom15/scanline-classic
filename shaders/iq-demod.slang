@@ -60,12 +60,12 @@ layout(push_constant) uniform Push
     float H_FREQ_MODE;
     float H_FREQ;
     float H_BLANK_FUZZ;
-    float K_VSB;
+    float USB_BANDWIDTH;
+    float LSB_BANDWIDTH;
 } config;
 
 #define BYPASS_IQ_DEMOD config.BYPASS_IQ_DEMOD
 #define IQ_DEMOD_Q_WEIGHT config.IQ_DEMOD_Q_WEIGHT
-#define K_VSB config.K_VSB
 #define V_FREQ_MODE config.V_FREQ_MODE
 #define V_FREQ config.V_FREQ
 #define SHORTEN_ODD_FIELD_TIME config.SHORTEN_ODD_FIELD_TIME
@@ -76,6 +76,8 @@ layout(push_constant) uniform Push
 #define H_FREQ_MODE config.H_FREQ_MODE
 #define H_FREQ config.H_FREQ
 #define H_BLANK_FUZZ config.H_BLANK_FUZZ
+#define USB_BANDWIDTH config.USB_BANDWIDTH
+#define LSB_BANDWIDTH config.LSB_BANDWIDTH
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
@@ -83,8 +85,8 @@ layout(std140, set = 0, binding = 0) uniform UBO
 } global;
 
 // VSB baseband parameters (must match iq-mod.slang)
-const float VSB_I_CUTOFF_MHZ = 4.2;        // I channel lowpass cutoff
-const float VSB_Q_CUTOFF_MHZ = 0.75;       // Q channel lowpass cutoff
+#define VSB_I_CUTOFF_MHZ USB_BANDWIDTH
+#define VSB_Q_CUTOFF_MHZ LSB_BANDWIDTH
 
 // Hamming windowed-sinc lowpass (matched to iq-filter.slang)
 // Stopband: ~43 dB, minimal ringing (~1.5% overshoot)
@@ -130,8 +132,8 @@ void main()
     float sample_rate_hz = 1.0 / tb.pixel_time_px;
 
     // Normalize per-channel cutoffs
-    fc_i_norm = clamp((VSB_I_CUTOFF_MHZ * 1.0e6) / sample_rate_hz, 0.0, 0.49);
-    fc_q_norm = clamp((VSB_Q_CUTOFF_MHZ * 1.0e6) / sample_rate_hz, 0.0, 0.49);
+    fc_i_norm = (VSB_I_CUTOFF_MHZ * 1.0e6) / sample_rate_hz;
+    fc_q_norm = (VSB_Q_CUTOFF_MHZ * 1.0e6) / sample_rate_hz;
 
     // Analytical tap count design for Hamming window
     // Formula: N = HAMMING_TRANSITION_CONST / transition_width

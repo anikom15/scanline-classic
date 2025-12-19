@@ -206,9 +206,7 @@ void main()
     vec3 wsum = vec3(0.0);
     
     // Process center sample
-
-    float offset0 = baseCenter; // output pixel center index
-    float t0 = line / tb.h_freq_hz + offset0 * tb.pixel_time_px;
+    float t0 = line / tb.h_freq_hz + baseCenter * tb.pixel_time_px;
 
     // R is Y, G is C
     vec3 pixel0 = texture(Source, Tex).rgb;
@@ -227,7 +225,7 @@ void main()
     carrier0 = sincos_phase_raw(vec2(phase0_full));
 
     // PAL V polarity correction: delay line subtraction produces alternating sign
-    float pal_v_sign = 1.0 - 2.0 * mod(line, 2.0) * step(1.5, DECODER_TYPE);
+    float pal_v_sign = 1.0 - 2.0 * floor(mod(line, 2.0)) * step(1.5, DECODER_TYPE);
 
     // Delay-line control flags and offsets
     bool use_delay_line = PAL_DECODER_MODE > 0.5;
@@ -245,15 +243,14 @@ void main()
         }
 
         // Correct for system phase shift to achieve ideal 0° alignment
-        float sc_phase_inc_per_px = 2.0 * PI * tb.sc_freq_hz * tb.pixel_time_px;
         float target_phase = 0.0;
         float phase_correction_needed = target_phase - system_phase_shift;
 
         // Horizontal offset in pixels to achieve target phase
-        dx_phase_offset_px = phase_correction_needed / sc_phase_inc_per_px;
+        dx_phase_offset_px = phase_correction_needed / phase_inc_px;
 
         // Reduce to one subcarrier period to avoid excessive offsets
-        float period_px = 2.0 * PI / sc_phase_inc_per_px;
+        float period_px = 2.0 * PI / phase_inc_px;
         dx_phase_offset_px -= round(dx_phase_offset_px / period_px) * period_px;
 
         // Scale to pixels per texel

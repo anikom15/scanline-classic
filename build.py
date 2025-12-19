@@ -80,16 +80,14 @@ def run_presetgen(verbose=False):
         cmd = [
             python_exec, os.path.join(ROOT, 'external', 'presetgen', 'presetgen.py'),
             '--input', infile,
-            '--output', PRESETS_OUT
+            '--output', PRESETS_OUT,
         ]
         if verbose:
+            cmd.append('-v')
             print(f"Running: {' '.join(cmd)}")
-        result = subprocess.run(cmd, check=True, capture_output=not verbose, text=True)
-        if not verbose:
-            if result.stdout:
-                print(result.stdout, end='')
-            if result.stderr:
-                print(result.stderr, end='', file=sys.stderr)
+        if subprocess.Popen(cmd).wait() != 0:
+            print(f"Error: presetgen failed for {infile}")
+            sys.exit(1)
 
 def main():
     verbose = '--verbose' in sys.argv

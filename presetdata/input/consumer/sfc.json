@@ -14,6 +14,7 @@
   "parameter_root" : "../../params",
   "parameter_sets" : [
     "sys/sfc/base.json",
+    "sys/sfc/ntsc.json",
     "disp/ntscj.json",
     "disp/trinitron.json",
     "disp/consumer-color-ntsc.json",

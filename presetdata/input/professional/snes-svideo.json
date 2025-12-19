@@ -14,6 +14,7 @@
   "parameter_root" : "../../params",
   "parameter_sets" : [
     "sys/sfc/base.json",
+    "sys/sfc/ntsc.json",
     "disp/ntsc.json",
     "disp/trinitron.json",
     "disp/tvl-600.json"

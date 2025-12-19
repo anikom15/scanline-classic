@@ -127,7 +127,7 @@ void main()
     float phase0 = compute_carrier_phase(t0, tb.sc_freq_hz, tb.field_phase);
     
     // PAL V-axis alternation: simply invert V on odd lines
-    float pal_v_sign = 1.0 - 2.0 * mod(line, 2.0) * PAL;
+    float pal_v_sign = 1.0 - 2.0 * floor(mod(line, 2.0)) * PAL;
     
     vec2 carrier0 = sincos_phase_raw(phase0);
     float chroma0 = pixel0.g * carrier0.x + pal_v_sign * pixel0.b * carrier0.y;

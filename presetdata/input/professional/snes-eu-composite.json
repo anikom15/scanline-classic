@@ -1,12 +1,12 @@
 {
-  "filename" : "snes-composite_snesmini",
+  "filename" : "snes-eu",
   "type" : "professional",
-  "title" : "SNES composite shader set",
+  "title" : "SNES composite shader set (PAL variant)",
   "description" : "All models included an A/V cable with the console.",
   "pipeline_root" : "../../pipelines",
   "pipelines" : [
     "misc/menu-composite.json",
-    "misc/frame-1716x526.json",
+    "misc/frame-1728x626.json",
     "sys/component-composite.json",
     "disp/crt.json",
     "misc/post.json"
@@ -14,9 +14,10 @@
   "parameter_root" : "../../params",
   "parameter_sets" : [
     "sys/sfc/base.json",
-    "sys/sfc/ntsc.json",
-    "disp/ntsc.json",
+    "sys/sfc/pal.json",
+    "disp/pal.json",
     "disp/trinitron.json",
+    "disp/deflicker.json",
     "disp/tvl-600.json"
   ],
   "parameter_overrides" : {

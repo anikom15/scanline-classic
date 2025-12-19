@@ -1,12 +1,12 @@
 {
-  "filename" : "snes-rf_snesmini-rf",
+  "filename" : "snes-gb-rf",
   "type" : "professional",
-  "title" : "SNES RF shader set",
-  "description" : "NTSC-M variant",
+  "title" : "SNES RF shader set (PAL-I)",
+  "description" : "PAL-I and PAL-G are almost identical; PAL-I has slightly higher bandwidth.",
   "pipeline_root" : "../../pipelines",
   "pipelines" : [
     "misc/menu-rf.json",
-    "misc/frame-1716x526.json",
+    "misc/frame-1728x626.json",
     "sys/component-rf.json",
     "disp/crt.json",
     "misc/post.json"
@@ -14,11 +14,11 @@
   "parameter_root" : "../../params",
   "parameter_sets" : [
     "sys/sfc/base.json",
-    "sys/sfc/ntsc.json",
-    "misc/rf-ntsc.json",
-    "disp/ntsc.json",
-    "disp/rf-ntsc.json",
+    "sys/sfc/pal.json",
+    "misc/rf-pali.json",
+    "disp/pal.json",
     "disp/trinitron.json",
+    "disp/deflicker.json",
     "disp/tvl-600.json"
   ],
   "parameter_overrides" : {

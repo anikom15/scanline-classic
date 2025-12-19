@@ -1,12 +1,12 @@
 {
-  "filename" : "snes_snesmini",
+  "filename" : "snes-eu",
   "type" : "consumer",
-  "title" : "SNES composite shader set",
-  "description" : "All models included an A/V cable with the console.",
+  "title" : "SNES composite shader set (PAL)",
+  "description" : "All models included an A/V cable with the console.  French consoles included a composite to RGB converter (despite the console having native RGB output).",
   "pipeline_root" : "../../pipelines",
   "pipelines" : [
     "misc/menu-composite.json",
-    "misc/frame-1716x526.json",
+    "misc/frame-1728x626.json",
     "sys/component-composite.json",
     "disp/crt.json",
     "misc/post.json"
@@ -14,10 +14,10 @@
   "parameter_root" : "../../params",
   "parameter_sets" : [
     "sys/sfc/base.json",
-    "sys/sfc/ntsc.json",
-    "disp/ntsc.json",
+    "sys/sfc/pal.json",
+    "disp/pal.json",
     "disp/tv.json",
-    "disp/consumer-color-ntsc.json",
+    "disp/consumer-color-pal.json",
     "disp/tvl-450.json"
   ],
   "parameter_overrides" : {

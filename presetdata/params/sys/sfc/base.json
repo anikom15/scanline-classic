@@ -14,13 +14,11 @@
         "SYS_CUTOFF_ATTEN_U" : 3.0,
         "SYS_CUTOFF_ATTEN_V" : 3.0,
 
+        "COLOR_FILTER_MODE" : 0.0,
+
         "PIXEL_CLOCK_MODE" : 1.0,
-        "PIXEL_CLOCK" : 6.0,
         "H_FREQ_MODE" : 1.0,
         "H_FREQ" : 1364.0,
-        "SHORTEN_ODD_FIELD_TIME" : 1.0,
-
-        "COLOR_FILTER_MODE" : 0.0,
-        "PAL_DECODER_MODE" : 0.0
+        "SHORTEN_ODD_FIELD_TIME" : 1.0
     }
 }

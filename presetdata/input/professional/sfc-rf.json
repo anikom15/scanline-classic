@@ -14,7 +14,8 @@
   "parameter_root" : "../../params",
   "parameter_sets" : [
     "sys/sfc/base.json",
-    "sys/sfc/rf-ntsc.json",
+    "sys/sfc/ntsc.json",
+    "misc/rf-ntsc.json",
     "disp/ntscj.json",
     "disp/rf-ntsc.json",
     "disp/trinitron.json",

@@ -287,7 +287,7 @@ void main()
     const float THRESHOLD = 1.0 / 255.0;
 
     // Horizontal coordinate handling using nearest pixel center (keep Y center)
-    vec2 UV  = vTexCoord * config.OutputSize.xy;
+    vec2 UV = vTexCoord * config.OutputSize.xy;
     float baseIndex = floor(UV.x);         // nearest pixel index
     float baseCenter = baseIndex + 0.5;    // pixel center coordinate
     float Ax = UV.x - baseCenter;          // offset from center in [-0.5, 0.5]
@@ -300,14 +300,14 @@ void main()
     vec3 wsum  = vec3(0.0);
 
     // Center sample
-    float offset0 = baseCenter;
     float line = floor(UV.y) / tb.pixels_per_line;
-    float t0 = line / tb.h_freq_hz + offset0 * tb.pixel_time;
+    float t0 = line / tb.h_freq_hz + baseCenter * tb.pixel_time_px;
 
     vec3 pixel0 = texture(Source, Tex).rgb;
     float phase_inc_px = 2.0 * PI * tb.sc_freq_hz * tb.pixel_time_px;
-    float phase0 = normalize_phase(compute_carrier_phase(t0, tb.sc_freq_hz, tb.field_phase));
+    float phase0 = compute_carrier_phase(t0, tb.sc_freq_hz, tb.field_phase);
     float phase0_user = normalize_phase(phase0 + c_phase);
+    phase0 = normalize_phase(phase0);
     vec2 carrier0 = sincos_phase_raw(phase0);
     vec2 carrier0_user = sincos_phase_raw(phase0_user);
     float chroma0 = pixel0.g * carrier0.x + pixel0.b * carrier0.y;
