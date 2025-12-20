@@ -1,0 +1,23 @@
+{
+  "filename" : "neogeo-composite",
+  "type" : "professional",
+  "title" : "Neo-Geo AES composite shader set",
+  "description" : "A/V was included for all NTSC consoles.",
+  "pipeline_root" : "../../pipelines",
+  "pipelines" : [
+    "misc/menu-composite-yc.json",
+    "misc/frame-1716x526.json",
+    "sys/yc-composite.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_root" : "../../params",
+  "parameter_sets" : [
+    "sys/neogeo.json",
+    "disp/ntscj.json",
+    "disp/trinitron.json",
+    "disp/tvl-600.json"
+  ],
+  "parameter_overrides" : {
+  }
+}
