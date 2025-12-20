@@ -1,7 +1,7 @@
 {
     "rootpath" : "../../../share",
     "parameters" : {
-        "BORDER" : "bezel-trinitron.png",
+        "BORDER" : "bezel-trinitron.jpg",
         "MASK_TYPE" : 0.0,
         "MASK_DIFFUSION" : 2.0,
         "MAGNETIC_CORRECTION" : 30.0,
