@@ -5,7 +5,7 @@
   "description" : "A/V was included for all NTSC consoles.",
   "pipeline_root" : "../../pipelines",
   "pipelines" : [
-    "misc/menu-composite.json",
+    "misc/menu-composite-yc.json",
     "misc/frame-tv525.json",
     "sys/yc-composite.json",
     "disp/crt.json",

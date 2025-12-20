@@ -5,7 +5,7 @@
   "description" : "A/V was included for most consoles in Europe.  France received a special RGB cable, see md-fr.",
   "pipeline_root" : "../../pipelines",
   "pipelines" : [
-    "misc/menu-composite.json",
+    "misc/menu-composite-yc.json",
     "misc/frame-tv625.json",
     "sys/yc-composite.json",
     "disp/crt.json",
