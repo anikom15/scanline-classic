@@ -1,0 +1,10 @@
+{
+    "parameters" : {
+        "YC_MODEL" : 2.0,
+        "PAL" : 1.0,
+        "SC_FREQ_MODE" : 4.0,
+        "SC_FREQ" : 4.43361866667,
+        "PIXEL_CLOCK_MODE" : 0.0,
+        "PIXEL_CLOCK" : 53.203424
+    }
+}

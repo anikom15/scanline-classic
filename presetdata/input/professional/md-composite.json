@@ -1,0 +1,24 @@
+{
+  "filename" : "md",
+  "type" : "professional",
+  "title" : "Mega Drive composite shader set (NTSC-J)",
+  "description" : "A/V was included for all NTSC consoles.",
+  "pipeline_root" : "../../pipelines",
+  "pipelines" : [
+    "misc/menu-composite.json",
+    "misc/frame-1716x526.json",
+    "sys/yc-composite.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_root" : "../../params",
+  "parameter_sets" : [
+    "sys/md/base.json",
+    "sys/md/ntsc.json",
+    "disp/ntscj.json",
+    "disp/trinitron.json",
+    "disp/tvl-600.json"
+  ],
+  "parameter_overrides" : {
+  }
+}

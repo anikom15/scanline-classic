@@ -1,0 +1,23 @@
+{
+    "parameters" : {
+        "ENCODER_SETUP" : 0.0,
+        "SYS_BANDWIDTH_R" : 6.5,
+        "SYS_BANDWIDTH_G" : 6.5,
+        "SYS_BANDWIDTH_B" : 6.5,
+        "SYS_CUTOFF_ATTEN_R" : 10.0,
+        "SYS_CUTOFF_ATTEN_G" : 10.0,
+        "SYS_CUTOFF_ATTEN_B" : 10.0,
+
+        "LUMA_LOWPASS_CUTOFF" : 4.0,
+        "LUMA_LOWPASS_ATTEN" : 3.0,
+        "LUMA_NOTCH_ENABLE" : 1.0,
+        "LUMA_NOTCH_WIDTH" : 0.8,
+        "LUMA_NOTCH_ATTEN_DB" : 3.0,
+        "CHROMA_BANDPASS_WIDTH" : 1.5,
+
+        "COLOR_FILTER_MODE" : 0.0,
+
+        "H_FREQ_MODE" : 1.0,
+        "H_FREQ" : 3420.0
+    }
+}

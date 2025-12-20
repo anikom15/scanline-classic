@@ -1,0 +1,8 @@
+{
+    "parameters" : {
+        "SC_FREQ_MODE" : 4.0,
+        "SC_FREQ" : 3.579545,
+        "PIXEL_CLOCK_MODE" : 0.0,
+        "PIXEL_CLOCK" : 53.693175
+    }
+}
