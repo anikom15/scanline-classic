@@ -1,0 +1,23 @@
+{
+  "filename" : "aaa-generic-ntsc-composite",
+  "type" : "consumer",
+  "title" : "Generic Composite shader set (NTSC-M)",
+  "description" : "For use with any standard definition TV-based system.",
+  "pipeline_root" : "../../pipelines",
+  "pipelines" : [
+    "misc/menu-composite.json",
+    "misc/frame-1716x526.json",
+    "sys/component-composite.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_root" : "../../params",
+  "parameter_sets" : [
+    "disp/ntsc.json",
+    "disp/tv.json",
+    "disp/consumer-color-ntsc.json",
+    "disp/tvl-450.json"
+  ],
+  "parameter_overrides" : {
+  }
+}

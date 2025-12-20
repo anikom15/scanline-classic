@@ -1,0 +1,23 @@
+{
+  "filename" : "aaa-generic-ntscj-svideo",
+  "type" : "professional",
+  "title" : "Generic S-Video shader set (NTSC-J)",
+  "description" : "For use with any standard definition TV-based system.",
+  "pipeline_root" : "../../pipelines",
+  "pipelines" : [
+    "misc/menu-svideo.json",
+    "misc/frame-1716x526.json",
+    "sys/svideo.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_root" : "../../params",
+  "parameter_sets" : [
+    "sys/generic/ntscj.json",
+    "disp/ntscj.json",
+    "disp/trinitron.json",
+    "disp/tvl-600.json"
+  ],
+  "parameter_overrides" : {
+  }
+}
