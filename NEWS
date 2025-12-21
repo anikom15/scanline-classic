@@ -1,8 +1,15 @@
 Version 6.1.1
 
-* Add generic presets, based on standard timing.  May not be accurate.
+* Add generic presets, based on standard timing; may not be accurate.
 
 * Add Mega Drive presets
+
+* Add Neo Geo presets
+
+* Enable different output aspect ratios besides 16:9; smartly
+  letterboxes and crops for ideal presentation
+
+* Remove glow jitter parameter
 
 Version 6.1
 
