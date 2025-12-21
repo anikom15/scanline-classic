@@ -1,12 +1,12 @@
 {
   "filename" : "neogeo-composite",
   "type" : "professional",
-  "title" : "Neo-Geo AES composite shader set",
+  "title" : "Neo Geo AES composite shader set",
   "description" : "A/V was included for all NTSC consoles.",
   "pipeline_root" : "../../pipelines",
   "pipelines" : [
     "misc/menu-composite-yc.json",
-    "misc/frame-1716x526.json",
+    "misc/frame-tv525.json",
     "sys/yc-composite.json",
     "disp/crt.json",
     "misc/post.json"

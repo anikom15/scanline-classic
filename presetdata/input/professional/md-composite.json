@@ -6,7 +6,7 @@
   "pipeline_root" : "../../pipelines",
   "pipelines" : [
     "misc/menu-composite.json",
-    "misc/frame-1716x526.json",
+    "misc/frame-tv525.json",
     "sys/yc-composite.json",
     "disp/crt.json",
     "misc/post.json"
