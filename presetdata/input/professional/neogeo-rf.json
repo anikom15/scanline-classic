@@ -1,0 +1,25 @@
+{
+  "filename" : "neogeo-rf",
+  "type" : "professional",
+  "title" : "Neo Geo AES RF shader set",
+  "description" : "NTSC-J",
+  "pipeline_root" : "../../pipelines",
+  "pipelines" : [
+    "misc/menu-composite-yc.json",
+    "misc/frame-tv525.json",
+    "sys/yc-composite.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_root" : "../../params",
+  "parameter_sets" : [
+    "sys/neogeo.json",
+    "misc/rf-ntsc.json",
+    "disp/ntscj.json",
+    "disp/rf-ntsc.json",
+    "disp/trinitron.json",
+    "disp/tvl-600.json"
+  ],
+  "parameter_overrides" : {
+  }
+}
