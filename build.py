@@ -32,6 +32,16 @@ def prepare_out_folder(verbose=False):
     else:
         print(f"Warning: share directory not found at {share_src}")
 
+    # Copy doc directory
+    doc_src = os.path.join(ROOT, 'doc')
+    doc_dst = os.path.join(OUT, 'doc')
+    if os.path.exists(doc_src):
+        if verbose:
+            print(f"Copying {doc_src} to {doc_dst}")
+        shutil.copytree(doc_src, doc_dst, dirs_exist_ok=True)
+    else:
+        print(f"Warning: doc directory not found at {doc_src}")
+
     # Copy top-level files
     for fname in top_files:
         src = os.path.join(ROOT, fname)
