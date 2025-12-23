@@ -8,6 +8,7 @@
         "DEFLECTION_ANGLE" : 90.0,
         "SCREEN_ANGLE_H" : 25.0,
         "SCREEN_ANGLE_V" : 0.0,
+        "S_CORRECTION_V" : 2.0,
         "TRAPEZOIDAL_CORRECTION" : 8.0,
         "USER_H_SIZE" : 56.0,
         "USER_V_SIZE" : 56.0,
