@@ -1,0 +1,24 @@
+{
+  "filename" : "nss",
+  "type" : "arcade",
+  "title" : "Nintendo Super System shader set",
+  "description" : "Arcade variant of the SNES",
+  "pipeline_root" : "../../pipelines",
+  "pipelines" : [
+    "misc/menu.json",
+    "misc/frame-tv525.json",
+    "sys/rgb.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_root" : "../../params",
+  "parameter_sets" : [
+    "sys/sfc/base.json",
+    "sys/sfc/ntsc.json",
+    "disp/ntscj.json",
+    "disp/arcade-tvstyle.json",
+    "disp/tvl-450.json"
+  ],
+  "parameter_overrides" : {
+  }
+}
