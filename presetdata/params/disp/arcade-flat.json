@@ -1,0 +1,18 @@
+{
+    "rootpath" : "../../../share",
+    "parameters" : {
+        "BORDER" : "bezel-arcade-flat.jpg",
+        "MASK_TYPE" : 1.0,
+        "MASK_DIFFUSION" : 2.0,
+        "MAGNETIC_CORRECTION" : 40.0,
+        "DEFLECTION_ANGLE" : 110.0,
+        "SCREEN_ANGLE_H" : 30.0,
+        "SCREEN_ANGLE_V" : 30.0,
+        "USER_H_SIZE" : 54.0,
+        "USER_V_SIZE" : 54.0,
+        "PHOSPHOR_MANTISSA_R" : 1.0,
+        "PHOSPHOR_MANTISSA_G" : 100.0,
+        "PHOSPHOR_MANTISSA_B" : 100.0,
+        "ZOOM": 105.0
+    }
+}
