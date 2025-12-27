@@ -6,8 +6,9 @@ Version 6.1.1
 
 * Add Neo Geo presets
 
-* Enable different output aspect ratios besides 16:9; smartly
-  letterboxes and crops for ideal presentation
+* Enable different output aspect ratios besides 16:9; smartly letterboxes and crops for ideal presentation
+
+* Add arcade bezels: flat is a rectangular border, tvstyle is in the shape of a 'bubble' tv viewport
 
 * Remove glow jitter parameter
 
