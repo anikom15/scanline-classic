@@ -4,9 +4,9 @@
         "SYS_BANDWIDTH_R" : 6.5,
         "SYS_BANDWIDTH_G" : 6.5,
         "SYS_BANDWIDTH_B" : 6.5,
-        "SYS_CUTOFF_ATTEN_R" : 10.0,
-        "SYS_CUTOFF_ATTEN_G" : 10.0,
-        "SYS_CUTOFF_ATTEN_B" : 10.0,
+        "SYS_CUTOFF_ATTEN_R" : 13.0,
+        "SYS_CUTOFF_ATTEN_G" : 13.0,
+        "SYS_CUTOFF_ATTEN_B" : 13.0,
 
         "LUMA_LOWPASS_CUTOFF" : 4.0,
         "LUMA_LOWPASS_ATTEN" : 3.0,
