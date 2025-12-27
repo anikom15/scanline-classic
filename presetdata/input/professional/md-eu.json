@@ -1,0 +1,25 @@
+{
+  "filename" : "md-eu",
+  "type" : "professional",
+  "title" : "Mega Drive composite shader set (PAL)",
+  "description" : "A/V was included for most consoles in Europe.  France received a special RGB cable, see md-fr.",
+  "pipeline_root" : "../../pipelines",
+  "pipelines" : [
+    "misc/menu-composite-yc.json",
+    "misc/frame-tv625.json",
+    "sys/yc-composite.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_root" : "../../params",
+  "parameter_sets" : [
+    "sys/md/base.json",
+    "sys/md/pal.json",
+    "disp/pal.json",
+    "disp/trinitron.json",
+    "disp/deflicker.json",
+    "disp/tvl-600.json"
+  ],
+  "parameter_overrides" : {
+  }
+}

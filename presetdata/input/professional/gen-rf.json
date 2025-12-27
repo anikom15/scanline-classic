@@ -1,0 +1,25 @@
+{
+  "filename" : "gen-rf",
+  "type" : "professional",
+  "title" : "Genesis RF shader set",
+  "description" : "",
+  "pipeline_root" : "../../pipelines",
+  "pipelines" : [
+    "misc/menu-rf-yc.json",
+    "misc/frame-tv525.json",
+    "sys/yc-rf.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_root" : "../../params",
+  "parameter_sets" : [
+    "sys/md/base.json",
+    "sys/md/ntsc.json",
+    "misc/rf-ntsc.json",
+    "disp/rf-ntsc.json",
+    "disp/trinitron.json",
+    "disp/tvl-600.json"
+  ],
+  "parameter_overrides" : {
+  }
+}

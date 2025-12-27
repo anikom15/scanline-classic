@@ -1,0 +1,26 @@
+{
+  "filename" : "md-eu-rf",
+  "type" : "professional",
+  "title" : "Mega Drive RF shader set (PAL-G)",
+  "description" : "",
+  "pipeline_root" : "../../pipelines",
+  "pipelines" : [
+    "misc/menu-rf-yc.json",
+    "misc/frame-tv625.json",
+    "sys/yc-rf.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_root" : "../../params",
+  "parameter_sets" : [
+    "sys/md/base.json",
+    "sys/md/pal.json",
+    "misc/rf-palg.json",
+    "disp/pal.json",
+    "disp/trinitron.json",
+    "disp/deflicker.json",
+    "disp/tvl-600.json"
+  ],
+  "parameter_overrides" : {
+  }
+}
