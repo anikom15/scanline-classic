@@ -1,0 +1,24 @@
+{
+  "filename" : "wmega",
+  "type" : "professional",
+  "title" : "Wondermega S-Video shader set",
+  "description" : "S-Video output was available on the Wondermega, but not the American Xeye",
+  "pipeline_root" : "../../pipelines",
+  "pipelines" : [
+    "misc/menu-svideo.json",
+    "misc/frame-tv525.json",
+    "sys/svideo.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_root" : "../../params",
+  "parameter_sets" : [
+    "sys/md/base.json",
+    "sys/md/ntsc.json",
+    "disp/ntscj.json",
+    "disp/trinitron.json",
+    "disp/tvl-600.json"
+  ],
+  "parameter_overrides" : {
+  }
+}

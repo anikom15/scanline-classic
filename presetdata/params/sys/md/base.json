@@ -8,6 +8,12 @@
         "SYS_CUTOFF_ATTEN_G" : 13.0,
         "SYS_CUTOFF_ATTEN_B" : 13.0,
 
+        "SYS_BANDWIDTH_U" : 1.5,
+        "SYS_BANDWIDTH_V" : 1.5,
+        "SYS_CUTOFF_ATTEN_Y" : 0.0,
+        "SYS_CUTOFF_ATTEN_U" : 3.0,
+        "SYS_CUTOFF_ATTEN_V" : 3.0,
+
         "LUMA_LOWPASS_CUTOFF" : 4.0,
         "LUMA_LOWPASS_ATTEN" : 3.0,
         "LUMA_NOTCH_ENABLE" : 1.0,
