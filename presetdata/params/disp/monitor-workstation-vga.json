@@ -4,16 +4,23 @@
         "BORDER" : "bezel-monitor-workstation.jpg",
         "MASK_TYPE" : 2.0,
         "MASK_DIFFUSION" : 2.0,
-        "MAGNETIC_CORRECTION" : 25.0,
+        "MAGNETIC_CORRECTION" : 20.0,
         "DEFLECTION_ANGLE" : 90.0,
         "SCREEN_ANGLE_H" : 30.0,
         "SCREEN_ANGLE_V" : 30.0,
-        "USER_H_SIZE" : 54.0,
-        "USER_V_SIZE" : 54.0,
+        "USER_H_SIZE" : 50.0,
+        "USER_V_SIZE" : 50.0,
         "USER_UNDERSCAN_TOGGLE" : 1.0,
         "PHOSPHOR_MANTISSA_R" : 1.0,
         "PHOSPHOR_MANTISSA_G" : 100.0,
         "PHOSPHOR_MANTISSA_B" : 100.0,
-        "ZOOM": 105.0
+        "ZOOM": 120.0,
+        "BEZEL_ZOOM": 107.0,
+        "DISPLAY_BANDLIMIT_R" : 25.175,
+        "DISPLAY_BANDLIMIT_G" : 25.175,
+        "DISPLAY_BANDLIMIT_B" : 25.175,
+        "DISPLAY_CUTOFF_ATTEN_R" : 19.0,
+        "DISPLAY_CUTOFF_ATTEN_G" : 19.0,
+        "DISPLAY_CUTOFF_ATTEN_B" : 19.0
     }
 }

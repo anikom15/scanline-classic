@@ -16,7 +16,7 @@
     "sys/md/base.json",
     "sys/md/ntsc.json",
     "disp/hdtv.json",
-    "disp/monitor-workstation.json",
+    "disp/monitor-workstation-vga.json",
     "disp/tvl-420.json"
   ],
   "parameter_overrides" : {
