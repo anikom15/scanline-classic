@@ -1,8 +1,8 @@
 {
-  "filename" : "md-fr",
+  "filename" : "md-fr_md2-eu",
   "type" : "professional",
   "title" : "Mega Drive RGB shader set",
-  "description" : "RGB was officially supported in France, however RGB output is available on most Mega Drives.",
+  "description" : "RGB was officially supported in France, however RGB output is available on most Mega Drives.  An official cable was released for all European Mega Drive IIs.",
   "pipeline_root" : "../../pipelines",
   "pipelines" : [
     "misc/menu.json",
