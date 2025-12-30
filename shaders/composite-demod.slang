@@ -331,7 +331,7 @@ void main()
 
     // Symmetric lobed processing with early exit
     if (COMPOSITE_DEMOD_FILTER_BYPASS < 0.5) {
-        for (int n = 1; n <= 20; ++n) {
+        for (int n = 1; n <= 32; ++n) {
             float nf = float(n);
             // Symmetric distances: right = n - Ax, left = n + Ax
             float w_y_r = gaussian(nf - Ax, sigma.x);

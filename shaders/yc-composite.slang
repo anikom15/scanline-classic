@@ -209,7 +209,7 @@ void main()
     sum_lp += g_lp0;
 
     // Combined symmetric lobes for chroma bandpass and luma lowpass
-    for (int n = 1; n <= 64; ++n) {
+    for (int n = 1; n <= 32; ++n) {
         float nf = float(n);
 
         float g_bp_r = gaussian(nf - Ax, sigma_bp);

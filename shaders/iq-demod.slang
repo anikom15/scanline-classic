@@ -145,9 +145,11 @@ void main()
     float taps_i_calc = HAMMING_TRANSITION_CONST / max(transition_i * fc_i_norm, EPS);
     float taps_q_calc = HAMMING_TRANSITION_CONST / max(transition_q * fc_q_norm, EPS);
     
-    // Round to even numbers for symmetric FIR
-    taps_i = ceil(taps_i_calc * 0.5) * 2.0;
-    taps_q = ceil(taps_q_calc * 0.5) * 2.0;
+    // Round to odd numbers for symmetric FIR (center + pairs)
+    taps_i = int(ceil(taps_i_calc));
+    if (int(mod(taps_i, 2.0)) == 0) taps_i += 1.0;
+    taps_q = int(ceil(taps_q_calc));
+    if (int(mod(taps_q, 2.0)) == 0) taps_q += 1.0;
 }
 
 #pragma stage fragment
@@ -201,8 +203,10 @@ void main()
     int max_q = int(taps_q);
     int max_n = max(max_i, max_q);
 
-    for (int n = 1; n <= 71; ++n) {
-        if (n > max_n / 2)
+    int n_pairs = int(floor(max_n * 0.5));
+
+    for (int n = 1; n <= 90; ++n) {
+        if (n > n_pairs)
             break;
 
         float nf = float(n);

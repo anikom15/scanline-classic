@@ -208,7 +208,7 @@ void main()
         sum_notch += g_notch0;
 
         // Bandpass + notch filter: shared symmetric lobed processing with early exit
-        for (int n = 1; n <= 24; ++n) {
+        for (int n = 1; n <= 32; ++n) {
             float nf = float(n);
 
             float g_bp_r = gaussian(nf - Ax, sigma_bp);
