@@ -2,7 +2,7 @@
   "filename" : "gen-rf",
   "type" : "professional",
   "title" : "Genesis RF shader set",
-  "description" : "",
+  "description" : "RF was a standard and common option for all Genesis consoles",
   "pipeline_root" : "../../pipelines",
   "pipelines" : [
     "misc/menu-rf-yc.json",

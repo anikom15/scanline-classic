@@ -1,13 +1,13 @@
 {
-  "filename" : "md2",
+  "filename" : "md2-rf",
   "type" : "professional",
-  "title" : "Mega Drive 2+ composite shader set (NTSC-J)",
+  "title" : "Mega Drive II RF shader set (NTSC-J)",
   "description" : "Late model 2s and later have slightly cleaner video output",
   "pipeline_root" : "../../pipelines",
   "pipelines" : [
-    "misc/menu-composite-yc.json",
+    "misc/menu-rf-yc.json",
     "misc/frame-tv525.json",
-    "sys/yc-composite.json",
+    "sys/yc-rf.json",
     "disp/crt.json",
     "misc/post.json"
   ],
@@ -15,7 +15,9 @@
   "parameter_sets" : [
     "sys/md/base2.json",
     "sys/md/ntsc.json",
+    "misc/rf-ntsc.json",
     "disp/ntscj.json",
+    "disp/rf-ntsc.json",
     "disp/trinitron.json",
     "disp/tvl-600.json"
   ],

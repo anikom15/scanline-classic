@@ -1,12 +1,12 @@
 {
-  "filename" : "md2",
+  "filename" : "md2-eu-composite",
   "type" : "professional",
-  "title" : "Mega Drive 2+ composite shader set (NTSC-J)",
-  "description" : "Late model 2s and later have slightly cleaner video output",
+  "title" : "Mega Drive II composite shader set (PAL)",
+  "description" : "Late model 2s and later have slightly cleaner video output; for SCART, use md-fr",
   "pipeline_root" : "../../pipelines",
   "pipelines" : [
     "misc/menu-composite-yc.json",
-    "misc/frame-tv525.json",
+    "misc/frame-tv625.json",
     "sys/yc-composite.json",
     "disp/crt.json",
     "misc/post.json"
@@ -14,9 +14,10 @@
   "parameter_root" : "../../params",
   "parameter_sets" : [
     "sys/md/base2.json",
-    "sys/md/ntsc.json",
-    "disp/ntscj.json",
+    "sys/md/pal.json",
+    "disp/pal.json",
     "disp/trinitron.json",
+    "disp/deflicker.json",
     "disp/tvl-600.json"
   ],
   "parameter_overrides" : {

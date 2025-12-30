@@ -1,21 +1,21 @@
 {
-  "filename" : "md2",
+  "filename" : "md2-br-rf",
   "type" : "professional",
-  "title" : "Mega Drive 2+ composite shader set (NTSC-J)",
-  "description" : "Late model 2s and later have slightly cleaner video output",
+  "title" : "Mega Drive III RF shader set (Brazil variant)",
+  "description" : "In Brazil, the model II Mega Drive with improved video was sold as the Mega Drive III",
   "pipeline_root" : "../../pipelines",
   "pipelines" : [
-    "misc/menu-composite-yc.json",
+    "misc/menu-rf-yc.json",
     "misc/frame-tv525.json",
-    "sys/yc-composite.json",
+    "sys/yc-rf.json",
     "disp/crt.json",
     "misc/post.json"
   ],
   "parameter_root" : "../../params",
   "parameter_sets" : [
     "sys/md/base2.json",
-    "sys/md/ntsc.json",
-    "disp/ntscj.json",
+    "sys/md/palm.json",
+    "disp/palm.json",
     "disp/trinitron.json",
     "disp/tvl-600.json"
   ],

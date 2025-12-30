@@ -1,7 +1,7 @@
 {
-  "filename" : "md2",
+  "filename" : "gen2",
   "type" : "professional",
-  "title" : "Mega Drive 2+ composite shader set (NTSC-J)",
+  "title" : "Genesis model 2 composite shader set",
   "description" : "Late model 2s and later have slightly cleaner video output",
   "pipeline_root" : "../../pipelines",
   "pipelines" : [
@@ -15,7 +15,7 @@
   "parameter_sets" : [
     "sys/md/base2.json",
     "sys/md/ntsc.json",
-    "disp/ntscj.json",
+    "disp/ntsc.json",
     "disp/trinitron.json",
     "disp/tvl-600.json"
   ],

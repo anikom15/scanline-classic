@@ -27,7 +27,7 @@
 #include "modulation.inc"
 #include "menus/parameters/sys-timing.inc"
 #include "menus/parameters/sys-encode.inc"
-#include "menus/parameters/sys-component.inc"
+#include "menus/parameters/sys-yc.inc"
 
 #pragma name SysYC
 #pragma format R16G16_SFLOAT
