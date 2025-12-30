@@ -1,6 +1,7 @@
 {
     "parameters" : {
-        "USB_BANDWIDTH" : 5.5,
+        "USB_BANDWIDTH" : 5.0,
+        "USB_ROLL_OFF" : 1.75,
         "IQ_DEMOD_Q_WEIGHT" : -0.2,
         "NOISE_AWGN_DB" : -43.0
     }
