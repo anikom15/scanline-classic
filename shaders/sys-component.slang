@@ -257,7 +257,7 @@ void main()
     wsum  += vec3(wy, wu, wv);
 
     // Symmetric lobes with early exit
-    for (int n = 1; n <= 32; ++n) {
+    for (int n = 1; n <= 16; ++n) {
         float nf = float(n);
         // Symmetric distances: right = n - Ax, left = n + Ax
         float wy_r = gaussian(nf - Ax, sigma.x);

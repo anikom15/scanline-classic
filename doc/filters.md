@@ -25,10 +25,10 @@ The scanline-classic shader suite uses optimized filter loops with early-exit lo
 | `bandlimit.inc` | 8 | 2 (n=1..8) | 16 total taps | RGB bandlimit (3 MHz) | Compounded (Sys+Display) requires worst case 6 iter for 3 MHz |
 | `composite-prefilter.slang` | 32 | 2 (n=1..32) | 64 total taps | Composite pre-demod filter (0.6 MHz) | Notch + bandpass for Y/C separation worst case 28 taps; safety margin |
 | `composite-demod.slang` | 32 | 2 (n=1..32) | 64 total taps | Composite demodulation | Dual-path: Y at 3 MHz (early exit ~4 iter), C at 0.6 MHz (~28 iter) |
-| `sys-component.slang` | 32 | 2 (n=1..32) | 64 total taps | System RGB → Y/C component filter | Per-component Gaussian: Y at 3 MHz, U/V at 0.6 MHz; 28 covers worst-case; 32 for safety margin |
+| `sys-component.slang` | 16 | 2 (n=1..16) | 32 total taps | System RGB → Y/C component filter | Per-component Gaussian: Y at 3 MHz, U/V at 0.6 MHz; 14 covers worst-case; 16 for safety margin |
 | `composite-iq.slang` | 31 (odd) | 2 (n=1,3,5..31) | 31 taps (Type III FIR) | Hilbert transform (broadband) | **Broadband, not bandwidth-limited**; fixed Type III odd-length FIR with early exit, 31 good enough |
-| `iq-filter.slang` | 90 | 2 (n=1..90) | 180 total taps | IQ sinc lowpass | Asymmetric I/Q: I channel 4.2 MHz, Q channel 0.75 MHz; sinc 1/n decay requires deep tail |
-| `iq-demod.slang` | 90 | 2 (n=1..90) | 180 total taps | IQ demodulation | Matched to iq-filter.slang; sinc-based product demod; deep tail for precision |
+| `iq-filter.slang` | 45 | 2 (n=1..45) | 90 total taps | IQ sinc lowpass | Asymmetric I/Q: I channel 4.2 MHz, Q channel 0.75 MHz; sinc 1/n decay requires deep tail |
+| `iq-demod.slang` | 45 | 2 (n=1..45) | 90 total taps | IQ demodulation | Matched to iq-filter.slang; sinc-based product demod; deep tail for precision |
 
 ## Design Rationale
 

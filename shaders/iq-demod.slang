@@ -205,7 +205,7 @@ void main()
 
     int n_pairs = int(floor(max_n * 0.5));
 
-    for (int n = 1; n <= 90; ++n) {
+    for (int n = 1; n <= 45; ++n) {
         if (n > n_pairs)
             break;
 
