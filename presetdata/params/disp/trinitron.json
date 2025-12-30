@@ -12,9 +12,6 @@
         "TRAPEZOIDAL_CORRECTION" : 8.0,
         "USER_H_SIZE" : 56.0,
         "USER_V_SIZE" : 56.0,
-        "PHOSPHOR_MANTISSA_R" : 1.0,
-        "PHOSPHOR_MANTISSA_G" : 100.0,
-        "PHOSPHOR_MANTISSA_B" : 100.0,
         "ZOOM" : 97.0
     }
 }
