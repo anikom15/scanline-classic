@@ -4,6 +4,8 @@ Version 6.2
 
 * Add specialized Mega Drive presets
 
+* Filter parameter values were tweaked and tap counts optimized for accuracy
+
 Version 6.1.1
 
 * Add generic presets, based on standard timing; may not be accurate.
