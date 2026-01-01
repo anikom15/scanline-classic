@@ -197,13 +197,7 @@ TimebaseConfig compute_timebase(
     bool is_pal = (!is_ntsc && config.v_lines_per_field < 350.0);
 
     // Calculate lines per frame
-    if (is_ntsc) {
-        config.v_lines_per_frame = 526.0;
-    } else if (is_pal) {
-        config.v_lines_per_frame = 626.0;
-    } else {
-        config.v_lines_per_frame = config.v_lines_per_field * 2.0 + 2.0;
-    }
+    config.v_lines_per_frame = config.v_lines_per_field * 2.0 + 2.0;
 
     // For interlaced content, add one extra line to even fields (field 0, 2, 4, ...)
     // This simulates the extra scanline in the second field of interlaced video

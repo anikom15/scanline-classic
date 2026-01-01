@@ -1,5 +1,7 @@
 #pragma parameter SYS_YC_HEADER " —— System: Y/C Processing —— " 0.0 0.0 0.0 0.0
 
+#pragma parameter YC_MODEL "System color space (YIQ, YPbPr, YUV, YDbDr, YCbCr)" 1.0 0.0 4.0 1.0
+
 #pragma parameter SYS_BIAS_Y "Offset Y (IRE)" 0.0 -30.0 30.0 0.1
 #pragma parameter SYS_BIAS_U "Offset U (IRE)" 0.0 -30.0 30.0 0.1
 #pragma parameter SYS_BIAS_V "Offset V (IRE)" 0.0 -30.0 30.0 0.1

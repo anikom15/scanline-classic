@@ -137,13 +137,9 @@ void main()
     full_pad_left = (int(config.OutputSize.x) - scaled_full_width) / 2;
     full_pad_top = (int(config.OutputSize.y) - scaled_full_height) / 2;
     
-    // Active content offset within full video frame (before scaling)
-    int active_left_unscaled = (int(full_width) - int(config.OriginalSize.x)) / 2;
-    int active_top_unscaled = (int(full_height) - int(config.OriginalSize.y)) / 2;
-    
     // Calculate scaled active region position
-    active_left_scaled = full_pad_left + active_left_unscaled * h_scale;
-    active_top_scaled = full_pad_top + active_top_unscaled * v_scale;
+    active_left_scaled = full_pad_left + (scaled_full_width - int(config.OriginalSize.x) * h_scale) / 2;
+    active_top_scaled = full_pad_top + (scaled_full_height - int(config.OriginalSize.y) * v_scale) / 2;
 }
 
 #pragma stage fragment
@@ -182,8 +178,7 @@ vec3 sample_active_content(int output_x, int output_y) {
         }
     }
     
-    if (v_scanline_offset == 0 && scaled_active_x >= 0 && scaled_active_y >= 0 && 
-        original_x < int(config.OriginalSize.x) && original_y < int(config.OriginalSize.y)) {
+    if (v_scanline_offset == 0) {
         vec2 texCoord = (vec2(original_x, original_y) + 0.5) / config.OriginalSize.xy;
         return texture(Source, texCoord).rgb;
     }

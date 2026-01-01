@@ -340,9 +340,9 @@ void main()
         wsum  += vec3(wy0, wc0, wc0);
 
         // Symmetric lobes
-        // Limited to 32 iterations for faster shader compilation
+        // Limited to 16 iterations for faster shader compilation
         // Gaussian weights fall off rapidly, so early exit handles quality
-        for (int n = 1; n <= 20; ++n) {
+        for (int n = 1; n <= 16; ++n) {
             float nf = float(n);
             // Symmetric distances: right = n - Ax, left = n + Ax
             float wy_r = gaussian(nf - Ax, sigma.x);
