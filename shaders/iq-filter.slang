@@ -49,6 +49,7 @@ layout(push_constant) uniform Push
 {
     vec4 OriginalSize;
     vec4 OutputSize;
+    vec4 FrameSize;
     uint FrameCount;
     float OriginalFPS;
     float BYPASS_IQ_MOD;
@@ -125,6 +126,7 @@ void main()
         vTexCoord,
         config.OriginalSize.xy,
         config.OutputSize.xy,
+        config.FrameSize.xy,
         config.OriginalFPS,
         SC_FREQ_MODE,
         SC_FREQ,

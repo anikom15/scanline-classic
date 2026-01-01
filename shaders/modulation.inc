@@ -96,6 +96,7 @@ TimebaseConfig compute_timebase(
     vec2 tex_coord,
     vec2 original_size,
     vec2 output_size,
+    vec2 frame_size,
     float core_refresh_hz,
     float sc_freq_mode,
     float sc_freq_custom_mhz,
@@ -261,8 +262,14 @@ TimebaseConfig compute_timebase(
     config.field_phase = mod(config.field_phase, 2.0 * PI) - PI;
 
     // Scale factors for output size
-    float h_scale = max(floor(output_size.x / total_pixels), 1.0);
-    float v_scale = max(floor(output_size.y / config.v_lines_per_field), 1.0);
+    float h_scale1 = floor(frame_size.x / total_pixels);
+    float v_scale1 = floor(frame_size.y / config.v_lines_per_field);
+
+    float h_scale2 = floor(output_size.x / (total_pixels * h_scale1));
+    float v_scale2 = floor(output_size.y / (config.v_lines_per_field * v_scale1));
+
+    float h_scale = max(h_scale1 * h_scale2, 1.0);
+    float v_scale = max(v_scale1 * v_scale2, 1.0);
 
     // Per-output-pixel time (cycles-per-pixel scaling)
     config.pixel_time_px = config.pixel_time / h_scale;
