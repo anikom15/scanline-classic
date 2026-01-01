@@ -28,6 +28,7 @@
 #include "common.inc"
 #include "modulation.inc"
 
+#include "menus/parameters/scanraster.inc"
 #include "menus/parameters/sys-timing.inc"
 
 #pragma name Frame
@@ -57,6 +58,8 @@ layout(push_constant) uniform Push
     float H_FREQ_MODE;
     float H_FREQ;
     float H_BLANK_FUZZ;
+    float DOUBLE_REFRESH;
+    float SCANLINE_BLANK_WEIGHT;
 } config;
 
 #define FRAME_VIZ_ACTIVE config.FRAME_VIZ_ACTIVE
@@ -72,6 +75,9 @@ layout(push_constant) uniform Push
 #define H_FREQ_MODE config.H_FREQ_MODE
 #define H_FREQ config.H_FREQ
 #define H_BLANK_FUZZ config.H_BLANK_FUZZ
+
+#define DOUBLE_REFRESH config.DOUBLE_REFRESH
+#define SCANLINE_BLANK_WEIGHT config.SCANLINE_BLANK_WEIGHT
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
@@ -166,24 +172,26 @@ vec3 sample_active_content(int output_x, int output_y) {
     int original_x = scaled_active_x / h_scale;
     int original_y = scaled_active_y / v_scale;
     int v_scanline_offset = scaled_active_y - (original_y * v_scale);
+
+    vec2 texCoord = (vec2(original_x, original_y) + 0.5) / config.OriginalSize.xy;
     
     // Interlaced field blanking: alternate drawing odd/even lines based on field
     if (is_interlaced > 0.5) {
+        if (DOUBLE_REFRESH > 0.5)
+            return texture(Source, texCoord).rgb * 0.707;
         // In interlaced mode, only render lines that match the current field
         int field_parity = int(mod(field, 2.0));
         int line_parity = original_y % 2;
         
         // If this line doesn't match the current field, blank it
-        if (line_parity != field_parity) {
-            return vec3(0.0);
-        }
+        if (line_parity != field_parity)
+            return mix(texture(Source, texCoord).rgb, vec3(0.0), SCANLINE_BLANK_WEIGHT / 100.0);
     }
     
-    if (v_scanline_offset == 0) {
-        vec2 texCoord = (vec2(original_x, original_y) + 0.5) / config.OriginalSize.xy;
+    if (v_scanline_offset == 0)
         return texture(Source, texCoord).rgb;
-    }
-    return vec3(0.0);
+
+    return mix(texture(Source, texCoord).rgb, vec3(0.0), SCANLINE_BLANK_WEIGHT / 100.0);
 }
 
 void main()
