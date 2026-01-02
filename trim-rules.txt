@@ -1,0 +1,29 @@
+# Trim rules for build-trim.py
+# Lines starting with # are comments
+# Each pattern matches preset basenames (without .slangp extension)
+# Wildcards are supported: * matches any characters, ? matches one character
+#
+# EXCEPTIONS (never removed):
+#   sfc* and snes* - Console examples
+#   aaa-* - Example presets showing what's available in full release
+
+# Example: Remove all presets starting with 'test-'
+# test-*
+md2*
+gen2*
+
+# Example: Remove all presets ending with '-debug'
+# *-debug
+*-br*
+*-fr*
+*-rf
+*-composite
+*-svideo
+
+# Example: Remove a specific preset
+# snes-eu-composite
+m6
+nss
+pckd63g
+teradrive
+wmega
