@@ -1,0 +1,23 @@
+{
+  "filename" : "pceav",
+  "type" : "professional",
+  "title" : "PC Engine composite shader set",
+  "description" : "The stock PC Engine is RF only, but later peripherals support composite output.  The shader is setup similarly to the SFC, however in reality there is a distinct difference: the SNES generates RGB first and uses a conventional RGB to YPbPr to composite chip.  The PC Engine uses a proprietary chip that outputs RGB and Y/C directly (Pb and Pr are already modulated).  The composite signal is obtained with a discrete analog combiner. Therefore we have appropriated the sys-component shader to represent the Y/C DAC and bypass sys-rgb entirely.  The PC Engine RGB to YPbPr LUT is not applied here.  Use an emulator that outputs the correct colors for composite video.",
+  "pipeline_root" : "../../pipelines",
+  "pipelines" : [
+    "misc/menu-composite-direct.json",
+    "misc/frame-tv525.json",
+    "sys/direct-composite.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_root" : "../../params",
+  "parameter_sets" : [
+    "sys/pce/base.json",
+    "disp/ntscj.json",
+    "disp/trinitron.json",
+    "disp/tvl-600.json"
+  ],
+  "parameter_overrides" : {
+  }
+}

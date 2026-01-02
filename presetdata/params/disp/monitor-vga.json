@@ -1,7 +1,7 @@
 {
     "rootpath" : "../../../share",
     "parameters" : {
-        "BORDER" : "bezel-monitor-workstation.jpg",
+        "BORDER" : "bezel-monitor.jpg",
         "MASK_TYPE" : 2.0,
         "MASK_DIFFUSION" : 2.0,
         "MAGNETIC_CORRECTION" : 20.0,
@@ -13,7 +13,8 @@
         "USER_UNDERSCAN_TOGGLE" : 1.0,
         "ZOOM": 120.0,
         "BEZEL_ZOOM": 107.0,
-        "GLOW_WEIGHT" : 0.5,
+        "BEZEL_GAIN" : -12.0,
+        "GLOW_WEIGHT" : 0.33,
         "DISPLAY_BANDLIMIT_R" : 25.175,
         "DISPLAY_BANDLIMIT_G" : 25.175,
         "DISPLAY_BANDLIMIT_B" : 25.175,

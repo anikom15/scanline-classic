@@ -1,0 +1,23 @@
+{
+  "filename" : "pckd63g",
+  "type" : "computer",
+  "title" : "PC-KD63G shader set",
+  "description" : "All-in-one monitor with built-in PC Engine; could also be used as a MultiSync monitor for NEC PCs.",
+  "pipeline_root" : "../../pipelines",
+  "pipelines" : [
+    "misc/menu-rf-direct.json",
+    "misc/frame-tv525.json",
+    "sys/rgb.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_root" : "../../params",
+  "parameter_sets" : [
+    "sys/pce/base.json",
+    "disp/hdtv.json",
+    "disp/monitor-vga.json",
+    "disp/tvl-420.json"
+  ],
+  "parameter_overrides" : {
+  }
+}
