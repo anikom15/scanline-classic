@@ -1,0 +1,24 @@
+{
+  "filename" : "md2-br-rf",
+  "type" : "professional",
+  "title" : "Mega Drive III RF shader set (Brazil variant)",
+  "description" : "In Brazil, the model II Mega Drive with improved video was sold as the Mega Drive III",
+  "pipeline_root" : "../../pipelines",
+  "pipelines" : [
+    "misc/menu-rf-yc.json",
+    "misc/frame-tv525.json",
+    "sys/yc-rf.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_root" : "../../params",
+  "parameter_sets" : [
+    "sys/md/base2.json",
+    "sys/md/palm.json",
+    "disp/palm.json",
+    "disp/trinitron.json",
+    "disp/tvl-600.json"
+  ],
+  "parameter_overrides" : {
+  }
+}

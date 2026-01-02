@@ -1,0 +1,24 @@
+{
+  "filename" : "m6",
+  "type" : "arcade",
+  "title" : "Sega Mega 6 / Mega-Tech / Mega Play shader set",
+  "description" : "Arcade variant of the Mega Drive / Genesis",
+  "pipeline_root" : "../../pipelines",
+  "pipelines" : [
+    "misc/menu.json",
+    "misc/frame-tv525.json",
+    "sys/rgb.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_root" : "../../params",
+  "parameter_sets" : [
+    "sys/md/base.json",
+    "sys/md/ntsc.json",
+    "disp/ntscj.json",
+    "disp/arcade-tvstyle.json",
+    "disp/tvl-450.json"
+  ],
+  "parameter_overrides" : {
+  }
+}

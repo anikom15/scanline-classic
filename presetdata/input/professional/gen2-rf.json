@@ -1,0 +1,25 @@
+{
+  "filename" : "gen-rf",
+  "type" : "professional",
+  "title" : "Genesis model 2 RF shader set",
+  "description" : "Late model 2s and later have slightly cleaner video output",
+  "pipeline_root" : "../../pipelines",
+  "pipelines" : [
+    "misc/menu-rf-yc.json",
+    "misc/frame-tv525.json",
+    "sys/yc-rf.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_root" : "../../params",
+  "parameter_sets" : [
+    "sys/md/base2.json",
+    "sys/md/ntsc.json",
+    "misc/rf-ntsc.json",
+    "disp/rf-ntsc.json",
+    "disp/trinitron.json",
+    "disp/tvl-600.json"
+  ],
+  "parameter_overrides" : {
+  }
+}

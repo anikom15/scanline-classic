@@ -1,0 +1,24 @@
+{
+  "filename" : "teradrive",
+  "type" : "computer",
+  "title" : "Sega Teradrive shader set (Mega Drive operating mode)",
+  "description" : "Computer version of the Mega Drive; for DOS, use a VGA-compatible shader",
+  "pipeline_root" : "../../pipelines",
+  "pipelines" : [
+    "misc/menu.json",
+    "misc/frame-tv525.json",
+    "sys/rgb.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_root" : "../../params",
+  "parameter_sets" : [
+    "sys/md/base.json",
+    "sys/md/ntsc.json",
+    "disp/hdtv.json",
+    "disp/monitor-workstation-vga.json",
+    "disp/tvl-420.json"
+  ],
+  "parameter_overrides" : {
+  }
+}

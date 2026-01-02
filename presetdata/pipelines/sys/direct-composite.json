@@ -1,0 +1,16 @@
+{
+    "root_path" : "../../../shaders",
+    "shaders" : {
+        "component" : "sys-component",
+        "mod" : "composite-mod",
+        "prefilter" : "composite-prefilter",
+        "demod" : "composite-demod",
+        "disp-bandlimit" : "display-rgb-bandlimit",
+        "limiter" : "limiter"
+    },
+    "options" : {
+        "prefilter" : {
+            "scale": [2.0, 1.0]
+        }
+    }
+}
