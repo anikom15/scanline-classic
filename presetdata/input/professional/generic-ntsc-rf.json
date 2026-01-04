@@ -13,6 +13,7 @@
   ],
   "parameter_root" : "../../params",
   "parameter_sets" : [
+    "sys/generic/ntsc.json",
     "misc/rf-ntsc.json",
     "disp/ntsc.json",
     "disp/rf-ntsc.json",
