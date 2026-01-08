@@ -13,6 +13,7 @@
   ],
   "parameter_root" : "../../params",
   "parameter_sets" : [
+    "sys/generic/ntsc.json",
     "disp/ntsc.json",
     "disp/trinitron.json",
     "disp/tvl-600.json"

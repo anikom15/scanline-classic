@@ -1,6 +1,8 @@
 {
     "parameters" : {
         "ENCODER_SETUP" : 0.0,
-        "PAL" : 1.0
+        "PAL" : 1.0,
+        "H_FREQ_MODE" : 1.0,
+        "H_FREQ" : 864.0
     }
 }
