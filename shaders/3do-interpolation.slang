@@ -1,7 +1,23 @@
 #version 450
 
+// Filename: 3do-interpolation.slang
+//
+// Copyright (C) 2026 W. M. Martinez
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 #pragma parameter INTERPOLATION_3DO_HEADER " —— 3DO Interpolation —— " 0.0 0.0 0.0 0.0
 #pragma parameter INTERPOLATION_MODE "Interpolation mode (nearest, bilinear, original)" 2.0 0.0 2.0 1.0
+#pragma parameter FAKE_CORNER_WEIGHTS "Simulate corner weights (off, on)" 0.0 0.0 1.0 1.0
 
 layout(push_constant) uniform Push
 {
@@ -10,9 +26,11 @@ layout(push_constant) uniform Push
 	vec4 OutputSize;
 	uint FrameCount;
     float INTERPOLATION_MODE;
+    float FAKE_CORNER_WEIGHTS;
 } params;
 
 #define INTERPOLATION_MODE params.INTERPOLATION_MODE
+#define FAKE_CORNER_WEIGHTS params.FAKE_CORNER_WEIGHTS
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
@@ -62,10 +80,189 @@ vec4 bilinear_interpolation(vec2 tc)
     return mix(pq0, pq1, f.y);
 }
 
+// Determine which quadrant we are in within pixel space based on fractional position
+// Returns quadrant info in out parameters
+void get_pixel_quadrant(vec2 f, out int topBottom, out int rightLeft)
+{
+    // Determine quadrant based on which half of the pixel we're in
+    topBottom = (f.y >= 0.5) ? 1 : 0;  // 0 = top, 1 = bottom
+    rightLeft = (f.x < 0.5) ? 1 : 0;   // 0 = right, 1 = left
+}
+
+// Calculate luminance using standard coefficients
+float get_luminance(vec3 color)
+{
+    return dot(color, vec3(0.299, 0.587, 0.114));
+}
+
+// Predict corner weights based on luminance gradients
+void predict_corner_weights(vec2 texCoord, out int topBottom, out int rightLeft)
+{
+    vec2 texelSize = 1.0 / params.SourceSize.xy;
+    
+    // Sample center and neighbors
+    vec3 center = texture(Source, texCoord).rgb;
+    vec3 left = texture(Source, texCoord + vec2(-texelSize.x, 0.0)).rgb;
+    vec3 right = texture(Source, texCoord + vec2(texelSize.x, 0.0)).rgb;
+    vec3 top = texture(Source, texCoord + vec2(0.0, -texelSize.y)).rgb;
+    vec3 bottom = texture(Source, texCoord + vec2(0.0, texelSize.y)).rgb;
+    
+    // Calculate luminances
+    float lumCenter = get_luminance(center);
+    float lumLeft = get_luminance(left);
+    float lumRight = get_luminance(right);
+    float lumTop = get_luminance(top);
+    float lumBottom = get_luminance(bottom);
+    
+    // Determine horizontal bias: bias towards brighter direction
+    // Add small epsilon to center for stability
+    float horizThreshold = lumCenter + 0.01;
+    if (lumLeft > horizThreshold && lumRight <= horizThreshold) {
+        rightLeft = 1;  // Left is brighter, bias left
+    } else if (lumRight > horizThreshold && lumLeft <= horizThreshold) {
+        rightLeft = 0;  // Right is brighter, bias right
+    } else {
+        // Both similar or both darker, use average comparison
+        rightLeft = (lumLeft >= lumRight) ? 1 : 0;
+    }
+    
+    // Determine vertical bias: bias towards brighter direction
+    float vertThreshold = lumCenter + 0.01;
+    if (lumTop > vertThreshold && lumBottom <= vertThreshold) {
+        topBottom = 0;  // Top is brighter, bias top
+    } else if (lumBottom > vertThreshold && lumTop <= vertThreshold) {
+        topBottom = 1;  // Bottom is brighter, bias bottom
+    } else {
+        // Both similar or both darker, use average comparison
+        topBottom = (lumTop >= lumBottom) ? 0 : 1;
+    }
+}
+
+// Sample texture and extract corner weight quadrant from alpha channel
+// Returns: sampled color with quadrant info in out parameters
+vec4 sample_with_quadrant(vec2 texCoord, out int topBottom, out int rightLeft)
+{
+    // Sample the pixel
+    vec4 color = texture(Source, texCoord);
+    
+    if (FAKE_CORNER_WEIGHTS > 0.5) {
+        // Predict corner weights from luminance
+        predict_corner_weights(texCoord, topBottom, rightLeft);
+    } else {
+        // Extract from alpha channel
+        // Convert alpha to integer (0-255)
+        int alphaInt = int(color.a * 255.0);
+        
+        // Extract bits: bit 7 (MSB) for top/bottom, bit 6 for right/left
+        topBottom = (alphaInt >> 7) & 1;  // 0 = top, 1 = bottom
+        rightLeft = (alphaInt >> 6) & 1;  // 0 = right, 1 = left
+    }
+    
+    return color;
+}
+
+// Calculate the position of a corner within a pixel based on corner weight quadrant
+vec2 get_corner_position(vec2 pixelCenter, int topBottom, int rightLeft)
+{
+    vec2 texelSize = 1.0 / params.SourceSize.xy;
+    vec2 cornerOffset;
+    
+    if (topBottom == 0 && rightLeft == 1) {
+        // Top-left corner
+        cornerOffset = vec2(-0.5, -0.5) * texelSize;
+    } else if (topBottom == 0 && rightLeft == 0) {
+        // Top-right corner
+        cornerOffset = vec2(0.5, -0.5) * texelSize;
+    } else if (topBottom == 1 && rightLeft == 1) {
+        // Bottom-left corner
+        cornerOffset = vec2(-0.5, 0.5) * texelSize;
+    } else {
+        // Bottom-right corner
+        cornerOffset = vec2(0.5, 0.5) * texelSize;
+    }
+    
+    return pixelCenter + cornerOffset;
+}
+
 vec4 special_interpolation(vec2 tc)
 {
-    // TODO: Implement special interpolation mode
-    return texture(Source, tc);
+    vec2 sourceSize = params.SourceSize.xy;
+    vec2 texelSize = 1.0 / sourceSize;
+    
+    // Get fractional part of texture coordinate
+    vec2 f = fract(tc * sourceSize - 0.5);
+    vec2 texCoord = (floor(tc * sourceSize - 0.5) + 0.5) / sourceSize;
+    
+    // Determine which quadrant we're in within the current pixel
+    int currentQuadTopBottom, currentQuadRightLeft;
+    get_pixel_quadrant(f, currentQuadTopBottom, currentQuadRightLeft);
+    
+    // Sample source pixel and get its corner weight quadrant
+    int srcTopBottom, srcRightLeft;
+    vec4 color0 = sample_with_quadrant(texCoord, srcTopBottom, srcRightLeft);
+    
+    // If current quadrant matches source corner weight, use source color directly
+    if (currentQuadTopBottom == srcTopBottom && currentQuadRightLeft == srcRightLeft) {
+        return color0;
+    }
+    
+    // Sample 3 adjacent pixels based on our current quadrant
+    vec2 offset1, offset2, offset3;
+    int tb1, rl1, tb2, rl2, tb3, rl3;
+    
+    if (currentQuadTopBottom == 0 && currentQuadRightLeft == 1) {
+        // Top-left quadrant: sample above, left, above-left
+        offset1 = vec2(0.0, -texelSize.y);           // above
+        offset2 = vec2(-texelSize.x, 0.0);           // left
+        offset3 = vec2(-texelSize.x, -texelSize.y);  // above-left
+    } else if (currentQuadTopBottom == 0 && currentQuadRightLeft == 0) {
+        // Top-right quadrant: sample above, right, above-right
+        offset1 = vec2(0.0, -texelSize.y);          // above
+        offset2 = vec2(texelSize.x, 0.0);           // right
+        offset3 = vec2(texelSize.x, -texelSize.y);  // above-right
+    } else if (currentQuadTopBottom == 1 && currentQuadRightLeft == 1) {
+        // Bottom-left quadrant: sample left, down, down-left
+        offset1 = vec2(-texelSize.x, 0.0);           // left
+        offset2 = vec2(0.0, texelSize.y);            // down
+        offset3 = vec2(-texelSize.x, texelSize.y);   // down-left
+    } else {
+        // Bottom-right quadrant: sample right, down, down-right
+        offset1 = vec2(texelSize.x, 0.0);           // right
+        offset2 = vec2(0.0, texelSize.y);           // down
+        offset3 = vec2(texelSize.x, texelSize.y);   // down-right
+    }
+    
+    // Sample the 3 adjacent pixels and get their corner weight quadrants
+    vec4 color1 = sample_with_quadrant(texCoord + offset1, tb1, rl1);
+    vec4 color2 = sample_with_quadrant(texCoord + offset2, tb2, rl2);
+    vec4 color3 = sample_with_quadrant(texCoord + offset3, tb3, rl3);
+    
+    // Calculate corner positions for each sampled pixel
+    vec2 corner1 = get_corner_position(texCoord + offset1, tb1, rl1);
+    vec2 corner2 = get_corner_position(texCoord + offset2, tb2, rl2);
+    vec2 corner3 = get_corner_position(texCoord + offset3, tb3, rl3);
+    
+    // Calculate distances from current position to each corner
+    float dist1 = distance(tc, corner1);
+    float dist2 = distance(tc, corner2);
+    float dist3 = distance(tc, corner3);
+    
+    // Invert distances to get weights (closer = higher weight)
+    float weight1 = 1.0 / (dist1 + 0.0001);
+    float weight2 = 1.0 / (dist2 + 0.0001);
+    float weight3 = 1.0 / (dist3 + 0.0001);
+    float totalWeight = weight1 + weight2 + weight3;
+    
+    // Normalize weights
+    weight1 /= totalWeight;
+    weight2 /= totalWeight;
+    weight3 /= totalWeight;
+    
+    // Blend source color with adjacent colors based on distance weights
+    vec4 blendedColor = color1 * weight1 + color2 * weight2 + color3 * weight3;
+    
+    // Mix between source and blended based on total weight influence
+    return mix(color0, blendedColor, 0.5);
 }
 
 void main()

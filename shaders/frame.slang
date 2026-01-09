@@ -41,7 +41,7 @@
 // Push constants
 layout(push_constant) uniform Push
 {
-    vec4 OriginalSize;
+    vec4 SourceSize;
     vec4 OutputSize;
     uint FrameCount;
     float OriginalFPS;
@@ -108,7 +108,7 @@ void main()
     TimebaseConfig tb = compute_timebase(
         config.FrameCount,
         vTexCoord,
-        config.OriginalSize.xy,
+        config.SourceSize.xy,
         config.OutputSize.xy,
         config.OutputSize.xy,
         config.OriginalFPS,
@@ -145,8 +145,8 @@ void main()
     full_pad_top = (int(config.OutputSize.y) - scaled_full_height) / 2;
     
     // Calculate scaled active region position
-    active_left_scaled = full_pad_left + (scaled_full_width - int(config.OriginalSize.x) * h_scale) / 2;
-    active_top_scaled = full_pad_top + (scaled_full_height - int(config.OriginalSize.y) * v_scale) / 2;
+    active_left_scaled = full_pad_left + (scaled_full_width - int(config.SourceSize.x) * h_scale) / 2;
+    active_top_scaled = full_pad_top + (scaled_full_height - int(config.SourceSize.y) * v_scale) / 2;
 }
 
 #pragma stage fragment
@@ -173,7 +173,7 @@ vec3 sample_active_content(int output_x, int output_y) {
     int original_y = scaled_active_y / v_scale;
     int v_scanline_offset = scaled_active_y - (original_y * v_scale);
 
-    vec2 texCoord = (vec2(original_x, original_y) + 0.5) / config.OriginalSize.xy;
+    vec2 texCoord = (vec2(original_x, original_y) + 0.5) / config.SourceSize.xy;
     
     // Interlaced field blanking: alternate drawing odd/even lines based on field
     if (is_interlaced > 0.5) {
@@ -210,8 +210,8 @@ void main()
     int frame_bottom = full_pad_top + scaled_full_height;
     
     // Boundaries of active region in output space
-    int active_right = active_left_scaled + int(config.OriginalSize.x) * h_scale;
-    int active_bottom = active_top_scaled + int(config.OriginalSize.y) * v_scale;
+    int active_right = active_left_scaled + int(config.SourceSize.x) * h_scale;
+    int active_bottom = active_top_scaled + int(config.SourceSize.y) * v_scale;
     
     bool in_frame = (output_x >= frame_left && output_x < frame_right &&
                      output_y >= frame_top && output_y < frame_bottom);
