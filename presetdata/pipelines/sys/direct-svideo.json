@@ -1,0 +1,9 @@
+{
+    "root_path" : "../../../shaders",
+    "shaders" : {
+        "component" : "sys-component",
+        "svideo" : "svideo",
+        "disp-bandlimit" : "display-rgb-bandlimit",
+        "limiter" : "limiter"
+    }
+}

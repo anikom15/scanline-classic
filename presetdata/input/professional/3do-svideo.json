@@ -1,0 +1,25 @@
+{
+  "filename" : "3do",
+  "type" : "professional",
+  "title" : "3DO S-Video shader set",
+  "description" : "S-Video output is available on all 3DO models with the appropriate cable.",
+  "pipeline_root" : "../../pipelines",
+  "pipelines" : [
+    "sys/3do-special.json",
+    "misc/menu-svideo-direct.json",
+    "misc/frame-tv525.json",
+    "sys/direct-svideo.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_root" : "../../params",
+  "parameter_sets" : [
+    "sys/3do/base.json",
+    "sys/3do/ntsc.json",
+    "disp/ntscj.json",
+    "disp/trinitron.json",
+    "disp/tvl-600.json"
+  ],
+  "parameter_overrides" : {
+  }
+}
