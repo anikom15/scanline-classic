@@ -18,6 +18,8 @@
 #pragma parameter INTERPOLATION_3DO_HEADER " —— 3DO Interpolation —— " 0.0 0.0 0.0 0.0
 #pragma parameter INTERPOLATION_MODE "Interpolation mode (nearest, bilinear, original)" 2.0 0.0 2.0 1.0
 #pragma parameter FAKE_CORNER_WEIGHTS "Simulate corner weights (off, on)" 0.0 0.0 1.0 1.0
+#pragma parameter SPECIAL_INTERP_H "Apply special interpolation horizontally" 1.0 0.0 1.0 1.0
+#pragma parameter SPECIAL_INTERP_V "Apply special interpolation vertically" 1.0 0.0 1.0 1.0
 
 layout(push_constant) uniform Push
 {
@@ -27,10 +29,14 @@ layout(push_constant) uniform Push
 	uint FrameCount;
     float INTERPOLATION_MODE;
     float FAKE_CORNER_WEIGHTS;
+    float SPECIAL_INTERP_H;
+    float SPECIAL_INTERP_V;
 } params;
 
 #define INTERPOLATION_MODE params.INTERPOLATION_MODE
 #define FAKE_CORNER_WEIGHTS params.FAKE_CORNER_WEIGHTS
+#define SPECIAL_INTERP_H params.SPECIAL_INTERP_H
+#define SPECIAL_INTERP_V params.SPECIAL_INTERP_V
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
@@ -206,63 +212,86 @@ vec4 special_interpolation(vec2 tc)
         return color0;
     }
     
-    // Sample 3 adjacent pixels based on our current quadrant
+    // Determine which adjacent pixels to sample based on enabled directions
+    bool doHorizontal = SPECIAL_INTERP_H > 0.5;
+    bool doVertical = SPECIAL_INTERP_V > 0.5;
+    
+    // If neither direction is enabled, return source color
+    if (!doHorizontal && !doVertical) {
+        return color0;
+    }
+    
     vec2 offset1, offset2, offset3;
     int tb1, rl1, tb2, rl2, tb3, rl3;
     
+    // Determine offsets based on current quadrant
     if (currentQuadTopBottom == 0 && currentQuadRightLeft == 1) {
-        // Top-left quadrant: sample above, left, above-left
-        offset1 = vec2(0.0, -texelSize.y);           // above
-        offset2 = vec2(-texelSize.x, 0.0);           // left
-        offset3 = vec2(-texelSize.x, -texelSize.y);  // above-left
+        // Top-left quadrant
+        offset1 = vec2(0.0, -texelSize.y);           // above (vertical)
+        offset2 = vec2(-texelSize.x, 0.0);           // left (horizontal)
+        offset3 = vec2(-texelSize.x, -texelSize.y);  // above-left (diagonal)
     } else if (currentQuadTopBottom == 0 && currentQuadRightLeft == 0) {
-        // Top-right quadrant: sample above, right, above-right
-        offset1 = vec2(0.0, -texelSize.y);          // above
-        offset2 = vec2(texelSize.x, 0.0);           // right
-        offset3 = vec2(texelSize.x, -texelSize.y);  // above-right
+        // Top-right quadrant
+        offset1 = vec2(0.0, -texelSize.y);           // above (vertical)
+        offset2 = vec2(texelSize.x, 0.0);            // right (horizontal)
+        offset3 = vec2(texelSize.x, -texelSize.y);   // above-right (diagonal)
     } else if (currentQuadTopBottom == 1 && currentQuadRightLeft == 1) {
-        // Bottom-left quadrant: sample left, down, down-left
-        offset1 = vec2(-texelSize.x, 0.0);           // left
-        offset2 = vec2(0.0, texelSize.y);            // down
-        offset3 = vec2(-texelSize.x, texelSize.y);   // down-left
+        // Bottom-left quadrant
+        offset1 = vec2(0.0, texelSize.y);            // down (vertical)
+        offset2 = vec2(-texelSize.x, 0.0);           // left (horizontal)
+        offset3 = vec2(-texelSize.x, texelSize.y);   // down-left (diagonal)
     } else {
-        // Bottom-right quadrant: sample right, down, down-right
-        offset1 = vec2(texelSize.x, 0.0);           // right
-        offset2 = vec2(0.0, texelSize.y);           // down
-        offset3 = vec2(texelSize.x, texelSize.y);   // down-right
+        // Bottom-right quadrant
+        offset1 = vec2(0.0, texelSize.y);            // down (vertical)
+        offset2 = vec2(texelSize.x, 0.0);            // right (horizontal)
+        offset3 = vec2(texelSize.x, texelSize.y);    // down-right (diagonal)
     }
     
-    // Sample the 3 adjacent pixels and get their corner weight quadrants
-    vec4 color1 = sample_with_quadrant(texCoord + offset1, tb1, rl1);
-    vec4 color2 = sample_with_quadrant(texCoord + offset2, tb2, rl2);
-    vec4 color3 = sample_with_quadrant(texCoord + offset3, tb3, rl3);
-    
-    // Calculate corner positions for each sampled pixel
-    vec2 corner1 = get_corner_position(texCoord + offset1, tb1, rl1);
-    vec2 corner2 = get_corner_position(texCoord + offset2, tb2, rl2);
-    vec2 corner3 = get_corner_position(texCoord + offset3, tb3, rl3);
-    
-    // Calculate distances from current position to each corner
-    float dist1 = distance(tc, corner1);
-    float dist2 = distance(tc, corner2);
-    float dist3 = distance(tc, corner3);
-    
-    // Invert distances to get weights (closer = higher weight)
-    float weight1 = 1.0 / (dist1 + 0.0001);
-    float weight2 = 1.0 / (dist2 + 0.0001);
-    float weight3 = 1.0 / (dist3 + 0.0001);
-    float totalWeight = weight1 + weight2 + weight3;
-    
-    // Normalize weights
-    weight1 /= totalWeight;
-    weight2 /= totalWeight;
-    weight3 /= totalWeight;
-    
-    // Blend source color with adjacent colors based on distance weights
-    vec4 blendedColor = color1 * weight1 + color2 * weight2 + color3 * weight3;
-    
-    // Mix between source and blended based on total weight influence
-    return mix(color0, blendedColor, 0.5);
+    // Sample and blend based on enabled directions
+    if (doVertical && doHorizontal) {
+        // Sample vertical, horizontal, and diagonal
+        vec4 color1 = sample_with_quadrant(texCoord + offset1, tb1, rl1);
+        vec4 color2 = sample_with_quadrant(texCoord + offset2, tb2, rl2);
+        vec4 color3 = sample_with_quadrant(texCoord + offset3, tb3, rl3);
+        
+        vec2 corner1 = get_corner_position(texCoord + offset1, tb1, rl1);
+        vec2 corner2 = get_corner_position(texCoord + offset2, tb2, rl2);
+        vec2 corner3 = get_corner_position(texCoord + offset3, tb3, rl3);
+        
+        float dist1 = distance(tc, corner1);
+        float dist2 = distance(tc, corner2);
+        float dist3 = distance(tc, corner3);
+        
+        float weight1 = 1.0 / (dist1 + 0.0001);
+        float weight2 = 1.0 / (dist2 + 0.0001);
+        float weight3 = 1.0 / (dist3 + 0.0001);
+        float totalWeight = weight1 + weight2 + weight3;
+        
+        weight1 /= totalWeight;
+        weight2 /= totalWeight;
+        weight3 /= totalWeight;
+        
+        vec4 blendedColor = color1 * weight1 + color2 * weight2 + color3 * weight3;
+        return mix(color0, blendedColor, 0.5);
+    } else if (doVertical) {
+        // Sample only vertical
+        vec4 color1 = sample_with_quadrant(texCoord + offset1, tb1, rl1);
+        
+        vec2 corner1 = get_corner_position(texCoord + offset1, tb1, rl1);
+        float dist1 = distance(tc, corner1);
+        float weight1 = 1.0 / (dist1 + 0.0001);
+        
+        return mix(color0, color1, 0.5 * weight1 / (1.0 + weight1));
+    } else {
+        // Sample only horizontal
+        vec4 color2 = sample_with_quadrant(texCoord + offset2, tb2, rl2);
+        
+        vec2 corner2 = get_corner_position(texCoord + offset2, tb2, rl2);
+        float dist2 = distance(tc, corner2);
+        float weight2 = 1.0 / (dist2 + 0.0001);
+        
+        return mix(color0, color2, 0.5 * weight2 / (1.0 + weight2));
+    }
 }
 
 void main()
