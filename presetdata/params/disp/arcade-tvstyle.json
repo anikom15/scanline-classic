@@ -1,7 +1,7 @@
 {
     "rootpath" : "../../../share",
     "parameters" : {
-        "BORDER" : "bezel-arcade-tvstyle.jpg",
+        "BORDER" : "bezel-arcade-tvstyle.png",
         "MASK_TYPE" : 1.0,
         "MASK_DIFFUSION" : 2.0,
         "MAGNETIC_CORRECTION" : 40.0,
