@@ -285,11 +285,9 @@ void main()
 
                 // Smoothly mix using +/-0.05 transition around adapt thresholds
                 float luma_w = smoothstep(COMB_FILTER_LUMA_ADAPT - 0.05, COMB_FILTER_LUMA_ADAPT + 0.05, composite_corr);
-                float chroma_w = smoothstep(COMB_FILTER_CHROMA_ADAPT - 0.05, COMB_FILTER_CHROMA_ADAPT + 0.05, composite_corr);
 
                 color_comb.r = mix(y_notch, y1, luma_w);
-                color_comb.g = mix(c_notch, c1, chroma_w);
-                color_comb.g = mix(c_notch, c1, chroma_w);
+                color_comb.g = c1;  // Always use comb chroma
             } else {
                 // Fixed-weight simple comb filter output
                 color_comb = vec2(y1, c1);

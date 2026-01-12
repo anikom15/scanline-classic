@@ -9,7 +9,7 @@
         "SYS_CUTOFF_ATTEN_U" : 2.0,
         "SYS_CUTOFF_ATTEN_V" : 2.0,
 
-        "COLOR_FILTER_MODE" : 0.0,
+        "COLOR_FILTER_MODE" : 2.0,
 
         "PIXEL_CLOCK_MODE" : 0.0,
         "H_FREQ_MODE" : 1.0,

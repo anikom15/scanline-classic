@@ -179,7 +179,7 @@ TimebaseConfig compute_timebase(
 
     // Derive number of lines per field
     if (v_freq_mode < 2.5 || v_freq_mode > 3.5) {
-        config.v_lines_per_field = round(2.0 * config.h_freq_hz / core_refresh_hz) / 2.0;
+        config.v_lines_per_field = round(config.h_freq_hz / core_refresh_hz);
     } else {
         // Divisor is the same as number of lines per field
         config.v_lines_per_field = custom_v_freq;
@@ -203,11 +203,13 @@ TimebaseConfig compute_timebase(
     // For interlaced content, add one extra line to even fields (field 0, 2, 4, ...)
     // This simulates the extra scanline in the second field of interlaced video
     if (is_interlaced) {
-        float field_parity = mod(config.field, 2.0);
+        /*float field_parity = mod(config.field, 2.0);
         if (field_parity < 0.5) {
             // Even field: add one line
             config.v_lines_per_field += 1.0;
         }
+        */
+        config.v_lines_per_field += 0.5;
     }
 
     // Vertical field frequency derivation
