@@ -1,5 +1,6 @@
 {
     "parameters" : {
-        "PIXEL_CLOCK" : 24.54545454
+        "PIXEL_CLOCK" : 24.54545454,
+        "H_FREQ" : 1560.0
     }
 }
