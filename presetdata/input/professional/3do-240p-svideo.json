@@ -1,0 +1,24 @@
+{
+  "filename" : "3do-240p",
+  "type" : "professional",
+  "title" : "3DO S-Video shader set (240p)",
+  "description" : "240p is available on Japanese 3DOs via mode switch.  The emulator must be configured to output 320x240 resolution, otherwise interlacing will occur.",
+  "pipeline_root" : "../../pipelines",
+  "pipelines" : [
+    "misc/menu-svideo-direct.json",
+    "misc/frame-tv525.json",
+    "sys/direct-svideo.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_root" : "../../params",
+  "parameter_sets" : [
+    "sys/3do/base.json",
+    "sys/3do/ntsc.json",
+    "disp/ntscj.json",
+    "disp/trinitron.json",
+    "disp/tvl-600.json"
+  ],
+  "parameter_overrides" : {
+  }
+}

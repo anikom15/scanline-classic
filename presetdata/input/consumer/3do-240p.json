@@ -1,0 +1,25 @@
+{
+  "filename" : "3do-240p",
+  "type" : "consumer",
+  "title" : "3DO composite shader set (240p)",
+  "description" : "240p is available on Japanese 3DOs via mode switch.  The emulator must be configured to output 320x240 resolution, otherwise interlacing will occur.",
+  "pipeline_root" : "../../pipelines",
+  "pipelines" : [
+    "misc/menu-composite-direct.json",
+    "misc/frame-tv525.json",
+    "sys/direct-composite.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_root" : "../../params",
+  "parameter_sets" : [
+    "sys/3do/base.json",
+    "sys/3do/ntsc.json",
+    "disp/ntscj.json",
+    "disp/trinitron.json",
+    "disp/consumer-color-ntsc.json",
+    "disp/tvl-450.json"
+  ],
+  "parameter_overrides" : {
+  }
+}
