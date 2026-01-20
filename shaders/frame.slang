@@ -88,16 +88,16 @@ layout(std140, set = 0, binding = 0) uniform UBO
 layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
-layout(location = 1) flat out int h_scale;
-layout(location = 2) flat out int v_scale;
-layout(location = 3) flat out int full_pad_left;
-layout(location = 4) flat out int full_pad_top;
-layout(location = 5) flat out int active_left_scaled;
-layout(location = 6) flat out int active_top_scaled;
-layout(location = 7) flat out int full_width_int;
-layout(location = 8) flat out int full_height_int;
-layout(location = 9) flat out float is_interlaced;
-layout(location = 10) flat out float field;
+layout(location = 1) out float h_scale;
+layout(location = 2) out float v_scale;
+layout(location = 3) out float full_pad_left;
+layout(location = 4) out float full_pad_top;
+layout(location = 5) out float active_left_scaled;
+layout(location = 6) out float active_top_scaled;
+layout(location = 7) out float full_width_int;
+layout(location = 8) out float full_height_int;
+layout(location = 9) out float is_interlaced;
+layout(location = 10) out float field;
 
 void main()
 {
@@ -127,51 +127,51 @@ void main()
     float full_width = tb.h_pixels;
     float full_height = (tb.is_interlaced < 0.5) ? tb.v_lines_per_field : tb.v_lines_per_frame;
     
-    full_width_int = int(full_width);
-    full_height_int = int(full_height);
+    full_width_int = floor(full_width);
+    full_height_int = floor(full_height);
     is_interlaced = tb.is_interlaced;
     field = tb.field;
     
     // Calculate integer scale factors for each dimension
-    h_scale = max(int(config.OutputSize.x / full_width), 1);
-    v_scale = max(int(config.OutputSize.y / full_height), 1);
+    h_scale = max(floor(config.OutputSize.x / full_width), 1.0);
+    v_scale = max(floor(config.OutputSize.y / full_height), 1.0);
     
     // Scaled full video dimensions
-    int scaled_full_width = int(full_width) * h_scale;
-    int scaled_full_height = int(full_height) * v_scale;
+    float scaled_full_width = full_width_int * h_scale;
+    float scaled_full_height = full_height_int * v_scale;
     
     // Center the scaled full video within output
-    full_pad_left = (int(config.OutputSize.x) - scaled_full_width) / 2;
-    full_pad_top = (int(config.OutputSize.y) - scaled_full_height) / 2;
+    full_pad_left = floor((config.OutputSize.x - scaled_full_width) * 0.5);
+    full_pad_top = floor((config.OutputSize.y - scaled_full_height) * 0.5);
     
     // Calculate scaled active region position
-    active_left_scaled = full_pad_left + (scaled_full_width - int(config.SourceSize.x) * h_scale) / 2;
-    active_top_scaled = full_pad_top + (scaled_full_height - int(config.SourceSize.y) * v_scale) / 2;
+    active_left_scaled = full_pad_left + floor((scaled_full_width - config.OriginalSize.x * h_scale) * 0.5);
+    active_top_scaled = full_pad_top + floor((scaled_full_height - config.OriginalSize.y * v_scale) * 0.5);
 }
 
 #pragma stage fragment
 layout(location = 0) in vec2 vTexCoord;
-layout(location = 1) flat in int h_scale;
-layout(location = 2) flat in int v_scale;
-layout(location = 3) flat in int full_pad_left;
-layout(location = 4) flat in int full_pad_top;
-layout(location = 5) flat in int active_left_scaled;
-layout(location = 6) flat in int active_top_scaled;
-layout(location = 7) flat in int full_width_int;
-layout(location = 8) flat in int full_height_int;
-layout(location = 9) flat in float is_interlaced;
-layout(location = 10) flat in float field;
+layout(location = 1) in float h_scale;
+layout(location = 2) in float v_scale;
+layout(location = 3) in float full_pad_left;
+layout(location = 4) in float full_pad_top;
+layout(location = 5) in float active_left_scaled;
+layout(location = 6) in float active_top_scaled;
+layout(location = 7) in float full_width_int;
+layout(location = 8) in float full_height_int;
+layout(location = 9) in float is_interlaced;
+layout(location = 10) in float field;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
 // Sample active content with zero-stuffing applied
-vec3 sample_active_content(int output_x, int output_y) {
-    int scaled_active_x = output_x - active_left_scaled;
-    int scaled_active_y = output_y - active_top_scaled;
+vec3 sample_active_content(float output_x, float output_y) {
+    float scaled_active_x = output_x - active_left_scaled;
+    float scaled_active_y = output_y - active_top_scaled;
     
-    int original_x = scaled_active_x / h_scale;
-    int original_y = scaled_active_y / v_scale;
-    int v_scanline_offset = scaled_active_y - (original_y * v_scale);
+    float original_x = floor(scaled_active_x / h_scale);
+    float original_y = floor(scaled_active_y / v_scale);
+    float v_scanline_offset = scaled_active_y - (original_y * v_scale);
 
     vec2 texCoord = (vec2(original_x, original_y) + 0.5) / config.SourceSize.xy;
     
@@ -181,14 +181,14 @@ vec3 sample_active_content(int output_x, int output_y) {
             return texture(Source, texCoord).rgb * 0.707;
         // In interlaced mode, only render lines that match the current field
         int field_parity = int(mod(field, 2.0));
-        int line_parity = original_y % 2;
+        int line_parity = int(mod(original_y, 2.0));
         
         // If this line doesn't match the current field, blank it
         if (line_parity != field_parity)
             return mix(texture(Source, texCoord).rgb, vec3(0.0), SCANLINE_BLANK_WEIGHT / 100.0);
     }
     
-    if (v_scanline_offset == 0)
+    if (v_scanline_offset < 1.0)
         return texture(Source, texCoord).rgb;
 
     return mix(texture(Source, texCoord).rgb, vec3(0.0), SCANLINE_BLANK_WEIGHT / 100.0);
@@ -196,22 +196,22 @@ vec3 sample_active_content(int output_x, int output_y) {
 
 void main()
 {
-    int output_x = int(floor(vTexCoord.x * config.OutputSize.x));
-    int output_y = int(floor(vTexCoord.y * config.OutputSize.y));
+    float output_x = floor(vTexCoord.x * config.OutputSize.x);
+    float output_y = floor(vTexCoord.y * config.OutputSize.y);
     
     // Calculate scaled full video dimensions
-    int scaled_full_width = full_width_int * h_scale;
-    int scaled_full_height = full_height_int * v_scale;
+    float scaled_full_width = full_width_int * h_scale;
+    float scaled_full_height = full_height_int * v_scale;
     
     // Boundaries of frame area in output space
-    int frame_left = full_pad_left;
-    int frame_right = full_pad_left + scaled_full_width;
-    int frame_top = full_pad_top;
-    int frame_bottom = full_pad_top + scaled_full_height;
+    float frame_left = full_pad_left;
+    float frame_right = full_pad_left + scaled_full_width;
+    float frame_top = full_pad_top;
+    float frame_bottom = full_pad_top + scaled_full_height;
     
     // Boundaries of active region in output space
-    int active_right = active_left_scaled + int(config.SourceSize.x) * h_scale;
-    int active_bottom = active_top_scaled + int(config.SourceSize.y) * v_scale;
+    float active_right = active_left_scaled + config.OriginalSize.x * h_scale;
+    float active_bottom = active_top_scaled + config.OriginalSize.y * v_scale;
     
     bool in_frame = (output_x >= frame_left && output_x < frame_right &&
                      output_y >= frame_top && output_y < frame_bottom);
