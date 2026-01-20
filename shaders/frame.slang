@@ -145,8 +145,8 @@ void main()
     full_pad_top = floor((config.OutputSize.y - scaled_full_height) * 0.5);
     
     // Calculate scaled active region position
-    active_left_scaled = full_pad_left + floor((scaled_full_width - config.OriginalSize.x * h_scale) * 0.5);
-    active_top_scaled = full_pad_top + floor((scaled_full_height - config.OriginalSize.y * v_scale) * 0.5);
+    active_left_scaled = full_pad_left + floor((scaled_full_width - config.SourceSize.x * h_scale) * 0.5);
+    active_top_scaled = full_pad_top + floor((scaled_full_height - config.SourceSize.y * v_scale) * 0.5);
 }
 
 #pragma stage fragment
@@ -210,8 +210,8 @@ void main()
     float frame_bottom = full_pad_top + scaled_full_height;
     
     // Boundaries of active region in output space
-    float active_right = active_left_scaled + config.OriginalSize.x * h_scale;
-    float active_bottom = active_top_scaled + config.OriginalSize.y * v_scale;
+    float active_right = active_left_scaled + config.SourceSize.x * h_scale;
+    float active_bottom = active_top_scaled + config.SourceSize.y * v_scale;
     
     bool in_frame = (output_x >= frame_left && output_x < frame_right &&
                      output_y >= frame_top && output_y < frame_bottom);
