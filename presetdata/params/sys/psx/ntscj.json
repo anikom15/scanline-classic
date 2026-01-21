@@ -1,0 +1,6 @@
+{
+    "parameters" : {
+        "ENCODER_SETUP" : 0.0,
+        "PIXEL_CLOCK" : 15.0
+    }
+}

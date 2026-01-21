@@ -1,0 +1,24 @@
+{
+  "filename" : "psx-svideo",
+  "type" : "professional",
+  "title" : "PlayStation S-Video shader set",
+  "description" : "S-Video was available on all PSX models.",
+  "pipeline_root" : "../../pipelines",
+  "pipelines" : [
+    "misc/menu-svideo.json",
+    "misc/frame-tv525.json",
+    "sys/svideo.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_root" : "../../params",
+  "parameter_sets" : [
+    "sys/psx/base.json",
+    "sys/psx/ntscj.json",
+    "disp/ntscj.json",
+    "disp/trinitron.json",
+    "disp/tvl-600.json"
+  ],
+  "parameter_overrides" : {
+  }
+}
