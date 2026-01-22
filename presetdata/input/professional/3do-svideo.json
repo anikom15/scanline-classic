@@ -6,9 +6,9 @@
   "pipeline_root" : "../../pipelines",
   "pipelines" : [
     "sys/3do-special.json",
-    "misc/menu-svideo-direct.json",
-    "misc/frame-tv525.json",
-    "sys/svideo-raw.json",
+    "misc/menu-digital-video.json",
+    "misc/frame-digital-780x525.json",
+    "sys/digital-svideo.json",
     "disp/crt.json",
     "misc/post.json"
   ],
