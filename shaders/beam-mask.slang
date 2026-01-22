@@ -604,7 +604,7 @@ layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
 layout(location = 1) out float maskAR;
-layout(location = 2) out TimebaseConfig tb;
+layout(location = 2) out FrameGeometry geom;
 
 void main()
 {
@@ -617,12 +617,9 @@ void main()
         : (ASPECT < 2.5) ? (5.0 / 4.0)
         : (16.0 / 10.0);
 
-    tb = compute_timebase(
+    geom = compute_frame_geometry(
         config.FrameCount,
-        vTexCoord,
         config.OriginalSize.xy,
-        config.OutputSize.xy,
-        config.FrameSize.xy,
         config.OriginalFPS,
         SC_FREQ_MODE,
         SC_FREQ,
@@ -632,22 +629,21 @@ void main()
         H_FREQ,
         V_FREQ_MODE,
         V_FREQ,
-        H_BLANK_FUZZ,
-        SHORTEN_ODD_FIELD_TIME);
+        H_BLANK_FUZZ);
 }
 
 #pragma stage fragment
 layout(location = 0) in vec2 vTexCoord;
 layout(location = 1) in float maskAR;
-layout(location = 2) in TimebaseConfig tb;
+layout(location = 2) in FrameGeometry geom;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 1) uniform sampler2D Source;
 
 void main()
 {
-    // Horizontal timing from timebase
-    float total_h_pixels = tb.h_pixels;
-    float total_v_lines = tb.is_interlaced < 0.5 ? tb.v_lines_per_field : tb.v_lines_per_frame;
+    // Horizontal timing from frame geometry
+    float total_h_pixels = geom.h_pixels;
+    float total_v_lines = geom.is_interlaced < 0.5 ? geom.v_lines_per_field : geom.v_lines_per_frame;
 
     // Aspect ratios for full video
     float original_dar = config.OriginalAspect;

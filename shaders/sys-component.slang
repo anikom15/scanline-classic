@@ -2,7 +2,7 @@
 
 // Filename: sys-component.slang
 //
-// Copyright (C) 2023 W. M. Martinez
+// Copyright (C) 2025-2026 W. M. Martinez
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -22,7 +22,7 @@
 // Input: Voltage (RGB color space)
 // Output: Voltage (YC color space)
 //
-// Encodes linear RGB into a chosen luma-chroma color space (YIQ / YPbPr / YUV / YDbDr / YCbCr),
+// Encodes RGB into a chosen luma-chroma color space (YIQ / YPbPr / YUV / YDbDr / YCbCr),
 // then optionally bandlimits each component with a horizontal Gaussian (lobe technique) to
 // approximate analog system bandwidth. Component-wise SYS_GAIN/SYS_BIAS are applied after filtering.
 //
@@ -37,11 +37,10 @@
 
 #include "common.inc"
 #include "color.inc"
-#include "bandlimit.inc"
 #include "modulation.inc"
 
-#include "menus/parameters/sys-timing.inc"
 #include "menus/parameters/sys-component.inc"
+#include "menus/parameters/sys-timing.inc"
 
 #pragma name SysComponent
 #pragma format R16G16B16A16_SFLOAT
@@ -70,15 +69,15 @@ layout(push_constant) uniform Push
     float H_BLANK_FUZZ;
 
     // Color model selection
-    float YC_MODEL; // 0=YIQ, 1=YPbPr, 2=YUV, 3=YDbDr, 4=YCbCr
+    float YC_MODEL;
 
     // Per-component analog bandlimit (MHz/dB), mapped via sigma601
-    float SYS_BANDWIDTH_Y;     // default 6.75 MHz
-    float SYS_BANDWIDTH_U;     // default 1.30 MHz (or Db)
-    float SYS_BANDWIDTH_V;     // default 1.30 MHz (or Dr)
-    float SYS_CUTOFF_ATTEN_Y;  // default 3 dB
-    float SYS_CUTOFF_ATTEN_U;  // default 2 dB
-    float SYS_CUTOFF_ATTEN_V;  // default 2 dB
+    float SYS_BANDWIDTH_Y;
+    float SYS_BANDWIDTH_U;
+    float SYS_BANDWIDTH_V;
+    float SYS_CUTOFF_ATTEN_Y;
+    float SYS_CUTOFF_ATTEN_U;
+    float SYS_CUTOFF_ATTEN_V;
 } config;
 
 // Short-hand macros
@@ -102,8 +101,6 @@ layout(push_constant) uniform Push
 #define SYS_CUTOFF_ATTEN_Y config.SYS_CUTOFF_ATTEN_Y
 #define SYS_CUTOFF_ATTEN_U config.SYS_CUTOFF_ATTEN_U
 #define SYS_CUTOFF_ATTEN_V config.SYS_CUTOFF_ATTEN_V
-
-
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
@@ -229,12 +226,6 @@ void main()
         FragColor = vec4(yc, 1.0);
         return;
     }
-
-    // Horizontal Gaussian convolution in the chosen luma-chroma space.
-    // Follows a lobe technique similar to bandlimit_convolve_gaussian_x,
-    // but transforms each sample to the selected color model and applies
-    // component-wise weights/sigmas.
-    const float THRESHOLD = 1.0 / 255.0;  // 8-bit LSB threshold
 
     // Horizontal coordinate handling using nearest pixel center (no vertical shift)
     vec2 UV  = vTexCoord * config.OutputSize.xy;

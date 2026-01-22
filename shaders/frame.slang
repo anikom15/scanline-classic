@@ -50,7 +50,6 @@ layout(push_constant) uniform Push
     float FRAME_VIZ_PADDING;
     float V_FREQ_MODE;
     float V_FREQ;
-    float SHORTEN_ODD_FIELD_TIME;
     float SC_FREQ_MODE;
     float SC_FREQ;
     float PIXEL_CLOCK_MODE;
@@ -67,7 +66,6 @@ layout(push_constant) uniform Push
 #define FRAME_VIZ_PADDING config.FRAME_VIZ_PADDING
 #define V_FREQ_MODE config.V_FREQ_MODE
 #define V_FREQ config.V_FREQ
-#define SHORTEN_ODD_FIELD_TIME config.SHORTEN_ODD_FIELD_TIME
 #define SC_FREQ_MODE config.SC_FREQ_MODE
 #define SC_FREQ config.SC_FREQ
 #define PIXEL_CLOCK_MODE config.PIXEL_CLOCK_MODE
@@ -104,13 +102,10 @@ void main()
     gl_Position = global.MVP * Position;
     vTexCoord = TexCoord;
 
-    // Compute timebase configuration
-    TimebaseConfig tb = compute_timebase(
+    // Compute only the frame geometry we need
+    FrameGeometry geom = compute_frame_geometry(
         config.FrameCount,
-        vTexCoord,
         config.SourceSize.xy,
-        config.OutputSize.xy,
-        config.OutputSize.xy,
         config.OriginalFPS,
         SC_FREQ_MODE,
         SC_FREQ,
@@ -120,17 +115,16 @@ void main()
         H_FREQ,
         V_FREQ_MODE,
         V_FREQ,
-        H_BLANK_FUZZ,
-        SHORTEN_ODD_FIELD_TIME);
+        H_BLANK_FUZZ);
 
     // Full video dimensions (with blanking) at actual pixel clock rate
-    float full_width = tb.h_pixels;
-    float full_height = (tb.is_interlaced < 0.5) ? tb.v_lines_per_field : tb.v_lines_per_frame;
+    float full_width = geom.h_pixels;
+    float full_height = (geom.is_interlaced < 0.5) ? geom.v_lines_per_field : geom.v_lines_per_frame;
     
     full_width_int = floor(full_width);
     full_height_int = floor(full_height);
-    is_interlaced = tb.is_interlaced;
-    field = tb.field;
+    is_interlaced = geom.is_interlaced;
+    field = geom.field;
     
     // Calculate integer scale factors for each dimension
     h_scale = max(floor(config.OutputSize.x / full_width), 1.0);

@@ -8,7 +8,7 @@
     "sys/3do-special.json",
     "misc/menu-svideo-direct.json",
     "misc/frame-tv525.json",
-    "sys/direct-svideo.json",
+    "sys/svideo-raw.json",
     "disp/crt.json",
     "misc/post.json"
   ],

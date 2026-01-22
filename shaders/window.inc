@@ -84,3 +84,58 @@ float sinc_bandpass_bh4(float n, float fc_upper, float fc_lower, float N)
     float window = blackman_harris_4term(n, N);
     return bandpass_sinc * window;
 }
+
+// Modified Bessel function I0(x) approximation
+// Accurate to ~1e-7 for practical range |x| <= 20
+// Uses polynomial approximation for efficient GPU computation
+float kaiser_i0(float x)
+{
+    float ax = abs(x);
+    if (ax < 3.75) {
+        // Polynomial approximation for small arguments
+        float y = sq(x / 3.75);
+        return 1.0 + y * (3.5156229 + y * (3.0899424 + y * (1.2067492
+            + y * (0.2659732 + y * (0.0360768 + y * 0.0045813)))));
+    } else {
+        // Asymptotic approximation for large arguments
+        float y = 3.75 / ax;
+        return (exp(ax) / sqrt(ax)) * (0.39894228 + y * (0.01328592
+            + y * (0.00225319 + y * (-0.00157565 + y * (0.00916281
+            + y * (-0.02057706 + y * (0.02635537 + y * (-0.01647633
+            + y * 0.00392377))))))));
+    }
+}
+
+// Kaiser window with tunable ripple parameter
+// beta: ripple control parameter (higher = more stopband rejection)
+// Common values:
+//   beta ≈ 5.0  → ~50 dB stopband, 0.3 dB passband ripple
+//   beta ≈ 5.87 → ~62 dB stopband, 0.2 dB passband ripple
+//   beta ≈ 8.6  → ~70 dB stopband
+//   beta ≈ 10.6 → ~92 dB stopband
+float kaiser(float n, float N, float beta)
+{
+    float Ne = max(N - 1.0, 1.0);
+    float k = n + 0.5 * Ne;        // center at (N-1)/2
+    float alpha = 2.0 * k / Ne - 1.0;
+    
+    // Normalized argument for I0: β√(1 - α²)
+    float arg = beta * sqrt(max(1.0 - sq(alpha), 0.0));
+    return kaiser_i0(arg) / kaiser_i0(beta);
+}
+
+// Windowed-sinc lowpass coefficient using Kaiser window
+// beta parameter controls stopband rejection:
+//   5.87 → ~62 dB stopband (recommended for upsampling)
+float sinc_lowpass_kaiser(float n, float fc_norm, float N, float beta)
+{
+    float sinc;
+    if (abs(n) < EPS) {
+        sinc = 2.0 * fc_norm;  // integral of ideal LP at n=0
+    } else {
+        float x = 2.0 * PI * fc_norm * n;
+        sinc = sin(x) / (PI * n);
+    }
+    float w = kaiser(n, N, beta);
+    return sinc * w;
+}

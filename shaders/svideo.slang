@@ -238,7 +238,7 @@ layout(location = 0) out vec2 vTexCoord;
 layout(location = 1) out vec3 sigma;
 layout(location = 2) out float c_gain;
 layout(location = 3) out float c_phase;
-layout(location = 4) out TimebaseConfig tb;
+layout(location = 4) out CarrierPhaseConfig carrier;
 
 void main()
 {
@@ -246,7 +246,7 @@ void main()
     vTexCoord = TexCoord;
 
     // Precompute timebase config for fragment stage
-    tb = compute_timebase(
+    TimebaseConfig tb = compute_timebase(
         config.FrameCount,
         vTexCoord,
         config.OriginalSize.xy,
@@ -272,6 +272,7 @@ void main()
     // Precompute user color gain/phase
     c_gain = 2.0 * USER_COLOR / 100.0;
     c_phase = PI * USER_TINT / 180.0;
+    carrier = extract_carrier_phase(tb);
 }
 
 #pragma stage fragment
@@ -279,7 +280,7 @@ layout(location = 0) in vec2 vTexCoord;
 layout(location = 1) in vec3 sigma;
 layout(location = 2) in float c_gain;
 layout(location = 3) in float c_phase;
-layout(location = 4) in TimebaseConfig tb;
+layout(location = 4) in CarrierPhaseConfig carrier;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
@@ -306,15 +307,15 @@ void main()
     vec3 wsum  = vec3(0.0);
 
     // Center sample
-    float line = floor(UV.y) / tb.pixels_per_line;
-    float t0 = line / tb.h_freq_hz + baseCenter * tb.pixel_time_px;
+    float line = floor(UV.y) / carrier.pixels_per_line;
+    float t0 = line / carrier.h_freq_hz + baseCenter * carrier.pixel_time_px;
 
     // PAL V-axis alternation: simply invert V on odd lines
     float pal_v_sign = 1.0 - 2.0 * floor(mod(line, 2.0)) * PAL;
 
     vec3 pixel0 = texture(Source, Tex).rgb;
-    float phase_inc_px = 2.0 * PI * tb.sc_freq_hz * tb.pixel_time_px;
-    float phase0 = compute_carrier_phase(t0, tb.sc_freq_hz, tb.field_phase);
+    float phase_inc_px = 2.0 * PI * carrier.sc_freq_hz * carrier.pixel_time_px;
+    float phase0 = compute_carrier_phase(t0, carrier.sc_freq_hz, carrier.field_phase);
     float phase0_user = normalize_phase(phase0 + c_phase);
     phase0 = normalize_phase(phase0);
     vec2 carrier0 = sincos_phase_raw(phase0);
