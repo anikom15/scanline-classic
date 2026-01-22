@@ -86,6 +86,51 @@ float compute_carrier_phase(float t, float sc_freq_hz, float field_phase) {
     return normalize_phase(phase);
 }
 
+// Compute odd-field time adjustment for precise t00 incorporation
+// This centralizes the odd-field logic so t00 can fully encapsulate all timing
+float compute_odd_field_time_adjustment(
+    float field, float shorten_odd_field_time,
+    float pixel_time, float original_width,
+    bool is_ntsc, bool is_interlaced)
+{
+    if (shorten_odd_field_time < 0.5)
+        return 0.0;
+    
+    float odd_time_adjust = original_width / 256.0 * pixel_time;
+    float adjustment = 0.0;
+    
+    if (is_ntsc) {
+        // NTSC: Apply shortening only for progressive scan
+        if (!is_interlaced) {
+            adjustment = -odd_time_adjust;
+        }
+    } else {
+        // PAL: Different behavior based on scan type
+        if (is_interlaced) {
+            // Interlaced PAL: lengthen odd field
+            adjustment = odd_time_adjust;
+        }
+    }
+    
+    return ceil(field / 2.0) * adjustment;
+}
+
+// Discrete carrier phase: start from a precomputed base fractional cycle at t00
+// (top-left pixel center within the field), then step by per-pixel and per-line
+// cycle increments. Field progression and phase offset handled via field_phase parameter.
+float compute_carrier_phase_discrete(
+    float base_cycles,        // fract(sc_freq_hz * t00) where t00 is within-field time only
+    float cycles_per_pixel,   // sc_freq_hz * pixel_time_px
+    float cycles_per_line,    // sc_freq_hz / h_freq_hz
+    float pixel_x,            // pixel index (use center: n + 0.5)
+    float line,               // line index in output space
+    float field_phase)        // field progression and timing adjustments as phase
+{
+    float fractional_cycles = fract(base_cycles + pixel_x * cycles_per_pixel + line * cycles_per_line);
+    float phase = 2.0 * PI * fractional_cycles + field_phase;
+    return normalize_phase(phase);
+}
+
 // ============================================================================
 // Helper functions for modular compute_timebase
 // ============================================================================
@@ -415,22 +460,27 @@ TimebaseConfig compute_timebase(
 
     // === Frequency derivation ===
     int standard;
-    compute_subcarrier_freq(sc_freq_mode, sc_freq_custom_mhz, core_refresh_hz,
-                            config.sc_freq_hz, standard);
+    compute_subcarrier_freq(
+        sc_freq_mode, sc_freq_custom_mhz, core_refresh_hz,
+        config.sc_freq_hz, standard);
 
-    float pixel_clock_hz = compute_pixel_clock(pixel_clock_mode, pixel_clock_mhz,
-                                               config.sc_freq_hz);
+    float pixel_clock_hz = compute_pixel_clock(
+        pixel_clock_mode, pixel_clock_mhz,
+        config.sc_freq_hz);
 
-    compute_h_freq(h_freq_mode, standard, h_freq_custom_khz, pixel_clock_hz,
-                   core_refresh_hz, config.h_freq_hz);
+    compute_h_freq(
+        h_freq_mode, standard, h_freq_custom_khz, pixel_clock_hz,
+        core_refresh_hz, config.h_freq_hz);
 
     // === Vertical line and scan mode derivation ===
-    config.v_lines_per_field = compute_v_lines_per_field(v_freq_mode, config.h_freq_hz,
-                                                         core_refresh_hz, custom_v_freq);
+    config.v_lines_per_field = compute_v_lines_per_field(
+        v_freq_mode, config.h_freq_hz,
+        core_refresh_hz, custom_v_freq);
 
     bool is_interlaced, is_ntsc, is_pal;
-    detect_scan_mode(original_size.y, config.v_lines_per_field, core_refresh_hz,
-                     is_interlaced, is_ntsc, is_pal);
+    detect_scan_mode(
+        original_size.y, config.v_lines_per_field, core_refresh_hz,
+        is_interlaced, is_ntsc, is_pal);
     config.is_interlaced = is_interlaced ? 1.0 : 0.0;
 
     // Calculate lines per frame
@@ -442,24 +492,28 @@ TimebaseConfig compute_timebase(
     }
 
     // === Timing derivation ===
-    float v_freq = compute_v_freq(v_freq_mode, config.h_freq_hz,
-                                   config.v_lines_per_field, custom_v_freq);
+    float v_freq = compute_v_freq(
+        v_freq_mode, config.h_freq_hz,
+        config.v_lines_per_field, custom_v_freq);
 
     float total_pixels;
-    compute_h_timing(pixel_clock_hz, config.h_freq_hz, h_blank_fuzz,
-                     original_size.x, total_pixels, config.pixel_time);
+    compute_h_timing(
+        pixel_clock_hz, config.h_freq_hz, h_blank_fuzz,
+        original_size.x, total_pixels, config.pixel_time);
 
     // === Field phase computation ===
-    config.field_phase = compute_field_phase(config.field, config.h_freq_hz,
-                                            config.v_lines_per_field, v_freq,
-                                            config.sc_freq_hz, is_ntsc, is_interlaced,
-                                            config.pixel_time, original_size.x,
-                                            shorten_odd_field_time);
+    config.field_phase = compute_field_phase(
+        config.field, config.h_freq_hz,
+        config.v_lines_per_field, v_freq,
+        config.sc_freq_hz, is_ntsc, is_interlaced,
+        config.pixel_time, original_size.x,
+        shorten_odd_field_time);
 
     // === Scale factor derivation ===
     float h_scale, v_scale;
-    compute_scale_factors(frame_size.x, frame_size.y, output_size.x, output_size.y,
-                         total_pixels, config.v_lines_per_field, h_scale, v_scale);
+    compute_scale_factors(
+        frame_size.x, frame_size.y, output_size.x, output_size.y,
+        total_pixels, config.v_lines_per_field, h_scale, v_scale);
 
     // Per-output-pixel time (cycles-per-pixel scaling)
     config.pixel_time_px = config.pixel_time / h_scale;

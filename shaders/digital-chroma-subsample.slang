@@ -70,12 +70,11 @@ void main()
 layout(location = 0) in vec2 vTexCoord;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
-layout(set = 0, binding = 3) uniform sampler2D SourceRGB;
 
 void main()
 {
     // Bypass check
-    if (CHROMA_SUBSAMPLE_BYPASS >= 1.0) {
+    if (CHROMA_SUBSAMPLE_BYPASS > 0.5) {
         FragColor = texture(Source, vTexCoord);
         return;
     }
@@ -85,10 +84,10 @@ void main()
     
     // Auto mode: choose based on color model
     if (mode < 0.5) {
-        if (YCBCR_MODEL < 1.5) {
-            mode = 1.0; // 4:2:2 for SMPTE/EBU
+        if (YCBCR_MODEL < 0.5) {
+            mode = 2.0; // 4:2:2 for SMPTE/EBU
         } else {
-            mode = 2.0; // 4:2:0 for Rec. 709
+            mode = 3.0; // 4:2:0 for Rec. 709
         }
     }
 
@@ -109,13 +108,13 @@ void main()
     vec2 chroma_pixel = output_pixel;
     chroma_pixel.x = floor(output_pixel.x * 0.5) * 2.0 + 0.5; // Horizontal 2x subsampling
     
-    if (mode > 1.5) {
+    if (mode > 2.5) {
         chroma_pixel.y = floor(output_pixel.y * 0.5) * 2.0 + 0.5; // Vertical 2x subsampling for 4:2:0
     }
     
     // Determine sampling neighborhood size
     int x_samples = 2;
-    int y_samples = (mode > 1.5) ? 2 : 1;
+    int y_samples = (mode > 2.5) ? 2 : 1;
     
     // Average chroma samples from neighborhood
     vec2 chroma = vec2(0.0);

@@ -30,7 +30,6 @@
 
 #include "common.inc"
 #include "color.inc"
-#include "bandlimit.inc"
 #include "modulation.inc"
 
 #include "menus/parameters/user-video.inc"
@@ -83,6 +82,7 @@ layout(push_constant) uniform Push
 #define USER_COLOR config.USER_COLOR
 #define USER_TINT config.USER_TINT
 #define USER_MONOCHROME config.USER_MONOCHROME
+
 #define DISPLAY_BANDWIDTH_Y config.DISPLAY_BANDWIDTH_Y
 #define DISPLAY_BANDWIDTH_C config.DISPLAY_BANDWIDTH_C
 #define DISPLAY_CUTOFF_ATTEN_Y config.DISPLAY_CUTOFF_ATTEN_Y
@@ -208,44 +208,45 @@ void main()
     wsum  += vec3(wy0, wc0, wc0);
 
     // Symmetric lobes with early exit
-    const int MAX_RADIUS = 16;
-    for (int n = 1; n <= MAX_RADIUS; ++n) {
-        float nf = float(n);
-        float wy_r = gaussian(nf - Ax, sigma.x);
-        float wy_l = gaussian(nf + Ax, sigma.x);
-        float wc_r = gaussian(nf - Ax, sigma.y);
-        float wc_l = gaussian(nf + Ax, sigma.y);
+    if (SVIDEO_FILTER_BYPASS < 1.0) {
+        for (int n = 1; n <= 16; ++n) {
+            float nf = float(n);
+            float wy_r = gaussian(nf - Ax, sigma.x);
+            float wy_l = gaussian(nf + Ax, sigma.x);
+            float wc_r = gaussian(nf - Ax, sigma.y);
+            float wc_l = gaussian(nf + Ax, sigma.y);
 
-        if (wy_r < FILTER_THRESHOLD && wy_l < FILTER_THRESHOLD &&
-            wc_r < FILTER_THRESHOLD && wc_l < FILTER_THRESHOLD)
-            break;
+            if (wy_r < FILTER_THRESHOLD && wy_l < FILTER_THRESHOLD &&
+                wc_r < FILTER_THRESHOLD && wc_l < FILTER_THRESHOLD)
+                break;
 
-        // Right tap
-        vec3 pixelR = texture(Source, Tex + nf * dx).rgb;
-        float phaseR = normalize_phase(phase0 + phase_inc_px * nf);
-        float phaseR_user = normalize_phase(phase0_user + phase_inc_px * nf);
-        vec2 carrierR = sincos_phase_raw(phaseR);
-        vec2 carrierR_user = sincos_phase_raw(phaseR_user);
-        float chroma_modR = pixelR.g;
-        float chroma_uR = chroma_modR * 2.0 * carrierR_user.x;
-        float chroma_vR = chroma_modR * 2.0 * carrierR_user.y * pal_v_sign;
+            // Right tap
+            vec3 pixelR = texture(Source, Tex + nf * dx).rgb;
+            float phaseR = normalize_phase(phase0 + phase_inc_px * nf);
+            float phaseR_user = normalize_phase(phase0_user + phase_inc_px * nf);
+            vec2 carrierR = sincos_phase_raw(phaseR);
+            vec2 carrierR_user = sincos_phase_raw(phaseR_user);
+            float chroma_modR = pixelR.g;
+            float chroma_uR = chroma_modR * 2.0 * carrierR_user.x;
+            float chroma_vR = chroma_modR * 2.0 * carrierR_user.y * pal_v_sign;
 
-        // Left tap
-        vec3 pixelL = texture(Source, Tex - nf * dx).rgb;
-        float phaseL = normalize_phase(phase0 - phase_inc_px * nf);
-        float phaseL_user = normalize_phase(phase0_user - phase_inc_px * nf);
-        vec2 carrierL = sincos_phase_raw(phaseL);
-        vec2 carrierL_user = sincos_phase_raw(phaseL_user);
-        float chroma_modL = pixelL.g;
-        float chroma_uL = chroma_modL * 2.0 * carrierL_user.x;
-        float chroma_vL = chroma_modL * 2.0 * carrierL_user.y * pal_v_sign;
+            // Left tap
+            vec3 pixelL = texture(Source, Tex - nf * dx).rgb;
+            float phaseL = normalize_phase(phase0 - phase_inc_px * nf);
+            float phaseL_user = normalize_phase(phase0_user - phase_inc_px * nf);
+            vec2 carrierL = sincos_phase_raw(phaseL);
+            vec2 carrierL_user = sincos_phase_raw(phaseL_user);
+            float chroma_modL = pixelL.g;
+            float chroma_uL = chroma_modL * 2.0 * carrierL_user.x;
+            float chroma_vL = chroma_modL * 2.0 * carrierL_user.y * pal_v_sign;
 
-        accum.x += wy_r * pixelR.r + wy_l * pixelL.r;
-        accum.y += wc_r * chroma_uR + wc_l * chroma_uL;
-        accum.z += wc_r * chroma_vR + wc_l * chroma_vL;
-        wsum.x  += wy_r + wy_l;
-        wsum.y  += wc_r + wc_l;
-        wsum.z  += wc_r + wc_l;
+            accum.x += wy_r * pixelR.r + wy_l * pixelL.r;
+            accum.y += wc_r * chroma_uR + wc_l * chroma_uL;
+            accum.z += wc_r * chroma_vR + wc_l * chroma_vL;
+            wsum.x  += wy_r + wy_l;
+            wsum.y  += wc_r + wc_l;
+            wsum.z  += wc_r + wc_l;
+        }
     }
 
     vec3 yc = accum / max(wsum, vec3(EPS));

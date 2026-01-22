@@ -8,7 +8,6 @@
 
 #pragma DAC_HEADER " —— System: Digital to Analog Converter —— " 0.0 0.0 0.0 0.0
 
-#pragma parameter ENCODER_SETUP "Setup (off, on)" 1.0 0.0 1.0 1.0
 #pragma parameter VIDEO_MODE "Output mode (Composite, S-Video, Component)" 0.0 0.0 2.0 1.0
 
 #pragma parameter SYS_BIAS_Y "Offset Y (IRE)" 0.0 -30.0 30.0 0.1

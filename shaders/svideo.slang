@@ -79,7 +79,7 @@
           U′_sample = 2 · chroma · carrier.x
           V′_sample = 2 · chroma · carrier.y
       5) Accumulate symmetric Gaussian lobes horizontally with σY/σC.
-        Early exit once both weights fall below THRESHOLD.
+        Early exit once both weights fall below FILTER_THRESHOLD.
 
     Output mapping
     --------------
@@ -97,7 +97,7 @@
         • a single “sincos” pair (sincos_phase) per sample
       This avoids large-argument trig loss and removes repeated mod() calls.
     - Gaussian accumulation does up to 32 taps per side with early exit. σY/σC
-      and THRESHOLD control cost/quality.
+      and FILTER_THRESHOLD control cost/quality.
 
     Parameters (UI)
     ---------------
@@ -133,7 +133,7 @@
           matching composite.slang’s behavior.
         • Sampling uses OutputSize to locate the current pixel, then converts to Source space.
     - Threshold:
-        • THRESHOLD = 1/510 controls early exit on both Y/C lobes.
+        • FILTER_THRESHOLD = 1/510 controls early exit on both Y/C lobes.
     - Odd field adjust:
         • odd_time_adjust = (OriginalSize.x / 256) · pixel_time; scaled to approximate
           half-line shortening for interlaced fields across common widths.
@@ -291,8 +291,6 @@ void main()
         return;
     }
 
-    const float THRESHOLD = 1.0 / 255.0;
-
     // Horizontal coordinate handling using nearest pixel center (keep Y center)
     vec2 UV = vTexCoord * config.OutputSize.xy;
     float baseIndex = floor(UV.x);         // nearest pixel index
@@ -359,7 +357,7 @@ void main()
             float wy_l = gaussian(nf + Ax, sigma.x);
             float wc_r = gaussian(nf - Ax, sigma.y);
             float wc_l = gaussian(nf + Ax, sigma.y);
-            if (wy_r < THRESHOLD && wy_l < THRESHOLD && wc_r < THRESHOLD && wc_l < THRESHOLD)
+            if (wy_r < FILTER_THRESHOLD && wy_l < FILTER_THRESHOLD && wc_r < FILTER_THRESHOLD && wc_l < FILTER_THRESHOLD)
                 break;
 
             vec3 pixelR = texture(Source, Tex + nf * dx).rgb;

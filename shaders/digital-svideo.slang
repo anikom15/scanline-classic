@@ -33,6 +33,7 @@
 #include "modulation.inc"
 
 #include "menus/parameters/sys-timing.inc"
+#include "menus/parameters/sys-encode.inc"
 
 #pragma name DigitalCompositeMod
 #pragma format A2B10G10R10_UNORM_PACK32
@@ -57,6 +58,7 @@ layout(push_constant) uniform Push
     float V_FREQ;
     float H_BLANK_FUZZ;
     float SHORTEN_ODD_FIELD_TIME;
+    float PAL;
 } config;
 
 #define DIGITAL_COMPOSITE_MOD_BYPASS config.DIGITAL_COMPOSITE_MOD_BYPASS
@@ -70,6 +72,7 @@ layout(push_constant) uniform Push
 #define V_FREQ config.V_FREQ
 #define H_BLANK_FUZZ config.H_BLANK_FUZZ
 #define SHORTEN_ODD_FIELD_TIME config.SHORTEN_ODD_FIELD_TIME
+#define PAL config.PAL
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
@@ -80,10 +83,11 @@ layout(std140, set = 0, binding = 0) uniform UBO
 layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
-layout(location = 1) out float line_phase_step;
-layout(location = 2) out float field_phase_offset;
-layout(location = 3) out float pal_sign_flag;
-layout(location = 4) out float phase_per_pixel;
+layout(location = 1) out float base_cycles;
+layout(location = 2) out float cycles_per_pixel;
+layout(location = 3) out float cycles_per_line;
+layout(location = 4) out float field_phase_offset;
+layout(location = 5) out float pixels_per_line;
 
 void main()
 {
@@ -110,32 +114,28 @@ void main()
 
     CarrierPhaseConfig tb = extract_carrier_phase(tb_full);
 
-    // Horizontal scale factor derived from timebase timing
-    float h_scale = tb_full.pixel_time / tb.pixel_time_px;
-    float scaled_total_pixels = tb_full.h_pixels * h_scale;
-    float h_offset = (config.OutputSize.x - scaled_total_pixels) * 0.5;
+    // Derive within-field time (matching display-svideo decoder)
+    // Do not include field progression; that's handled via field_phase
+    float field_time = tb_full.v_lines_per_field / tb.h_freq_hz;
+    float t00 = 0.5 * tb.pixel_time_px;
 
-    // Phase increment per output pixel (radians)
-    phase_per_pixel = 2.0 * PI * tb.sc_freq_hz * tb.pixel_time_px;
+    // Precompute fractional cycle at top-left pixel center within field
+    base_cycles = 0.0;
+    cycles_per_pixel = tb.sc_freq_hz * tb.pixel_time_px;
+    cycles_per_line = tb.sc_freq_hz / tb.h_freq_hz;
 
-    // Field phase offset includes centering
-    field_phase_offset = tb.field_phase + h_offset * phase_per_pixel;
-
-    // Line-to-line phase advance from fractional cycles-per-line
-    float cycles_per_line = tb.sc_freq_hz / tb.h_freq_hz;
-    line_phase_step = 2.0 * PI * fract(cycles_per_line);
-
-    // PAL alternation flag: PAL (>4 MHz) flips V-axis chroma every line
-    pal_sign_flag = step(4.0e6, tb.sc_freq_hz);
+    field_phase_offset = tb.field_phase;
+    pixels_per_line = tb.pixels_per_line;
 }
 
 #pragma stage fragment
 
 layout(location = 0) in vec2 vTexCoord;
-layout(location = 1) in float line_phase_step;
-layout(location = 2) in float field_phase_offset;
-layout(location = 3) in float pal_sign_flag;
-layout(location = 4) in float phase_per_pixel;
+layout(location = 1) in float base_cycles;
+layout(location = 2) in float cycles_per_pixel;
+layout(location = 3) in float cycles_per_line;
+layout(location = 4) in float field_phase_offset;
+layout(location = 5) in float pixels_per_line;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
@@ -148,8 +148,8 @@ void main()
 
     // Pixel and line positions
     vec2 UV = vTexCoord * config.OutputSize.xy;
-    float pixel_x = floor(UV.x);
-    float line = floor(UV.y);
+    float pixel_x = floor(UV.x) + 0.5;  // Use pixel center for phase alignment with decoder
+    float line = floor(UV.y) / pixels_per_line;
 
     // Sample input YCbCr using scaled pixel coordinate
     vec3 ycbcr = texture(Source, vTexCoord).rgb;
@@ -157,16 +157,18 @@ void main()
     // Adjust chroma to signed range
     ycbcr.gb -= vec2(0.5);
 
-    // Phase accumulation per pixel within scaled range
-    float line_phase = line * line_phase_step;
-    
-    // Phase calculation: starts at 0 for top-left (pixel_x=0)
-    // Includes line phase, field offset, and initial offset
-    float phase = mod(pixel_x * phase_per_pixel + line_phase + field_phase_offset + PI, 2.0 * PI) - PI;
+    // Phase via discrete carrier helper using within-field t00 plus field_phase offset
+    float phase = compute_carrier_phase_discrete(
+        base_cycles,
+        cycles_per_pixel,
+        cycles_per_line,
+        pixel_x,
+        line,
+        field_phase_offset);
 
     // Carrier and PAL V-axis alternation
     vec2 carrier = sincos_phase_raw(phase);
-    float pal_sign = 1.0 - 2.0 * mod(line, 2.0) * pal_sign_flag;
+    float pal_sign = 1.0 - 2.0 * mod(line, 2.0) * PAL;
 
     // Modulate Cb/Cr onto subcarrier (Cb→sin, Cr→cos with PAL alternation)
     float chroma = ycbcr.g * carrier.x + pal_sign * ycbcr.b * carrier.y;

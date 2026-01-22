@@ -40,6 +40,7 @@
 #include "parameters/phosphor.inc"
 #include "parameters/limiter.inc"
 #include "parameters/sys-timing.inc"
+#include "parameters/sys-encode.inc"
 #include "parameters/digital-component.inc"
 #include "parameters/debug-common.inc"
 

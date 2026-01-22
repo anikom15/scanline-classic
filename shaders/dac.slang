@@ -29,6 +29,7 @@
 #include "common.inc"
 
 #include "menus/parameters/digital-component.inc"
+#include "menus/parameters/sys-encode.inc"
 
 #pragma name DAC
 #pragma format R16G16B16A16_SFLOAT
@@ -107,18 +108,18 @@ layout(set = 0, binding = 2) uniform sampler2D Source;
 
 void main()
 {
-    vec3 input = texture(Source, vTexCoord).rgb;
+    vec3 color = texture(Source, vTexCoord).rgb;
 
     if (DAC_BYPASS > 0.5) {
-        FragColor = vec4(input, 1.0);
+        FragColor = vec4(color, 1.0);
         return;
     }
 
     if (VIDEO_MODE > 1.5) {
         // Component mode: adjust Pb and Pr separately
-        float y = input.r;
-        float pb = input.g - 0.5; // Remove offset
-        float pr = input.b - 0.5; // Remove offset
+        float y = color.r;
+        float pb = color.g - 0.5; // Remove offset
+        float pr = color.b - 0.5; // Remove offset
 
         // Apply bias and gain
         y = gain.x * (y + bias.x);
@@ -131,8 +132,8 @@ void main()
 
     const float INV_SQRT2 = 0.70710678;
 
-    float y = input.r;
-    float c = (input.g - 0.5) / INV_SQRT2;  // Remove offset and restore gain
+    float y = color.r;
+    float c = (color.g - 0.5) / INV_SQRT2;  // Remove offset and restore gain
 
     // Apply encoder setup to luma if enabled
     if (ENCODER_SETUP > 0.5) {

@@ -32,7 +32,7 @@
 #include "menus/parameters/digital-component.inc"
 
 #pragma name DigitalYCFilter
-#pragma format R8G8B8A8_UNORM
+#pragma format A2B10G10R10_UNORM_PACK32
 
 #pragma parameter DIGITAL_YC_FILTER_BYPASS "Bypass digital YC filter" 0.0 0.0 1.0 1.0
 

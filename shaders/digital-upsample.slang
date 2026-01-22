@@ -56,6 +56,27 @@ layout(std140, set = 0, binding = 0) uniform UBO
     mat4 MVP;
 } global;
 
+// Helper functions for gamma correction
+vec3 to_linear(vec3 c) {
+    if (GAMMA_CORRECT_BLENDING < 0.5) {
+        return c; // No gamma correction
+    } else if (GAMMA_CORRECT_BLENDING < 1.5) {
+        return c * c; // Fast: square
+    } else {
+        return sdr_linear(c); // Accurate
+    }
+}
+
+vec3 to_gamma(vec3 c) {
+    if (GAMMA_CORRECT_BLENDING < 0.5) {
+        return c; // No gamma correction
+    } else if (GAMMA_CORRECT_BLENDING < 1.5) {
+        return sqrt(c); // Fast: sqrt
+    } else {
+        return sdr_gamma(c); // Accurate
+    }
+}
+
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
@@ -104,31 +125,10 @@ layout(location = 3) in vec2 taps;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
-// Helper functions for gamma correction
-vec3 to_linear(vec3 c) {
-    if (GAMMA_CORRECT_BLENDING < 0.5) {
-        return c; // No gamma correction
-    } else if (GAMMA_CORRECT_BLENDING < 1.5) {
-        return c * c; // Fast: square
-    } else {
-        return sdr_linear(c); // Accurate
-    }
-}
-
-vec3 to_gamma(vec3 c) {
-    if (GAMMA_CORRECT_BLENDING < 0.5) {
-        return c; // No gamma correction
-    } else if (GAMMA_CORRECT_BLENDING < 1.5) {
-        return sqrt(c); // Fast: sqrt
-    } else {
-        return sdr_gamma(c); // Accurate
-    }
-}
-
 void main()
 {
     // Bypass check
-    if (UPSAMPLE_BYPASS >= 1.0) {
+    if (UPSAMPLE_BYPASS > 0.5) {
         FragColor = texture(Source, vTexCoord);
         return;
     }
@@ -155,39 +155,39 @@ void main()
     float weight_sum = 0.0;
     
     int max_tap_half_x = int(floor(taps.x * 0.5));
-    int max_tap_half_y = int(floor(taps.y * 0.5));
-    
-    // Separable filtering: compute weights and accumulate
-    for (int dy = -max_tap_half_y; dy <= max_tap_half_y; dy++) {
-        float fy = float(dy) - frac.y;
-        float weight_y = sinc_lowpass_kaiser(fy, fc_norm.y, taps.y, KAISER_BETA);
-        
-        for (int dx = -max_tap_half_x; dx <= max_tap_half_x; dx++) {
-            float fx = float(dx) - frac.x;
-            float weight_x = sinc_lowpass_kaiser(fx, fc_norm.x, taps.x, KAISER_BETA);
-            
-            // 2D weight as product of separable 1D weights
-            float weight = weight_x * weight_y;
-            
-            // Skip negligible contributions for performance
-            if (abs(weight) < FILTER_THRESHOLD)
-                continue;
-            
-            vec2 sample_pos = src_center + vec2(float(dx), float(dy));
-            vec2 sample_coord = sample_pos * config.SourceSize.zw;
-            
-            // Clamp to valid texture coordinates
-            sample_coord = clamp(sample_coord, vec2(0.0), vec2(1.0));
-            
+
+    for (int dx = 0; dx < 32; ++dx) {
+        if (dx > max_tap_half_x)
+            break;
+
+        // Compute weights at +dx and -dx
+        float fx_pos = float(dx) - frac.x;
+        float fx_neg = float(-dx) - frac.x;
+        float weight_x_pos = sinc_lowpass_kaiser(fx_pos, fc_norm.x, taps.x, KAISER_BETA);
+        float weight_x_neg = (dx > 0) ? sinc_lowpass_kaiser(fx_neg, fc_norm.x, taps.x, KAISER_BETA) : 0.0;
+
+        // Sample 1: +dx
+        float weight = weight_x_pos;
+        if (abs(weight) >= FILTER_THRESHOLD) {
+            vec2 sample_pos = src_center + vec2(float(dx), 0.0);
+            vec2 sample_coord = clamp(sample_pos * config.SourceSize.zw, vec2(0.0), vec2(1.0));
             vec3 color = texture(Source, sample_coord).rgb;
-
-            // For RGB input, apply gamma correction if needed
-            if (UPSAMPLER_INPUT < 0.5) {
-                color = to_linear(color);
-            }
-
+            if (UPSAMPLER_INPUT < 0.5) color = to_linear(color);
             sum += color * weight;
             weight_sum += weight;
+        }
+
+        // Sample 2: -dx (if dx > 0)
+        if (dx > 0) {
+            weight = weight_x_neg;
+            if (abs(weight) >= FILTER_THRESHOLD) {
+                vec2 sample_pos = src_center + vec2(float(-dx), 0.0);
+                vec2 sample_coord = clamp(sample_pos * config.SourceSize.zw, vec2(0.0), vec2(1.0));
+                vec3 color = texture(Source, sample_coord).rgb;
+                if (UPSAMPLER_INPUT < 0.5) color = to_linear(color);
+                sum += color * weight;
+                weight_sum += weight;
+            }
         }
     }
     
