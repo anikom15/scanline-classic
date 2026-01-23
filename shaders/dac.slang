@@ -27,6 +27,7 @@
 // encoder setup pedestal to luma if enabled.
 
 #include "common.inc"
+#include "digital.inc"
 
 #include "menus/parameters/digital-component.inc"
 #include "menus/parameters/sys-encode.inc"
@@ -40,7 +41,11 @@ layout(push_constant) uniform Push
 {
     vec4 SourceSize;
     vec4 OutputSize;
+    uint FrameCount;
     float DAC_BYPASS;
+    float WORKING_BITS;
+    float DAC_BITS;
+    float DITHER;
     float ENCODER_SETUP;
     float VIDEO_MODE;
     float SYS_BIAS_Y;
@@ -52,6 +57,9 @@ layout(push_constant) uniform Push
 } config;
 
 #define DAC_BYPASS config.DAC_BYPASS
+#define WORKING_BITS config.WORKING_BITS
+#define DAC_BITS config.DAC_BITS
+#define DITHER config.DITHER
 #define ENCODER_SETUP config.ENCODER_SETUP
 #define VIDEO_MODE config.VIDEO_MODE
 #define SYS_BIAS_Y config.SYS_BIAS_Y
@@ -70,8 +78,8 @@ layout(std140, set = 0, binding = 0) uniform UBO
 layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
-layout(location = 1) out vec2 gain;
-layout(location = 2) out vec2 bias;
+layout(location = 1) out vec3 gain;
+layout(location = 2) out vec3 bias;
 
 void main()
 {
@@ -83,26 +91,20 @@ void main()
     float gain_u = pow(10.0, SYS_GAIN_U / 20.0);
     float gain_v = pow(10.0, SYS_GAIN_V / 20.0);
     
-    // For modulated chroma, average U and V gains
-    float gain_c = (gain_u + gain_v) * 0.5;
-    
-    gain = vec2(gain_y, gain_c);
+    gain = vec3(gain_y, gain_u, gain_v);
 
     // Convert IRE to voltage: bias = IRE * 10e-3
     float bias_y = SYS_BIAS_Y * 10e-3;
     float bias_u = SYS_BIAS_U * 10e-3;
     float bias_v = SYS_BIAS_V * 10e-3;
     
-    // For modulated chroma, average U and V biases
-    float bias_c = (bias_u + bias_v) * 0.5;
-    
-    bias = vec2(bias_y, bias_c);
+    bias = vec3(bias_y, bias_u, bias_v);
 }
 
 #pragma stage fragment
 layout(location = 0) in vec2 vTexCoord;
-layout(location = 1) in vec2 gain;
-layout(location = 2) in vec2 bias;
+layout(location = 1) in vec3 gain;
+layout(location = 2) in vec3 bias;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
@@ -115,25 +117,66 @@ void main()
         return;
     }
 
+    int bits = int(DAC_BITS + 0.5);
+    int working_bits = int(WORKING_BITS + 0.5);
+
     if (VIDEO_MODE > 1.5) {
-        // Component mode: adjust Pb and Pr separately
-        float y = color.r;
-        float pb = color.g - 0.5; // Remove offset
-        float pr = color.b - 0.5; // Remove offset
+        // Component mode: adjust Pb/Pr separately
+        vec3 ycbcr = color;
+
+        // Apply dithering before quantization
+        if (DITHER > 0.5) {
+            vec2 screen_coord = vTexCoord.xy * config.OutputSize.xy;
+            ycbcr = apply_dither(ycbcr, working_bits, bits, screen_coord, config.FrameCount);
+        }
+
+        // Quantize to output bit depth
+        if (bits < 7) {
+            ycbcr = quantize_6bit(ycbcr);
+        } else if (bits < 9) {
+            ycbcr = quantize_8bit(ycbcr);
+        } else {
+            ycbcr = quantize_10bit(ycbcr);
+        }
+
+        // Restore full-range PbPr from limited range
+        vec3 ypbpr = unlimit_ycbcr(ycbcr, bits);
 
         // Apply bias and gain
-        y = gain.x * (y + bias.x);
-        pb = gain.y * (pb + bias.y);
-        pr = gain.y * (pr + bias.y);
+        ypbpr = gain * (ypbpr + bias);
 
-        FragColor = vec4(y, pb, pr, 1.0);
+        FragColor = vec4(ypbpr, 1.0);
         return;
+    }
+
+    float y = color.r;
+    float c = color.g;
+
+    // Apply dithering before quantization
+    if (DITHER > 0.5) {
+        vec2 screen_coord = vTexCoord.xy * config.OutputSize.xy;
+        y = apply_dither(y, working_bits, bits, screen_coord, config.FrameCount);
+        c = apply_dither(c, working_bits, bits, screen_coord + vec2(0.5, 0.5), config.FrameCount);
+    }
+
+    // Quantize to output bit depth
+    if (bits == 6) {
+        y = quantize_6bit(y);
+        c = quantize_6bit(c);
+    } else if (bits == 8) {
+        y = quantize_8bit(y);
+        c = quantize_8bit(c);
+    } else if (bits == 10){
+        y = quantize_10bit(y);
+        c = quantize_10bit(c);
+    } else {
+        y = quantize(y, bits);
+        c = quantize(c, bits);
     }
 
     const float INV_SQRT2 = 0.70710678;
 
-    float y = color.r;
-    float c = (color.g - 0.5) / INV_SQRT2;  // Remove offset and restore gain
+    c = (c - 0.5) / INV_SQRT2;  // Remove offset and restore gain
 
     // Apply encoder setup to luma if enabled
     if (ENCODER_SETUP > 0.5) {

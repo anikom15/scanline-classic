@@ -2,7 +2,6 @@
     "root_path" : "../../../shaders",
     "shaders" : {
         "component" : "digital-component",
-        "subsample" : "digital-chroma-subsample",
         "filter" : "digital-ycc-filter",
         "upsample" : "digital-upsample",
         "mod" : "digital-svideo",

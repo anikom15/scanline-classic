@@ -20,6 +20,7 @@
 #pragma parameter FAKE_CORNER_WEIGHTS "Simulate corner weights (off, on)" 0.0 0.0 1.0 1.0
 #pragma parameter SPECIAL_INTERP_H "Apply special interpolation horizontally" 1.0 0.0 1.0 1.0
 #pragma parameter SPECIAL_INTERP_V "Apply special interpolation vertically" 1.0 0.0 1.0 1.0
+#pragma parameter DEBUG_SHOW_CORNERS "Debug: Show corner weight positions" 0.0 0.0 1.0 1.0
 
 layout(push_constant) uniform Push
 {
@@ -31,12 +32,14 @@ layout(push_constant) uniform Push
     float FAKE_CORNER_WEIGHTS;
     float SPECIAL_INTERP_H;
     float SPECIAL_INTERP_V;
+    float DEBUG_SHOW_CORNERS;
 } params;
 
 #define INTERPOLATION_MODE params.INTERPOLATION_MODE
 #define FAKE_CORNER_WEIGHTS params.FAKE_CORNER_WEIGHTS
 #define SPECIAL_INTERP_H params.SPECIAL_INTERP_H
 #define SPECIAL_INTERP_V params.SPECIAL_INTERP_V
+#define DEBUG_SHOW_CORNERS params.DEBUG_SHOW_CORNERS
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
@@ -190,6 +193,55 @@ vec2 get_corner_position(vec2 pixelCenter, int topBottom, int rightLeft)
     return pixelCenter + cornerOffset;
 }
 
+// Debug visualization: show corner weight positions
+vec4 debug_show_corners(vec2 tc)
+{
+    vec2 sourceSize = params.SourceSize.xy;
+    vec2 texelSize = 1.0 / sourceSize;
+    
+    // Get fractional part of texture coordinate
+    vec2 f = fract(tc * sourceSize - 0.5);
+    vec2 texCoord = (floor(tc * sourceSize - 0.5) + 0.5) / sourceSize;
+    
+    // Sample source pixel and get its corner weight quadrant
+    int srcTopBottom, srcRightLeft;
+    vec4 sourceColor = sample_with_quadrant(texCoord, srcTopBottom, srcRightLeft);
+    
+    // Get the corner position
+    vec2 cornerPos = get_corner_position(texCoord, srcTopBottom, srcRightLeft);
+    
+    // Calculate distance from current fragment to corner
+    float distToCorner = distance(tc, cornerPos);
+    
+    // Create crosshair: bright where corner is, fade with distance
+    float crosshairSize = 0.002; // Size of crosshair in texture space
+    vec2 cornerPixelDist = abs(tc - cornerPos);
+    float crosshairX = step(cornerPixelDist.y, crosshairSize);
+    float crosshairY = step(cornerPixelDist.x, crosshairSize);
+    float crosshair = max(crosshairX, crosshairY);
+    
+    // Color based on corner quadrant
+    vec3 quadrantColor;
+    if (srcTopBottom == 0 && srcRightLeft == 1) {
+        quadrantColor = vec3(1.0, 0.0, 0.0); // Red = Top-left
+    } else if (srcTopBottom == 0 && srcRightLeft == 0) {
+        quadrantColor = vec3(0.0, 1.0, 0.0); // Green = Top-right
+    } else if (srcTopBottom == 1 && srcRightLeft == 1) {
+        quadrantColor = vec3(0.0, 0.0, 1.0); // Blue = Bottom-left
+    } else {
+        quadrantColor = vec3(1.0, 1.0, 0.0); // Yellow = Bottom-right
+    }
+    
+    // Blend: show corner indicator strongly, fade source color in background
+    vec3 debugColor = mix(sourceColor.rgb * 0.5, quadrantColor, crosshair * 0.7);
+    
+    // Add subtle glow around corner based on distance
+    float glow = exp(-distToCorner * 100.0) * 0.3;
+    debugColor += quadrantColor * glow;
+    
+    return vec4(debugColor, 1.0);
+}
+
 vec4 special_interpolation(vec2 tc)
 {
     vec2 sourceSize = params.SourceSize.xy;
@@ -298,12 +350,16 @@ void main()
 {
     vec4 color;
     
-    if (INTERPOLATION_MODE < 0.5)
+    if (DEBUG_SHOW_CORNERS > 0.5) {
+        // Show debug visualization of corner weights
+        color = debug_show_corners(vTexCoord);
+    } else if (INTERPOLATION_MODE < 0.5) {
         color = nearest_neighbor(vTexCoord);
-    else if (INTERPOLATION_MODE < 1.5)
+    } else if (INTERPOLATION_MODE < 1.5) {
         color = bilinear_interpolation(vTexCoord);
-    else if (INTERPOLATION_MODE < 2.5)
+    } else if (INTERPOLATION_MODE < 2.5) {
         color = special_interpolation(vTexCoord);
+    }
     
     FragColor = vec4(color.rgb, 1.0);
 }

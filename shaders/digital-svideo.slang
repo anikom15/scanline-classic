@@ -30,8 +30,10 @@
 // alternation inferred from subcarrier frequency (PAL if > 4 MHz).
 
 #include "common.inc"
+#include "digital.inc"
 #include "modulation.inc"
 
+#include "menus/parameters/digital-component.inc"
 #include "menus/parameters/sys-timing.inc"
 #include "menus/parameters/sys-encode.inc"
 
@@ -48,6 +50,7 @@ layout(push_constant) uniform Push
     float OriginalFPS;
     uint FrameCount;
     float DIGITAL_COMPOSITE_MOD_BYPASS;
+    float WORKING_BITS;
     float SC_FREQ_MODE;
     float SC_FREQ;
     float PIXEL_CLOCK_MODE;
@@ -62,6 +65,7 @@ layout(push_constant) uniform Push
 } config;
 
 #define DIGITAL_COMPOSITE_MOD_BYPASS config.DIGITAL_COMPOSITE_MOD_BYPASS
+#define WORKING_BITS config.WORKING_BITS
 #define SC_FREQ_MODE config.SC_FREQ_MODE
 #define SC_FREQ config.SC_FREQ
 #define PIXEL_CLOCK_MODE config.PIXEL_CLOCK_MODE
@@ -154,8 +158,8 @@ void main()
     // Sample input YCbCr using scaled pixel coordinate
     vec3 ycbcr = texture(Source, vTexCoord).rgb;
 
-    // Adjust chroma to signed range
-    ycbcr.gb -= vec2(0.5);
+    // Restore full-range YCbCr from limited range
+    ycbcr = unlimit_ycbcr(ycbcr, int(WORKING_BITS));
 
     // Phase via discrete carrier helper using within-field t00 plus field_phase offset
     float phase = compute_carrier_phase_discrete(
@@ -178,5 +182,24 @@ void main()
     const float INV_SQRT2 = 0.70710678;
     chroma = chroma * INV_SQRT2 + 0.5;
 
-    FragColor = vec4(ycbcr.r, chroma, 0.0, 1.0);
+    // Quantize to working bit depth
+    int bits = int(WORKING_BITS + 0.5);
+
+    // Quantize to working bit depth (6, 8, or 10 bits)
+    float luma = ycbcr.r;
+    if (bits == 6) {
+        luma = quantize_6bit(luma);
+        chroma = quantize_6bit(chroma);
+    } else if (bits == 8) {
+        luma = quantize_8bit(luma);
+        chroma = quantize_8bit(chroma);
+    } else if (bits == 10) {
+        luma = quantize_10bit(luma);
+        chroma = quantize_10bit(chroma);
+    } else {
+        luma = quantize(luma, bits);
+        chroma = quantize(chroma, bits);
+    }
+
+    FragColor = vec4(luma, chroma, 0.0, 1.0);
 }

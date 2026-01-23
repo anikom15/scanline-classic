@@ -26,6 +26,7 @@
 // bandwidth control. Operates horizontally on already-demodulated data.
 
 #include "common.inc"
+#include "digital.inc"
 #include "window.inc"
 #include "modulation.inc"
 
@@ -44,6 +45,7 @@ layout(push_constant) uniform Push
     vec4 FrameSize;
     uint FrameCount;
     float OriginalFPS;
+    float WORKING_BITS;
     float DIGITAL_YC_FILTER_BYPASS;
     float DIGITAL_Y_FILTER_DECIMATION;
     float DIGITAL_Cb_FILTER_DECIMATION;
@@ -61,6 +63,7 @@ layout(push_constant) uniform Push
 } config;
 
 #define DIGITAL_YC_FILTER_BYPASS config.DIGITAL_YC_FILTER_BYPASS
+#define WORKING_BITS config.WORKING_BITS
 #define DIGITAL_Y_FILTER_DECIMATION config.DIGITAL_Y_FILTER_DECIMATION
 #define DIGITAL_Cb_FILTER_DECIMATION config.DIGITAL_Cb_FILTER_DECIMATION
 #define DIGITAL_Cr_FILTER_DECIMATION config.DIGITAL_Cr_FILTER_DECIMATION
@@ -244,6 +247,22 @@ void main()
         cr_filtered /= weight_sum_cr;
     else if (!filter_cr)
         cr_filtered = pixel0.b;
+
+    // Quantize to working bit depth
+    int bits = int(WORKING_BITS + 0.5);
+
+    vec3 ycbcr = vec3(luma_filtered, cb_filtered, cr_filtered);
+
+    // Quantize to working bit depth (6, 8, or 10 bits)
+    if (bits == 6) {
+        ycbcr = quantize_6bit(ycbcr);
+    } else if (bits == 8) {
+        ycbcr = quantize_8bit(ycbcr);
+    } else if (bits == 10) {
+        ycbcr = quantize_10bit(ycbcr);
+    } else {
+        ycbcr = quantize(ycbcr, bits);
+    }
 
     // Output: filtered Y in R, filtered Cb in G, filtered Cr in B
     FragColor = vec4(luma_filtered, cb_filtered, cr_filtered, 1.0);

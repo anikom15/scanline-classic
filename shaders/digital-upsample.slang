@@ -28,8 +28,10 @@
 // Tap count automatically determined based on scale factors.
 
 #include "common.inc"
+#include "digital.inc"
 #include "window.inc"
 
+#include "menus/parameters/digital-component.inc"
 #include "menus/parameters/digital-upsample.inc"
 
 #pragma name DigitalUpsample
@@ -42,12 +44,14 @@ layout(push_constant) uniform Push
     vec4 SourceSize;
     vec4 OutputSize;
 
+    float WORKING_BITS;
     float UPSAMPLE_BYPASS;
     float UPSAMPLER_INPUT;
     float GAMMA_CORRECT_BLENDING;
 } config;
 
 #define UPSAMPLE_BYPASS config.UPSAMPLE_BYPASS
+#define WORKING_BITS config.WORKING_BITS
 #define KAISER_BETA 5.87  // Default value for ~62 dB stopband attenuation
 #define TRANSITION_WIDTH 0.15  // Default transition width factor, max 0.5 dB passband ripple
 #define UPSAMPLER_INPUT config.UPSAMPLER_INPUT
@@ -92,11 +96,11 @@ void main()
     gl_Position = global.MVP * Position;
     vTexCoord = TexCoord;
     
-    // Compute scale factors
-    scale = config.OutputSize.xy / config.SourceSize.xy;
+    // Compute scale factors (truncate to integers for zero-insertion)
+    scale = floor(config.OutputSize.xy / config.SourceSize.xy);
     
-    // Normalized cutoff frequencies: 1/scale for bandwidth preservation
-    fc_norm = 1.0 / scale;
+    // Normalized cutoff frequency: always 0.5 for zero-insertion upsampling
+    fc_norm = vec2(0.5);
     
     // Improved Kaiser tap count formula incorporating scale factor
     // Derived from: N = (A_s - 13) / (14.6 * (Δf / f_s))
@@ -142,51 +146,53 @@ void main()
         return;
     }
 
-    // Determine which pixel in the upsampled grid we're at
+    // Map this output pixel into source space
     vec2 output_pixel = vTexCoord * config.OutputSize.xy;
     vec2 source_pixel = output_pixel / scale;
     
-    // Find the source pixel center (zero-insertion point)
-    vec2 src_center = floor(source_pixel) + 0.5;
+    // Base source index and fractional phase (source-space)
+    float src_idx = source_pixel.x;
+    float base_idx = floor(src_idx);
+    float frac = src_idx - (base_idx + 0.5);  // phase relative to source pixel center
     
-    // Fractional offset from the center (in source pixel coordinates)
-    vec2 frac = source_pixel - src_center;
+    // Source pixel center for sampling
+    vec2 src_center = vec2(base_idx + 0.5, floor(source_pixel.y) + 0.5);
     
     // Apply separable 2D Kaiser-windowed sinc filtering
     vec3 sum = vec3(0.0);
     float weight_sum = 0.0;
     
     int max_tap_half_x = int(floor(taps.x * 0.5));
+    int scale_x = int(scale.x);
 
-    for (int dx = 0; dx < 32; ++dx) {
+    // Iterate all integer source offsets within the tap width
+    for (int dx = 0; dx <= 16; ++dx) {
         if (dx > max_tap_half_x)
             break;
 
-        // Compute weights at +dx and -dx
-        float fx_pos = float(dx) - frac.x;
-        float fx_neg = float(-dx) - frac.x;
-        float weight_x_pos = sinc_lowpass_kaiser(fx_pos, fc_norm.x, taps.x, KAISER_BETA);
-        float weight_x_neg = (dx > 0) ? sinc_lowpass_kaiser(fx_neg, fc_norm.x, taps.x, KAISER_BETA) : 0.0;
-
         // Sample 1: +dx
-        float weight = weight_x_pos;
+        float fx_pos = float(dx) - frac;
+        float weight = sinc_lowpass_kaiser(fx_pos, fc_norm.x, taps.x, KAISER_BETA);
         if (abs(weight) >= FILTER_THRESHOLD) {
             vec2 sample_pos = src_center + vec2(float(dx), 0.0);
             vec2 sample_coord = clamp(sample_pos * config.SourceSize.zw, vec2(0.0), vec2(1.0));
             vec3 color = texture(Source, sample_coord).rgb;
-            if (UPSAMPLER_INPUT < 0.5) color = to_linear(color);
+            if (UPSAMPLER_INPUT < 0.5)
+                color = to_linear(color);
             sum += color * weight;
             weight_sum += weight;
         }
 
         // Sample 2: -dx (if dx > 0)
         if (dx > 0) {
-            weight = weight_x_neg;
+            float fx_neg = float(-dx) - frac;
+            weight = sinc_lowpass_kaiser(fx_neg, fc_norm.x, taps.x, KAISER_BETA);
             if (abs(weight) >= FILTER_THRESHOLD) {
                 vec2 sample_pos = src_center + vec2(float(-dx), 0.0);
                 vec2 sample_coord = clamp(sample_pos * config.SourceSize.zw, vec2(0.0), vec2(1.0));
                 vec3 color = texture(Source, sample_coord).rgb;
-                if (UPSAMPLER_INPUT < 0.5) color = to_linear(color);
+                if (UPSAMPLER_INPUT < 0.5)
+                    color = to_linear(color);
                 sum += color * weight;
                 weight_sum += weight;
             }
@@ -199,6 +205,20 @@ void main()
     // For RGB input, apply gamma correction if needed
     if (UPSAMPLER_INPUT < 0.5) {
         result = to_gamma(result);
+    }
+
+    // Quantize to working bit depth
+    int bits = int(WORKING_BITS + 0.5);
+
+    // Quantize to working bit depth (6, 8, or 10 bits)
+    if (bits == 6) {
+        result = quantize_6bit(result);
+    } else if (bits == 8) {
+        result = quantize_8bit(result);
+    } else if (bits == 10) {
+        result = quantize_10bit(result);
+    } else {
+        result = quantize(result, bits);    
     }
     
     FragColor = vec4(result, 1.0);

@@ -31,6 +31,7 @@
 
 #include "common.inc"
 #include "color.inc"
+#include "digital.inc"
 
 #include "menus/parameters/digital-component.inc"
 
@@ -44,6 +45,7 @@ layout(push_constant) uniform Push
     vec4 SourceSize;
     vec4 OutputSize;
 
+    float WORKING_BITS;
     float YCBCR_MODEL;
     float DIGITAL_COMPONENT_BYPASS;
 } config;
@@ -51,6 +53,7 @@ layout(push_constant) uniform Push
 #define DIGITAL_COMPONENT_BYPASS config.DIGITAL_COMPONENT_BYPASS
 
 #define YCBCR_MODEL config.YCBCR_MODEL
+#define WORKING_BITS config.WORKING_BITS
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
@@ -96,8 +99,22 @@ void main()
     vec3 rgb = texture(Source, vTexCoord).rgb;
     vec3 ycbcr = rgb_to_luma_chroma(rgb, YCBCR_MODEL);
 
-    // Shift chroma for output range
-    ycbcr.gb += vec2(0.5, 0.5);
+    // Quantize to working bit depth
+    int bits = int(WORKING_BITS + 0.5);
+
+    // Limit to legal ranges
+    ycbcr = limit_ycbcr(ycbcr, bits);
+
+    // Quantize to working bit depth (6, 8, or 10 bits)
+    if (bits == 6) {
+        ycbcr = quantize_6bit(ycbcr);
+    } else if (bits == 8) {
+        ycbcr = quantize_8bit(ycbcr);
+    } else if (bits == 10) {
+        ycbcr = quantize_10bit(ycbcr);
+    } else {
+        ycbcr = quantize(ycbcr, bits);
+    }
     
     FragColor = vec4(ycbcr, 1.0);
 }
