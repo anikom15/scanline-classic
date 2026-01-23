@@ -30,6 +30,8 @@
 #include "common.inc"
 #include "window.inc"
 
+#include "menus/parameters/digital-upsample.inc"
+
 #pragma name DigitalUpsample
 #pragma format A2B10G10R10_UNORM_PACK32
 

@@ -1,10 +1,9 @@
-#pragma DIGITAL_COMPONENT_HEADER " —— System: Digital Video —— " 0.0 0.0 0.0 0.0
+#pragma parameter DIGITAL_COMPONENT_HEADER " —— System: Digital Video —— " 0.0 0.0 0.0 0.0
 
 #pragma parameter YCBCR_MODEL "System color space (601, 709)" 0.0 0.0 2.0 1.0
-#pragma parameter CHROMA_SUBSAMPLE "Chroma subsampling (auto, 4:4:4, 4:2:2, 4:2:0)" 0.0 0.0 3.0 1.0
-#pragma parameter UPSAMPLER_INPUT "Resampler input type (RGB, YCbCr)" 0.0 0.0 1.0 1.0
-#pragma parameter GAMMA_CORRECT_BLENDING "Use gamma correct blending (off, fast, accurate)" 0.0 0.0 2.0 1.0
-#pragma parameter DIGITAL_YC_FILTER_DECIMATION "Chroma bandwidth decimation" 4.0 1.0 16.0 1.0
+#pragma parameter DIGITAL_Y_FILTER_DECIMATION "Y bandwidth decimation" 1.0 1.0 16.0 1.0
+#pragma parameter DIGITAL_Cb_FILTER_DECIMATION "Cb bandwidth decimation" 5.0 1.0 16.0 1.0
+#pragma parameter DIGITAL_Cr_FILTER_DECIMATION "Cr bandwidth decimation" 5.0 1.0 16.0 1.0
 
 #pragma DAC_HEADER " —— System: Digital to Analog Converter —— " 0.0 0.0 0.0 0.0
 

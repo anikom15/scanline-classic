@@ -6,7 +6,7 @@
     "options" : {
         "frame" : {
             "scale_type" : ["absolute"],
-            "scale" : [780.0, 525.0]
+            "scale" : [780.0, 526.0]
         }
     }
 }

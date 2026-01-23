@@ -3,9 +3,9 @@
     "shaders" : {
         "component" : "digital-component",
         "subsample" : "digital-chroma-subsample",
+        "filter" : "digital-ycc-filter",
         "upsample" : "digital-upsample",
         "mod" : "digital-svideo",
-        "filter" : "digital-yc-filter",
         "dac" : "dac",
         "svideo" : "display-svideo",
         "disp-bandlimit" : "display-rgb-bandlimit",

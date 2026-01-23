@@ -172,7 +172,7 @@ vec3 sample_active_content(float output_x, float output_y) {
     // Interlaced field blanking: alternate drawing odd/even lines based on field
     if (is_interlaced > 0.5) {
         if (DOUBLE_REFRESH > 0.5)
-            return texture(Source, texCoord).rgb * 0.707;
+            return texture(Source, texCoord).rgb;
         // In interlaced mode, only render lines that match the current field
         int field_parity = int(mod(field, 2.0));
         int line_parity = int(mod(original_y, 2.0));
