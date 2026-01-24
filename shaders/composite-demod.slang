@@ -221,7 +221,7 @@ void main()
     carrier0 = sincos_phase_raw(vec2(phase0_full));
 
     // PAL V polarity correction: delay line subtraction produces alternating sign
-    float pal_v_sign = 1.0 - 2.0 * floor(mod(line, 2.0)) * step(1.5, DECODER_TYPE);
+    float pal_v_sign = 1.0 - 2.0 * floor(mod(line, 2.0)) * step(0.5, DECODER_TYPE);
 
     // Delay-line control flags and offsets
     bool use_delay_line = PAL_DECODER_MODE > 0.5;

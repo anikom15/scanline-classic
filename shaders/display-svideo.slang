@@ -95,14 +95,14 @@ layout(std140, set = 0, binding = 0) uniform UBO
     float SVIDEO_FILTER_BYPASS;
     float BW_MODE;
     float DECODER_SETUP;
-    float PAL;
+    float DECODER_PAL;
 } global;
 
 #define BYPASS_SVIDEO global.BYPASS_SVIDEO
 #define SVIDEO_FILTER_BYPASS global.SVIDEO_FILTER_BYPASS
 #define BW_MODE global.BW_MODE
 #define DECODER_SETUP global.DECODER_SETUP
-#define PAL global.PAL
+#define DECODER_PAL global.DECODER_PAL
 
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
@@ -179,7 +179,7 @@ void main()
     float t0 = line / carrier.h_freq_hz + baseCenter * carrier.pixel_time_px;
     float phase_inc_px = 2.0 * PI * carrier.sc_freq_hz * carrier.pixel_time_px;
 
-    float pal_v_sign = 1.0 - 2.0 * floor(mod(line, 2.0)) * PAL;
+    float pal_v_sign = 1.0 - 2.0 * floor(mod(line, 2.0)) * DECODER_PAL;
 
     vec3 pixel0 = texture(Source, Tex).rgb;
     float phase0 = compute_carrier_phase(t0, carrier.sc_freq_hz, carrier.field_phase);

@@ -1,14 +1,14 @@
 {
   "filename" : "3do-us",
   "type" : "consumer",
-  "title" : "3DO composite shader set",
+  "title" : "3DO composite shader set (NTSC-M)",
   "description" : "Composite output is available on all 3DO models with the included cable.",
   "pipeline_root" : "../../pipelines",
   "pipelines" : [
     "sys/3do-special.json",
-    "misc/menu-composite-direct.json",
-    "misc/frame-tv525.json",
-    "sys/direct-composite.json",
+    "misc/menu-digital-composite-upsample.json",
+    "misc/frame-digital-780x525.json",
+    "sys/digital-composite.json",
     "disp/crt.json",
     "misc/post.json"
   ],
@@ -16,6 +16,7 @@
   "parameter_sets" : [
     "sys/3do/base.json",
     "sys/3do/ntsc.json",
+    "sys/3do/composite.json",
     "disp/ntsc.json",
     "disp/tv.json",
     "disp/consumer-color-ntsc.json",

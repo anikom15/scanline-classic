@@ -5,10 +5,10 @@
   "description" : "Composite video output is the standard output on all 3DO models.",
   "pipeline_root" : "../../pipelines",
   "pipelines" : [
-    "sys/3do-special.json",
-    "misc/menu-composite-direct.json",
-    "misc/frame-tv625.json",
-    "sys/direct-composite.json",
+    "sys/3do-special-pal.json",
+    "misc/menu-digital-composite-upsample.json",
+    "misc/frame-digital-944x625.json",
+    "sys/digital-composite.json",
     "disp/crt.json",
     "misc/post.json"
   ],
@@ -16,6 +16,7 @@
   "parameter_sets" : [
     "sys/3do/base.json",
     "sys/3do/pal.json",
+    "sys/3do/composite.json",
     "disp/pal.json",
     "disp/trinitron.json",
     "disp/deflicker.json",
@@ -24,3 +25,4 @@
   "parameter_overrides" : {
   }
 }
+

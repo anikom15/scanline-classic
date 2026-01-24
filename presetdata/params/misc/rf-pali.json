@@ -3,6 +3,7 @@
         "USB_BANDWIDTH" : 5.5,
         "USB_ROLL_OFF" : 1.25,
         "IQ_DEMOD_Q_WEIGHT" : -0.2,
-        "NOISE_AWGN_DB" : -43.0
+        "NOISE_AWGN_DB" : -43.0,
+        "PAL_DECODER_MODE" : 2.0
     }
 }

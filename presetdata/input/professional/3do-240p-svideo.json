@@ -5,9 +5,10 @@
   "description" : "240p is available on Japanese 3DOs via mode switch.  The emulator must be configured to output 320x240 resolution, otherwise interlacing will occur.",
   "pipeline_root" : "../../pipelines",
   "pipelines" : [
-    "misc/menu-svideo-direct.json",
-    "misc/frame-tv525.json",
-    "sys/direct-svideo.json",
+    "sys/3do-special-240p.json",
+    "misc/menu-digital-video-upsample.json",
+    "misc/frame-digital-780x525.json",
+    "sys/digital-svideo.json",
     "disp/crt.json",
     "misc/post.json"
   ],
@@ -15,6 +16,8 @@
   "parameter_sets" : [
     "sys/3do/base.json",
     "sys/3do/ntsc.json",
+    "sys/3do/svideo.json",
+    "sys/3do/240p.json",
     "disp/ntscj.json",
     "disp/trinitron.json",
     "disp/tvl-600.json"

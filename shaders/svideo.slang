@@ -220,6 +220,7 @@ layout(std140, set = 0, binding = 0) uniform UBO
     float ENCODER_SETUP;
     float DECODER_SETUP;
     float PAL;
+    float DECODER_PAL;
 } global;
 
 #define BYPASS_SVIDEO global.BYPASS_SVIDEO
@@ -230,6 +231,7 @@ layout(std140, set = 0, binding = 0) uniform UBO
 #define ENCODER_SETUP global.ENCODER_SETUP
 #define DECODER_SETUP global.DECODER_SETUP
 #define PAL global.PAL
+#define DECODER_PAL global.DECODER_PAL
 
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
@@ -310,6 +312,7 @@ void main()
 
     // PAL V-axis alternation: simply invert V on odd lines
     float pal_v_sign = 1.0 - 2.0 * floor(mod(line, 2.0)) * PAL;
+    float pal_v_sign_decoder = 1.0 - 2.0 * floor(mod(line, 2.0)) * DECODER_PAL;
 
     vec3 pixel0 = texture(Source, Tex).rgb;
     float phase_inc_px = 2.0 * PI * carrier.sc_freq_hz * carrier.pixel_time_px;
@@ -335,7 +338,7 @@ void main()
     vec3 yc0;
     yc0.r = y_out;
     yc0.g = chroma0 * 2.0 * carrier0_user.x;
-    yc0.b = chroma0 * 2.0 * carrier0_user.y * pal_v_sign;
+    yc0.b = chroma0 * 2.0 * carrier0_user.y * pal_v_sign_decoder;
 
     vec3 color;
 
@@ -370,7 +373,7 @@ void main()
             vec3 ycR;
             ycR.r = y_gain * (pixelR.r + y_offset);
             ycR.g = chromaR * 2.0 * carrierR_user.x;
-            ycR.b = chromaR * 2.0 * carrierR_user.y * pal_v_sign;
+            ycR.b = chromaR * 2.0 * carrierR_user.y * pal_v_sign_decoder;
 
             vec3 pixelL = texture(Source, Tex - nf * dx).rgb;
             // Compute exact phase at left tap position to avoid drift
@@ -382,7 +385,7 @@ void main()
             vec3 ycL;
             ycL.r = y_gain * (pixelL.r + y_offset);
             ycL.g = chromaL * 2.0 * carrierL_user.x;
-            ycL.b = chromaL * 2.0 * carrierL_user.y * pal_v_sign;
+            ycL.b = chromaL * 2.0 * carrierL_user.y * pal_v_sign_decoder;
 
             accum.x += wy_r * ycR.x + wy_l * ycL.x;
             accum.y += wc_r * ycR.y + wc_l * ycL.y;

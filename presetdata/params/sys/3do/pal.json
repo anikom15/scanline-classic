@@ -1,6 +1,7 @@
 {
     "parameters" : {
         "PAL" : 1.0,
+        "DECODER_PAL" : 1.0,
         "PIXEL_CLOCK" : 29.5,
         "H_FREQ" : 1888.0
     }

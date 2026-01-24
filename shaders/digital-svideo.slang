@@ -172,7 +172,7 @@ void main()
 
     // Carrier and PAL V-axis alternation
     vec2 carrier = sincos_phase_raw(phase);
-    float pal_sign = 1.0 - 2.0 * mod(line, 2.0) * PAL;
+    float pal_sign = 1.0 - 2.0 * floor(mod(line, 2.0)) * PAL;
 
     // Modulate Cb/Cr onto subcarrier (Cb→sin, Cr→cos with PAL alternation)
     float chroma = ycbcr.g * carrier.x + pal_sign * ycbcr.b * carrier.y;
