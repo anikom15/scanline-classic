@@ -1,0 +1,6 @@
+{
+    "root_path" : "../../../shaders",
+    "shaders" : {
+        "menu" : "menus/menu-digital-rf-upsample-sdr"
+    }
+}

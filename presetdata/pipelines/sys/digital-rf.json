@@ -1,0 +1,27 @@
+{
+    "root_path" : "../../../shaders",
+    "shaders" : {
+        "component" : "digital-component",
+        "filter" : "digital-ycc-filter",
+        "upsample" : "digital-upsample",
+        "mod" : "digital-svideo",
+        "dac" : "dac",
+        "decimate" : "decimate",
+        "composite-iq" : "composite-iq",
+        "iq-filter" : "iq-filter",
+        "iq-noise" : "iq-noise",
+        "iq-demod" : "iq-demod",
+        "prefilter" : "composite-prefilter",
+        "demod" : "composite-demod",
+        "disp-bandlimit" : "display-rgb-bandlimit",
+        "limiter" : "limiter"
+    },
+    "options" : {
+        "upsample" : {
+            "scale" : [2.0, 1.0]
+        },
+        "decimate" : {
+            "scale" : [0.5, 1.0]
+        }
+    }
+}

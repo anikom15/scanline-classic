@@ -51,6 +51,20 @@ float sinc_lowpass_bh4(float n, float fc_norm, float N)
     return sinc * w;
 }
 
+// Overload returning coefficient and window weight via out parameter (Blackman-Harris)
+float sinc_lowpass_bh4(float n, float fc_norm, float N, out float w)
+{
+    float sinc;
+    if (abs(n) < EPS) {
+        sinc = 2.0 * fc_norm;  // integral of ideal LP at n=0
+    } else {
+        float x = 2.0 * PI * fc_norm * n;
+        sinc = sin(x) / (PI * n);
+    }
+    w = blackman_harris_4term(n, N);
+    return sinc * w;
+}
+
 // Windowed-sinc lowpass coefficient (normalized cutoff fc in cycles/sample)
 // Uses Hamming window for ~43 dB stopband rejection with minimal ringing
 float sinc_lowpass_hamming(float n, float fc_norm, float N)
@@ -63,6 +77,20 @@ float sinc_lowpass_hamming(float n, float fc_norm, float N)
         sinc = sin(x) / (PI * n);
     }
     float w = hamming(n, N);
+    return sinc * w;
+}
+
+// Overload returning coefficient and window weight via out parameter (Hamming)
+float sinc_lowpass_hamming(float n, float fc_norm, float N, out float w)
+{
+    float sinc;
+    if (abs(n) < EPS) {
+        sinc = 2.0 * fc_norm;  // integral of ideal LP at n=0
+    } else {
+        float x = 2.0 * PI * fc_norm * n;
+        sinc = sin(x) / (PI * n);
+    }
+    w = hamming(n, N);
     return sinc * w;
 }
 
@@ -156,6 +184,20 @@ float sinc_lowpass_kaiser(float n, float fc_norm, float N, float beta)
         sinc = sin(x) / (PI * n);
     }
     float w = kaiser(n, N, beta);
+    return sinc * w;
+}
+
+// Overload returning coefficient and window weight via out parameter (Kaiser)
+float sinc_lowpass_kaiser(float n, float fc_norm, float N, float beta, out float w)
+{
+    float sinc;
+    if (abs(n) < EPS) {
+        sinc = 2.0 * fc_norm;  // integral of ideal LP at n=0
+    } else {
+        float x = 2.0 * PI * fc_norm * n;
+        sinc = sin(x) / (PI * n);
+    }
+    w = kaiser(n, N, beta);
     return sinc * w;
 }
 

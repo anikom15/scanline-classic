@@ -16,7 +16,6 @@
     "sys/generic/ntsc.json",
     "misc/rf-ntsc.json",
     "disp/ntsc.json",
-    "disp/rf-ntsc.json",
     "disp/trinitron.json",
     "disp/tvl-600.json"
   ],

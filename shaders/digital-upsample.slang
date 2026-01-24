@@ -165,37 +165,51 @@ void main()
     int max_tap_half_x = int(floor(taps.x * 0.5));
     int scale_x = int(scale.x);
 
+    // Center tap first
+    {
+        float window0;
+        float weight0 = sinc_lowpass_kaiser(-frac, fc_norm.x, taps.x, KAISER_BETA, window0);
+        vec3 color0 = texture(Source, src_center * config.SourceSize.zw).rgb;
+        if (UPSAMPLER_INPUT < 0.5)
+            color0 = to_linear(color0);
+        sum += color0 * weight0;
+        weight_sum += weight0;
+    }
+
     // Iterate all integer source offsets within the tap width
-    for (int dx = 0; dx <= 16; ++dx) {
+    for (int dx = 1; dx <= 16; ++dx) {
         if (dx > max_tap_half_x)
             break;
 
-        // Sample 1: +dx
         float fx_pos = float(dx) - frac;
-        float weight = sinc_lowpass_kaiser(fx_pos, fc_norm.x, taps.x, KAISER_BETA);
-        if (abs(weight) >= FILTER_THRESHOLD) {
+        float fx_neg = float(-dx) - frac;
+
+        float window_pos;
+        float window_neg;
+        float weight_pos = sinc_lowpass_kaiser(fx_pos, fc_norm.x, taps.x, KAISER_BETA, window_pos);
+        float weight_neg = sinc_lowpass_kaiser(fx_neg, fc_norm.x, taps.x, KAISER_BETA, window_neg);
+
+        if (window_pos < FILTER_THRESHOLD && window_neg < FILTER_THRESHOLD)
+            break;
+
+        if (window_pos >= FILTER_THRESHOLD) {
             vec2 sample_pos = src_center + vec2(float(dx), 0.0);
             vec2 sample_coord = clamp(sample_pos * config.SourceSize.zw, vec2(0.0), vec2(1.0));
             vec3 color = texture(Source, sample_coord).rgb;
             if (UPSAMPLER_INPUT < 0.5)
                 color = to_linear(color);
-            sum += color * weight;
-            weight_sum += weight;
+            sum += color * weight_pos;
+            weight_sum += weight_pos;
         }
 
-        // Sample 2: -dx (if dx > 0)
-        if (dx > 0) {
-            float fx_neg = float(-dx) - frac;
-            weight = sinc_lowpass_kaiser(fx_neg, fc_norm.x, taps.x, KAISER_BETA);
-            if (abs(weight) >= FILTER_THRESHOLD) {
-                vec2 sample_pos = src_center + vec2(float(-dx), 0.0);
-                vec2 sample_coord = clamp(sample_pos * config.SourceSize.zw, vec2(0.0), vec2(1.0));
-                vec3 color = texture(Source, sample_coord).rgb;
-                if (UPSAMPLER_INPUT < 0.5)
-                    color = to_linear(color);
-                sum += color * weight;
-                weight_sum += weight;
-            }
+        if (window_neg >= FILTER_THRESHOLD) {
+            vec2 sample_pos = src_center + vec2(float(-dx), 0.0);
+            vec2 sample_coord = clamp(sample_pos * config.SourceSize.zw, vec2(0.0), vec2(1.0));
+            vec3 color = texture(Source, sample_coord).rgb;
+            if (UPSAMPLER_INPUT < 0.5)
+                color = to_linear(color);
+            sum += color * weight_neg;
+            weight_sum += weight_neg;
         }
     }
     

@@ -93,7 +93,7 @@ layout(std140, set = 0, binding = 0) uniform UBO
     float USER_COLOR;       // Color (%)
     float USER_TINT;        // Tint (degrees)
     float PAL_DECODER_MODE; // PAL decoder mode (0=simple, 1=delay-line, 2=adaptive)
-    float DECODER_TYPE; // Decoder type (0=YIQ, 1=YPbPr, 2=PAL)
+    float DECODER_TYPE; // Decoder type
     float DECODER_SETUP;
     float USER_MONOCHROME; // Monochrome mode (off, B&W, sepia)
     float COMB_ADJUST_X;
@@ -159,18 +159,7 @@ void main()
     c_gain = 2.0 * USER_COLOR / 100.0;
     c_phase = PI * USER_TINT / 180.0;
 
-    // Select appropriate color space conversion matrix
-    // DECODER_TYPE: 0.0=YIQ, 1.0=YPbPr, 2.0=PAL
-    // YIQ: NTSC standard with 33° I axis, 123° Q axis (relative to burst phase)
-    // YUV: PAL standard with U at 0°, V at 90°
-    // YPbPr: Component video standard
-    if (DECODER_TYPE < 0.5) {
-        toRGB = YIQ_TO_RGB;  // YIQ mode
-    } else if (DECODER_TYPE < 1.5) {
-        toRGB = YPbPr_TO_RGB;  // YPbPr mode
-    } else {
-        toRGB = YUV_TO_RGB;  // PAL mode
-    }
+    toRGB = YPbPr_TO_RGB;
 }
 
 #pragma stage fragment
@@ -240,7 +229,7 @@ void main()
     float system_phase_shift = 0.0;
 
     // Compute phase offset correction for delay-line (constant per system)
-    if (DECODER_TYPE > 1.5 && use_delay_line) {
+    if (DECODER_TYPE > 0.5 && use_delay_line) {
         // Calculate intrinsic system phase shift per line (independent of user hue)
             float cycles_per_line = carrier.sc_freq_hz / carrier.h_freq_hz;
         float frac_cycles = fract(cycles_per_line);
@@ -276,7 +265,7 @@ void main()
     float CORRELATION_MAX = CORRELATION + 0.05;
     
     // PAL decoder mode selection (phase-corrected delay-line, simple, or adaptive)
-    if (DECODER_TYPE > 1.5) {
+    if (DECODER_TYPE > 0.5) {
         bool effective_delay_line = use_delay_line;
 
         // ADAPTIVE: blend delay-line with correlation based on phase error magnitude
@@ -359,7 +348,7 @@ void main()
             float chromaR = pixelR.g;
             vec3 demodR;
 
-            if (DECODER_TYPE > 1.5) {
+            if (DECODER_TYPE > 0.5) {
                 bool effective_delay_line = use_delay_line;
 
                 // ADAPTIVE: blend delay-line with correlation based on phase error magnitude
@@ -425,7 +414,7 @@ void main()
             float chromaL = pixelL.g;
             vec3 demodL;
 
-            if (DECODER_TYPE > 1.5) {
+            if (DECODER_TYPE > 0.5) {
                 bool effective_delay_line = use_delay_line;
 
                 // ADAPTIVE: blend delay-line with correlation based on phase error magnitude
@@ -529,27 +518,14 @@ void main()
             // Sepia tone - apply warm tint in YIQ space
             vec3 yiq = color;
 
-            // Convert current color space to YIQ if needed
-            if (DECODER_TYPE > 0.5) {
-                if (DECODER_TYPE < 1.5) {
-                    yiq = RGB_TO_YIQ * YPbPr_TO_RGB * color;
-                } else {
-                    yiq = RGB_TO_YIQ * YUV_TO_RGB * color;
-                }
-            }
+            yiq = RGB_TO_YIQ * YPbPr_TO_RGB * color;
 
             // Apply sepia toning in YIQ
             yiq.g = 0.1;  // Orange-cyan (I channel)
             yiq.b = 0.0;  // Green-magenta (Q channel)
 
             // Convert back to current color space
-            if (DECODER_TYPE < 0.5) {
-                color = yiq;
-            } else if (DECODER_TYPE < 1.5) {
-                color = RGB_TO_YPbPr * YIQ_TO_RGB * yiq;
-            } else {
-                color = RGB_TO_YUV * YIQ_TO_RGB * yiq;
-            }
+            color = RGB_TO_YPbPr * YIQ_TO_RGB * yiq;
         }
     }
 

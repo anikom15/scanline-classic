@@ -16,6 +16,7 @@
   "parameter_sets" : [
     "sys/3do/base.json",
     "sys/3do/ntsc.json",
+    "sys/3do/svideo.json",
     "disp/ntscj.json",
     "disp/trinitron.json",
     "disp/tvl-600.json"

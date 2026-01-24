@@ -16,7 +16,6 @@
     "sys/neogeo.json",
     "misc/rf-ntsc.json",
     "disp/ntscj.json",
-    "disp/rf-ntsc.json",
     "disp/trinitron.json",
     "disp/tvl-600.json"
   ],

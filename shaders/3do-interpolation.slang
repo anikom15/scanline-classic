@@ -17,7 +17,7 @@
 
 #pragma parameter INTERPOLATION_3DO_HEADER " —— 3DO Interpolation —— " 0.0 0.0 0.0 0.0
 #pragma parameter INTERPOLATION_MODE "Interpolation mode (nearest, bilinear, original)" 2.0 0.0 2.0 1.0
-#pragma parameter FAKE_CORNER_WEIGHTS "Simulate corner weights (off, on)" 0.0 0.0 1.0 1.0
+#pragma parameter FAKE_CORNER_WEIGHTS "Simulate corner weights (off, on)" 1.0 0.0 1.0 1.0
 #pragma parameter SPECIAL_INTERP_H "Apply special interpolation horizontally" 1.0 0.0 1.0 1.0
 #pragma parameter SPECIAL_INTERP_V "Apply special interpolation vertically" 1.0 0.0 1.0 1.0
 #pragma parameter DEBUG_SHOW_CORNERS "Debug: Show corner weight positions" 0.0 0.0 1.0 1.0

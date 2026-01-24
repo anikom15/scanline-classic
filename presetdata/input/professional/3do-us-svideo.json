@@ -6,9 +6,9 @@
   "pipeline_root" : "../../pipelines",
   "pipelines" : [
     "sys/3do-special.json",
-    "misc/menu-svideo-direct.json",
-    "misc/frame-tv525.json",
-    "sys/direct-svideo.json",
+    "misc/menu-digital-video-upsample.json",
+    "misc/frame-digital-780x525.json",
+    "sys/digital-svideo.json",
     "disp/crt.json",
     "misc/post.json"
   ],
@@ -16,6 +16,7 @@
   "parameter_sets" : [
     "sys/3do/base.json",
     "sys/3do/ntsc.json",
+    "sys/3do/svideo.json",
     "disp/ntsc.json",
     "disp/trinitron.json",
     "disp/tvl-600.json"

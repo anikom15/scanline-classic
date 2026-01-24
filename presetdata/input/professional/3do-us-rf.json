@@ -6,9 +6,9 @@
   "pipeline_root" : "../../pipelines",
   "pipelines" : [
     "sys/3do-special.json",
-    "misc/menu-rf-direct.json",
-    "misc/frame-tv525.json",
-    "sys/direct-rf.json",
+    "misc/menu-digital-rf-upsample.json",
+    "misc/frame-digital-780x525.json",
+    "sys/digital-rf.json",
     "disp/crt.json",
     "misc/post.json"
   ],
@@ -16,9 +16,9 @@
   "parameter_sets" : [
     "sys/3do/base.json",
     "sys/3do/ntsc.json",
+    "sys/3do/composite.json",
     "misc/rf-ntsc.json",
     "disp/ntsc.json",
-    "disp/rf-ntsc.json",
     "disp/trinitron.json",
     "disp/tvl-600.json"
   ],

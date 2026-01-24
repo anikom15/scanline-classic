@@ -60,16 +60,6 @@ layout(std140, set = 0, binding = 0) uniform UBO
     mat4 MVP;
 } global;
 
-// Convert RGB to selected luma-chroma space.
-vec3 rgb_to_luma_chroma(vec3 rgb, float model)
-{
-    if (model < 0.5) { // SMPTE
-        return RGB_TO_YPbPr * rgb;
-    } else { // Rec. 709
-        return RGB_TO_YCbCr * rgb;
-    }
-}
-
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
@@ -97,7 +87,8 @@ void main()
 
     // Sample input and convert to luma-chroma space
     vec3 rgb = texture(Source, vTexCoord).rgb;
-    vec3 ycbcr = rgb_to_luma_chroma(rgb, YCBCR_MODEL);
+    float model = YCBCR_MODEL > 0.5 ? 0.0 : 2.0;
+    vec3 ycbcr = rgb_to_luma_chroma(rgb, model);
 
     // Quantize to working bit depth
     int bits = int(WORKING_BITS + 0.5);
