@@ -225,7 +225,7 @@ void main()
     // Convolve both channels with neighboring samples (single texture fetch per offset)
     int n_pairs = int(floor(max_tap * 0.5));
 
-    for (int n = 1; n <= 45; ++n) {
+    for (int n = 1; n <= 90; ++n) {
         if (n > n_pairs)
             break;
         
