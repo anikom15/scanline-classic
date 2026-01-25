@@ -167,25 +167,88 @@ vec3 sample_active_content(float output_x, float output_y) {
     float original_y = floor(scaled_active_y / v_scale);
     float v_scanline_offset = scaled_active_y - (original_y * v_scale);
 
-    vec2 texCoord = (vec2(original_x, original_y) + 0.5) / config.SourceSize.xy;
-    
-    // Interlaced field blanking: alternate drawing odd/even lines based on field
+    vec3 base = crt_linear(texture(Source, (vec2(original_x, original_y) + 0.5) / config.SourceSize.xy).rgb);
+    bool scaled_blank_line = v_scanline_offset >= 1.0;
+
+    // Interlaced handling with parity-aware zero-stuffing
     if (is_interlaced > 0.5) {
-        if (DOUBLE_REFRESH > 0.5)
-            return texture(Source, texCoord).rgb;
-        // In interlaced mode, only render lines that match the current field
         int field_parity = int(mod(field, 2.0));
         int line_parity = int(mod(original_y, 2.0));
-        
-        // If this line doesn't match the current field, blank it
-        if (line_parity != field_parity)
-            return mix(texture(Source, texCoord).rgb, vec3(0.0), SCANLINE_BLANK_WEIGHT / 100.0);
-    }
-    
-    if (v_scanline_offset < 1.0)
-        return texture(Source, texCoord).rgb;
+        bool parity_mismatch = line_parity != field_parity;
 
-    return mix(texture(Source, texCoord).rgb, vec3(0.0), SCANLINE_BLANK_WEIGHT / 100.0);
+        if (DOUBLE_REFRESH > 0.5) {
+            // Double refresh: both fields shown every frame, only blank the scaled gaps
+            if (!scaled_blank_line) return base;
+        } else {
+            // Single refresh: blank wrong field lines AND scaled gaps
+            if (!parity_mismatch && !scaled_blank_line) return base;
+        }
+        
+        // For interlaced: calculate effective blank position in output sequence
+        // In single-refresh, parity mismatches treated as first blank (index 1)
+        // In double-refresh, only scaled blanks are blanked
+        float blank_index;
+        if (DOUBLE_REFRESH > 0.5) {
+            blank_index = floor(v_scanline_offset);
+        } else {
+            // Single refresh: parity mismatch is at blank index 1, scaled blanks follow
+            blank_index = parity_mismatch && !scaled_blank_line ? 1.0 : floor(v_scanline_offset);
+        }
+        float blank_center = blank_index + 0.5;
+        
+        // In interlaced single-refresh, effective spacing is 2*v_scale between visible lines
+        float effective_scale = DOUBLE_REFRESH > 0.5 ? v_scale : v_scale * 2.0;
+        float num_blanks = effective_scale - 1.0;
+        
+        float blank_mix = SCANLINE_BLANK_WEIGHT / 100.0;
+        if (num_blanks > 1.0) {
+            float dist_current = blank_center - 0.5;
+            float dist_next = (effective_scale + 0.5) - blank_center;
+            float min_dist = min(dist_current, dist_next);
+            float max_min_dist = effective_scale / 2.0;
+            float weight_factor = min_dist / max_min_dist;
+            
+            // Compute sum of all triangular weight factors
+            // Odd: sum_dists = (n+1)^2/4, Even: sum_dists = n(n+2)/4
+            float sum_of_dists = mod(num_blanks, 2.0) > 0.5
+                ? (num_blanks + 1.0) * (num_blanks + 1.0) / 4.0
+                : num_blanks * (num_blanks + 2.0) / 4.0;
+            float sum_weights = 2.0 * sum_of_dists / effective_scale;
+            
+            // Scale by num_blanks so more blanks = darker overall
+            blank_mix *= weight_factor / sum_weights * num_blanks;
+        }
+        
+        return mix(base, vec3(0.0), blank_mix);
+    }
+
+    // Progressive path with triangular distribution
+    if (!scaled_blank_line)
+        return base;
+    
+    float blank_mix = SCANLINE_BLANK_WEIGHT / 100.0;
+    float num_blanks = v_scale - 1.0;
+    if (num_blanks > 1.0) {
+        float blank_index = floor(v_scanline_offset);
+        float blank_center = blank_index + 0.5;
+        float dist_current = blank_center - 0.5;
+        float dist_next = (v_scale + 0.5) - blank_center;
+        float min_dist = min(dist_current, dist_next);
+        float max_min_dist = v_scale / 2.0;
+        float weight_factor = min_dist / max_min_dist;
+        
+        // Compute sum of all triangular weight factors
+        // Odd: sum_dists = (n+1)^2/4, Even: sum_dists = n(n+2)/4
+        float sum_of_dists = mod(num_blanks, 2.0) > 0.5
+            ? (num_blanks + 1.0) * (num_blanks + 1.0) / 4.0
+            : num_blanks * (num_blanks + 2.0) / 4.0;
+        float sum_weights = 2.0 * sum_of_dists / v_scale;
+        
+        // Scale by num_blanks so more blanks = darker overall
+        blank_mix *= weight_factor / sum_weights * num_blanks;
+    }
+
+    return mix(base, vec3(0.0), blank_mix);
 }
 
 void main()
@@ -217,12 +280,12 @@ void main()
     if (in_active && FRAME_VIZ_ACTIVE > 0.5) {
         color = sample_active_content(output_x, output_y);
     } else if (in_frame && !in_active && FRAME_VIZ_BLANKING > 0.5) {
-        color = vec3(1.0, 1.0, 0.0) * 0.75;
+        color = vec3(1.0, 1.0, 0.0) * 0.5;
     } else if (!in_frame && FRAME_VIZ_PADDING > 0.5) {
-        color = vec3(1.0, 0.0, 1.0) * 0.75;
+        color = vec3(1.0, 0.0, 1.0) * 0.5;
     } else {
         color = vec3(0.0);
     }
 
-    FragColor = vec4(color, 1.0);
+    FragColor = vec4(crt_gamma(color), 1.0);
 }

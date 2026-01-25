@@ -1,0 +1,26 @@
+{
+  "filename" : "3do",
+  "type" : "hdtv",
+  "title" : "3DO S-Video shader set (Hi-Vision)",
+  "description" : "Simulates a S-Video connection to a Hi-Vision TV.  While the 3DO is 480i only, some users may prefer the scanline clarity from a higher resolution screen.",
+  "pipeline_root" : "../../pipelines",
+  "pipelines" : [
+    "sys/3do-special.json",
+    "misc/menu-digital-video-upsample.json",
+    "misc/frame-digital-780x1125.json",
+    "sys/digital-svideo.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_root" : "../../params",
+  "parameter_sets" : [
+    "sys/3do/base.json",
+    "sys/3do/ntsc.json",
+    "sys/3do/svideo.json",
+    "disp/ntscj.json",
+    "disp/trinitron-hv.json",
+    "disp/tvl-800.json"
+  ],
+  "parameter_overrides" : {
+  }
+}
