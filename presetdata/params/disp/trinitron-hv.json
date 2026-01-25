@@ -14,7 +14,6 @@
         "USER_V_SIZE" : 50.0,
         "ZOOM" : 100.0,
         "ASPECT" : 1.0,
-        "DOUBLE_REFRESH" : 1.0,
         "DISPLAY_BANDLIMIT_R" : 10.8,
         "DISPLAY_BANDLIMIT_G" : 10.8,
         "DISPLAY_BANDLIMIT_B" : 10.8
