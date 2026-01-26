@@ -169,7 +169,16 @@ void main()
     {
         float window0;
         float weight0 = sinc_lowpass_kaiser(-frac, fc_norm.x, taps.x, KAISER_BETA, window0);
-        vec3 color0 = texture(Source, src_center * config.SourceSize.zw).rgb;
+        
+        vec2 sample_coord = src_center * config.SourceSize.zw;
+        vec3 color0;
+        if (sample_coord.x >= 0.0 && sample_coord.x <= 1.0) {
+            color0 = texture(Source, sample_coord).rgb;
+        } else {
+            // Out of bounds: use (0, 0.5, 0.5) for YCC, (0, 0, 0) for RGB
+            color0 = (UPSAMPLER_INPUT > 0.5) ? vec3(0.0, 0.5, 0.5) : vec3(0.0);
+        }
+        
         if (UPSAMPLER_INPUT < 0.5)
             color0 = to_linear(color0);
         sum += color0 * weight0;
@@ -194,8 +203,14 @@ void main()
 
         if (window_pos >= FILTER_THRESHOLD) {
             vec2 sample_pos = src_center + vec2(float(dx), 0.0);
-            vec2 sample_coord = clamp(sample_pos * config.SourceSize.zw, vec2(0.0), vec2(1.0));
-            vec3 color = texture(Source, sample_coord).rgb;
+            vec2 sample_coord = sample_pos * config.SourceSize.zw;
+            vec3 color;
+            if (sample_coord.x >= 0.0 && sample_coord.x <= 1.0) {
+                color = texture(Source, sample_coord).rgb;
+            } else {
+                // Out of bounds: use (0, 0.5, 0.5) for YCC, (0, 0, 0) for RGB
+                color = (UPSAMPLER_INPUT > 0.5) ? vec3(0.0, 0.5, 0.5) : vec3(0.0);
+            }
             if (UPSAMPLER_INPUT < 0.5)
                 color = to_linear(color);
             sum += color * weight_pos;
@@ -204,8 +219,14 @@ void main()
 
         if (window_neg >= FILTER_THRESHOLD) {
             vec2 sample_pos = src_center + vec2(float(-dx), 0.0);
-            vec2 sample_coord = clamp(sample_pos * config.SourceSize.zw, vec2(0.0), vec2(1.0));
-            vec3 color = texture(Source, sample_coord).rgb;
+            vec2 sample_coord = sample_pos * config.SourceSize.zw;
+            vec3 color;
+            if (sample_coord.x >= 0.0 && sample_coord.x <= 1.0) {
+                color = texture(Source, sample_coord).rgb;
+            } else {
+                // Out of bounds: use (0, 0.5, 0.5) for YCC, (0, 0, 0) for RGB
+                color = (UPSAMPLER_INPUT > 0.5) ? vec3(0.0, 0.5, 0.5) : vec3(0.0);
+            }
             if (UPSAMPLER_INPUT < 0.5)
                 color = to_linear(color);
             sum += color * weight_neg;
