@@ -17,9 +17,6 @@
     "options" : {
         "mod" : {
             "scale": [2.0, 1.0]
-        },
-        "decimate" : {
-            "scale": [0.5, 1.0]
         }
     }
 }
