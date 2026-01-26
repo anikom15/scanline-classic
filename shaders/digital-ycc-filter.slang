@@ -211,9 +211,16 @@ void main()
         if (y_done && cb_done && cr_done)
             break;
         
-        // Sample once for both channels
-        vec4 sample_right = texture(Source, Tex + nf * dx_vec);
-        vec4 sample_left = texture(Source, Tex - nf * dx_vec);
+        // Sample with boundary checks - treat out-of-bounds as neutral (0.5 for YCC)
+        vec2 tex_right = Tex + nf * dx_vec;
+        vec2 tex_left = Tex - nf * dx_vec;
+        
+        vec4 sample_right = (tex_right.x >= 0.0 && tex_right.x <= 1.0) 
+            ? texture(Source, tex_right) 
+            : vec4(0.0, 0.5, 0.5, 1.0);
+        vec4 sample_left = (tex_left.x >= 0.0 && tex_left.x <= 1.0) 
+            ? texture(Source, tex_left) 
+            : vec4(0.0, 0.5, 0.5, 1.0);
         
         // Process Y channel
         if (!y_done) {
