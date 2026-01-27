@@ -18,7 +18,7 @@
     "sys/3do/ntsc.json",
     "sys/3do/svideo.json",
     "sys/3do/240p.json",
-    "disp/ntscj.json",
+    "disp/hdtv.json",
     "disp/trinitron-hv.json",
     "disp/tvl-800.json"
   ],
