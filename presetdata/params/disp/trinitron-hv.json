@@ -19,6 +19,7 @@
         "DISPLAY_BANDLIMIT_B" : 10.8,
         "BEZEL_GAIN" : -12.0,
         "GLOW_WEIGHT" : 0.95,
-        "GLOW_RADIUS" : 0.04
+        "GLOW_RADIUS" : 0.04,
+        "DOUBLE_REFRESH" : 1.0
     }
 }

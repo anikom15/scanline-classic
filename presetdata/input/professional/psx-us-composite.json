@@ -1,7 +1,7 @@
 {
-  "filename" : "psx-composite",
+  "filename" : "psx-us-composite",
   "type" : "professional",
-  "title" : "PlayStation Composite shader set",
+  "title" : "PlayStation composite shader set",
   "description" : "Composite video was available on all PSX models with the included AV cables.",
   "pipeline_root" : "../../pipelines",
   "pipelines" : [
@@ -14,8 +14,8 @@
   "parameter_root" : "../../params",
   "parameter_sets" : [
     "sys/psx/base.json",
-    "sys/psx/ntscj.json",
-    "disp/ntscj.json",
+    "sys/psx/ntsc.json",
+    "disp/ntsc.json",
     "disp/trinitron.json",
     "disp/tvl-800.json"
   ],

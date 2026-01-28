@@ -6,7 +6,7 @@
   "pipeline_root" : "../../pipelines",
   "pipelines" : [
     "misc/menu-svideo.json",
-    "misc/frame-tv525.json",
+    "misc/frame-tv1125.json",
     "sys/svideo.json",
     "disp/crt.json",
     "misc/post.json"
@@ -17,7 +17,7 @@
     "sys/psx/ntsc.json",
     "disp/ntsc.json",
     "disp/trinitron.json",
-    "disp/tvl-600.json"
+    "disp/tvl-800.json"
   ],
   "parameter_overrides" : {
   }

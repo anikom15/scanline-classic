@@ -1,13 +1,13 @@
 {
-  "filename" : "psx-composite",
+  "filename" : "psx-rf",
   "type" : "professional",
-  "title" : "PlayStation Composite shader set",
-  "description" : "Composite video was available on all PSX models with the included AV cables.",
+  "title" : "PlayStation RF shader set",
+  "description" : "RF video was available on all PSX models with an official modulator.",
   "pipeline_root" : "../../pipelines",
   "pipelines" : [
     "misc/menu-composite.json",
     "misc/frame-tv1125.json",
-    "sys/component-composite.json",
+    "sys/component-rf.json",
     "disp/crt.json",
     "misc/post.json"
   ],
@@ -15,6 +15,7 @@
   "parameter_sets" : [
     "sys/psx/base.json",
     "sys/psx/ntscj.json",
+    "misc/rf-ntsc.json",
     "disp/ntscj.json",
     "disp/trinitron.json",
     "disp/tvl-800.json"
