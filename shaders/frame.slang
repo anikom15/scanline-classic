@@ -84,20 +84,9 @@ layout(push_constant) uniform Push
 #define TOTAL_SUBFRAMES config.TotalSubFrames
 #define HAS_SUBFRAMES (TOTAL_SUBFRAMES > 1u)
 
-// Helper function to determine if we should enable double refresh based on v_scale
-bool should_auto_enable_double_refresh(float v_scale, float is_interlaced) {
-    // For interlaced: enable if v_scale > 2
-    // For progressive: enable if v_scale > 4
-    if (is_interlaced > 0.5) {
-        return v_scale > 1.5;
-    } else {
-        return v_scale > 3.5;
-    }
-}
-
 // Calculate effective double refresh state considering subframes
 bool get_effective_double_refresh(float v_scale, float is_interlaced) {
-    return (DOUBLE_REFRESH > 0.5) || should_auto_enable_double_refresh(v_scale, is_interlaced);
+    return (DOUBLE_REFRESH > 0.5);
 }
 
 layout(std140, set = 0, binding = 0) uniform UBO
@@ -186,6 +175,11 @@ void main()
     // Calculate scaled active region position
     active_left_scaled = full_pad_left + floor((scaled_full_width - config.SourceSize.x * h_scale) * 0.5);
     active_top_scaled = full_pad_top + floor((scaled_full_height - config.SourceSize.y * v_scale) * 0.5);
+
+    // Align to pixel grid boundaries to prevent misalignment with zero-stuffing
+    // Ensures all scaled pixels fall on clean multiples of scale factors
+    active_left_scaled = floor(active_left_scaled / h_scale) * h_scale;
+    active_top_scaled = floor(active_top_scaled / v_scale) * v_scale;
 }
 
 #pragma stage fragment
@@ -216,6 +210,8 @@ vec3 sample_active_content(float output_x, float output_y) {
     float original_y = floor(scaled_active_y / v_scale);
     float v_scanline_offset = mod(scaled_active_y, v_scale);
 
+    if (v_scanline_offset > v_scale / 2.0)
+        original_y += 1.0;
     vec3 base = crt_linear(texture(Source, (vec2(original_x, original_y) + 0.5) / config.SourceSize.xy).rgb);
     bool scaled_blank_line = v_scanline_offset >= 1.0;
 
