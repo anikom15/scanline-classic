@@ -1,0 +1,12 @@
+{
+    "parameters" : {
+        "ENCODER_SETUP" : 0.0,
+
+        "UPSAMPLER_INPUT" : 1.0,
+        "DIGITAL_Cb_FILTER_DECIMATION" : 4.0,
+        "DIGITAL_Cr_FILTER_DECIMATION" : 4.0,
+
+        "PIXEL_CLOCK_MODE" : 0.0,
+        "H_FREQ_MODE" : 1.0
+    }
+}

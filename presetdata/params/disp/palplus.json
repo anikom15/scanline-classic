@@ -1,0 +1,8 @@
+{
+    "parameters" : {
+        "DECODER_SETUP" : 0.0,
+        "DECODER_TYPE" : 1.0,
+        "COLORIMETRY_PRESET" : 4.0,
+        "COLOR_FILTER_MODE" : 0.0
+    }
+}

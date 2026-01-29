@@ -1,0 +1,8 @@
+{
+    "parameters" : {
+        "ENCODER_SETUP" : 0.0,
+        "PAL" : 1.0,
+        "PIXEL_CLOCK" : 12.0,
+        "H_FREQ" : 3406.0
+    }
+}

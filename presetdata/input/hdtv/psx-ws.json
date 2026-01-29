@@ -1,0 +1,24 @@
+{
+  "filename" : "psx-ws",
+  "type" : "hdtv",
+  "title" : "PlayStation S-Video shader set (Hi-Vision widescreen)",
+  "description" : "Simulates PlayStation connected via S-Video to a widescreen set.  For native 16:9 content only.  For widescreen hack, see psx.",
+  "pipeline_root" : "../../pipelines",
+  "pipelines" : [
+    "misc/menu-svideo.json",
+    "misc/frame-tv1125.json",
+    "sys/svideo.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_root" : "../../params",
+  "parameter_sets" : [
+    "sys/psx/base.json",
+    "sys/psx/ntscj.json",
+    "disp/hdtv.json",
+    "disp/trinitron-hv-stretch.json",
+    "disp/tvl-800.json"
+  ],
+  "parameter_overrides" : {
+  }
+}

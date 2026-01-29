@@ -1,0 +1,6 @@
+{
+    "parameters" : {
+        "TVL" : 800.0,
+        "SCANLINE_BLANK_WEIGHT" : 80.0
+    }
+}

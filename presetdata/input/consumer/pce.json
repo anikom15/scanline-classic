@@ -16,7 +16,6 @@
     "sys/pce/base.json",
     "misc/rf-ntsc.json",
     "disp/ntscj.json",
-    "disp/rf-ntsc.json",
     "disp/trinitron.json",
     "disp/consumer-color-ntsc.json",
     "disp/tvl-450.json"

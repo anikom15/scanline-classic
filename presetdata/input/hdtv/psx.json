@@ -1,0 +1,24 @@
+{
+  "filename" : "psx",
+  "type" : "hdtv",
+  "title" : "PlayStation S-Video shader set (Hi-Vision)",
+  "description" : "Simulates PlayStation connected via S-Video to a widescreen set.  For 4:3 content or 16:9 with widescreen hack; for native 16:9 (e.g. Ghost in the Shell), see psx-ws.",
+  "pipeline_root" : "../../pipelines",
+  "pipelines" : [
+    "misc/menu-svideo.json",
+    "misc/frame-tv1125.json",
+    "sys/svideo.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_root" : "../../params",
+  "parameter_sets" : [
+    "sys/psx/base.json",
+    "sys/psx/ntscj.json",
+    "disp/hdtv.json",
+    "disp/trinitron-hv.json",
+    "disp/tvl-800.json"
+  ],
+  "parameter_overrides" : {
+  }
+}

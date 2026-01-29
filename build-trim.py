@@ -63,6 +63,33 @@ def should_remove_preset(preset_path, rules):
             return True
     return False
 
+def replace_png_with_jpg_in_presets(root_dir, verbose=False):
+    """Replace .png references with .jpg in all .slangp preset files."""
+    replaced_count = 0
+    files_modified = 0
+    
+    presets_dir = root_dir / 'presets'
+    if not presets_dir.exists():
+        return 0, 0
+    
+    for preset_file in presets_dir.rglob('*.slangp'):
+        try:
+            content = preset_file.read_text(encoding='utf-8')
+            new_content = content.replace('.png', '.jpg')
+            
+            if new_content != content:
+                preset_file.write_text(new_content, encoding='utf-8')
+                # Count how many replacements were made
+                count = content.count('.png')
+                replaced_count += count
+                files_modified += 1
+                if verbose:
+                    print(f"  Updated {preset_file.relative_to(root_dir)}: {count} reference(s)")
+        except Exception as e:
+            print(f"Warning: Failed to process {preset_file}: {e}")
+    
+    return files_modified, replaced_count
+
 def remove_empty_dirs(root_dir, verbose=False):
     """Remove empty directories recursively from bottom up."""
     removed = []
@@ -143,6 +170,13 @@ def copy_and_trim(verbose=False):
                 print(f"Removed {removed_count} preset file(s) based on trim rules")
     else:
         print("No trim rules loaded - no presets will be removed")
+    
+    # Replace .png with .jpg in remaining preset files
+    if verbose:
+        print("Replacing .png with .jpg in preset files...")
+    files_modified, replaced_count = replace_png_with_jpg_in_presets(OUT_TRIM, verbose=verbose)
+    if verbose or files_modified > 0:
+        print(f"Updated {files_modified} preset file(s), replaced {replaced_count} .png reference(s) with .jpg")
     
     # Remove empty directories
     if verbose:

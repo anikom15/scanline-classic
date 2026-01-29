@@ -1,0 +1,24 @@
+{
+  "filename" : "psx-eu",
+  "type" : "professional",
+  "title" : "PlayStation RGB shader set (PAL)",
+  "description" : "RGB was available on all PSX models.  The JP-21 cable was sold in Japan and a SCART cable was sold in Europe.  For 16:9, hdtv/psx-eu",
+  "pipeline_root" : "../../pipelines",
+  "pipelines" : [
+    "misc/menu.json",
+    "misc/frame-tv625.json",
+    "sys/rgb.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_root" : "../../params",
+  "parameter_sets" : [
+    "sys/psx/base.json",
+    "sys/psx/pal.json",
+    "disp/pal.json",
+    "disp/trinitron.json",
+    "disp/tvl-600.json"
+  ],
+  "parameter_overrides" : {
+  }
+}

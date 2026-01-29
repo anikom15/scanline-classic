@@ -1,0 +1,26 @@
+{
+  "filename" : "psx-eu-rf",
+  "type" : "professional",
+  "title" : "PlayStation RF shader set (PAL-G)",
+  "description" : "RF video was available on all PSX models with an official modulator.",
+  "pipeline_root" : "../../pipelines",
+  "pipelines" : [
+    "misc/menu-rf.json",
+    "misc/frame-tv625.json",
+    "sys/component-rf.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_root" : "../../params",
+  "parameter_sets" : [
+    "sys/psx/base.json",
+    "sys/psx/pal.json",
+    "misc/rf-palg.json",
+    "disp/pal.json",
+    "disp/trinitron.json",
+    "disp/deflicker.json",
+    "disp/tvl-600.json"
+  ],
+  "parameter_overrides" : {
+  }
+}

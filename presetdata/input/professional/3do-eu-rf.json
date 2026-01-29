@@ -1,0 +1,28 @@
+{
+  "filename" : "3do-eu-rf",
+  "type" : "professional",
+  "title" : "3DO RF shader set (PAL-G)",
+  "description" : "RF output is available on all non-Japanese 3DO models.",
+  "pipeline_root" : "../../pipelines",
+  "pipelines" : [
+    "sys/3do-special-pal.json",
+    "misc/menu-digital-rf-upsample.json",
+    "misc/frame-digital-944x625.json",
+    "sys/digital-rf.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_root" : "../../params",
+  "parameter_sets" : [
+    "sys/3do/base.json",
+    "sys/3do/pal.json",
+    "sys/3do/composite.json",
+    "misc/rf-palg.json",
+    "disp/pal.json",
+    "disp/trinitron.json",
+    "disp/deflicker.json",
+    "disp/tvl-600.json"
+  ],
+  "parameter_overrides" : {
+  }
+}

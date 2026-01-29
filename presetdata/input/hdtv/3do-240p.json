@@ -1,0 +1,27 @@
+{
+  "filename" : "3do-240p",
+  "type" : "hdtv",
+  "title" : "3DO S-Video shader set (240p, Hi-Vision)",
+  "description" : "Simulates a S-Video connection to a Hi-Vision TV.  While the 3DO is 480i only, some users may prefer the scanline clarity from a higher resolution screen.",
+  "pipeline_root" : "../../pipelines",
+  "pipelines" : [
+    "sys/3do-special-240p.json",
+    "misc/menu-digital-video-upsample.json",
+    "misc/frame-digital-780x1125.json",
+    "sys/digital-svideo.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_root" : "../../params",
+  "parameter_sets" : [
+    "sys/3do/base.json",
+    "sys/3do/ntsc.json",
+    "sys/3do/svideo.json",
+    "sys/3do/240p.json",
+    "disp/hdtv.json",
+    "disp/trinitron-hv.json",
+    "disp/tvl-800.json"
+  ],
+  "parameter_overrides" : {
+  }
+}

@@ -13,7 +13,7 @@
         "limiter" : "limiter"
     },
     "options" : {
-        "prefilter" : {
+        "mod" : {
             "scale": [2.0, 1.0]
         }
     }

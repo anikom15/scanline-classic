@@ -1,0 +1,27 @@
+{
+  "filename" : "3do-eu",
+  "type" : "consumer",
+  "title" : "3DO composite shader set",
+  "description" : "Composite output is available on all 3DO models with the included cable.",
+  "pipeline_root" : "../../pipelines",
+  "pipelines" : [
+    "sys/3do-special-pal.json",
+    "misc/menu-digital-composite-upsample.json",
+    "misc/frame-digital-944x625.json",
+    "sys/digital-composite.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_root" : "../../params",
+  "parameter_sets" : [
+    "sys/3do/base.json",
+    "sys/3do/pal.json",
+    "sys/3do/composite.json",
+    "disp/pal.json",
+    "disp/tv.json",
+    "disp/consumer-color-pal.json",
+    "disp/tvl-450.json"
+  ],
+  "parameter_overrides" : {
+  }
+}

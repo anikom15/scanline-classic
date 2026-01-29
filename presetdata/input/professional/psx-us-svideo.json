@@ -1,0 +1,24 @@
+{
+  "filename" : "psx-us",
+  "type" : "professional",
+  "title" : "PlayStation S-Video shader set (NTSC-M)",
+  "description" : "S-Video was available on all PSX models.",
+  "pipeline_root" : "../../pipelines",
+  "pipelines" : [
+    "misc/menu-svideo.json",
+    "misc/frame-tv525.json",
+    "sys/svideo.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_root" : "../../params",
+  "parameter_sets" : [
+    "sys/psx/base.json",
+    "sys/psx/ntsc.json",
+    "disp/ntsc.json",
+    "disp/trinitron.json",
+    "disp/tvl-600.json"
+  ],
+  "parameter_overrides" : {
+  }
+}

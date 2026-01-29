@@ -1,0 +1,12 @@
+{
+    "root_path" : "../../../shaders",
+    "shaders" : {
+        "interpolation" : "3do-interpolation"
+    },
+    "options" : {
+        "interpolation" : {
+            "scale_type" : ["absolute"],
+            "scale": [640.0, 480.0]
+        }
+    }
+}

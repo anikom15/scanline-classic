@@ -1,0 +1,24 @@
+{
+  "filename" : "psx",
+  "type" : "professional",
+  "title" : "PlayStation RGB shader set",
+  "description" : "RGB was available on all PSX models.  The JP-21 cable was sold in Japan and a SCART cable was sold in Europe.  For 16:9, hdtv/psx",
+  "pipeline_root" : "../../pipelines",
+  "pipelines" : [
+    "misc/menu.json",
+    "misc/frame-tv525.json",
+    "sys/rgb.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_root" : "../../params",
+  "parameter_sets" : [
+    "sys/psx/base.json",
+    "sys/psx/ntscj.json",
+    "disp/ntscj.json",
+    "disp/trinitron.json",
+    "disp/tvl-600.json"
+  ],
+  "parameter_overrides" : {
+  }
+}
