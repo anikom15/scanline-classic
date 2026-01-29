@@ -220,7 +220,7 @@ layout(std140, set = 0, binding = 0) uniform UBO
     float ENCODER_SETUP;
     float DECODER_SETUP;
     float PAL;
-    float DECODER_PAL;
+    float DECODER_TYPE;
 } global;
 
 #define BYPASS_SVIDEO global.BYPASS_SVIDEO
@@ -231,7 +231,7 @@ layout(std140, set = 0, binding = 0) uniform UBO
 #define ENCODER_SETUP global.ENCODER_SETUP
 #define DECODER_SETUP global.DECODER_SETUP
 #define PAL global.PAL
-#define DECODER_PAL global.DECODER_PAL
+#define DECODER_TYPE global.DECODER_TYPE
 
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
@@ -312,7 +312,7 @@ void main()
 
     // PAL V-axis alternation: simply invert V on odd lines
     float pal_v_sign = 1.0 - 2.0 * floor(mod(line, 2.0)) * PAL;
-    float pal_v_sign_decoder = 1.0 - 2.0 * floor(mod(line, 2.0)) * DECODER_PAL;
+    float pal_v_sign_decoder = 1.0 - 2.0 * floor(mod(line, 2.0)) * DECODER_TYPE;
 
     vec3 pixel0 = texture(Source, Tex).rgb;
     float phase_inc_px = 2.0 * PI * carrier.sc_freq_hz * carrier.pixel_time_px;
