@@ -207,16 +207,35 @@ vec2 pincushion_theta(vec2 uv, const float theta_h, const float theta_v)
 }
 
 // Parameterized pincushion non-linear (magnetic) using anisotropic angles (radians)
+// Blends between safe linear-style function near origin and non-linear function away from it
 vec2 pincushion_nl_theta(vec2 uv, const float theta_h, const float theta_v)
 {
-    if (theta_h < EPS && theta_v < EPS) return uv;
+    if (theta_h < EPS && theta_v < EPS)
+        return uv;
     float safe_theta_h = max(theta_h, 0.001);
     float safe_theta_v = max(theta_v, 0.001);
+    
     vec2 t = uv * vec2(safe_theta_h, safe_theta_v);
     float x = t.x;
     float y = t.y;
-    float dx = atan(asin(x) * cos(asin(y)));
-    float dy = atan(asin(y) * cos(asin(x)));
+    
+    // Smoothly blend from safe linear function near origin to non-linear function away from it
+    // This avoids discontinuity at y≈0 and x≈0
+    float blend_x = smoothstep(0.05, 0.3, abs(x));
+    float blend_y = smoothstep(0.05, 0.3, abs(y));
+    
+    // Safe linear-style approximation near origin (avoids asin domain issues)
+    float dx_safe = atan(x * cos(y));
+    float dy_safe = atan(y * cos(x));
+    
+    // Original non-linear (magnetic) function away from origin
+    float dx_nl = atan(asin(clamp(x, -1.0, 1.0)) * cos(asin(clamp(y, -1.0, 1.0))));
+    float dy_nl = atan(asin(clamp(y, -1.0, 1.0)) * cos(asin(clamp(x, -1.0, 1.0))));
+    
+    // Blend smoothly
+    float dx = mix(dx_safe, dx_nl, blend_x);
+    float dy = mix(dy_safe, dy_nl, blend_y);
+    
     vec2 out_uv = vec2(dx / safe_theta_h, dy / safe_theta_v);
     return out_uv;
 }
