@@ -1,0 +1,24 @@
+{
+  "filename" : "psx-eu",
+  "type" : "hdtv",
+  "title" : "PlayStation RGB shader set (PALplus)",
+  "description" : "Simulates PlayStation connected via SCART to a widescreen set.  For 4:3 content or 16:9 with widescreen hack; for native 16:9 (e.g. Wipeout 3), see psx-eu-ws.",
+  "pipeline_root" : "../../pipelines",
+  "pipelines" : [
+    "misc/menu.json",
+    "misc/frame-tv1125.json",
+    "sys/rgb.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_root" : "../../params",
+  "parameter_sets" : [
+    "sys/psx/base.json",
+    "sys/psx/pal.json",
+    "disp/palplus.json",
+    "disp/tv-palplus.json",
+    "disp/tvl-800.json"
+  ],
+  "parameter_overrides" : {
+  }
+}
