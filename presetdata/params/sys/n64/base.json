@@ -1,0 +1,17 @@
+{
+    "parameters" : {
+        "ENCODER_SETUP" : 0.0,
+        "SYS_BANDWIDTH_R" : 6.1,
+        "SYS_BANDWIDTH_G" : 6.1,
+        "SYS_BANDWIDTH_B" : 6.1,
+        "SYS_CUTOFF_ATTEN_R" : 22.0,
+        "SYS_CUTOFF_ATTEN_G" : 22.0,
+        "SYS_CUTOFF_ATTEN_B" : 22.0,
+
+        "COLOR_FILTER_MODE" : 0.0,
+
+        "PIXEL_CLOCK_MODE" : 1.0,
+        "H_FREQ_MODE" : 1.0,
+        "H_FREQ" : 1547.0
+    }
+}

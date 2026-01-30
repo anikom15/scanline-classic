@@ -1,0 +1,7 @@
+{
+    "parameters" : {
+        "PIXEL_CLOCK" : 6.8,
+        "V_FREQ_MODE" : 3.0,
+        "V_FREQ" : 263.0
+    }
+}
