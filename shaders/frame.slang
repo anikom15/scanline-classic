@@ -175,11 +175,6 @@ void main()
     // Calculate scaled active region position
     active_left_scaled = full_pad_left + floor((scaled_full_width - config.SourceSize.x * h_scale) * 0.5);
     active_top_scaled = full_pad_top + floor((scaled_full_height - config.SourceSize.y * v_scale) * 0.5);
-
-    // Align to pixel grid boundaries to prevent misalignment with zero-stuffing
-    // Ensures all scaled pixels fall on clean multiples of scale factors
-    active_left_scaled = floor(active_left_scaled / h_scale) * h_scale;
-    active_top_scaled = floor(active_top_scaled / v_scale) * v_scale;
 }
 
 #pragma stage fragment
