@@ -1,0 +1,24 @@
+{
+  "filename" : "n64",
+  "type" : "hdtv",
+  "title" : "Nintendo 64 S-Video shader set (Hi-Vision)",
+  "description" : "All NTSC models have an S-Video output available without modification. Official cables were available in Japan and the United States.",
+  "pipeline_root" : "../../pipelines",
+  "pipelines" : [
+    "misc/menu-svideo.json",
+    "misc/frame-tv525.json",
+    "sys/svideo.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_root" : "../../params",
+  "parameter_sets" : [
+    "sys/n64/base.json",
+    "sys/n64/ntsc.json",
+    "disp/hdtv.json",
+    "disp/trinitron-hv.json",
+    "disp/tvl-800.json"
+  ],
+  "parameter_overrides" : {
+  }
+}

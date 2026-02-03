@@ -17,7 +17,6 @@
         "COLOR_FILTER_MODE" : 0.0,
 
         "PIXEL_CLOCK_MODE" : 1.0,
-        "H_FREQ_MODE" : 1.0,
-        "H_FREQ" : 1547.0
+        "H_FREQ_MODE" : 1.0
     }
 }

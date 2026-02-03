@@ -1,0 +1,25 @@
+{
+  "filename" : "n64-rf",
+  "type" : "professional",
+  "title" : "Nintendo 64 RF shader set",
+  "description" : "RF output is available with the appropriate RF modulator.",
+  "pipeline_root" : "../../pipelines",
+  "pipelines" : [
+    "misc/menu-composite.json",
+    "misc/frame-tv525.json",
+    "sys/component-rf.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_root" : "../../params",
+  "parameter_sets" : [
+    "sys/n64/base.json",
+    "sys/n64/ntsc.json",
+    "misc/rf-ntsc.json",
+    "disp/ntscj.json",
+    "disp/trinitron.json",
+    "disp/tvl-600.json"
+  ],
+  "parameter_overrides" : {
+  }
+}
