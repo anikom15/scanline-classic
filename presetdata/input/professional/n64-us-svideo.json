@@ -1,0 +1,24 @@
+{
+  "filename" : "n64-us",
+  "type" : "professional",
+  "title" : "Nintendo 64 S-Video shader set",
+  "description" : "All NTSC models have an S-Video output available without modification. Official cables were available in Japan and the United States.",
+  "pipeline_root" : "../../pipelines",
+  "pipelines" : [
+    "misc/menu-svideo.json",
+    "misc/frame-tv525.json",
+    "sys/svideo.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_root" : "../../params",
+  "parameter_sets" : [
+    "sys/n64/base.json",
+    "sys/n64/ntsc.json",
+    "disp/ntsc.json",
+    "disp/trinitron.json",
+    "disp/tvl-600.json"
+  ],
+  "parameter_overrides" : {
+  }
+}

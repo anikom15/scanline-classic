@@ -1,0 +1,24 @@
+{
+  "filename" : "n64-eu-ws",
+  "type" : "hdtv",
+  "title" : "Nintendo 64 S-Video shader set (PALplus)",
+  "description" : "Simulates a Nintendo 64 connected to a PAL widescreen set.  Stretched to 16:9 for native input.",
+  "pipeline_root" : "../../pipelines",
+  "pipelines" : [
+    "misc/menu-svideo.json",
+    "misc/frame-tv1125.json",
+    "sys/component-composite.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_root" : "../../params",
+  "parameter_sets" : [
+    "sys/n64/base.json",
+    "sys/n64/pal.json",
+    "disp/palplus.json",
+    "disp/tv-palplus-stretch.json",
+    "disp/tvl-800.json"
+  ],
+  "parameter_overrides" : {
+  }
+}

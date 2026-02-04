@@ -1,0 +1,24 @@
+{
+  "filename" : "n64-us-composite",
+  "type" : "professional",
+  "title" : "Nintendo 64 composite shader set",
+  "description" : "All models have composite video as standard.",
+  "pipeline_root" : "../../pipelines",
+  "pipelines" : [
+    "misc/menu-composite.json",
+    "misc/frame-tv525.json",
+    "sys/component-composite.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_root" : "../../params",
+  "parameter_sets" : [
+    "sys/n64/base.json",
+    "sys/n64/ntsc.json",
+    "disp/ntsc.json",
+    "disp/trinitron.json",
+    "disp/tvl-600.json"
+  ],
+  "parameter_overrides" : {
+  }
+}
