@@ -7,9 +7,9 @@
   "pipelines" : [
     "sys/3do-special.json",
     "misc/menu-digital-video-upsample.json",
-    "misc/frame-digital-780x1125.json",
+    "misc/frame-digital-780.json",
     "sys/digital-svideo.json",
-    "disp/crt.json",
+    "disp/crt-hd.json",
     "misc/post.json"
   ],
   "parameter_root" : "../../params",

@@ -7,7 +7,7 @@
   "pipelines" : [
     "sys/3do-special.json",
     "misc/menu-digital-video-upsample.json",
-    "misc/frame-digital-780x525.json",
+    "misc/frame-digital-780.json",
     "sys/digital-svideo.json",
     "disp/crt.json",
     "misc/post.json"

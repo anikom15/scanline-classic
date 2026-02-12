@@ -145,6 +145,15 @@ vec3 xyY_to_XYZ(const vec3 xyY)
     return vec3(Y * x / y, Y, Y * z / y);
 }
 
+vec3 YrYgYb_to_XYZ(const vec3 YrYgYb, const Colorimetry colorimetry)
+{
+    vec3 red_XYZ = xyY_to_XYZ(vec3(colorimetry.red_xy.x, colorimetry.red_xy.y, YrYgYb.r));
+    vec3 green_XYZ = xyY_to_XYZ(vec3(colorimetry.green_xy.x, colorimetry.green_xy.y, YrYgYb.g));
+    vec3 blue_XYZ = xyY_to_XYZ(vec3(colorimetry.blue_xy.x, colorimetry.blue_xy.y, YrYgYb.b));
+
+    return red_XYZ + green_XYZ + blue_XYZ;
+}
+
 vec3 XYZ_to_CIE_LUV(vec3 XYZ) {
     const float Yn = 1.0;
     const float Un = (4.0 * 0.95047) / (0.95047 + 15.0 * Yn + 3.0 * 1.08883);

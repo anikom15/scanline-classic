@@ -22,7 +22,6 @@
 #include "tools/zebra.inc"
 
 #include "menus/parameters/output-tonemap.inc"
-#include "menus/parameters/user-common.inc"
 #include "menus/parameters/colorimetry.inc"
 #include "menus/parameters/output-color.inc"
 
@@ -34,8 +33,6 @@ layout(push_constant) uniform Push
 {
     vec4 OutputSize;
     uint FrameCount;
-    float USER_PICTURE;
-    float USER_BRIGHTNESS;
     float R_X;
     float R_Y;
     float G_X;
@@ -56,8 +53,6 @@ layout(push_constant) uniform Push
     float COLOR_DEBUG_OUT_OF_RANGE;
 } config;
 
-#define USER_PICTURE config.USER_PICTURE
-#define USER_BRIGHTNESS config.USER_BRIGHTNESS
 #define COLORIMETRY_PRESET config.COLORIMETRY_PRESET
 #define R_X config.R_X
 #define R_Y config.R_Y
@@ -190,36 +185,6 @@ float scale_chroma_cieluv(vec3 color, vec3 luv, mat3 toRGB)
         return minScale;
     }
     return 1.0;
-}
-
-// -- Tone mapping functions -- //
-
-// Reinhard tone mapping operator (basic version)
-vec3 reinhard_basic(vec3 color)
-{
-    return color / (1.0 + color);
-}
-
-// Reinhard tone mapping operator (extended version)
-vec3 reinhard_extended(vec3 color, float y, float w)
-{
-    float y_adj = y * (1.0 + y / (w * w)) / (1.0 + y);
-
-    return color * y_adj / y;
-}
-
-// ACES tone mapping operator (estimate)
-vec3 aces_tone_map(vec3 color)
-{
-    const float a = 2.51;
-    const float b = 0.03;
-    const float c = 2.43;
-    const float d = 0.59;
-    const float e = 0.14;
-
-    color *= 0.8;
-    vec3 mapped = (color * (a * color + b)) / (color * (c * color + d) + e);
-    return clamp(mapped, 0.0, 1.0);
 }
 
 #pragma stage vertex
@@ -389,41 +354,52 @@ layout(set = 0, binding = 1) uniform sampler2D Source;
 
 void main()
 {
-    vec3 Yrgb = texture(Source, vTexCoord).rgb;
+    const float TARGET_NITS = 100.0;
 
-    float black_level = max(2.0 * USER_BRIGHTNESS / 100.0 - 1.0, 0.0);
-    float white_level = 2.0 * USER_PICTURE / 100.0 + black_level;
-    
-    // Early exit for full bypass
-    if (COLOR_CONVERSION_BYPASS >= 1.0) {
-        // Inverse power law
-        FragColor = vec4(crt_gamma(clamp(Yrgb, 0.0, 1.0)), 1.0);
-        return;
-    }
+    vec4 src = texture(Source, vTexCoord);
+    vec3 YrYgYb = src.rgb;
+    float alpha = src.a;
+    float source_peak = max(alpha, EPS);
+    float low_peak = min(TARGET_NITS, source_peak);
+    float high_peak = max(TARGET_NITS, source_peak);
+
+    // Normalization of luminance to target nits
+    YrYgYb /= low_peak;
+    float effective_peak = high_peak / low_peak;
 
     // Tone mapping
     if (TONEMAP_TYPE < 0.5) {
         // No tone mapping
     } else if (TONEMAP_TYPE < 1.5) {
-        Yrgb = reinhard_basic(Yrgb);
+        // Reinhard tone mapping
+        YrYgYb = YrYgYb / (1.0 + YrYgYb);
     } else if (TONEMAP_TYPE < 2.5) {
-        // Luminance
-        float y = dot(Yrgb, vec3(RGB_to_XYZ[0][1], RGB_to_XYZ[1][1], RGB_to_XYZ[2][1]));
-
-        Yrgb = reinhard_extended(Yrgb, y, white_level);
+        // Reinhard extended
+        YrYgYb = YrYgYb * (1.0 + YrYgYb / (effective_peak * effective_peak)) / (1.0 + YrYgYb);
     } else {
-        Yrgb = aces_tone_map(Yrgb);
+        // ACES approximation
+        YrYgYb *= 0.6;
+        YrYgYb = (YrYgYb * (2.51 * YrYgYb + 0.03)) / (YrYgYb * (2.43 * YrYgYb + 0.59) + 0.14);
     }
 
-    // Clamp to native gamut RGB space
-    Yrgb = clamp(Yrgb, 0.0, 1.0);
+    YrYgYb = clamp(YrYgYb, 0.0, 1.0);
+
+    // Convert YrYgYb to XYZ
+    vec3 XYZ = YrYgYb_to_XYZ(YrYgYb, colorimetry);
 
     mat3 toRGB = XYZ_TO_COLOR_SPACE;
+
+    // Early exit for full bypass
+    if (COLOR_CONVERSION_BYPASS >= 1.0) {
+        // Inverse power law
+        FragColor = vec4(crt_gamma(clamp(toRGB * XYZ, 0.0, 1.0)), alpha);
+        return;
+    }
+
     vec3 RGB;
 
     if (CHROMATIC_ADAPTATION < 2.5) {
         // Linear, convert directly from conversion matrix
-        vec3 XYZ = RGB_to_XYZ * Yrgb;
 #ifdef SDR
         // Take advantage of intermediate for advanced compression
         if (GAMUT_COMPRESSION < 1.5) {
@@ -448,8 +424,7 @@ void main()
     } else {
         // Bradford adaptation requires special handling
         vec3 ref_XYZ = RGB_to_XYZ * WHITE;
-        vec3 Yrgb_XYZ = RGB_to_XYZ * Yrgb;
-        vec3 adapted_XYZ = bradford(Yrgb_XYZ, ref_XYZ);
+        vec3 adapted_XYZ = bradford(XYZ, ref_XYZ);
         RGB = toRGB * adapted_XYZ;
 
 #ifdef SDR
@@ -473,10 +448,11 @@ void main()
     }
 
     if (DEBUG_COLOR_DELTA > 0.5) {
-        vec3 delta = abs(RGB - Yrgb);
+        vec3 RGB_baseline = toRGB * XYZ;
+        vec3 delta = abs(RGB - RGB_baseline);
 
         // Inverse power law
-        FragColor = vec4(crt_gamma(clamp(delta, 0.0, 1.0)), 1.0);
+        FragColor = vec4(crt_gamma(clamp(delta, 0.0, 1.0)), alpha);
         return;
     }
 
@@ -503,5 +479,5 @@ void main()
     color = clamp(color, 0.0, 1.0);
     
     // Inverse power law
-    FragColor = vec4(crt_gamma(color), 1.0);
+    FragColor = vec4(crt_gamma(color), alpha);
 }
