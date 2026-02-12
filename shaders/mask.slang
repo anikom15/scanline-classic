@@ -33,7 +33,6 @@
 #pragma format R16G16B16A16_SFLOAT
 
 #pragma parameter MASK_BYPASS "Bypass CRT mask" 0.0 0.0 1.0 1.0
-#pragma parameter MASK_FRAME_DEBUG "Mask frame debug (0=Off, 1=On)" 0.0 0.0 1.0 1.0
 #pragma parameter MASK_DEBUG_OUT_OF_RANGE "Beam-mask: Show out-of-range colors" 0.0 0.0 1.0 1.0
 
 layout(push_constant) uniform Push
@@ -41,24 +40,12 @@ layout(push_constant) uniform Push
     vec4 OutputSize;     // xy = output size in pixels
     uint FrameCount;
     float ASPECT;
-    float MASK_FRAME_DEBUG;
     float MASK_BYPASS;
     float MASK_TYPE;
     float MASK_INTENSITY;
     float TVL;
     float MASK_DIFFUSION;
     float MASK_DEBUG_OUT_OF_RANGE;
-    float USER_PICTURE;
-    float USER_BRIGHTNESS;
-    float R_X;
-    float R_Y;
-    float G_X;
-    float G_Y;
-    float B_X;
-    float B_Y;
-    float W_X;
-    float W_Y;
-    float COLORIMETRY_PRESET;
 } config;
 
 layout(std140, set = 0, binding = 0) uniform UBO {
@@ -66,24 +53,12 @@ layout(std140, set = 0, binding = 0) uniform UBO {
 } global;
 
 #define ASPECT config.ASPECT
-#define MASK_FRAME_DEBUG config.MASK_FRAME_DEBUG
 #define MASK_BYPASS config.MASK_BYPASS
 #define MASK_TYPE config.MASK_TYPE
 #define MASK_INTENSITY config.MASK_INTENSITY
 #define TVL config.TVL
 #define MASK_DIFFUSION config.MASK_DIFFUSION
 #define MASK_DEBUG_OUT_OF_RANGE config.MASK_DEBUG_OUT_OF_RANGE
-#define USER_PICTURE config.USER_PICTURE
-#define USER_BRIGHTNESS config.USER_BRIGHTNESS
-#define COLORIMETRY_PRESET config.COLORIMETRY_PRESET
-#define R_X config.R_X
-#define R_Y config.R_Y
-#define G_X config.G_X
-#define G_Y config.G_Y
-#define B_X config.B_X
-#define B_Y config.B_Y
-#define W_X config.W_X
-#define W_Y config.W_Y
 
 // Cyclic distance on a ring of length `period`
 // Returns shortest wrapped distance between x and center.
@@ -250,6 +225,44 @@ vec3 integrate_shadow_mask_numerical(
     return v_weights.x * row0 + v_weights.y * row2;
 }
 
+// Compute peak mask value for normalization
+// Returns the maximum per-channel value the mask can produce at given diffusion
+float compute_peak_mask_value(vec2 sigma, float mask_type)
+{
+    if (mask_type < 0.5) {
+        // Aperture grille: peak at phosphor center with contributions from adjacent phosphors
+        // At red phosphor (cycle=0): R(0) + G(±2) + B(±2)
+        // Due to 6-unit period, distances are: 0, 2, 2 (wrapped)
+        float sigma_sq = sigma.x * sigma.x;
+        float peak = 1.0 + 2.0 * exp(-0.5 * 4.0 / sigma_sq);  // 1 + 2*exp(-2/σ²)
+        return peak;
+    } else if (mask_type < 1.5) {
+        // Slot mask: peak at phosphor position in active row
+        // Horizontal: 2 same-color phosphors per row (e.g., R at 6 and 12 in row 0)
+        float sigma_sq = sigma.x * sigma.x;
+        float h_peak = 1.0 + exp(-0.5 * 36.0 / sigma_sq);  // Distance between pairs: 6 units
+        
+        // Vertical: peak at row center
+        float sigma_v = sigma.y * 0.5;
+        float v_peak = 1.0;
+        
+        // Account for brightness ratio normalization
+        float brightness_ratio = sqrt(1.0 + (sigma.y * sigma.y));
+        return (h_peak * v_peak) / brightness_ratio;
+    } else {
+        // Shadow mask: peak at phosphor center
+        // Horizontal: single phosphor per color per row (6-unit cycle)
+        float h_peak = 1.0;
+        
+        // Vertical: peak at row center (4-unit cycle, 2 active rows)
+        float v_peak = 1.0;
+        
+        // Account for brightness ratio normalization
+        float brightness_ratio = sqrt(1.0 + (sigma.y * sigma.y));
+        return (h_peak * v_peak) / brightness_ratio;
+    }
+}
+
 // Compute mask with analytical anti-aliasing when pixels_per_unit < threshold
 vec3 compute_mask(vec2 screen_uv, float units_x_total, float units_y_total, vec2 pixels_per_unit)
 {
@@ -407,6 +420,11 @@ vec3 compute_mask(vec2 screen_uv, float units_x_total, float units_y_total, vec2
         }
     }
 
+    // Normalize by peak to ensure max(mask_color) <= 1.0
+    // This prevents output from exceeding input range while preserving pattern
+    float peak = compute_peak_mask_value(sigma, MASK_TYPE);
+    mask_color /= peak;
+
     return mask_color;
 }
 
@@ -444,146 +462,34 @@ vec3 average_mask_color(vec2 pixels_per_unit)
         return vec3(1.0);  // Mask disabled at very low resolution
     }
 
+    vec3 avg_mask_unnormalized;
+    
     if (MASK_TYPE < 0.5) {
         float avg_x = average_cyclic_gauss(6.0, sigma.x);
-        return vec3(avg_x);  // Aperture has no vertical component
-    }
+        avg_mask_unnormalized = vec3(avg_x);  // Aperture has no vertical component
+    } else {
+        // Brightness ratio for normalization based on vertical diffusion
+        float brightness_ratio = sqrt(1.0 + (sigma.y * sigma.y));
 
-    // Brightness ratio for normalization based on vertical diffusion
-    float brightness_ratio = sqrt(1.0 + (sigma.y * sigma.y));
-
-    if (MASK_TYPE < 1.5) {
-        // Slot mask: horizontal 18-unit, vertical 3-unit
-        float sigma_v = sigma.y * 0.5;
-        float avg_w = average_cyclic_gauss(3.0, sigma_v);
-        float avg_row = 2.0 * average_cyclic_gauss(18.0, sigma.x);
-        float avg_mask = (avg_w * 3.0 * avg_row) / brightness_ratio;
-        return vec3(avg_mask);
-    }
-
-    // Shadow mask: horizontal 6-unit, vertical 4-unit
-    float avg_w = average_cyclic_gauss(4.0, sigma.y);
-    float avg_row = average_cyclic_gauss(6.0, sigma.x);
-    float avg_mask = (avg_w * 2.0 * avg_row) / brightness_ratio;
-    return vec3(avg_mask);
-}
-
-vec3 peak_mask_color_point(vec2 sigma)
-{
-    float brightness_ratio = sqrt(1.0 + (sigma.y * sigma.y));
-
-    if (MASK_TYPE < 0.5) {
-        float s2 = 2.0 / (sigma.x * sigma.x);
-        float rb_contrib = exp(-s2);
-        return vec3(rb_contrib, 1.0, rb_contrib);
-    }
-
-    if (MASK_TYPE < 1.5) {
-        float g_dist1 = 0.0;
-        float g_dist2 = cyclicDist(8.0, 14.0, 18.0);
-        float g_contrib = exp(-0.5 * g_dist1 * g_dist1 / (sigma.x * sigma.x))
-                        + exp(-0.5 * g_dist2 * g_dist2 / (sigma.x * sigma.x));
-
-        float r_dist1 = cyclicDist(8.0, 6.0, 18.0);
-        float r_dist2 = cyclicDist(8.0, 12.0, 18.0);
-        float r_contrib = exp(-0.5 * r_dist1 * r_dist1 / (sigma.x * sigma.x))
-                        + exp(-0.5 * r_dist2 * r_dist2 / (sigma.x * sigma.x));
-
-        float b_dist1 = cyclicDist(8.0, 10.0, 18.0);
-        float b_dist2 = cyclicDist(8.0, 16.0, 18.0);
-        float b_contrib = exp(-0.5 * b_dist1 * b_dist1 / (sigma.x * sigma.x))
-                        + exp(-0.5 * b_dist2 * b_dist2 / (sigma.x * sigma.x));
-
-        vec3 peak = vec3(r_contrib, g_contrib, b_contrib);
-        return peak / brightness_ratio;
-    }
-
-    float peak_r = exp(-0.5 * 2.0 * 2.0 / (sigma.x * sigma.x))
-                 + exp(-0.5 * 1.0 * 1.0 / (sigma.x * sigma.x));
-    float peak_g = 1.0 + exp(-0.5 * 3.0 * 3.0 / (sigma.x * sigma.x));
-    float peak_b = exp(-0.5 * 2.0 * 2.0 / (sigma.x * sigma.x))
-                 + exp(-0.5 * 1.0 * 1.0 / (sigma.x * sigma.x));
-
-    float vert_r0 = 1.0;
-    float vert_r2 = exp(-0.5 * 2.0 * 2.0 / (sigma.y * sigma.y));
-
-    vec3 peak = vec3(
-        peak_r * vert_r0 * (1.0 + vert_r2),
-        peak_g * vert_r0 * (1.0 + vert_r2),
-        peak_b * vert_r0 * (1.0 + vert_r2)
-    );
-
-    return peak / brightness_ratio;
-}
-
-vec3 peak_mask_color(vec2 pixels_per_unit)
-{
-    vec2 sigma = vec2(MASK_DIFFUSION);
-    if (MASK_TYPE >= 1.5) {
-        sigma *= 0.625;
-    }
-
-    const float INTEGRATION_THRESHOLD = 1.0;
-    const float PASSTHROUGH_THRESHOLD = 1.0 / 3.0;
-
-    bool use_integration_x = (pixels_per_unit.x >= PASSTHROUGH_THRESHOLD && pixels_per_unit.x < INTEGRATION_THRESHOLD);
-    bool use_integration_y = (pixels_per_unit.y >= PASSTHROUGH_THRESHOLD && pixels_per_unit.y < INTEGRATION_THRESHOLD);
-    bool passthrough_x = pixels_per_unit.x < PASSTHROUGH_THRESHOLD;
-    bool passthrough_y = pixels_per_unit.y < PASSTHROUGH_THRESHOLD;
-
-    // If passthrough (pattern unresolvable), peak = average
-    if ((passthrough_x && MASK_TYPE < 1.5) || (passthrough_x && passthrough_y && MASK_TYPE >= 1.5)) {
-        return average_mask_color(pixels_per_unit);
-    }
-
-    vec3 point_peak = peak_mask_color_point(sigma);
-
-    float brightness_ratio = sqrt(1.0 + (sigma.y * sigma.y));
-
-    if (MASK_TYPE < 0.5) {
-        // Aperture: peak at center of green stripe
-        // At integration: peak approaches average (stripes blend)
-        if (use_integration_x) {
-            // During integration, peak flattens toward average
-            float avg_x = average_cyclic_gauss(6.0, sigma.x);
-            return mix(vec3(avg_x), vec3(1.0), pixels_per_unit.x);
-        }
-        // Point sampling: sharp peak
-        return point_peak;
-    }
-
-    if (MASK_TYPE < 1.5) {
-        // Slot mask
-        float sigma_v = sigma.y * 0.5;
-
-        if (use_integration_x || use_integration_y) {
-            // During integration: peak flattens toward average
+        if (MASK_TYPE < 1.5) {
+            // Slot mask: horizontal 18-unit, vertical 3-unit
+            float sigma_v = sigma.y * 0.5;
             float avg_w = average_cyclic_gauss(3.0, sigma_v);
             float avg_row = 2.0 * average_cyclic_gauss(18.0, sigma.x);
             float avg_mask = (avg_w * 3.0 * avg_row) / brightness_ratio;
-
-            // Blend sharp peak with average based on resolution
-            float blend = min(pixels_per_unit.x, pixels_per_unit.y);
-            return mix(vec3(avg_mask), point_peak, blend);
+            avg_mask_unnormalized = vec3(avg_mask);
+        } else {
+            // Shadow mask: horizontal 6-unit, vertical 4-unit
+            float avg_w = average_cyclic_gauss(4.0, sigma.y);
+            float avg_row = average_cyclic_gauss(6.0, sigma.x);
+            float avg_mask = (avg_w * 2.0 * avg_row) / brightness_ratio;
+            avg_mask_unnormalized = vec3(avg_mask);
         }
-
-        // Point sampling: compute sharp peak
-        return point_peak;
     }
-
-    // Shadow mask
-    if (use_integration_x || use_integration_y) {
-        // During integration: peak approaches average
-        float avg_w = average_cyclic_gauss(4.0, sigma.y);
-        float avg_row = average_cyclic_gauss(6.0, sigma.x);
-        float avg_mask = (avg_w * 2.0 * avg_row) / brightness_ratio;
-
-        float blend = min(pixels_per_unit.x, pixels_per_unit.y);
-        return mix(vec3(avg_mask), point_peak, blend);
-    }
-
-    // Point sampling: compute sharp peak
-    return point_peak;
+    
+    // Apply same peak normalization as compute_mask() for consistency
+    float peak = compute_peak_mask_value(sigma, MASK_TYPE);
+    return avg_mask_unnormalized / peak;
 }
 
 #pragma stage vertex
@@ -591,10 +497,11 @@ layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
 layout(location = 1) out float maskAR;
-layout(location = 2) out float avg_mask_luma;
-layout(location = 3) out float avg_nomask_luma;
-layout(location = 4) out float peak_mask_luma;
-layout(location = 5) out float peak_nomask_luma;
+layout(location = 2) out float avg_mask_gain;
+layout(location = 3) out float units_x_total;
+layout(location = 4) out float units_y_total;
+layout(location = 5) out float mask_intensity;
+layout(location = 6) out vec2 pixels_per_unit;
 
 void main()
 {
@@ -607,33 +514,8 @@ void main()
         : (ASPECT < 2.5) ? (5.0 / 4.0)
         : (16.0 / 10.0);
 
-    mat3 RGB_to_XYZ;
-    if (COLORIMETRY_PRESET < 0.5) {
-        vec3 ref_XYZ = xyY_to_XYZ(vec3(W_X, W_Y, 1.0));
-        vec3 red_XYZ = xyY_to_XYZ(vec3(R_X, R_Y, 1.0));
-        vec3 green_XYZ = xyY_to_XYZ(vec3(G_X, G_Y, 1.0));
-        vec3 blue_XYZ = xyY_to_XYZ(vec3(B_X, B_Y, 1.0));
-
-        RGB_to_XYZ = get_RGB_to_XYZ(red_XYZ, green_XYZ, blue_XYZ, ref_XYZ);
-    } else if (COLORIMETRY_PRESET < 1.5) {
-        RGB_to_XYZ = SMPTE_C_TO_XYZ;
-    } else if (COLORIMETRY_PRESET < 2.5) {
-        RGB_to_XYZ = NTSC_J_TO_XYZ;
-    } else if (COLORIMETRY_PRESET < 3.5) {
-        RGB_to_XYZ = EBU_TO_XYZ;
-    } else {
-        RGB_to_XYZ = sRGB_TO_XYZ;
-    }
-
-    vec3 luma_weights = vec3(RGB_to_XYZ[0][1], RGB_to_XYZ[1][1], RGB_to_XYZ[2][1]);
-
-    // Compute white_level from user controls (matching crt-linear.slang)
-    float black_level = 2.0 * USER_BRIGHTNESS / 100.0 - 1.0;
-    float white_level = 100.0 * 2.0 * USER_PICTURE / 100.0 + black_level;
-
     float tvl = max(TVL, 1.0);
-    float units_x_total = tvl * 6.0;
-    float units_y_total;
+    units_x_total = tvl * 6.0;
     if (MASK_TYPE < 0.5) {
         units_y_total = tvl;
     } else if (MASK_TYPE < 1.5) {
@@ -642,69 +524,41 @@ void main()
         units_y_total = tvl / maskAR * 6.0;
     }
 
-    float mask_intensity = MASK_INTENSITY * 0.01;
-    vec2 pixels_per_unit = config.OutputSize.xy / vec2(units_x_total, units_y_total);
+    mask_intensity = MASK_INTENSITY * 0.01;
+    pixels_per_unit = config.OutputSize.xy / vec2(units_x_total, units_y_total);
     vec3 avg_mask = average_mask_color(pixels_per_unit);
-    vec3 peak_mask = peak_mask_color(pixels_per_unit);
-    vec3 avg_mask_gain = mix(vec3(1.0), avg_mask, mask_intensity);
-    vec3 peak_mask_gain = mix(vec3(1.0), peak_mask, mask_intensity);
+    vec3 avg_mask_rgb = mix(vec3(1.0), avg_mask, mask_intensity);
 
-    // Compute integration scaling factor for subpixel summation
-    // When pixels_per_unit < 1.0, multiple pattern units contribute to each output pixel
-    // The total integrated luminance scales by the number of pattern units per pixel
-    vec2 pattern_units_per_pixel = max(vec2(1.0), vec2(1.0) / pixels_per_unit);
-    float integration_scale = pattern_units_per_pixel.x * pattern_units_per_pixel.y;
-
-    avg_mask_luma = integration_scale * white_level * dot(avg_mask_gain, luma_weights);
-    avg_nomask_luma = integration_scale * white_level * dot(vec3(1.0), luma_weights);
-    peak_mask_luma = integration_scale * white_level * dot(peak_mask_gain, luma_weights);
-    peak_nomask_luma = avg_nomask_luma;
+    // Compute unitless average mask gain
+    // YrYgYb signal: each channel is luminance contribution, so simple average
+    const vec3 one_third = vec3(1.0 / 3.0);
+    avg_mask_gain = dot(avg_mask_rgb, one_third);
 }
 
 #pragma stage fragment
 layout(location = 0) in vec2 vTexCoord;
 layout(location = 1) in float maskAR;
-layout(location = 2) in float avg_mask_luma;
-layout(location = 3) in float avg_nomask_luma;
-layout(location = 4) in float peak_mask_luma;
-layout(location = 5) in float peak_nomask_luma;
+layout(location = 2) in float avg_mask_gain;
+layout(location = 3) in float units_x_total;
+layout(location = 4) in float units_y_total;
+layout(location = 5) in float mask_intensity;
+layout(location = 6) in vec2 pixels_per_unit;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 1) uniform sampler2D Source;
 
 void main()
 {
-    vec3 color = texture(Source, vTexCoord).rgb;
+    vec4 color_gain = texture(Source, vTexCoord);
+    vec3 color = color_gain.rgb;
+    float incoming_gain = color_gain.a;
 
-    // If mask is bypassed, return color as-is
+    // If mask is bypassed, pass through incoming gain unchanged (mask gain = 1.0)
     if (MASK_BYPASS >= 1.0) {
-        FragColor = vec4(color, peak_nomask_luma);
+        FragColor = vec4(color, incoming_gain);
         return;
     }
 
-    // TVL-based unit scaling independent of output resolution
-    // 1 TVL = 6 horizontal units (one RGB triad + gaps) in all modes
-    // TVL here is defined for the selected frame aspect
-    float tvl = max(TVL, 1.0);
-    float units_x_total = tvl * 6.0;
-
-    // Vertical units depend on mask type:
-    // Aperture: no vertical structure (use minimal for consistency)
-    // Slot: 3-unit vertical cycle (simplified slot with gating)
-    // Shadow: 4 vertical units per TVL (4-row shadow mask cycle)
-    float units_y_total;
-    if (MASK_TYPE < 0.5) {
-        units_y_total = tvl; // Aperture has no vertical pattern
-    } else if (MASK_TYPE < 1.5) {
-        units_y_total = tvl / maskAR * 2.5;
-    } else {
-        units_y_total = tvl / maskAR * 6.0;
-    }
-
-    float mask_intensity = MASK_INTENSITY * 0.01;
-
-    // Gaussian stripe helper (sigma in pattern units)
-    vec2 pixels_per_unit = config.OutputSize.xy / vec2(units_x_total, units_y_total);
-
+    // Use units and mask_intensity computed in vertex shader
     vec3 mask_color = compute_mask(vTexCoord, units_x_total, units_y_total, pixels_per_unit);
     vec3 masked_color = mix(color, color * mask_color, mask_intensity);
 
@@ -712,5 +566,8 @@ void main()
         masked_color = zebra(masked_color, 0.0, 100.0, vTexCoord, config.OutputSize.xy, config.FrameCount, 2.0);
     }
 
-    FragColor = vec4(masked_color, peak_mask_luma);
+    // Combine incoming gain with average mask gain
+    float combined_gain = incoming_gain * avg_mask_gain;
+
+    FragColor = vec4(masked_color, combined_gain);
 }

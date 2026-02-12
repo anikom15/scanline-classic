@@ -24,6 +24,7 @@
 #include "menus/parameters/output-tonemap.inc"
 #include "menus/parameters/colorimetry.inc"
 #include "menus/parameters/output-color.inc"
+#include "menus/parameters/user-common.inc"
 
 #pragma parameter COLOR_CONVERSION_BYPASS "Bypass color correction" 0.0 0.0 1.0 1.0
 #pragma parameter DEBUG_COLOR_DELTA "Show color correction deltas" 0.0 0.0 1.0 1.0
@@ -49,8 +50,11 @@ layout(push_constant) uniform Push
     float COLOR_CONVERSION_BYPASS;
     float COLORIMETRY_PRESET;
     float TONEMAP_TYPE;
+    float MAKEUP_GAIN;
     float DEBUG_COLOR_DELTA;
     float COLOR_DEBUG_OUT_OF_RANGE;
+    float USER_PICTURE;
+    float USER_BRIGHTNESS;
 } config;
 
 #define COLORIMETRY_PRESET config.COLORIMETRY_PRESET
@@ -70,9 +74,14 @@ layout(push_constant) uniform Push
 #endif
 
 #define TONEMAP_TYPE config.TONEMAP_TYPE
+#define MAKEUP_GAIN config.MAKEUP_GAIN
+
 #define COLOR_CONVERSION_BYPASS config.COLOR_CONVERSION_BYPASS
 #define DEBUG_COLOR_DELTA config.DEBUG_COLOR_DELTA
 #define COLOR_DEBUG_OUT_OF_RANGE config.COLOR_DEBUG_OUT_OF_RANGE
+
+#define USER_PICTURE config.USER_PICTURE
+#define USER_BRIGHTNESS config.USER_BRIGHTNESS
 
 layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 MVP;
@@ -192,21 +201,27 @@ layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
 #ifdef WIDE_COLOR
-layout(location = 1) out mat3 RGB_to_XYZ;
-layout(location = 4) out mat3 XYZ_to_RGB;
-layout(location = 7) out Colorimetry colorimetry;
-#endif
-#ifdef SDR
-layout(location = 1) out vec2 luv_scale;
+layout(location = 1) out float white_level;
 layout(location = 2) out mat3 RGB_to_XYZ;
 layout(location = 5) out mat3 XYZ_to_RGB;
 layout(location = 8) out Colorimetry colorimetry;
+#endif
+#ifdef SDR
+layout(location = 1) out float white_level;
+layout(location = 2) out vec2 luv_scale;
+layout(location = 3) out mat3 RGB_to_XYZ;
+layout(location = 6) out mat3 XYZ_to_RGB;
+layout(location = 9) out Colorimetry colorimetry;
 #endif
 
 void main()
 {
     gl_Position = global.MVP * Position;
     vTexCoord = TexCoord;
+
+    // Compute white_level from user controls (matches crt-linear.slang)
+    float black_level = 2.0 * USER_BRIGHTNESS / 100.0 - 1.0;
+    white_level = 2.0 * USER_PICTURE / 100.0 + black_level;
 
     vec3 ref_XYZ;
     vec3 white_XYZ;
@@ -339,15 +354,17 @@ void main()
 #pragma stage fragment
 layout(location = 0) in vec2 vTexCoord;
 #ifdef WIDE_COLOR
-layout(location = 1) in mat3 RGB_to_XYZ;
-layout(location = 4) in mat3 XYZ_to_RGB;
-layout(location = 7) in Colorimetry colorimetry;
-#endif
-#ifdef SDR
-layout(location = 1) in vec2 luv_scale;
+layout(location = 1) in float white_level;
 layout(location = 2) in mat3 RGB_to_XYZ;
 layout(location = 5) in mat3 XYZ_to_RGB;
 layout(location = 8) in Colorimetry colorimetry;
+#endif
+#ifdef SDR
+layout(location = 1) in float white_level;
+layout(location = 2) in vec2 luv_scale;
+layout(location = 3) in mat3 RGB_to_XYZ;
+layout(location = 6) in mat3 XYZ_to_RGB;
+layout(location = 9) in Colorimetry colorimetry;
 #endif
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 1) uniform sampler2D Source;
@@ -358,10 +375,25 @@ void main()
 
     vec4 src = texture(Source, vTexCoord);
     vec3 YrYgYb = src.rgb;
-    float alpha = src.a;
-    float source_peak = max(alpha, EPS);
-    float low_peak = min(TARGET_NITS, source_peak);
-    float high_peak = max(TARGET_NITS, source_peak);
+    float gain = src.a;
+
+    // To compute the possible peak luminance of the source, we need to get the luminance weighting of the color space.
+    // The peak luminance is the max of this three-component weighting
+    vec3 luma_weights = vec3(RGB_to_XYZ[0][1], RGB_to_XYZ[1][1], RGB_to_XYZ[2][1]);
+    float max_luma_weight = max(max(luma_weights.r, luma_weights.g), luma_weights.b);
+
+    // Source peak luminance
+    float source_peak = max(white_level * TARGET_NITS * max_luma_weight, EPS);
+
+    // Apply makeup gain before tone mapping to preserve highlights
+    if (MAKEUP_GAIN > 0.5) {
+        // Makeup gain is inverse of the gain channel from scanning, mask effects, etc.
+        YrYgYb /= gain;
+        source_peak /= gain;
+    }
+
+    float low_peak = min(source_peak, TARGET_NITS);
+    float high_peak = max(source_peak, TARGET_NITS);
 
     // Normalization of luminance to target nits
     YrYgYb /= low_peak;
@@ -392,7 +424,7 @@ void main()
     // Early exit for full bypass
     if (COLOR_CONVERSION_BYPASS >= 1.0) {
         // Inverse power law
-        FragColor = vec4(crt_gamma(clamp(toRGB * XYZ, 0.0, 1.0)), alpha);
+        FragColor = vec4(crt_gamma(clamp(toRGB * XYZ, 0.0, 1.0)), 1.0);
         return;
     }
 
@@ -452,7 +484,7 @@ void main()
         vec3 delta = abs(RGB - RGB_baseline);
 
         // Inverse power law
-        FragColor = vec4(crt_gamma(clamp(delta, 0.0, 1.0)), alpha);
+        FragColor = vec4(crt_gamma(clamp(delta, 0.0, 1.0)), 1.0);
         return;
     }
 
@@ -479,5 +511,5 @@ void main()
     color = clamp(color, 0.0, 1.0);
     
     // Inverse power law
-    FragColor = vec4(crt_gamma(color), alpha);
+    FragColor = vec4(crt_gamma(color), 1.0);
 }

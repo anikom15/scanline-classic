@@ -394,11 +394,12 @@ void main()
     float B = 1.0 - 2.0 * C;
 
     vec3 color;
+    float alpha = texture(Source, input_uv).a;
     if (FILTER_BYPASS < 0.5) {
         color = sample_bicubic(Source, input_uv, 1.0 / config.SourceSize.xy, B, C);
     } else {
         color = texture(Source, input_uv).rgb;
     }
 
-    FragColor = vec4(color, 1.0);
+    FragColor = vec4(color, alpha);
 }

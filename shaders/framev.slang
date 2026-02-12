@@ -277,6 +277,18 @@ vec3 sample_active_content(float output_x, float output_y)
     return mix(base, vec3(0.0), blank_mix);
 }
 
+// Average gain across the active region for the current frame.
+float average_active_gain()
+{
+    float effective_scale = (is_interlaced > 0.5)
+        ? (effective_double_refresh > 0.5 ? v_scale : v_scale * 2.0)
+        : v_scale;
+    float num_blanks_local = max(effective_scale - 1.0, 0.0);
+    float base = SCANLINE_BLANK_WEIGHT / 100.0;
+    float avg_blank_mix = (effective_scale > 0.0) ? base * (num_blanks_local / effective_scale) : 0.0;
+    return clamp(1.0 - avg_blank_mix, 0.0, 1.0);
+}
+
 void main()
 {
     float output_x = floor(vTexCoord.x * config.OutputSize.x);
@@ -299,17 +311,18 @@ void main()
     bool in_frame = in_source_x && in_frame_y;
     bool in_active = in_source_x && in_active_y;
 
-    vec3 color;
+    vec4 color_gain;
 
     if (in_active && FRAME_VIZ_ACTIVE > 0.5) {
-        color = sample_active_content(output_x, output_y);
+        vec3 color = sample_active_content(output_x, output_y);
+        color_gain = vec4(color, average_active_gain());
     } else if (in_frame && !in_active && FRAME_VIZ_BLANKING > 0.5) {
-        color = vec3(1.0, 1.0, 0.0) * 0.5;
+        color_gain = vec4(vec3(1.0, 1.0, 0.0) * 0.5, 0.0);
     } else if (!in_frame && FRAME_VIZ_PADDING > 0.5) {
-        color = vec3(1.0, 0.0, 1.0) * 0.5;
+        color_gain = vec4(vec3(1.0, 0.0, 1.0) * 0.5, 0.0);
     } else {
-        color = vec3(0.0);
+        color_gain = vec4(vec3(0.0), 0.0);
     }
 
-    FragColor = vec4(color, 1.0);
+    FragColor = color_gain;
 }
