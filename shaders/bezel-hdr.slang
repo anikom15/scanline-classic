@@ -1,6 +1,6 @@
 #version 450
 
-// Filename: color-sdr.slang
+// Filename: bezel-wcg.slang
 //
 // Copyright (C) 2025 W. M. Martinez
 //
@@ -17,19 +17,14 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
-// Color converter (SDR version)
+// Bezel with glow effect (SDR version)
 // ------------------------------------------------
-// Input: Linear RGB signal
+// Input: sRGB signal
 // Output: sRGB signal
 
-#pragma name Color
-#pragma format R8G8B8A8_UNORM
+#pragma name Bezel
+#pragma format A2B10G10R10_UNORM_PACK32
 
-#define SDR
-#define XYZ_TO_COLOR_SPACE XYZ_TO_sRGB
+#define HDR
 
-#pragma parameter GAMUT_COMPRESSION "Gamut mapping (off, basic, advanced)" 2.0 0.0 2.0 1.0
-
-#include "menus/parameters/output-color-sdr.inc"
-
-#include "color-base.slang"
+#include "bezel-base.slang"

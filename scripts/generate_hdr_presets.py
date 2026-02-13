@@ -1,10 +1,10 @@
 """
-Generates WCG presets from SDR presets.
+Generates HDR presets from SDR presets.
 Rules:
 - Scan uhd-4k-sdr for all .slangp files recursively.
-- Replace any shader path containing `-sdr.slang` with `-wcg.slang`.
+- Replace any shader path containing `-sdr.slang` with `-hdr.slang`.
 - Verify the replaced shader file exists and warn if not found.
-- Write outputs to uhd-4k-wcg with matching directory structure and filenames.
+- Write outputs to uhd-4k-hdr with matching directory structure and filenames.
 """
 import concurrent.futures
 import os
@@ -26,30 +26,30 @@ def transform_preset(input_path: Path, output_path: Path, root_dir: Path, verbos
             prefix, shader_path = line.split('=', 1)
             shader_path = shader_path.strip()
             if shader_path.endswith('-sdr.slang'):
-                wcg_path = shader_path.replace('-sdr.slang', '-wcg.slang')
+                hdr_path = shader_path.replace('-sdr.slang', '-hdr.slang')
                 # Always resolve relative to root_dir/shaders
-                wcg_path_norm = Path(wcg_path)
+                hdr_path_norm = Path(hdr_path)
                 # Remove leading ..\ or ../
-                wcg_path_parts = []
+                hdr_path_parts = []
                 found_shaders = False
-                for part in wcg_path_norm.parts:
+                for part in hdr_path_norm.parts:
                     if part == '..':
                         continue
                     if not found_shaders and part.lower() == 'shaders':
                         found_shaders = True
                         continue
                     if found_shaders:
-                        wcg_path_parts.append(part)
-                wcg_rel = Path(*wcg_path_parts)
-                resolved_wcg = (root_dir / 'shaders' / wcg_rel).resolve()
-                if resolved_wcg.exists():
+                        hdr_path_parts.append(part)
+                hdr_rel = Path(*hdr_path_parts)
+                resolved_hdr = (root_dir / 'shaders' / hdr_rel).resolve()
+                if resolved_hdr.exists():
                     if verbose:
-                        print(f"  Replaced: {shader_path} -> {wcg_path}")
-                    transformed_lines.append(f"{prefix.strip()} = {wcg_path}")
+                        print(f"  Replaced: {shader_path} -> {hdr_path}")
+                    transformed_lines.append(f"{prefix.strip()} = {hdr_path}")
                 else:
-                    print(f"Warning: WCG shader not found: {resolved_wcg} (referenced in {input_path})")
+                    print(f"Warning: HDR shader not found: {resolved_hdr} (referenced in {input_path})")
                     if verbose:
-                        print(f"  Keeping original: {shader_path} (WCG not found)")
+                        print(f"  Keeping original: {shader_path} (HDR not found)")
                     transformed_lines.append(line)
             else:
                 transformed_lines.append(line)
@@ -59,24 +59,24 @@ def transform_preset(input_path: Path, output_path: Path, root_dir: Path, verbos
     output_path.write_text('\n'.join(transformed_lines) + '\n', encoding='utf-8')
 
 def main():
-    parser = argparse.ArgumentParser(description='Generate WCG presets from SDR presets')
+    parser = argparse.ArgumentParser(description='Generate HDR presets from SDR presets')
     parser.add_argument('--root-dir', type=Path, required=True, help='Root directory containing shaders and presets')
     parser.add_argument('--input-dir', type=Path, required=True, help='Input directory for SDR presets')
-    parser.add_argument('--output-dir', type=Path, required=True, help='Output directory for WCG presets')
+    parser.add_argument('--output-dir', type=Path, required=True, help='Output directory for HDR presets')
     parser.add_argument('-v','--verbose', action='store_true')
     parser.add_argument('--jobs', type=int, default=default_workers())
     args = parser.parse_args()
 
     sdr_dir = args.input_dir
-    wcg_dir = args.output_dir
+    hdr_dir = args.output_dir
     root_dir = args.root_dir
     jobs = max(1, args.jobs)
     sdr_presets = list(sdr_dir.rglob('*.slangp'))
 
     def run_one(sdr_preset: Path):
         rel_path = sdr_preset.relative_to(sdr_dir)
-        wcg_preset = wcg_dir / rel_path
-        transform_preset(sdr_preset, wcg_preset, root_dir=root_dir, verbose=args.verbose)
+        hdr_preset = hdr_dir / rel_path
+        transform_preset(sdr_preset, hdr_preset, root_dir=root_dir, verbose=args.verbose)
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as executor:
         futures = [executor.submit(run_one, sdr_preset) for sdr_preset in sdr_presets]

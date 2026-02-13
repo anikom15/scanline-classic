@@ -1,3 +1,5 @@
+import argparse
+import concurrent.futures
 import os
 import shutil
 import subprocess
@@ -11,6 +13,10 @@ PRESETS_OUT = os.path.join(OUT, 'presets', 'uhd-4k-sdr')
 
 # Files to copy to OUT
 top_files = ['README.md', 'COPYING', 'NEWS']
+
+def default_workers():
+    count = os.cpu_count() or 4
+    return max(1, min(32, count))
 
 def prepare_out_folder(verbose=False):
     # Remove OUT first
@@ -73,7 +79,7 @@ def get_python_executable():
         return venv_python
     return 'python'
 
-def run_presetgen(verbose=False):
+def run_presetgen(verbose=False, jobs=1):
     python_exec = get_python_executable()
     # Find all JSON files in presetdata/input/ and its subdirectories
     input_dir = os.path.join(PRESETDATA, 'input')
@@ -85,8 +91,10 @@ def run_presetgen(verbose=False):
     if not input_files:
         print(f"No input JSON files found in {input_dir}.")
         return
-    # Call presetgen.py for each input file
-    for infile in input_files:
+
+    input_files.sort()
+
+    def run_one(infile):
         cmd = [
             python_exec, os.path.join(ROOT, 'external', 'presetgen', 'presetgen.py'),
             '--input', infile,
@@ -95,14 +103,31 @@ def run_presetgen(verbose=False):
         if verbose:
             cmd.append('-v')
             print(f"Running: {' '.join(cmd)}")
-        if subprocess.Popen(cmd).wait() != 0:
-            print(f"Error: presetgen failed for {infile}")
-            sys.exit(1)
+        subprocess.run(cmd, check=True)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as executor:
+        futures = {executor.submit(run_one, infile): infile for infile in input_files}
+        for future in concurrent.futures.as_completed(futures):
+            infile = futures[future]
+            try:
+                future.result()
+            except Exception as exc:
+                print(f"Error: presetgen failed for {infile}: {exc}")
+                sys.exit(1)
+
+def parse_args():
+    parser = argparse.ArgumentParser(description='Build scanline-classic output')
+    parser.add_argument('-v', '--verbose', action='store_true')
+    parser.add_argument('--jobs', type=int, default=default_workers())
+    return parser.parse_args()
 
 def main():
-    verbose = '--verbose' in sys.argv
+    args = parse_args()
+    verbose = args.verbose
+    jobs = max(1, args.jobs)
+
     prepare_out_folder(verbose=verbose)
-    run_presetgen(verbose=verbose)
+    run_presetgen(verbose=verbose, jobs=jobs)
 
     # Only run generate_wcg_menu.py and generate_wcg_presets.py on the 'out' folder
     scripts_dir = os.path.join(ROOT, 'scripts')
@@ -112,20 +137,49 @@ def main():
         cmd = [python_exec, os.path.join(scripts_dir, script_name)]
         if verbose:
             cmd.append('--verbose')
+        cmd.extend(['--jobs', str(jobs)])
         if extra_args:
             cmd.extend(extra_args)
         print(f"Running: {' '.join(str(x) for x in cmd)}")
         subprocess.run(cmd, check=True)
 
-    # Run menu script only on the 'out' folder
-    run_script('generate_wcg_menu.py', ['--out-dir', OUT])
+    menu_tasks = [
+        ('generate_wcg_menu.py', ['--out-dir', OUT]),
+        ('generate_hdr_menu.py', ['--out-dir', OUT]),
+    ]
 
-    # Run presets script only on the 'out' folder
-    run_script('generate_wcg_presets.py', [
-        '--root-dir', OUT,
-        '--input-dir', os.path.join(OUT, 'presets', 'uhd-4k-sdr'),
-        '--output-dir', os.path.join(OUT, 'presets', 'uhd-4k-wcg')
-    ])
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(jobs, len(menu_tasks))) as executor:
+        futures = {executor.submit(run_script, name, args): name for name, args in menu_tasks}
+        for future in concurrent.futures.as_completed(futures):
+            script_name = futures[future]
+            try:
+                future.result()
+            except Exception as exc:
+                print(f"Error: {script_name} failed: {exc}")
+                sys.exit(1)
+
+    preset_tasks = [
+        ('generate_wcg_presets.py', [
+            '--root-dir', OUT,
+            '--input-dir', os.path.join(OUT, 'presets', 'uhd-4k-sdr'),
+            '--output-dir', os.path.join(OUT, 'presets', 'uhd-4k-wcg')
+        ]),
+        ('generate_hdr_presets.py', [
+            '--root-dir', OUT,
+            '--input-dir', os.path.join(OUT, 'presets', 'uhd-4k-sdr'),
+            '--output-dir', os.path.join(OUT, 'presets', 'uhd-4k-hdr')
+        ]),
+    ]
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(jobs, len(preset_tasks))) as executor:
+        futures = {executor.submit(run_script, name, args): name for name, args in preset_tasks}
+        for future in concurrent.futures.as_completed(futures):
+            script_name = futures[future]
+            try:
+                future.result()
+            except Exception as exc:
+                print(f"Error: {script_name} failed: {exc}")
+                sys.exit(1)
 
     print("Build complete. Output in 'out' folder.")
 

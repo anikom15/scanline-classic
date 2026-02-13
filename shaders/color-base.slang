@@ -445,6 +445,9 @@ void main()
 
     YrYgYb /= low_peak;
 
+#ifdef HDR
+    // HDR: tone mapping handled via PQ
+#else
     // Tone mapping
     if (TONEMAP_TYPE < 0.5) {
         // No tone mapping
@@ -464,6 +467,7 @@ void main()
     }
 
     YrYgYb = clamp(YrYgYb, 0.0, 1.0);
+#endif
 
     // Convert YrYgYb to XYZ using native colorimetry
     vec3 XYZ = YrYgYb_to_XYZ(YrYgYb, colorimetry);
@@ -484,7 +488,11 @@ void main()
     // Early exit for full bypass
     if (COLOR_CONVERSION_BYPASS >= 1.0) {
         // Inverse power law
-        FragColor = vec4(crt_gamma(clamp(toRGB * XYZ, 0.0, 1.0)), 1.0);
+#ifdef HDR
+    FragColor = vec4(pq(clamp(toRGB * XYZ, 0.0, 1.0)), 1.0);
+#else
+    FragColor = vec4(crt_gamma(clamp(toRGB * XYZ, 0.0, 1.0)), 1.0);
+#endif
         return;
     }
 
@@ -533,9 +541,15 @@ void main()
 
     vec3 color = RGB;
 
+#ifdef HDR
+    // PQ curve
+    FragColor = vec4(pq(color), 1.0);
+}
+#else
     // Safety clamp
     color = clamp(color, 0.0, 1.0);
     
     // Inverse power law
     FragColor = vec4(crt_gamma(color), 1.0);
 }
+#endif

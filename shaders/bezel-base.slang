@@ -18,6 +18,7 @@
 // Bezel functions to be used with #include
 
 #include "common.inc"
+#include "color.inc"
 
 #include "menus/parameters/factory-geometry.inc"
 #include "menus/parameters/output-bezel.inc"
@@ -178,14 +179,28 @@ layout(set = 0, binding = 4) uniform sampler2D BORDER;
 /**
  * Blends two colors using multiply blend mode.
  * This creates a darkening effect where overlapping colors become darker.
+ * For HDR, blending is performed in linear space with PQ encode/decode.
  * 
- * @param col1 Base color
- * @param col2 Blend color
- * @return Multiplied color (col1 * col2)
+ * @param col1 Base color (linear for HDR, sRGB for SDR)
+ * @param col2 Blend color (linear for HDR, sRGB for SDR)
+ * @return Blended color (linear for HDR, sRGB for SDR)
  */
 vec3 blend(vec3 col1, vec3 col2)
 {
+#ifdef HDR
+    // Decode from PQ to linear for proper HDR blending
+    vec3 linear1 = pq_inverse(col1);
+    vec3 linear2 = pq_inverse(col2);
+    
+    // Perform multiply blend in linear space
+    vec3 blended_linear = linear1 * linear2;
+    
+    // Encode back to PQ
+    return pq(blended_linear);
+#else
+    // SDR: simple multiply in display space
     return col1 * col2;
+#endif
 }
 
 /**
@@ -479,6 +494,30 @@ void main()
     }
 
     // === Blend glow with background ===
+#ifdef HDR
+    // HDR: work in linear space with PQ codec (no sRGB curves)
+    vec3 background_with_glow = blend(background.rgb, glow);
+    vec3 background_final = mix(background.rgb, background_with_glow, effective_glow_weight);
+    
+    // Final composite: blend CRT screen over background using alpha
+    float bezel_gain = pow(10.0, BEZEL_GAIN / 20.0);
+    float bezel_bias = BEZEL_BIAS / 100.0;
+    
+    // Decode PQ to linear for bias/gain application
+    vec3 screen_linear = pq_inverse(screen.rgb);
+    vec3 bg_linear = pq_inverse(background_final);
+    
+    // Apply bias and gain uniformly to entire bezel texture
+    // At 0 dB gain (1.0), white stays white (100 nits in PQ)
+    vec3 bg_adjusted = (bg_linear + bezel_bias) * bezel_gain;
+    
+    // Blend in linear and encode back to PQ
+    vec3 final_linear = mix(screen_linear, bg_adjusted, background.a);
+    vec3 final_color = pq(final_linear);
+    
+    FragColor = vec4(final_color, 1.0);
+#else
+    // SDR: use sRGB curves
     vec3 background_adjusted = srgb_linear(background.rgb);
     vec3 background_with_glow = blend(background_adjusted, glow);
 
@@ -494,4 +533,5 @@ void main()
     );
 
     FragColor = vec4(srgb_gamma(final_color), 1.0);
+#endif
 }
