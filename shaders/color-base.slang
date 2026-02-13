@@ -495,15 +495,7 @@ void main()
         // Take advantage of intermediate for advanced compression
         if (GAMUT_COMPRESSION < 1.5) {
             // Handle later
-        } else if (GAMUT_COMPRESSION < 2.5) {
-            vec3 Luv = XYZ_to_CIE_LUV(XYZ);
-
-            RGB = toRGB * XYZ;
-            Luv.x *= scale_luminance_cieluv(RGB, Luv, toRGB);
-            Luv.yz *= scale_chroma_cieluv(RGB, Luv, toRGB);
-
-            XYZ = CIE_LUV_to_XYZ(Luv);
-        } else if (GAMUT_COMPRESSION < 3.5) {
+        } else {
             vec3 Luv = XYZ_to_CIE_LUV(XYZ);
 
             Luv.x *= luv_scale.x;
