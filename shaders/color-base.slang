@@ -428,15 +428,16 @@ void main()
     vec4 src = texture(Source, vTexCoord);
     vec3 YrYgYb = src.rgb;
     float gain = src.a;
+    float safe_gain = max(gain, EPS);
 
     // Source peak luminance: white_level × target nits
-    float source_peak = max(white_level * TARGET_NITS * gain, EPS);
+    float source_peak = max(white_level * TARGET_NITS * safe_gain, EPS);
 
     // Apply makeup gain before tone mapping to boost highlights
     if (MAKEUP_GAIN > 0.5) {
         // Makeup gain is inverse of the gain channel from scanning, mask effects, etc.
-        YrYgYb /= gain;
-        source_peak /= gain;
+        YrYgYb /= safe_gain;
+        source_peak /= safe_gain;
     }
 
     // Determine high peak for tone mapping based on source peak and target nits
@@ -543,7 +544,7 @@ void main()
 
 #ifdef HDR
     // PQ curve
-    FragColor = vec4(pq(color), 1.0);
+    FragColor = vec4(clamp(pq(color), 0.0, 1.0), 1.0);
 }
 #else
     // Safety clamp

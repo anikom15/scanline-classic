@@ -173,34 +173,19 @@ layout(location = 4) in vec2 viewport_offset;
 layout(location = 5) in vec2 viewport_max_dist;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
-layout(set = 0, binding = 3) uniform sampler2D Original;
 layout(set = 0, binding = 4) uniform sampler2D BORDER;
 
 /**
- * Blends two colors using multiply blend mode.
+ * Blends two colors using multiply blend mode in linear space.
  * This creates a darkening effect where overlapping colors become darker.
- * For HDR, blending is performed in linear space with PQ encode/decode.
- * 
- * @param col1 Base color (linear for HDR, sRGB for SDR)
- * @param col2 Blend color (linear for HDR, sRGB for SDR)
- * @return Blended color (linear for HDR, sRGB for SDR)
+ *
+ * @param col1 Base color (linear)
+ * @param col2 Blend color (linear)
+ * @return Blended color (linear)
  */
 vec3 blend(vec3 col1, vec3 col2)
 {
-#ifdef HDR
-    // Decode from PQ to linear for proper HDR blending
-    vec3 linear1 = pq_inverse(col1);
-    vec3 linear2 = pq_inverse(col2);
-    
-    // Perform multiply blend in linear space
-    vec3 blended_linear = linear1 * linear2;
-    
-    // Encode back to PQ
-    return pq(blended_linear);
-#else
-    // SDR: simple multiply in display space
     return col1 * col2;
-#endif
 }
 
 /**
@@ -247,7 +232,7 @@ vec3 shift_temperature(vec3 color, float temperature)
     float original_luma = dot(color, vec3(0.2126, 0.7152, 0.0722));
     float shifted_luma = dot(shifted, vec3(0.2126, 0.7152, 0.0722));
     
-    if (shifted_luma > 0.0001)
+    if (shifted_luma > 1e-6)  // Use tighter epsilon for better precision
     {
         shifted *= original_luma / shifted_luma;
     }
@@ -310,14 +295,6 @@ vec2 soft_guard01(vec2 uv01, float margin, float softness)
 
     // Blend from clamped (near edges) to original (away from edges)
     return mix(clamped, uv01, s);
-}
-
-// Optional: edge factor to fade contributions near mirrored seams
-float edge_guard_factor(vec2 uv01, float margin, float softness)
-{
-    vec2 d = min(uv01, 1.0 - uv01);
-    vec2 s = smoothstep(vec2(margin), vec2(margin + max(softness, 1e-5)), d);
-    return s.x * s.y;
 }
 
 // Convenience: safe mirrored sampling
@@ -395,10 +372,17 @@ vec3 calculate_glow(vec2 coord, float radius, float diffusion_steps)
             vec2 offset = base_offset + jitter;
             
             // Sample and compress color to reduce extreme brightness impact
-            vec3 sample_color = compress_color(
-                sample_mirror_safe(Source, coord + offset),
-                GLOW_COMPRESSION
-            );
+            vec3 sample_color;
+#ifdef HDR
+            vec3 sample_pq = clamp(sample_mirror_safe(Source, coord + offset), vec3(0.0), vec3(1.0));
+            vec3 sample_linear = pq_inverse(sample_pq);
+            // Clamp to prevent negative values or NaN from PQ precision issues
+            sample_linear = max(sample_linear, vec3(0.0));
+            sample_color = sample_linear;  // No compression for HDR - keep linear values
+#else
+            vec3 sample_linear = srgb_linear(sample_mirror_safe(Source, coord + offset));
+            sample_color = compress_color(sample_linear, GLOW_COMPRESSION);
+#endif
             
             // Apply vertical bias to emphasize vertical glow (CRT scanline characteristic)
             float vertical_boost = 1.0;
@@ -437,8 +421,9 @@ vec3 calculate_glow(vec2 coord, float radius, float diffusion_steps)
  */
 void main()
 {
-    // Sample the main CRT screen content
-    vec4 screen = texture(Source, screen_coord);
+    // Sample the main CRT screen content (clamp to avoid border artifacts)
+    vec2 screen_coord_clamped = clamp(screen_coord, 0.0, 1.0);
+    vec4 screen = texture(Source, screen_coord_clamped);
     screen.a = max(screen.a, 1.0);  // Ensure opaque screen
 
     // Bypass mode: pass through screen content without bezel/glow processing
@@ -450,6 +435,13 @@ void main()
 
     // Sample background/bezel texture
     vec4 background = texture(BORDER, vTexCoord);
+    
+    // Guard against premultiplied alpha: if alpha is very low, RGB might be black
+    // Set RGB to white in these cases to avoid black bleeding
+    if (background.a < 0.01)
+    {
+        background.rgb = vec3(1.0);
+    }
 
     // Color key against green to create transparency in bezel when JPEG is used
     // Smooth chroma key: alpha is 0 for pure green, 1 for non-green, smooth in between
@@ -459,9 +451,6 @@ void main()
     float key_dist = distance(background.rgb, key_color);
     float key_alpha = smoothstep(key_thresh, key_thresh + key_soft, key_dist);
     background.a *= key_alpha;
-
-    // Transform glow sampling coordinates (centered on screen viewport)
-    vec2 glow_coord = screen_coord;
 
     vec3 glow;
     float effective_glow_weight;
@@ -474,11 +463,26 @@ void main()
     }
     else
     {
-        // Calculate glow effect
-        glow = calculate_glow(glow_coord, GLOW_RADIUS, GLOW_DIFFUSION);
+        // Only calculate glow if we're relatively close to viewport
+        // This avoids sampling artifacts from far outside the screen area
+        vec2 dist_from_viewport = max(vec2(0.0), abs(screen_coord - vec2(0.5)) - vec2(0.5));
+        float max_dist = max(dist_from_viewport.x, dist_from_viewport.y);
+        
+        if (max_dist < GLOW_RADIUS * 2.0)
+        {
+            // Calculate glow effect
+            glow = calculate_glow(screen_coord, GLOW_RADIUS, GLOW_DIFFUSION);
 
-        // Shift glow color temperature to simulate bluish CRT reflection
-        glow = shift_temperature(glow, GLOW_TEMPERATURE);
+            // Shift glow color temperature to simulate bluish CRT reflection
+            glow = shift_temperature(glow, GLOW_TEMPERATURE);
+            
+            // Clamp glow to prevent negative values before tonemapping
+            glow = max(glow, vec3(0.0));
+        }
+        else
+        {
+            glow = vec3(0.0);
+        }
 
         // === Calculate radial falloff for glow intensity ===
         // Use precomputed viewport scale and offset from vertex stage
@@ -495,43 +499,89 @@ void main()
 
     // === Blend glow with background ===
 #ifdef HDR
-    // HDR: work in linear space with PQ codec (no sRGB curves)
-    vec3 background_with_glow = blend(background.rgb, glow);
-    vec3 background_final = mix(background.rgb, background_with_glow, effective_glow_weight);
+    // Check if we're inside viewport bounds
+    bool inside_viewport = all(greaterThanEqual(screen_coord, vec2(0.0))) && 
+                          all(lessThanEqual(screen_coord, vec2(1.0)));
     
-    // Final composite: blend CRT screen over background using alpha
-    float bezel_gain = pow(10.0, BEZEL_GAIN / 20.0);
-    float bezel_bias = BEZEL_BIAS / 100.0;
-    
-    // Decode PQ to linear for bias/gain application
-    vec3 screen_linear = pq_inverse(screen.rgb);
-    vec3 bg_linear = pq_inverse(background_final);
-    
-    // Apply bias and gain uniformly to entire bezel texture
-    // At 0 dB gain (1.0), white stays white (100 nits in PQ)
-    vec3 bg_adjusted = (bg_linear + bezel_bias) * bezel_gain;
-    
-    // Blend in linear and encode back to PQ
-    vec3 final_linear = mix(screen_linear, bg_adjusted, background.a);
-    vec3 final_color = pq(final_linear);
-    
-    FragColor = vec4(final_color, 1.0);
+    // Optimize: if background is fully transparent (viewport area), skip PQ round-trip
+    if (background.a < 0.001)
+    {
+        // Pass through screen directly in PQ space to avoid precision loss
+        FragColor = vec4(screen.rgb, 1.0);
+    }
+    else if (!inside_viewport)
+    {
+        // Outside viewport: show only background with glow, no screen
+        vec3 background_linear = srgb_linear(background.rgb);
+        
+        // Apply bezel gain and bias
+        float bezel_gain = pow(10.0, BEZEL_GAIN / 20.0);
+        float bezel_bias = BEZEL_BIAS / 100.0;
+        vec3 background_adjusted = (background_linear + bezel_bias) * bezel_gain;
+        
+        // Compress glow for multiply blending
+        vec3 glow_compressed = glow / (1.0 + glow);
+        vec3 background_with_glow = blend(background_adjusted, glow_compressed);
+        vec3 background_final = mix(background_adjusted, background_with_glow, effective_glow_weight);
+
+        vec3 final_color = pq(background_final);
+        FragColor = vec4(final_color, 1.0);
+    }
+    else
+    {
+        // Inside viewport with background alpha: composite screen over background
+        vec3 screen_pq = clamp(screen.rgb, vec3(0.0), vec3(1.0));
+        vec3 screen_linear = pq_inverse(screen_pq);
+        
+        // CRITICAL: Clamp screen_linear to prevent negative values or NaN from propagating
+        // PQ inverse can produce invalid values due to floating-point precision issues
+        screen_linear = max(screen_linear, vec3(0.0));
+        
+        vec3 background_linear = srgb_linear(background.rgb);
+        
+        // Apply bezel gain and bias first
+        float bezel_gain = pow(10.0, BEZEL_GAIN / 20.0);
+        float bezel_bias = BEZEL_BIAS / 100.0;
+        vec3 background_adjusted = (background_linear + bezel_bias) * bezel_gain;
+        
+        // Compress glow to reasonable HDR range using Reinhard tonemapping
+        vec3 glow_compressed = glow / (1.0 + glow);
+        // Clamp compressed result to valid range
+        glow_compressed = clamp(glow_compressed, vec3(0.0), vec3(1.0));
+        
+        // Multiply blending for easier tuning (matches SDR behavior)
+        vec3 background_with_glow = blend(background_adjusted, glow_compressed);
+        vec3 background_final = mix(background_adjusted, background_with_glow, effective_glow_weight * background.a);
+        
+        // Clamp background_final to prevent extreme values
+        background_final = max(background_final, vec3(0.0));
+
+        // Final composite: blend CRT screen over glowing background using alpha
+        vec3 final_linear = mix(screen_linear, background_final, background.a);
+        
+        // Clamp final result before PQ encoding to ensure valid range
+        final_linear = max(final_linear, vec3(0.0));
+        vec3 final_color = pq(final_linear);
+
+        FragColor = vec4(final_color, 1.0);
+    }
 #else
     // SDR: use sRGB curves
-    vec3 background_adjusted = srgb_linear(background.rgb);
-    vec3 background_with_glow = blend(background_adjusted, glow);
-
-    background.rgb = mix(background_adjusted, background_with_glow, effective_glow_weight);
-
-    // Final composite: blend CRT screen over background using alpha
+    vec3 background_linear = srgb_linear(background.rgb);
+    
+    // Apply bezel gain and bias first
     float bezel_gain = pow(10.0, BEZEL_GAIN / 20.0);
     float bezel_bias = BEZEL_BIAS / 100.0;
-    vec3 final_color = mix(
-        srgb_linear(screen.rgb),
-        (background.rgb + bezel_bias) * bezel_gain,
-        background.a
-    );
+    vec3 background_adjusted = (background_linear + bezel_bias) * bezel_gain;
+    
+    // Multiply blending with color compression
+    vec3 background_with_glow = blend(background_adjusted, glow);
+    vec3 background_final = mix(background_adjusted, background_with_glow, effective_glow_weight * background.a);
 
-    FragColor = vec4(srgb_gamma(final_color), 1.0);
+    // Final composite: blend CRT screen over glowing background using alpha
+    vec3 screen_linear = srgb_linear(screen.rgb);
+    vec3 final_linear = mix(screen_linear, background_final, background.a);
+
+    FragColor = vec4(srgb_gamma(final_linear), 1.0);
 #endif
 }
