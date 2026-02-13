@@ -1,6 +1,6 @@
-// Filename: color-sdr.slang
+// Filename: color-base.slang
 //
-// Copyright (C) 2025 W. M. Martinez
+// Copyright (C) 2025-2026 W. M. Martinez
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -32,6 +32,7 @@
 
 layout(push_constant) uniform Push
 {
+    vec4 SourceSize;
     vec4 OutputSize;
     uint FrameCount;
     float R_X;
@@ -55,6 +56,7 @@ layout(push_constant) uniform Push
     float COLOR_DEBUG_OUT_OF_RANGE;
     float USER_PICTURE;
     float USER_BRIGHTNESS;
+
 } config;
 
 #define COLORIMETRY_PRESET config.COLORIMETRY_PRESET
@@ -91,6 +93,32 @@ layout(std140, set = 0, binding = 0) uniform UBO {
 
 // -- Perceptual color transform functions -- //
 // Linear methods are in color.inc
+
+// Pre-computed Bradford parameters (constant across all pixels)
+struct BradfordParams {
+    vec3 wref_RGB;   // M * wref_XYZ (reference white in cone response space)
+    vec2 rg_scale;   // wout_RGB.rg / wref_RGB.rg (R and G adaptation scale)
+    float b_out;     // wout_RGB.b (target blue cone response)
+    float p;         // power exponent for blue channel (1/12)
+};
+
+// Fast Bradford using pre-computed parameters
+vec3 bradford_fast(vec3 color_XYZ, const BradfordParams params)
+{
+    const mat3 M = mat3(
+         0.8951, -0.7502,  0.0389,
+         0.2664,  1.7135, -0.0685,
+        -0.1614,  0.0367,  1.0296);
+    const mat3 M_inv = mat3(
+         0.9869929,  0.4323053, -0.0085287,
+        -0.1470543,  0.5183603,  0.0400428,
+         0.1599627,  0.0492912,  0.9684867);
+
+    vec3 color_RGB = M * color_XYZ;
+    vec2 adapted_RG = params.rg_scale * color_RGB.rg;
+    float adapted_B = params.b_out * pow(color_RGB.b / params.wref_RGB.b, params.p);
+    return M_inv * vec3(adapted_RG, adapted_B);
+}
 
 // Standard Bradford transform
 //
@@ -202,16 +230,20 @@ layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
 #ifdef WIDE_COLOR
 layout(location = 1) out float white_level;
-layout(location = 2) out mat3 RGB_to_XYZ;
-layout(location = 5) out mat3 XYZ_to_RGB;
-layout(location = 8) out Colorimetry colorimetry;
+layout(location = 2) out float max_luma_weight;
+layout(location = 3) out vec3 ref_XYZ;
+layout(location = 4) out mat3 cat_transform;
+layout(location = 7) out BradfordParams bradford_params;
+layout(location = 11) out Colorimetry colorimetry;
 #endif
 #ifdef SDR
 layout(location = 1) out float white_level;
-layout(location = 2) out vec2 luv_scale;
-layout(location = 3) out mat3 RGB_to_XYZ;
-layout(location = 6) out mat3 XYZ_to_RGB;
-layout(location = 9) out Colorimetry colorimetry;
+layout(location = 2) out float max_luma_weight;
+layout(location = 3) out vec3 ref_XYZ;
+layout(location = 4) out vec2 luv_scale;
+layout(location = 5) out mat3 cat_transform;
+layout(location = 8) out BradfordParams bradford_params;
+layout(location = 12) out Colorimetry colorimetry;
 #endif
 
 void main()
@@ -230,6 +262,7 @@ void main()
     vec3 blue_XYZ;
 
     // Set up colorimetry
+    mat3 RGB_to_XYZ_local;  // Local variable for vertex shader use only
     if (COLORIMETRY_PRESET < 0.5) {
         // Custom
         colorimetry = Colorimetry(
@@ -242,8 +275,7 @@ void main()
         green_XYZ = xyY_to_XYZ(vec3(G_X, G_Y, 1.0));
         blue_XYZ = xyY_to_XYZ(vec3(B_X, B_Y, 1.0));
 
-        RGB_to_XYZ = get_RGB_to_XYZ(red_XYZ, green_XYZ, blue_XYZ, ref_XYZ);
-        XYZ_to_RGB = inverse(RGB_to_XYZ);
+        RGB_to_XYZ_local = get_RGB_to_XYZ(red_XYZ, green_XYZ, blue_XYZ, ref_XYZ);
     } else if (COLORIMETRY_PRESET < 1.5) {
         // Rec. 601
         colorimetry = Colorimetry(
@@ -251,8 +283,7 @@ void main()
             vec2(0.310, 0.595),
             vec2(0.155, 0.070),
             vec2(0.3127, 0.3290));
-        RGB_to_XYZ = SMPTE_C_TO_XYZ;
-        XYZ_to_RGB = XYZ_TO_SMPTE_C;
+        RGB_to_XYZ_local = SMPTE_C_TO_XYZ;
     } else if (COLORIMETRY_PRESET < 2.5) {
         // Japanese phosphors, D93
         colorimetry = Colorimetry(
@@ -260,8 +291,7 @@ void main()
             vec2(0.280, 0.605),
             vec2(0.152, 0.063),
             vec2(0.2832, 0.2971));
-        RGB_to_XYZ = NTSC_J_TO_XYZ;
-        XYZ_to_RGB = XYZ_TO_NTSC_J;
+        RGB_to_XYZ_local = NTSC_J_TO_XYZ;
     } else if (COLORIMETRY_PRESET < 3.5) {
         // EBU Tech 3213
         colorimetry = Colorimetry(
@@ -269,8 +299,7 @@ void main()
             vec2(0.290, 0.600),
             vec2(0.150, 0.060),
             vec2(0.3127, 0.3290));
-        RGB_to_XYZ = EBU_TO_XYZ;
-        XYZ_to_RGB = XYZ_TO_EBU;
+        RGB_to_XYZ_local = EBU_TO_XYZ;
     } else {
         // Rec. 709
         colorimetry = Colorimetry(
@@ -278,50 +307,69 @@ void main()
             vec2(0.300, 0.600),
             vec2(0.150, 0.060),
             vec2(0.3127, 0.3290));
-        RGB_to_XYZ = sRGB_TO_XYZ;
-        XYZ_to_RGB = XYZ_TO_sRGB;
+        RGB_to_XYZ_local = sRGB_TO_XYZ;
     }
 
-    ref_XYZ = RGB_to_XYZ * WHITE;
+    ref_XYZ = RGB_to_XYZ_local * WHITE;
     const vec3 D65_XYZ = vec3(0.95047, 1.0, 1.08883);
 
+    // Extract luminance weights from native phosphor RGB_to_XYZ
+    vec3 luma_weights = vec3(RGB_to_XYZ_local[0][1], RGB_to_XYZ_local[1][1], RGB_to_XYZ_local[2][1]);
+    max_luma_weight = max(max(luma_weights.r, luma_weights.g), luma_weights.b);
+
+    // Compute chromatic adaptation transform (same for all pixels)
     if (CHROMATIC_ADAPTATION < 0.5) {
-        // No adaptation, so pass through RGB_to_XYZ
-        white_XYZ = RGB_to_XYZ * WHITE;
-        red_XYZ = RGB_to_XYZ * RED;
-        green_XYZ = RGB_to_XYZ * GREEN;
-        blue_XYZ = RGB_to_XYZ * INDIGO;
+        cat_transform = mat3(1.0);
     } else if (CHROMATIC_ADAPTATION < 1.5) {
-        // Linear Bradford adaptation
-        RGB_to_XYZ = bradford_linear(ref_XYZ, D65_XYZ) * RGB_to_XYZ;
-        white_XYZ = RGB_to_XYZ * WHITE;
-        red_XYZ = RGB_to_XYZ * RED;
-        green_XYZ = RGB_to_XYZ * GREEN;
-        blue_XYZ = RGB_to_XYZ * INDIGO;
+        cat_transform = bradford_linear(ref_XYZ, D65_XYZ);
     } else if (CHROMATIC_ADAPTATION < 2.5) {
-        // Zhai et al. 2018 CAT16 adaptation
-        RGB_to_XYZ = zhai2018_cat16(ref_XYZ, D65_XYZ, ADAPTATION_LEVEL) * RGB_to_XYZ;
-        white_XYZ = RGB_to_XYZ * WHITE;
-        red_XYZ = RGB_to_XYZ * RED;
-        green_XYZ = RGB_to_XYZ * GREEN;
-        blue_XYZ = RGB_to_XYZ * INDIGO;
+        cat_transform = zhai2018_cat16(ref_XYZ, D65_XYZ, ADAPTATION_LEVEL);
     } else {
-        // Bradford adaptation; needs more complex handling
-        white_XYZ = RGB_to_XYZ * WHITE;
-        red_XYZ = RGB_to_XYZ * RED;
-        green_XYZ = RGB_to_XYZ * GREEN;
-        blue_XYZ = RGB_to_XYZ * INDIGO;
-        white_XYZ = bradford(white_XYZ, ref_XYZ);
-        red_XYZ = bradford(red_XYZ, ref_XYZ);
-        green_XYZ = bradford(green_XYZ, ref_XYZ);
-        blue_XYZ = bradford(blue_XYZ, ref_XYZ);
+        // Nonlinear Bradford is per-color, will apply in fragment
+        cat_transform = mat3(1.0);
+    }
+
+    // Pre-compute Bradford parameters for fast per-pixel computation
+    if (CHROMATIC_ADAPTATION >= 2.5) {
+        const mat3 M = mat3(
+             0.8951, -0.7502,  0.0389,
+             0.2664,  1.7135, -0.0685,
+            -0.1614,  0.0367,  1.0296);
+        
+        vec3 wref_RGB = M * ref_XYZ;
+        vec3 wout_RGB = M * D65_XYZ;
+        
+        bradford_params.wref_RGB = wref_RGB;
+        bradford_params.rg_scale = wout_RGB.rg / wref_RGB.rg;
+        bradford_params.b_out = wout_RGB.b;
+        bradford_params.p = pow(wref_RGB.b / wout_RGB.b, 0.0834);
     }
 
 #ifdef SDR
     // Precompute Luv scale factors for advanced gamut compression
+    // Apply chromatic adaptation to primary XYZ values for output gamut testing
     luv_scale = vec2(0.0);
     
     if (GAMUT_COMPRESSION > 2.5) {
+        vec3 white_XYZ = RGB_to_XYZ_local * WHITE;
+        vec3 red_XYZ = RGB_to_XYZ_local * RED;
+        vec3 green_XYZ = RGB_to_XYZ_local * GREEN;
+        vec3 blue_XYZ = RGB_to_XYZ_local * INDIGO;
+        
+        // Apply chromatic adaptation to XYZ values directly
+        if (CHROMATIC_ADAPTATION < 2.5 && CHROMATIC_ADAPTATION >= 0.5) {
+            // Use pre-computed cat_transform (Linear Bradford or CAT16)
+            white_XYZ = cat_transform * white_XYZ;
+            red_XYZ = cat_transform * red_XYZ;
+            green_XYZ = cat_transform * green_XYZ;
+            blue_XYZ = cat_transform * blue_XYZ;
+        } else if (CHROMATIC_ADAPTATION >= 2.5) {
+            // Nonlinear Bradford adaptation using pre-computed parameters
+            white_XYZ = bradford_fast(white_XYZ, bradford_params);
+            red_XYZ = bradford_fast(red_XYZ, bradford_params);
+            green_XYZ = bradford_fast(green_XYZ, bradford_params);
+            blue_XYZ = bradford_fast(blue_XYZ, bradford_params);
+        }
         vec3 white_out = XYZ_TO_COLOR_SPACE * white_XYZ;
         vec3 red_out = XYZ_TO_COLOR_SPACE * red_XYZ;
         vec3 green_out = XYZ_TO_COLOR_SPACE * green_XYZ;
@@ -355,16 +403,20 @@ void main()
 layout(location = 0) in vec2 vTexCoord;
 #ifdef WIDE_COLOR
 layout(location = 1) in float white_level;
-layout(location = 2) in mat3 RGB_to_XYZ;
-layout(location = 5) in mat3 XYZ_to_RGB;
-layout(location = 8) in Colorimetry colorimetry;
+layout(location = 2) in float max_luma_weight;
+layout(location = 3) in vec3 ref_XYZ;
+layout(location = 4) in mat3 cat_transform;
+layout(location = 7) in BradfordParams bradford_params;
+layout(location = 11) in Colorimetry colorimetry;
 #endif
 #ifdef SDR
 layout(location = 1) in float white_level;
-layout(location = 2) in vec2 luv_scale;
-layout(location = 3) in mat3 RGB_to_XYZ;
-layout(location = 6) in mat3 XYZ_to_RGB;
-layout(location = 9) in Colorimetry colorimetry;
+layout(location = 2) in float max_luma_weight;
+layout(location = 3) in vec3 ref_XYZ;
+layout(location = 4) in vec2 luv_scale;
+layout(location = 5) in mat3 cat_transform;
+layout(location = 8) in BradfordParams bradford_params;
+layout(location = 12) in Colorimetry colorimetry;
 #endif
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 1) uniform sampler2D Source;
@@ -377,47 +429,55 @@ void main()
     vec3 YrYgYb = src.rgb;
     float gain = src.a;
 
-    // To compute the possible peak luminance of the source, we need to get the luminance weighting of the color space.
-    // The peak luminance is the max of this three-component weighting
-    vec3 luma_weights = vec3(RGB_to_XYZ[0][1], RGB_to_XYZ[1][1], RGB_to_XYZ[2][1]);
-    float max_luma_weight = max(max(luma_weights.r, luma_weights.g), luma_weights.b);
+    // Source peak luminance: white_level × target nits
+    float source_peak = max(white_level * TARGET_NITS * gain, EPS);
 
-    // Source peak luminance
-    float source_peak = max(white_level * TARGET_NITS * max_luma_weight, EPS);
-
-    // Apply makeup gain before tone mapping to preserve highlights
+    // Apply makeup gain before tone mapping to boost highlights
     if (MAKEUP_GAIN > 0.5) {
         // Makeup gain is inverse of the gain channel from scanning, mask effects, etc.
         YrYgYb /= gain;
         source_peak /= gain;
     }
 
+    // Determine high peak for tone mapping based on source peak and target nits
     float low_peak = min(source_peak, TARGET_NITS);
-    float high_peak = max(source_peak, TARGET_NITS);
+    float high_peak = max(source_peak, TARGET_NITS) / low_peak;
 
-    // Normalization of luminance to target nits
     YrYgYb /= low_peak;
-    float effective_peak = high_peak / low_peak;
 
     // Tone mapping
     if (TONEMAP_TYPE < 0.5) {
         // No tone mapping
     } else if (TONEMAP_TYPE < 1.5) {
         // Reinhard tone mapping
-        YrYgYb = YrYgYb / (1.0 + YrYgYb);
+        float Y_in = YrYgYb.r + YrYgYb.g + YrYgYb.b;
+        float Y_out = Y_in / (1.0 + Y_in);
+        YrYgYb *= Y_out / max(Y_in, EPS);
     } else if (TONEMAP_TYPE < 2.5) {
         // Reinhard extended
-        YrYgYb = YrYgYb * (1.0 + YrYgYb / (effective_peak * effective_peak)) / (1.0 + YrYgYb);
+        float Y_in = YrYgYb.r + YrYgYb.g + YrYgYb.b;
+        float Y_out = (Y_in * (1.0 + Y_in / (high_peak * high_peak))) / (1.0 + Y_in);
+        YrYgYb *= Y_out / max(Y_in, EPS);
     } else {
         // ACES approximation
-        YrYgYb *= 0.6;
         YrYgYb = (YrYgYb * (2.51 * YrYgYb + 0.03)) / (YrYgYb * (2.43 * YrYgYb + 0.59) + 0.14);
     }
 
     YrYgYb = clamp(YrYgYb, 0.0, 1.0);
 
-    // Convert YrYgYb to XYZ
+    // Convert YrYgYb to XYZ using native colorimetry
     vec3 XYZ = YrYgYb_to_XYZ(YrYgYb, colorimetry);
+    
+    // Apply chromatic adaptation to XYZ directly (not to encoding matrix)
+    if (CHROMATIC_ADAPTATION >= 0.5) {
+        if (CHROMATIC_ADAPTATION < 2.5) {
+            // Linear Bradford or CAT16 (computed in vertex shader)
+            XYZ = cat_transform * XYZ;
+        } else {
+            // Nonlinear Bradford adaptation (per-color operation with pre-computed params)
+            XYZ = bradford_fast(XYZ, bradford_params);
+        }
+    }
 
     mat3 toRGB = XYZ_TO_COLOR_SPACE;
 
@@ -430,8 +490,7 @@ void main()
 
     vec3 RGB;
 
-    if (CHROMATIC_ADAPTATION < 2.5) {
-        // Linear, convert directly from conversion matrix
+    // Convert adapted XYZ to output color space
 #ifdef SDR
         // Take advantage of intermediate for advanced compression
         if (GAMUT_COMPRESSION < 1.5) {
@@ -453,31 +512,6 @@ void main()
         }
 #endif
         RGB = toRGB * XYZ;
-    } else {
-        // Bradford adaptation requires special handling
-        vec3 ref_XYZ = RGB_to_XYZ * WHITE;
-        vec3 adapted_XYZ = bradford(XYZ, ref_XYZ);
-        RGB = toRGB * adapted_XYZ;
-
-#ifdef SDR
-        if (GAMUT_COMPRESSION < 1.5) {
-            // Handle later
-        } else if (GAMUT_COMPRESSION < 2.5) {
-            vec3 Luv = XYZ_to_CIE_LUV(adapted_XYZ);
-
-            Luv.x *= scale_luminance_cieluv(RGB, Luv, toRGB);
-            Luv.yz *= scale_chroma_cieluv(RGB, Luv, toRGB);
-
-            RGB = toRGB * CIE_LUV_to_XYZ(Luv);
-        } else if (GAMUT_COMPRESSION < 3.5) {
-            vec3 Luv = XYZ_to_CIE_LUV(adapted_XYZ);
-
-            Luv.x *= luv_scale.x;
-            Luv.yz *= luv_scale.y;
-            RGB = toRGB * CIE_LUV_to_XYZ(Luv);
-        }
-#endif
-    }
 
     if (DEBUG_COLOR_DELTA > 0.5) {
         vec3 RGB_baseline = toRGB * XYZ;

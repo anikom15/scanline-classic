@@ -25,9 +25,8 @@
 #include "tools/zebra.inc"
 
 #include "menus/parameters/mask.inc"
-#include "menus/parameters/user-common.inc"
-#include "menus/parameters/user-uncommon.inc"
 #include "menus/parameters/colorimetry.inc"
+#include "menus/parameters/factory-geometry.inc"
 
 #pragma name CRTMask
 #pragma format R16G16B16A16_SFLOAT

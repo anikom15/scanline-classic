@@ -8,7 +8,7 @@
     "misc/menu.json",
     "misc/frame-tv625.json",
     "sys/rgb.json",
-    "disp/crt.json",
+    "disp/crt-625.json",
     "misc/post.json"
   ],
   "parameter_root" : "../../params",

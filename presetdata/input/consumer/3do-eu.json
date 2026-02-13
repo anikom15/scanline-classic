@@ -9,7 +9,7 @@
     "misc/menu-digital-composite-upsample.json",
     "misc/frame-digital-944.json",
     "sys/digital-composite.json",
-    "disp/crt.json",
+    "disp/crt-625.json",
     "misc/post.json"
   ],
   "parameter_root" : "../../params",

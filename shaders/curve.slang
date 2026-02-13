@@ -248,5 +248,5 @@ void main()
         color = zebra(color, 0.0, 1.0, vTexCoord, config.OutputSize.xy, config.FrameCount, 1.0);
     }
 
-    FragColor = vec4(color, alpha);
+    FragColor = vec4(max(color, 0.0), alpha);
 }

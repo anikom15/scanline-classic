@@ -11,7 +11,7 @@
     "options" : {
         "frame": {
             "scale_type" : ["source", "absolute"],
-            "scale" : [1.0, 572.0]
+            "scale" : [1.0, 684.0]
         },
         "beam" : {
             "scale_type" : ["viewport"]

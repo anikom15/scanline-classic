@@ -401,5 +401,5 @@ void main()
         color = texture(Source, input_uv).rgb;
     }
 
-    FragColor = vec4(color, alpha);
+    FragColor = vec4(max(color, 0.0), alpha);
 }

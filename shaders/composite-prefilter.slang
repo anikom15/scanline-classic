@@ -112,7 +112,7 @@ void main()
         vTexCoord,
         config.OriginalSize.xy,
         config.OutputSize.xy,
-        config.,
+        config.FrameHSize.x,
         config.OriginalFPS,
         SC_FREQ_MODE,
         SC_FREQ,
