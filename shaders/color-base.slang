@@ -350,7 +350,7 @@ void main()
     // Apply chromatic adaptation to primary XYZ values for output gamut testing
     luv_scale = vec2(0.0);
     
-    if (GAMUT_COMPRESSION > 2.5) {
+    if (GAMUT_COMPRESSION > 1.5) {
         vec3 white_XYZ = RGB_to_XYZ_local * WHITE;
         vec3 red_XYZ = RGB_to_XYZ_local * RED;
         vec3 green_XYZ = RGB_to_XYZ_local * GREEN;
