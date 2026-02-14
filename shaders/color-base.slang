@@ -56,7 +56,6 @@ layout(push_constant) uniform Push
     float COLOR_DEBUG_OUT_OF_RANGE;
     float USER_PICTURE;
     float USER_BRIGHTNESS;
-
 } config;
 
 #define COLORIMETRY_PRESET config.COLORIMETRY_PRESET
@@ -222,6 +221,27 @@ float scale_chroma_cieluv(vec3 color, vec3 luv, mat3 toRGB)
         return minScale;
     }
     return 1.0;
+}
+
+// -- Uncharted 2 tone mapping functions -- //
+// Partial tone map (filmic curve)
+float uncharted2_tonemap_partial(float x)
+{
+    const float A = 0.15;
+    const float B = 0.50;
+    const float C = 0.10;
+    const float D = 0.20;
+    const float E = 0.02;
+    const float F = 0.30;
+    return ((x * (A * x + C * B) + D * E) / (x * (A * x + B) + D * F)) - E / F;
+}
+
+// Full Uncharted 2 tone mapping with exposure bias and white point normalization
+float uncharted2_tonemap( float color, float exposure_bias)
+{
+    float curr = uncharted2_tonemap_partial(color * exposure_bias);
+    float white_scale = 1.0 / uncharted2_tonemap_partial(11.2);
+    return curr * white_scale;
 }
 
 #pragma stage vertex
@@ -441,7 +461,7 @@ void main()
     }
 
     // Determine high peak for tone mapping based on source peak and target nits
-    float low_peak = min(source_peak, TARGET_NITS);
+    float low_peak = TARGET_NITS;
     float high_peak = max(source_peak, TARGET_NITS) / low_peak;
 
     YrYgYb /= low_peak;
@@ -454,6 +474,9 @@ void main()
         // No tone mapping
     } else if (TONEMAP_TYPE < 1.5) {
         // Reinhard tone mapping
+        const float REINHARD_BIAS = 1.4;
+
+        YrYgYb *= REINHARD_BIAS;
         float Y_in = YrYgYb.r + YrYgYb.g + YrYgYb.b;
         float Y_out = Y_in / (1.0 + Y_in);
         YrYgYb *= Y_out / max(Y_in, EPS);
@@ -462,9 +485,17 @@ void main()
         float Y_in = YrYgYb.r + YrYgYb.g + YrYgYb.b;
         float Y_out = (Y_in * (1.0 + Y_in / (high_peak * high_peak))) / (1.0 + Y_in);
         YrYgYb *= Y_out / max(Y_in, EPS);
+    } else if (TONEMAP_TYPE < 3.5) {
+        // Uncharted 2 tone mapping
+        float exposure_bias = 3.0 * high_peak;
+        float Y_in = YrYgYb.r + YrYgYb.g + YrYgYb.b;
+        float Y_out = uncharted2_tonemap(Y_in, exposure_bias);
+        YrYgYb *= Y_out / max(Y_in, EPS);
     } else {
         // ACES approximation
-        YrYgYb = (YrYgYb * (2.51 * YrYgYb + 0.03)) / (YrYgYb * (2.43 * YrYgYb + 0.59) + 0.14);
+        float Y_in = 0.6 * (YrYgYb.r + YrYgYb.g + YrYgYb.b);
+        float Y_out = (Y_in * (2.51 * Y_in + 0.03)) / (Y_in * (2.43 * Y_in + 0.59) + 0.14);
+        YrYgYb *= Y_out / max(Y_in, EPS);
     }
 
     YrYgYb = clamp(YrYgYb, 0.0, 1.0);
