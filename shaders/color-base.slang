@@ -521,7 +521,11 @@ void main()
     if (COLOR_CONVERSION_BYPASS >= 1.0) {
         // Inverse power law
 #ifdef HDR
-    FragColor = vec4(pq(clamp(toRGB * XYZ, 0.0, 1.0)), 1.0);
+#ifdef SCRGB_OUTPUT
+    FragColor = vec4(toRGB * XYZ, 1.0);
+#else
+    FragColor = vec4(clamp(pq(toRGB * XYZ), 0.0, 1.0), 1.0);
+#endif
 #else
     FragColor = vec4(crt_gamma(clamp(toRGB * XYZ, 0.0, 1.0)), 1.0);
 #endif
@@ -574,8 +578,17 @@ void main()
     vec3 color = RGB;
 
 #ifdef HDR
-    // PQ curve
+#ifdef SCRGB_OUTPUT
+    // scRGB output: linear scene-referred values
+    // RetroArch HDR expects linear values with scRGB interpretation
+    // Our 1.0 = 100 nits reference
+    FragColor = vec4(color, 1.0);
+#else
+    // PQ output: SMPTE ST.2084 encoded values
+    // Note: There's a bug in PQ encoding causing squashed highlights
+    // Use SCRGB_OUTPUT define as workaround
     FragColor = vec4(clamp(pq(color), 0.0, 1.0), 1.0);
+#endif
 }
 #else
     // Safety clamp

@@ -307,12 +307,12 @@ vec3 pq(vec3 linear)
     const float c3 = 18.6875;               // 2392 * 4096 / 32
 
     // Normalize input for PQ (assume 100 nits reference)
-    // PQ standard uses 10000 nits peak, but we're working with normalized values
-    vec3 normalized = linear * 100.0;      // Scale to nits
-    normalized = max(normalized, vec3(0.0));
+    // PQ standard uses 10000 nits peak, map [0,1] at 100 nits to [0,1] at 10000 nits
+    vec3 L = linear * 0.01;                // Scale from 100 nits reference to PQ range (100/10000)
+    L = max(L, vec3(0.0));
 
     // Apply PQ curve per-channel
-    vec3 L_p = pow(normalized / 100.0, vec3(m1));
+    vec3 L_p = pow(L, vec3(m1));
     vec3 pq_result = pow((c1 + c2 * L_p) / (1.0 + c3 * L_p), vec3(m2));
 
     return pq_result;
@@ -330,8 +330,8 @@ vec3 pq_inverse(vec3 pq_val)
 
     // Inverse PQ curve per-channel
     vec3 L_p = pow(pq_val, vec3(1.0 / m2));
-    vec3 linear_nits = 100.0 * pow((L_p - c1) / max((c2 - c3 * L_p), 1e-6), vec3(1.0 / m1));
+    vec3 L = pow((L_p - c1) / max((c2 - c3 * L_p), 1e-6), vec3(1.0 / m1));
 
-    // Convert back to linear RGB [0, 1]
-    return linear_nits / 100.0;
+    // Convert back to linear RGB [0, 1] where 1.0 = 100 nits reference
+    return L * 100.0;                      // Scale from PQ range to 100 nits reference (10000/100)
 }

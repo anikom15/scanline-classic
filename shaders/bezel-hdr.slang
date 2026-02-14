@@ -24,7 +24,9 @@
 
 #pragma name Bezel
 #pragma format A2B10G10R10_UNORM_PACK32
+//#pragma format R16G16B16A16_SFLOAT
 
 #define HDR
+#define SCRGB_OUTPUT
 
 #include "bezel-base.slang"

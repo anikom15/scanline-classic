@@ -374,10 +374,16 @@ vec3 calculate_glow(vec2 coord, float radius, float diffusion_steps)
             // Sample and compress color to reduce extreme brightness impact
             vec3 sample_color;
 #ifdef HDR
+#ifdef SCRGB_OUTPUT
+            // scRGB: input is already linear
+            vec3 sample_linear = sample_mirror_safe(Source, coord + offset);
+#else
+            // PQ: decode from PQ to linear
             vec3 sample_pq = clamp(sample_mirror_safe(Source, coord + offset), vec3(0.0), vec3(1.0));
             vec3 sample_linear = pq_inverse(sample_pq);
             // Clamp to prevent negative values or NaN from PQ precision issues
             sample_linear = max(sample_linear, vec3(0.0));
+#endif
             sample_color = sample_linear;  // No compression for HDR - keep linear values
 #else
             vec3 sample_linear = srgb_linear(sample_mirror_safe(Source, coord + offset));
@@ -506,8 +512,13 @@ void main()
     // Optimize: if background is fully transparent (viewport area), skip PQ round-trip
     if (background.a < 0.001)
     {
-        // Pass through screen directly in PQ space to avoid precision loss
+#ifdef SCRGB_OUTPUT
+        // scRGB: input is already linear
         FragColor = vec4(screen.rgb, 1.0);
+#else
+        // PQ: pass through screen directly in PQ space to avoid precision loss
+        FragColor = vec4(pq(screen.rgb), 1.0);
+#endif
     }
     else if (!inside_viewport)
     {
@@ -530,12 +541,17 @@ void main()
     else
     {
         // Inside viewport with background alpha: composite screen over background
+#ifdef SCRGB_OUTPUT
+        // scRGB: input is already linear
+        vec3 screen_linear = screen.rgb;
+#else
+        // PQ: decode from PQ to linear
         vec3 screen_pq = clamp(screen.rgb, vec3(0.0), vec3(1.0));
         vec3 screen_linear = pq_inverse(screen_pq);
-        
         // CRITICAL: Clamp screen_linear to prevent negative values or NaN from propagating
         // PQ inverse can produce invalid values due to floating-point precision issues
         screen_linear = max(screen_linear, vec3(0.0));
+#endif
         
         vec3 background_linear = srgb_linear(background.rgb);
         
@@ -559,11 +575,17 @@ void main()
         // Final composite: blend CRT screen over glowing background using alpha
         vec3 final_linear = mix(screen_linear, background_final, background.a);
         
-        // Clamp final result before PQ encoding to ensure valid range
+        // Clamp final result before output to ensure valid range
         final_linear = max(final_linear, vec3(0.0));
+        
+#ifdef SCRGB_OUTPUT
+        // scRGB output: linear scene-referred values
+        FragColor = vec4(final_linear, 1.0);
+#else
+        // PQ output: SMPTE ST.2084 encoded values
         vec3 final_color = pq(final_linear);
-
         FragColor = vec4(final_color, 1.0);
+#endif
     }
 #else
     // SDR: use sRGB curves
