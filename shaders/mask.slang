@@ -427,6 +427,51 @@ vec3 compute_mask(vec2 screen_uv, float units_x_total, float units_y_total, vec2
     return mask_color;
 }
 
+// Compute peak gain as the maximum Yr+Yg+Yb value after masking.
+// This searches the mask pattern for the brightest pixel and returns
+// the gain relative to a unit grayscale input (sum = 3.0).
+float compute_peak_mask_gain(float units_x_total, float units_y_total, vec2 pixels_per_unit, float mask_intensity)
+{
+    float period_x = 6.0;
+    float period_y = 1.0;
+
+    if (MASK_TYPE >= 0.5 && MASK_TYPE < 1.5) {
+        period_x = 18.0;
+        period_y = 3.0;
+    } else if (MASK_TYPE >= 1.5) {
+        period_x = 6.0;
+        period_y = 4.0;
+    }
+
+    int samples_x = int(clamp(floor(pixels_per_unit.x * period_x + 0.5), 2.0, 77.0));
+    int samples_y = int(clamp(floor(pixels_per_unit.y * period_y + 0.5), 2.0, 58.0));
+    float max_sum = 0.0;
+
+    for (int j = 0; j < samples_y; ++j) {
+        float y_units = (float(j) + 0.5) * (period_y / float(samples_y));
+        float v = y_units / max(units_y_total, EPS);
+
+        for (int i = 0; i < samples_x; ++i) {
+            float x_units = (float(i) + 0.5) * (period_x / float(samples_x));
+            float u = x_units / max(units_x_total, EPS);
+            vec3 mask_color = compute_mask(vec2(u, v), units_x_total, units_y_total, pixels_per_unit);
+            float sum = mask_color.r + mask_color.g + mask_color.b;
+            max_sum = max(max_sum, sum);
+        }
+    }
+
+    // Apply mask intensity to the sum and convert to gain vs unit grayscale input (sum = 3.0).
+    float blended_sum = mix(3.0, max_sum, mask_intensity);
+    return blended_sum / 3.0;
+}
+
+float pack_gain_pair(float avg_gain, float peak_gain)
+{
+    float avg8 = floor(clamp(avg_gain, 0.0, 1.0) * 255.0 + 0.5);
+    float peak8 = floor(clamp(peak_gain, 0.0, 1.0) * 255.0 + 0.5);
+    return (avg8 * 256.0 + peak8) / 65535.0;
+}
+
 float erf_approx(float x)
 {
     float sign = x < 0.0 ? -1.0 : 1.0;
@@ -501,6 +546,7 @@ layout(location = 3) out float units_x_total;
 layout(location = 4) out float units_y_total;
 layout(location = 5) out float mask_intensity;
 layout(location = 6) out vec2 pixels_per_unit;
+layout(location = 7) out float peak_mask_gain;
 
 void main()
 {
@@ -532,6 +578,9 @@ void main()
     // YrYgYb signal: each channel is luminance contribution, so simple average
     const vec3 one_third = vec3(1.0 / 3.0);
     avg_mask_gain = dot(avg_mask_rgb, one_third);
+
+    // Compute peak mask gain based on output sampling grid
+    peak_mask_gain = compute_peak_mask_gain(units_x_total, units_y_total, pixels_per_unit, mask_intensity);
 }
 
 #pragma stage fragment
@@ -542,6 +591,7 @@ layout(location = 3) in float units_x_total;
 layout(location = 4) in float units_y_total;
 layout(location = 5) in float mask_intensity;
 layout(location = 6) in vec2 pixels_per_unit;
+layout(location = 7) in float peak_mask_gain;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 1) uniform sampler2D Source;
 
@@ -553,7 +603,8 @@ void main()
 
     // If mask is bypassed, pass through incoming gain unchanged (mask gain = 1.0)
     if (MASK_BYPASS >= 1.0) {
-        FragColor = vec4(color, incoming_gain);
+        float packed_gain = pack_gain_pair(incoming_gain, peak_mask_gain);
+        FragColor = vec4(color, packed_gain);
         return;
     }
 
@@ -567,6 +618,7 @@ void main()
 
     // Combine incoming gain with average mask gain
     float combined_gain = incoming_gain * avg_mask_gain;
+    float packed_gain = pack_gain_pair(combined_gain, peak_mask_gain);
 
-    FragColor = vec4(masked_color, combined_gain);
+    FragColor = vec4(masked_color, packed_gain);
 }

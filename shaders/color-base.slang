@@ -29,6 +29,7 @@
 #pragma parameter COLOR_CONVERSION_BYPASS "Bypass color correction" 0.0 0.0 1.0 1.0
 #pragma parameter DEBUG_COLOR_DELTA "Show color correction deltas" 0.0 0.0 1.0 1.0
 #pragma parameter COLOR_DEBUG_OUT_OF_RANGE "Debug out-of-range colors" 0.0 0.0 1.0 1.0
+#pragma parameter DEBUG_CARD "Show debug card" 0.0 0.0 1.0 1.0
 
 layout(push_constant) uniform Push
 {
@@ -54,6 +55,7 @@ layout(push_constant) uniform Push
     float MAKEUP_GAIN;
     float DEBUG_COLOR_DELTA;
     float COLOR_DEBUG_OUT_OF_RANGE;
+    float DEBUG_CARD;
     float USER_PICTURE;
     float USER_BRIGHTNESS;
 } config;
@@ -80,6 +82,7 @@ layout(push_constant) uniform Push
 #define COLOR_CONVERSION_BYPASS config.COLOR_CONVERSION_BYPASS
 #define DEBUG_COLOR_DELTA config.DEBUG_COLOR_DELTA
 #define COLOR_DEBUG_OUT_OF_RANGE config.COLOR_DEBUG_OUT_OF_RANGE
+#define DEBUG_CARD config.DEBUG_CARD
 
 #define USER_PICTURE config.USER_PICTURE
 #define USER_BRIGHTNESS config.USER_BRIGHTNESS
@@ -441,30 +444,134 @@ layout(location = 12) in Colorimetry colorimetry;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 1) uniform sampler2D Source;
 
+void unpack_gain_pair(float packed, out float avg_gain, out float peak_gain)
+{
+    float combined = floor(packed * 65535.0 + 0.5);
+    float avg8 = floor(combined / 256.0);
+    float peak8 = combined - avg8 * 256.0;
+    avg_gain = avg8 / 255.0;
+    peak_gain = peak8 / 255.0;
+}
+
+vec3 rgb_to_YrYgYb(vec3 rgb, Colorimetry colorimetry)
+{
+    vec3 red_XYZ = xyY_to_XYZ(vec3(colorimetry.red_xy.x, colorimetry.red_xy.y, 1.0));
+    vec3 green_XYZ = xyY_to_XYZ(vec3(colorimetry.green_xy.x, colorimetry.green_xy.y, 1.0));
+    vec3 blue_XYZ = xyY_to_XYZ(vec3(colorimetry.blue_xy.x, colorimetry.blue_xy.y, 1.0));
+    vec3 white_XYZ = xyY_to_XYZ(vec3(colorimetry.white_xy.x, colorimetry.white_xy.y, 1.0));
+
+    mat3 primary_XYZ = mat3(red_XYZ, green_XYZ, blue_XYZ);
+    vec3 S = inverse(primary_XYZ) * white_XYZ;
+    return rgb * S;
+}
+
+vec3 render_debug_card(vec2 uv, float safe_gain, float peak_gain, Colorimetry colorimetry, out float high_peak)
+{
+    float out_gray = 0.0;
+    vec3 out_color = vec3(0.0);
+    high_peak = 100.0;
+
+    float row = floor(uv.y * 6.0);
+    if (row < 1.0) {
+        // 10-step gray ramp, linear
+        float step_index = floor(uv.x * 10.0);
+        out_gray = clamp(step_index / 9.0, 0.0, 1.0);
+        out_color = vec3(out_gray);
+    } else if (row < 2.0) {
+        // 10-step gray ramp, Rec. 709 OETF (decoded to linear)
+        float step_index = floor(uv.x * 10.0);
+        float code = clamp(step_index / 9.0, 0.0, 1.0);
+        out_gray = sdr_linear(code);
+        out_color = vec3(out_gray);
+    } else if (row < 3.0) {
+        // safe_gain then peak_gain
+        if (uv.x < 0.5) {
+            out_gray = safe_gain;
+        } else {
+            out_gray = peak_gain;
+        }
+        out_color = vec3(out_gray);
+    } else if (row < 4.0) {
+        // 10-step HDR ramp, linear, 100 nits to 10000 nits (1 to 100)
+        float step_index = floor(uv.x * 10.0);
+        out_gray = 1.0 + step_index * (99.0 / 9.0);
+        out_color = vec3(out_gray);
+    } else if (row < 5.0) {
+        // SDR color bars at 0.75
+        float bar = floor(uv.x * 7.0);
+        if (bar < 1.0) {
+            out_color = vec3(1.0);
+        } else if (bar < 2.0) {
+            out_color = vec3(1.0, 1.0, 0.0);
+        } else if (bar < 3.0) {
+            out_color = vec3(0.0, 1.0, 1.0);
+        } else if (bar < 4.0) {
+            out_color = vec3(0.0, 1.0, 0.0);
+        } else if (bar < 5.0) {
+            out_color = vec3(1.0, 0.0, 1.0);
+        } else if (bar < 6.0) {
+            out_color = vec3(1.0, 0.0, 0.0);
+        } else {
+            out_color = vec3(0.0, 0.0, 1.0);
+        }
+        out_color *= 0.75;
+    } else if (row < 6.0) {
+        // HDR color bars at 4.0 (linear)
+        float bar = floor(uv.x * 7.0);
+        if (bar < 1.0) {
+            out_color = vec3(1.0);
+        } else if (bar < 2.0) {
+            out_color = vec3(1.0, 1.0, 0.0);
+        } else if (bar < 3.0) {
+            out_color = vec3(0.0, 1.0, 1.0);
+        } else if (bar < 4.0) {
+            out_color = vec3(0.0, 1.0, 0.0);
+        } else if (bar < 5.0) {
+            out_color = vec3(1.0, 0.0, 1.0);
+        } else if (bar < 6.0) {
+            out_color = vec3(1.0, 0.0, 0.0);
+        } else {
+            out_color = vec3(0.0, 0.0, 1.0);
+        }
+        out_color *= 4.0;
+    }
+
+    return rgb_to_YrYgYb(out_color, colorimetry);
+}
+
 void main()
 {
     const float TARGET_NITS = 100.0;
 
     vec4 src = texture(Source, vTexCoord);
     vec3 YrYgYb = src.rgb;
-    float gain = src.a;
-    float safe_gain = max(gain, EPS);
+    float avg_gain;
+    float peak_gain;
+    unpack_gain_pair(src.a, avg_gain, peak_gain);
+    float safe_gain = max(avg_gain, EPS);
 
-    // Source peak luminance: white_level × target nits
-    float source_peak = max(white_level * TARGET_NITS * safe_gain, EPS);
+    float high_peak;
 
-    // Apply makeup gain before tone mapping to boost highlights
-    if (MAKEUP_GAIN > 0.5) {
-        // Makeup gain is inverse of the gain channel from scanning, mask effects, etc.
-        YrYgYb /= safe_gain;
-        source_peak /= safe_gain;
+    // Debug output: ramps and gain swatches, rest black
+    if (DEBUG_CARD > 0.5) {
+        YrYgYb = render_debug_card(vTexCoord, safe_gain, peak_gain, colorimetry, high_peak);
+    } else {
+        // Source peak luminance: white_level × target nits
+        float source_peak = max(white_level * TARGET_NITS * peak_gain, EPS);
+
+        // Apply makeup gain before tone mapping to boost highlights
+        if (MAKEUP_GAIN > 0.5) {
+            // Makeup gain is inverse of the gain channel from scanning, mask effects, etc.
+            YrYgYb /= safe_gain;
+            source_peak /= safe_gain;
+        }
+
+        // Determine high peak for tone mapping based on source peak and target nits
+        float low_peak = TARGET_NITS;
+        
+        high_peak = max(source_peak, TARGET_NITS) / low_peak;
+        YrYgYb /= low_peak;
     }
-
-    // Determine high peak for tone mapping based on source peak and target nits
-    float low_peak = TARGET_NITS;
-    float high_peak = max(source_peak, TARGET_NITS) / low_peak;
-
-    YrYgYb /= low_peak;
 
 #ifdef HDR
     // HDR: tone mapping handled via PQ
@@ -474,9 +581,6 @@ void main()
         // No tone mapping
     } else if (TONEMAP_TYPE < 1.5) {
         // Reinhard tone mapping
-        const float REINHARD_BIAS = 1.4;
-
-        YrYgYb *= REINHARD_BIAS;
         float Y_in = YrYgYb.r + YrYgYb.g + YrYgYb.b;
         float Y_out = Y_in / (1.0 + Y_in);
         YrYgYb *= Y_out / max(Y_in, EPS);
@@ -487,13 +591,13 @@ void main()
         YrYgYb *= Y_out / max(Y_in, EPS);
     } else if (TONEMAP_TYPE < 3.5) {
         // Uncharted 2 tone mapping
-        float exposure_bias = 3.0 * high_peak;
+        float exposure_bias = 2.0;
         float Y_in = YrYgYb.r + YrYgYb.g + YrYgYb.b;
         float Y_out = uncharted2_tonemap(Y_in, exposure_bias);
         YrYgYb *= Y_out / max(Y_in, EPS);
     } else {
         // ACES approximation
-        float Y_in = 0.6 * (YrYgYb.r + YrYgYb.g + YrYgYb.b);
+        float Y_in = YrYgYb.r + YrYgYb.g + YrYgYb.b;
         float Y_out = (Y_in * (2.51 * Y_in + 0.03)) / (Y_in * (2.43 * Y_in + 0.59) + 0.14);
         YrYgYb *= Y_out / max(Y_in, EPS);
     }
@@ -505,7 +609,7 @@ void main()
     vec3 XYZ = YrYgYb_to_XYZ(YrYgYb, colorimetry);
     
     // Apply chromatic adaptation to XYZ directly (not to encoding matrix)
-    if (CHROMATIC_ADAPTATION >= 0.5) {
+    if (CHROMATIC_ADAPTATION > 0.5 && COLOR_CONVERSION_BYPASS < 0.5) {
         if (CHROMATIC_ADAPTATION < 2.5) {
             // Linear Bradford or CAT16 (computed in vertex shader)
             XYZ = cat_transform * XYZ;
@@ -518,7 +622,7 @@ void main()
     mat3 toRGB = XYZ_TO_COLOR_SPACE;
 
     // Early exit for full bypass
-    if (COLOR_CONVERSION_BYPASS >= 1.0) {
+    if (COLOR_CONVERSION_BYPASS > 0.5) {
         // Inverse power law
 #ifdef HDR
 #ifdef SCRGB_OUTPUT
