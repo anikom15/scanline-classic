@@ -492,9 +492,10 @@ vec3 render_debug_card(vec2 uv, float safe_gain, float peak_gain, Colorimetry co
         }
         out_color = vec3(out_gray);
     } else if (row < 4.0) {
-        // 10-step HDR ramp, linear, 100 nits to 10000 nits (1 to 100)
+        // 10-step HDR ramp, logarithmic, 100 nits to 10000 nits (1 to 100)
         float step_index = floor(uv.x * 10.0);
-        out_gray = 1.0 + step_index * (99.0 / 9.0);
+        float t = clamp(step_index / 9.0, 0.0, 1.0);
+        out_gray = pow(100.0, t);
         out_color = vec3(out_gray);
     } else if (row < 5.0) {
         // SDR color bars at 0.75

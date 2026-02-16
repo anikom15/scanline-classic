@@ -89,10 +89,10 @@ vec3 render_test_card(vec2 uv)
         out_gray = clamp(step_index / 9.0, 0.0, 1.0);
         out_color = vec3(out_gray);
     } else if (row < 2.0) {
-        // 10-step gray ramp, Rec. 709 OETF (decoded to linear)
+        // 10-step HDR ramp, logarithmic, 100 nits to 10000 nits (1 to 100)
         float step_index = floor(uv.x * 10.0);
-        float code = clamp(step_index / 9.0, 0.0, 1.0);
-        out_gray = code < 0.018 ? code / 4.5 : pow((code + 0.099) / 1.099, 1.0 / 0.45);
+        float t = clamp(step_index / 9.0, 0.0, 1.0);
+        out_gray = pow(100.0, t);
         out_color = vec3(out_gray);
     } else if (row < 3.0) {
         // Safe gain then peak gain swatches
