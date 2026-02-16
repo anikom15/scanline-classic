@@ -27,6 +27,4 @@
 
 #define SDR
 
-#pragma parameter TRANSFER_FUNCTION "Transfer function (rec. 709, sRGB)" 0.0 0.0 1.0 1.0
-
 #include "bezel-base.slang"

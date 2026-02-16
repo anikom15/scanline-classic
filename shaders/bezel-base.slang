@@ -32,9 +32,6 @@ layout(push_constant) uniform Push
     vec4 OutputSize;
     vec4 BORDERSize;
     float ASPECT;
-#ifdef SDR
-    float TRANSFER_FUNCTION;
-#endif
     float VIEWPORT_H_POS;
     float VIEWPORT_V_POS;
     float BEZEL_BYPASS;
@@ -55,14 +52,6 @@ layout(push_constant) uniform Push
 #define ASPECT config.ASPECT
 #define VIEWPORT_H_POS config.VIEWPORT_H_POS
 #define VIEWPORT_V_POS config.VIEWPORT_V_POS
-
-#ifdef SDR
-#define TRANSFER_FUNCTION config.TRANSFER_FUNCTION
-#endif
-
-#ifdef WIDE_COLOR
-#define TRANSFER_FUNCTION 0.0  // Rec. 2020 OETF matches rec. 709 OETF
-#endif
 
 #define BEZEL_BYPASS config.BEZEL_BYPASS
 #define BEZEL_ZOOM config.BEZEL_ZOOM
@@ -440,11 +429,7 @@ void main()
         FragColor = vec4(clamp(pq(screen.rgb), 0.0, 1.0), 1.0);
         return;
 #else
-        if (TRANSFER_FUNCTION > 0.5) {
-            FragColor = vec4(srgb_gamma(clamp(screen.rgb, 0.0, 1.0)), 1.0);
-        } else {
-            FragColor = vec4(sdr_gamma(clamp(screen.rgb, 0.0, 1.0)), 1.0);
-        }
+        FragColor = vec4(crt_gamma(clamp(screen.rgb, 0.0, 1.0)), 1.0);
         return;
 #endif
     }
@@ -522,11 +507,7 @@ void main()
     // PQ output: SMPTE ST.2084 encoded values
     FragColor = vec4(clamp(pq(final_linear), 0.0, 1.0), 1.0);
 #else
-    // Gamma output: convert linear to sRGB or Rec. 709 gamma based on transfer function
-    if (TRANSFER_FUNCTION > 0.5) {
-        FragColor = vec4(srgb_gamma(clamp(final_linear, 0.0, 1.0)), 1.0);
-    } else {
-        FragColor = vec4(sdr_gamma(clamp(final_linear, 0.0, 1.0)), 1.0);
-    }
+    // Gamma output: use inverse CRT gamma to preserve shadow detail
+    FragColor = vec4(crt_gamma(clamp(final_linear, 0.0, 1.0)), 1.0);
 #endif
 }
