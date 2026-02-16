@@ -20,8 +20,28 @@ def transform_preset(input_path: Path, output_path: Path, root_dir: Path, verbos
     if verbose:
         print(f"Transforming {input_path} -> {output_path}")
     lines = input_path.read_text(encoding='utf-8').splitlines()
+    # RetroArch HDR bug: final pass scale_type can break preset recognition.
+    # We remove scale_type for the last pass (index shaders_count - 1).
+    shaders_count = None
+    for line in lines:
+        if line.strip().startswith('shaders') and '=' in line:
+            _, value = line.split('=', 1)
+            try:
+                shaders_count = int(value.strip())
+            except ValueError:
+                shaders_count = None
+            break
+    last_scale_type_key = None
+    if shaders_count is not None and shaders_count > 0:
+        last_scale_type_key = f"scale_type{shaders_count - 1}"
     transformed_lines = []
     for line in lines:
+        if last_scale_type_key and '=' in line:
+            key, _ = line.split('=', 1)
+            if key.strip() == last_scale_type_key:
+                if verbose:
+                    print(f"  Removed: {last_scale_type_key} (RetroArch HDR workaround)")
+                continue
         if line.strip().startswith('shader') and '=' in line:
             prefix, shader_path = line.split('=', 1)
             shader_path = shader_path.strip()
