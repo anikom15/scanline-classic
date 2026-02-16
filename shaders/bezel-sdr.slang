@@ -19,10 +19,14 @@
 //
 // Bezel with glow effect (SDR version)
 // ------------------------------------------------
-// Input: sRGB signal
-// Output: sRGB signal
+// Input: linear rec. 709 signal
+// Output: rec. 709/sRGB signal
 
 #pragma name Bezel
 #pragma format R8G8B8A8_UNORM
+
+#define SDR
+
+#pragma parameter TRANSFER_FUNCTION "Transfer function (rec. 709, sRGB)" 0.0 0.0 1.0 1.0
 
 #include "bezel-base.slang"
