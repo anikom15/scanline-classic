@@ -27,6 +27,10 @@
 #pragma parameter GLOW_BYPASS "Bypass glow" 0.0 0.0 1.0 1.0
 #pragma parameter KEY_THRESH "Bezel chroma key threshold" 0.18 0.0 0.5 0.01
 
+#pragma parameter ENABLE_ADAPTIVE_GLOW "Adaptive glow" 1.0 0.0 1.0 1.0
+#pragma parameter GLOW_QUALITY_PRESET "Glow quality preset" 0.0 0.0 3.0 1.0
+#pragma parameter EXP_APPROXIMATION "Fast glow falloff" 0.0 0.0 1.0 1.0
+
 layout(push_constant) uniform Push
 {
     vec4 OutputSize;
@@ -47,6 +51,9 @@ layout(push_constant) uniform Push
     float GLOW_FALLOFF;
     float GLOW_TEMPERATURE;
     float KEY_THRESH;
+    float ENABLE_ADAPTIVE_GLOW;
+    float GLOW_QUALITY_PRESET;
+    float EXP_APPROXIMATION;
 } config;
 
 #define ASPECT config.ASPECT
@@ -70,7 +77,14 @@ layout(push_constant) uniform Push
 #define KEY_THRESH config.KEY_THRESH
 #define KEY_SOFT 0.08
 
+#define ENABLE_ADAPTIVE_GLOW config.ENABLE_ADAPTIVE_GLOW
+#define GLOW_QUALITY_PRESET config.GLOW_QUALITY_PRESET
+#define EXP_APPROXIMATION config.EXP_APPROXIMATION
+
 #define GLOW_JITTER 0.3
+#define GLOW_JITTER_DIST_THRESHOLD 0.9
+#define GLOW_JITTER_WEIGHT_THRESHOLD 0.01
+#define GLOW_MIN_WEIGHT 0.001
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
@@ -269,6 +283,62 @@ vec2 random_offset(vec2 seed, float magnitude)
     return vec2(cos(angle), sin(angle)) * distance;
 }
 
+float glow_falloff(float radial_dist)
+{
+    float x = max(0.0, radial_dist * GLOW_FALLOFF);
+
+    if (EXP_APPROXIMATION > 0.5)
+    {
+        float xx = x * x;
+        return 1.0 / (1.0 + x + 0.48 * xx);
+    }
+
+    return exp(-x);
+}
+
+int adaptive_glow_steps(int base_steps, float radial_dist)
+{
+    int clamped_base = max(1, base_steps);
+
+    if (ENABLE_ADAPTIVE_GLOW < 0.5)
+    {
+        return clamped_base;
+    }
+
+    float quality = 1.0;
+
+    if (GLOW_QUALITY_PRESET < 0.5)
+    {
+        quality = (radial_dist < 0.25) ? 1.00
+            : (radial_dist < 0.50) ? 0.75
+            : (radial_dist < 0.75) ? 0.50
+            : 0.35;
+    }
+    else if (GLOW_QUALITY_PRESET < 1.5)
+    {
+        quality = (radial_dist < 0.25) ? 0.85
+            : (radial_dist < 0.50) ? 0.60
+            : (radial_dist < 0.75) ? 0.40
+            : 0.25;
+    }
+    else if (GLOW_QUALITY_PRESET < 2.5)
+    {
+        quality = (radial_dist < 0.25) ? 1.00
+            : (radial_dist < 0.50) ? 0.80
+            : (radial_dist < 0.75) ? 0.60
+            : 0.40;
+    }
+    else
+    {
+        quality = (radial_dist < 0.25) ? 1.00
+            : (radial_dist < 0.50) ? 0.90
+            : (radial_dist < 0.75) ? 0.75
+            : 0.60;
+    }
+
+    return max(1, int(floor(float(clamped_base) * quality + 0.5)));
+}
+
 // ==== Mirrored sampling with soft edge guard ====
 // Tunables for edge protection (guard band and soft fade width)
 #define EDGE_MARGIN   0.06   // How far from 0/1 to keep samples (0..0.25 is sensible)
@@ -322,7 +392,7 @@ vec3 sample_mirror_safe(sampler2D tex, vec2 uv)
  * @param diffusion_steps Number of distance steps per direction (higher = smoother)
  * @return Accumulated glow color
  */
-vec3 calculate_glow(vec2 coord, float radius, float diffusion_steps)
+vec3 calculate_glow(vec2 coord, float radius, float diffusion_steps, float radial_dist, float glow_weight)
 {
     // Define 8 cardinal and intercardinal directions (N, NE, E, SE, S, SW, W, NW)
     const vec2 directions[8] = vec2[8](
@@ -338,7 +408,8 @@ vec3 calculate_glow(vec2 coord, float radius, float diffusion_steps)
     
     vec3 glow = vec3(0.0);
     float total_weight = 0.0;
-    int num_steps = int(diffusion_steps);
+    int num_steps = adaptive_glow_steps(int(diffusion_steps), radial_dist);
+    bool jitter_enabled = (radial_dist <= GLOW_JITTER_DIST_THRESHOLD) && (glow_weight >= GLOW_JITTER_WEIGHT_THRESHOLD);
     
     // Sample in each direction with multiple distance steps for smooth diffusion
     for (int step = 1; step <= num_steps; step++)
@@ -368,7 +439,9 @@ vec3 calculate_glow(vec2 coord, float radius, float diffusion_steps)
             vec2 base_offset = dir * step_radius * anisotropic_scale;
             
             // Add jitter to eliminate banding and shadow line artifacts
-            vec2 jitter = random_offset(coord * 100.0 + vec2(float(step), float(i)), GLOW_JITTER * radius);
+            vec2 jitter = jitter_enabled
+                ? random_offset(coord * 100.0 + vec2(float(step), float(i)), GLOW_JITTER * radius)
+                : vec2(0.0);
             vec2 offset = base_offset + jitter;
             
             // Sample and compress color to reduce extreme brightness impact
@@ -454,24 +527,6 @@ void main()
         glow = vec3(0.0);
         effective_glow_weight = 0.0;
     } else {
-        // Only calculate glow if we're relatively close to viewport
-        // This avoids sampling artifacts from far outside the screen area
-        vec2 dist_from_viewport = max(vec2(0.0), abs(screen_coord - vec2(0.5)) - vec2(0.5));
-        float max_dist = max(dist_from_viewport.x, dist_from_viewport.y);
-        
-        if (max_dist < GLOW_RADIUS * 2.0) {
-            // Calculate glow effect
-            glow = calculate_glow(screen_coord, GLOW_RADIUS, GLOW_DIFFUSION);
-
-            // Shift glow color temperature to simulate bluish CRT reflection
-            glow = shift_temperature(glow, GLOW_TEMPERATURE);
-            
-            // Clamp glow to prevent negative values before tonemapping
-            glow = max(glow, vec3(0.0));
-        } else {
-            glow = vec3(0.0);
-        }
-
         // === Calculate radial falloff for glow intensity ===
         // Use precomputed viewport scale and offset from vertex stage
         vec2 viewport_pos = (vTexCoord - viewport_offset) / viewport_scale;
@@ -482,8 +537,26 @@ void main()
         vec2 normalized_dist = outside_dist / max(viewport_max_dist, vec2(EPS));
         float radial_dist = length(normalized_dist);
 
-        float falloff = exp(-radial_dist * GLOW_FALLOFF);
+        float falloff = glow_falloff(radial_dist);
         effective_glow_weight = GLOW_WEIGHT * falloff;
+
+        // Only calculate glow if we're relatively close to viewport
+        // This avoids sampling artifacts from far outside the screen area
+        vec2 dist_from_viewport = max(vec2(0.0), abs(screen_coord - vec2(0.5)) - vec2(0.5));
+        float max_dist = max(dist_from_viewport.x, dist_from_viewport.y);
+
+        if (effective_glow_weight > GLOW_MIN_WEIGHT && max_dist < GLOW_RADIUS * 2.0) {
+            // Calculate glow effect
+            glow = calculate_glow(screen_coord, GLOW_RADIUS, GLOW_DIFFUSION, radial_dist, effective_glow_weight);
+
+            // Shift glow color temperature to simulate bluish CRT reflection
+            glow = shift_temperature(glow, GLOW_TEMPERATURE);
+            
+            // Clamp glow to prevent negative values before tonemapping
+            glow = max(glow, vec3(0.0));
+        } else {
+            glow = vec3(0.0);
+        }
     }
 
     // === Blend glow with background ===
