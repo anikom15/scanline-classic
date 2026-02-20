@@ -1,3 +1,13 @@
+Version 9.0
+
+* HDR response is fixed
+
+* Bezel optimizations (parameter changes)
+
+* FHD-optimized presets
+
+* Fixes WCG display when HDR is enabled
+
 Version 8.0
 
 * N64 presets
