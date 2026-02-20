@@ -21,9 +21,9 @@
 // Output: Linear YrYgYb signal
 
 #include "common.inc"
-#include "filter.h"
 #include "geometry.inc"
 #include "modulation.inc"
+#include "texture.inc"
 
 #include "menus/parameters/sys-timing.inc"
 #include "menus/parameters/factory-geometry.inc"
@@ -114,54 +114,6 @@ layout(std140, set = 0, binding = 0) uniform UBO {
 #define S_CORRECTION_H global.S_CORRECTION_H
 #define S_CORRECTION_V global.S_CORRECTION_V
 #define BEAM_FOCUS config.BEAM_FOCUS
-
-// Bicubic texture sampling (4x4 Mitchell-Netravali)
-// Matches implementation style from crt-geometry.slang
-vec3 sample_bicubic(sampler2D source, vec2 uv, vec2 stepxy, float B, float C)
-{
-    vec2 pos = uv + stepxy / 2.0;
-    vec2 f = fract(pos / stepxy);
-
-    vec4 xtaps = bicubic4(1.0 - f.x, B, C);
-    vec4 ytaps = bicubic4(1.0 - f.y, B, C);
-    xtaps /= (xtaps.r + xtaps.g + xtaps.b + xtaps.a);
-    ytaps /= (ytaps.r + ytaps.g + ytaps.b + ytaps.a);
-
-    vec2 xystart = (-1.5 - f) * stepxy + pos;
-
-    vec4 xpos = vec4(xystart.x,
-             xystart.x + stepxy.x,
-             xystart.x + stepxy.x * 2.0,
-             xystart.x + stepxy.x * 3.0);
-
-    vec3 col = vec3(0.0);
-
-    float y0 = xystart.y;
-    col += (texture(source, vec2(xpos.r, y0)).rgb * xtaps.r +
-        texture(source, vec2(xpos.g, y0)).rgb * xtaps.g +
-        texture(source, vec2(xpos.b, y0)).rgb * xtaps.b +
-        texture(source, vec2(xpos.a, y0)).rgb * xtaps.a) * ytaps.r;
-
-    float y1 = xystart.y + stepxy.y;
-    col += (texture(source, vec2(xpos.r, y1)).rgb * xtaps.r +
-        texture(source, vec2(xpos.g, y1)).rgb * xtaps.g +
-        texture(source, vec2(xpos.b, y1)).rgb * xtaps.b +
-        texture(source, vec2(xpos.a, y1)).rgb * xtaps.a) * ytaps.g;
-
-    float y2 = xystart.y + stepxy.y * 2.0;
-    col += (texture(source, vec2(xpos.r, y2)).rgb * xtaps.r +
-        texture(source, vec2(xpos.g, y2)).rgb * xtaps.g +
-        texture(source, vec2(xpos.b, y2)).rgb * xtaps.b +
-        texture(source, vec2(xpos.a, y2)).rgb * xtaps.a) * ytaps.b;
-
-    float y3 = xystart.y + stepxy.y * 3.0;
-    col += (texture(source, vec2(xpos.r, y3)).rgb * xtaps.r +
-        texture(source, vec2(xpos.g, y3)).rgb * xtaps.g +
-        texture(source, vec2(xpos.b, y3)).rgb * xtaps.b +
-        texture(source, vec2(xpos.a, y3)).rgb * xtaps.a) * ytaps.a;
-
-    return col;
-}
 
 // ---- Local geometry helpers (subset; barrel handled later stage) ----
 // Parameterized pincushion (electrostatic/linear) using anisotropic angles (radians)
@@ -314,7 +266,7 @@ void main()
 
     // Aspect ratios for full video
     float original_dar = config.OriginalAspect;
-    float original_sar = config.OriginalSize.x / config.OriginalSize.y;
+    float original_sar = config.OriginalSize.x * config.OriginalSize.w;
     float original_par = original_dar / max(original_sar, EPS);
 
     float full_dar = original_par * total_h_pixels / max(total_v_lines, 1.0);
@@ -335,16 +287,16 @@ void main()
     float active_width = floor(total_h_pixels) * h_scale;
     float active_height = floor(total_v_lines) * v_scale;
 
-    float source_sar = config.SourceSize.x / config.SourceSize.y;
+    float source_sar = config.SourceSize.x * config.SourceSize.w;
     float active_sar = active_width / max(active_height, 1.0);
     float source_dar = full_dar * source_sar / active_sar;
     source_dar *= DAR_SCALE;
 
     // Calculate active region bounds in texture UV space (centered)
-    float active_left = (config.SourceSize.x - active_width) * 0.5 / config.SourceSize.x;
-    float active_right = (config.SourceSize.x + active_width) * 0.5 / config.SourceSize.x;
-    float active_top = (config.SourceSize.y - active_height) * 0.5 / config.SourceSize.y;
-    float active_bottom = (config.SourceSize.y + active_height) * 0.5 / config.SourceSize.y;
+    float active_left = (config.SourceSize.x - active_width) * 0.5 * config.SourceSize.z;
+    float active_right = (config.SourceSize.x + active_width) * 0.5 * config.SourceSize.z;
+    float active_top = (config.SourceSize.y - active_height) * 0.5 * config.SourceSize.w;
+    float active_bottom = (config.SourceSize.y + active_height) * 0.5 * config.SourceSize.w;
 
     // Expand vTexCoord so active region UVs map to [0,1]
     float norm_x = (vTexCoord.x - active_left) / max(active_right - active_left, EPS);
@@ -394,9 +346,9 @@ void main()
     float B = 1.0 - 2.0 * C;
 
     vec3 color;
-    float alpha = texture(Source, input_uv).a;
+    float alpha = texture(Source, clamp01(input_uv)).a;
     if (FILTER_BYPASS < 0.5) {
-        color = sample_bicubic(Source, input_uv, 1.0 / config.SourceSize.xy, B, C);
+        color = sample_bicubic(Source, input_uv, config.SourceSize.zw, B, C);
     } else {
         color = texture(Source, input_uv).rgb;
     }

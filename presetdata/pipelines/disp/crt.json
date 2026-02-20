@@ -3,9 +3,9 @@
     "shaders" : {
         "linear" : "crt-linear",
         "frame" : "framev",
+        "phosphor" : "phosphor-trichrome",
         "beam" : "beam",
         "mask" : "mask",
-        "phosphor" : "phosphor-trichrome",
         "curve" : "curve"
     },
     "options" : {

@@ -19,6 +19,7 @@
 
 #include "common.inc"
 #include "color.inc"
+#include "texture.inc"
 
 #include "menus/parameters/factory-geometry.inc"
 #include "menus/parameters/output-bezel.inc"
@@ -486,10 +487,10 @@ vec3 calculate_glow(vec2 coord, float radius, float diffusion_steps, float radia
  */
 void main()
 {
-    // Sample the main CRT screen content (clamp to avoid border artifacts)
-    vec2 screen_coord_clamped = clamp(screen_coord, 0.0, 1.0);
-    vec4 screen = texture(Source, screen_coord_clamped);
-    screen.a = max(screen.a, 1.0);  // Ensure opaque screen
+    // Sample the main CRT screen content with smooth edge guard
+    vec4 screen = texture(Source, screen_coord);
+    screen.rgb = screen.rgb;
+    screen.a = 1.0;  // Ensure opaque screen
 
     // Bypass mode: pass through screen content without bezel/glow processing
     if (BEZEL_BYPASS > 0.5)

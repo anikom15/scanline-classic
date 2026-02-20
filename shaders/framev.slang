@@ -317,11 +317,11 @@ void main()
         vec3 color = sample_active_content(output_x, output_y);
         color_gain = vec4(color, average_active_gain());
     } else if (in_frame && !in_active && FRAME_VIZ_BLANKING > 0.5) {
-        color_gain = vec4(vec3(1.0, 1.0, 0.0) * 0.5, 0.0);
+        color_gain = vec4(vec3(1.0, 1.0, 0.0) * 0.5, average_active_gain()); // Yellow
     } else if (!in_frame && FRAME_VIZ_PADDING > 0.5) {
-        color_gain = vec4(vec3(1.0, 0.0, 1.0) * 0.5, 0.0);
+        color_gain = vec4(vec3(1.0, 0.0, 1.0) * 0.5, average_active_gain()); // Magenta
     } else {
-        color_gain = vec4(vec3(0.0), 0.0);
+        color_gain = vec4(vec3(0.0), average_active_gain()); // Black
     }
 
     FragColor = color_gain;
