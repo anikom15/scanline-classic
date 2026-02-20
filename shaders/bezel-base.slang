@@ -122,6 +122,9 @@ int glow_diffusion_steps()
 layout(std140, set = 0, binding = 0) uniform UBO
 {
     mat4 MVP;
+    float EnableHDR;
+    float MaxNits;
+    float PaperWhiteNits;
 } global;
 
 #pragma stage vertex
@@ -716,6 +719,20 @@ vec3 calculate_glow_mipmapped(vec2 coord, float radius, float diffusion_steps, f
     return total_weight > 0.0 ? glow / total_weight : glow;
 }
 
+// RA Inverse Tonemapper
+vec3 inverse_tonemap(const vec3 sdr_linear, const float max_nits, const float paper_white_nits)
+{
+    const float input_val = max(sdr_linear.r, max(sdr_linear.g, sdr_linear.b));
+
+    const float peak_ratio = max_nits / max(paper_white_nits, EPS);
+
+    const float numerator = input_val;
+    const float denominator = 1.0 - input_val * (1.0 - (1.0 / max(peak_ratio, EPS)));
+    const float tonemapped_val = numerator / max(denominator, EPS);
+
+    return sdr_linear * (tonemapped_val / max(input_val, EPS));
+}
+
 /**
  * Fragment shader: Composites the CRT screen with bezel/background and glow effect.
  * 
@@ -830,7 +847,21 @@ void main()
 #ifdef HDR
     // PQ output: SMPTE ST.2084 encoded values
     FragColor = vec4(clamp(pq(final_linear), 0.0, 1.0), 1.0);
-#else
+#endif
+#ifdef WCG
+    // WCG requires manual HDR10 handling when HDR is enabled
+    if (global.EnableHDR > 0.5) {
+        // Map linear RGB to nits using RA inverse tonemapping
+        vec3 hdr_linear = inverse_tonemap(final_linear, global.MaxNits, global.PaperWhiteNits);
+
+        // PQ output: SMPTE ST.2084 encoding for HDR10
+        FragColor = vec4(clamp(pq(hdr_linear), 0.0, 1.0), 1.0);
+    } else {
+        // SDR WCG output: apply CRT gamma directly to linear RGB
+        FragColor = vec4(crt_gamma(clamp(final_linear, 0.0, 1.0)), 1.0);
+    }
+#endif
+#ifdef SDR
     // Gamma output: use inverse CRT gamma to preserve shadow detail
     FragColor = vec4(crt_gamma(clamp(final_linear, 0.0, 1.0)), 1.0);
 #endif

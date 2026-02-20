@@ -26,5 +26,6 @@
 #pragma format A2B10G10R10_UNORM_PACK32
 
 #define WIDE_COLOR
+#define WCG
 
 #include "bezel-base.slang"
