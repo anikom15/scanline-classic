@@ -7,7 +7,8 @@
     "options" : {
         "bezel": {
             "filter_linear" : true,
-            "scale_type" : ["viewport"]
+            "scale_type" : ["viewport"],
+            "mipmap_input" : "true"
         }
     },
     "parameters" : {

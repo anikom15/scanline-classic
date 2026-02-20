@@ -89,6 +89,22 @@ mat3 SMPTE_C_TO_XYZ = mat3(
     0.3653, 0.7011, 0.1119,
     0.1912, 0.0866, 0.9584);
 
+mat3 BT2020_TO_XYZ = mat3(
+    0.6370, 0.2627, 0.0000,
+    0.1446, 0.6780, 0.0281,
+    0.1689, 0.0593, 1.0610);
+
+// Bradford chromatic adaptation matrices (XYZ ↔ LMS)
+mat3 XYZ_TO_LMS = mat3(
+     0.8951, -0.7502,  0.0389,
+     0.2664,  1.7135, -0.0685,
+    -0.1614,  0.0367,  1.0296);
+
+mat3 LMS_TO_XYZ = mat3(
+    0.9869929, 0.4323053, -0.0085287,
+    -0.1470543, 0.5183603, 0.0400428,
+    0.1599627, 0.0492912, 0.9684867);
+
 mat3 RGB_TO_YIQ = mat3(
     0.299,  0.5959,  0.2115,
     0.587, -0.2746, -0.5227,
@@ -217,22 +233,13 @@ mat3 get_RGB_to_XYZ(const vec3 red_XYZ, const vec3 green_XYZ, const vec3 blue_XY
 // Linear variant of the Bradford chromatic adaptation transform
 mat3 bradford_linear(vec3 wref_XYZ, vec3 wout_XYZ)
 {
-    const mat3 M = mat3(
-         0.8951, -0.7502,  0.0389,
-         0.2664,  1.7135, -0.0685,
-        -0.1614,  0.0367,  1.0296);
-    const mat3 M_inv = mat3(
-        0.9869929, 0.4323053, -0.0085287,
-        -0.1470543, 0.5183603, 0.0400428,
-        0.1599627, 0.0492912, 0.9684867);
-
-    vec3 wref_RGB = M * wref_XYZ;
-    vec3 wout_RGB = M * wout_XYZ;
+    vec3 wref_RGB = XYZ_TO_LMS * wref_XYZ;
+    vec3 wout_RGB = XYZ_TO_LMS * wout_XYZ;
     mat3 M_adt = mat3(
         wout_RGB.r / wref_RGB.r, 0.0, 0.0,
         0.0, wout_RGB.g / wref_RGB.g, 0.0,
         0.0, 0.0, wout_RGB.b / wref_RGB.b);
-    return M_inv * M_adt * M;
+    return LMS_TO_XYZ * M_adt * XYZ_TO_LMS;
 }
 
 // Chromatic adaptation transform from Zhai et al. 2018

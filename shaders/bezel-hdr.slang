@@ -17,16 +17,15 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
-// Bezel with glow effect (SDR version)
+// Bezel with glow effect (HDR version)
 // ------------------------------------------------
-// Input: sRGB signal
-// Output: sRGB signal
+// Input: linear BT.2020 signal
+// Output: HDR10 signal
 
 #pragma name Bezel
 #pragma format A2B10G10R10_UNORM_PACK32
-//#pragma format R16G16B16A16_SFLOAT
 
 #define HDR
-#define SCRGB_OUTPUT
+#define WIDE_COLOR
 
 #include "bezel-base.slang"
