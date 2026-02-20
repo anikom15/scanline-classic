@@ -27,10 +27,6 @@
 #pragma parameter GLOW_BYPASS "Bypass glow" 0.0 0.0 1.0 1.0
 #pragma parameter KEY_THRESH "Bezel chroma key threshold" 0.18 0.0 0.5 0.01
 
-#pragma parameter ENABLE_ADAPTIVE_GLOW "Adaptive glow" 1.0 0.0 1.0 1.0
-#pragma parameter GLOW_QUALITY_PRESET "Glow quality preset" 0.0 0.0 3.0 1.0
-#pragma parameter EXP_APPROXIMATION "Fast glow falloff" 0.0 0.0 1.0 1.0
-
 layout(push_constant) uniform Push
 {
     vec4 OutputSize;
