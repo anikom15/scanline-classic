@@ -10,6 +10,23 @@ import os
 from pathlib import Path
 import argparse
 
+
+def append_fhd_suffix_to_image(path_value: str):
+    """Append -fhd before .png/.jpg extension if not already present."""
+    lower = path_value.lower()
+    for ext in ('.png', '.jpg'):
+        if lower.endswith(ext):
+            base = path_value[:-len(ext)]
+            if base.lower().endswith('-fhd'):
+                return path_value, False
+            return f"{base}-fhd{path_value[-len(ext):]}", True
+    return path_value, False
+
+
+def is_share_path(path_value: str):
+    normalized = path_value.replace('\\', '/').lower()
+    return normalized.startswith('share/') or '/share/' in normalized
+
 def default_workers():
     count = os.cpu_count() or 4
     return max(1, min(32, count))
@@ -33,6 +50,17 @@ def transform_preset(input_path: Path, output_path: Path, verbose=False):
                 if verbose:
                     print(f"  Replaced: MASK_DIFFUSION = 2.0 -> MASK_DIFFUSION = 3.0")
                 transformed_lines.append('MASK_DIFFUSION = "3.0"')
+            elif key == 'BORDER' and is_share_path(value):
+                new_value, changed = append_fhd_suffix_to_image(value)
+                new_value_exists = (input_path.parent / Path(new_value)).exists()
+                if changed and new_value_exists:
+                    if verbose:
+                        print(f"  Replaced: BORDER = {value} -> {new_value}")
+                    transformed_lines.append(f'BORDER = "{new_value}"')
+                else:
+                    if verbose and changed and not new_value_exists:
+                        print(f"  Skipped: BORDER FHD resource not found: {new_value}")
+                    transformed_lines.append(line)
             else:
                 transformed_lines.append(line)
         else:
