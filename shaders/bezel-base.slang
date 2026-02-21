@@ -72,6 +72,9 @@ layout(push_constant) uniform Push
     float KEY_THRESH;
     float GLOW_QUALITY_PRESET;
     float GLOW_RADIUS_PERCENT;
+#ifdef WCG
+    float GAMUT_SELECT;
+#endif
 } config;
 
 #define ASPECT config.ASPECT
@@ -105,6 +108,10 @@ layout(push_constant) uniform Push
 #define GLOW_MIN_WEIGHT 0.001
 
 #define EFFECTIVE_GLOW_RADIUS (GLOW_RADIUS_PERCENT * 0.01)
+
+#ifdef WCG
+#define GAMUT_SELECT config.GAMUT_SELECT
+#endif
 
 // Map GLOW_DIFFUSION preset to base diffusion steps
 // 0 = Low (8 steps), 1 = Medium (12 steps), 2 = High (16 steps)
@@ -311,11 +318,7 @@ vec3 compress_color_glow(vec3 color, float compression)
         return color;
 
     // Convert RGB → XYZ → LMS
-#ifdef WIDE_COLOR
-    vec3 xyz = BT2020_TO_XYZ * color;
-#else
-    vec3 xyz = sRGB_TO_XYZ * color;
-#endif
+    vec3 xyz = COLOR_SPACE_TO_XYZ * color;
     vec3 lms = XYZ_TO_LMS * xyz;
     
     // Apply PQ curve to LMS
@@ -344,11 +347,7 @@ vec3 compress_color_glow(vec3 color, float compression)
     vec3 lms_pq_compressed = ictcp_to_lms_pq(ictcp);
     vec3 lms_compressed = lms_remove_pq(lms_pq_compressed);
     vec3 xyz_compressed = LMS_TO_XYZ * lms_compressed;
-#ifdef WIDE_COLOR
-    vec3 rgb_compressed = XYZ_TO_BT2020 * xyz_compressed;
-#else
-    vec3 rgb_compressed = XYZ_TO_sRGB * xyz_compressed;
-#endif
+    vec3 rgb_compressed = XYZ_TO_COLOR_SPACE * xyz_compressed;
     
     return max(rgb_compressed, vec3(0.0));
 #else
@@ -356,15 +355,6 @@ vec3 compress_color_glow(vec3 color, float compression)
     // Lower exponents compress bright values more aggressively
     float power = mix(0.3, 1.0, compression);
     return pow(color, vec3(power));
-#endif
-}
-
-vec3 luma_weights()
-{
-#ifdef WIDE_COLOR
-    return vec3(0.2627, 0.6780, 0.0593);  // Rec.2020
-#else
-    return vec3(0.2126, 0.7152, 0.0722);  // Rec.709
 #endif
 }
 
@@ -381,11 +371,7 @@ vec3 luma_weights()
 vec3 shift_temperature(vec3 color, float temperature)
 {
     float t = clamp(temperature, -0.5, 0.5);
-#ifdef WIDE_COLOR
-    vec3 xyz = BT2020_TO_XYZ * color;
-#else
-    vec3 xyz = sRGB_TO_XYZ * color;
-#endif
+    vec3 xyz = COLOR_SPACE_TO_XYZ * color;
     vec3 lms = XYZ_TO_LMS * xyz;
 
     // LMS-domain adaptation: positive t cools (boost S), negative t warms (boost L/M)
@@ -396,13 +382,13 @@ vec3 shift_temperature(vec3 color, float temperature)
     );
 
     vec3 shifted_lms = lms * lms_scale;
-#ifdef WIDE_COLOR
-    vec3 shifted = XYZ_TO_BT2020 * (LMS_TO_XYZ * shifted_lms);
-#else
-    vec3 shifted = XYZ_TO_sRGB * (LMS_TO_XYZ * shifted_lms);
-#endif
+    vec3 shifted = XYZ_TO_COLOR_SPACE * (LMS_TO_XYZ * shifted_lms);
 
-    vec3 w = luma_weights();
+    vec3 w = vec3(
+        COLOR_SPACE_TO_XYZ[0][1],
+        COLOR_SPACE_TO_XYZ[1][1],
+        COLOR_SPACE_TO_XYZ[2][1]
+    );
     float original_luma = max(dot(color, w), EPS);
     float shifted_luma = max(dot(shifted, w), EPS);
 

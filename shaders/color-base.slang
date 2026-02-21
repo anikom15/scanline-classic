@@ -49,6 +49,9 @@ layout(push_constant) uniform Push
 #ifdef SDR
     float GAMUT_COMPRESSION;
 #endif
+#ifdef WCG
+    float GAMUT_SELECT;
+#endif
     float COLOR_CONVERSION_BYPASS;
     float COLORIMETRY_PRESET;
     float TONEMAP_TYPE;
@@ -74,6 +77,10 @@ layout(push_constant) uniform Push
 
 #ifdef SDR
 #define GAMUT_COMPRESSION config.GAMUT_COMPRESSION
+#endif
+
+#ifdef WCG
+#define GAMUT_SELECT config.GAMUT_SELECT
 #endif
 
 #define TONEMAP_TYPE config.TONEMAP_TYPE

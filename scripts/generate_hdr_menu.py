@@ -19,6 +19,9 @@ def default_workers():
     count = os.cpu_count() or 4
     return max(1, min(32, count))
 
+def normalize_include_path(include_path: str) -> str:
+    return include_path.replace('\\', '/')
+
 def get_hdr_path(include_path: Path) -> Path:
     return include_path.with_name(include_path.stem + '-hdr' + include_path.suffix)
 
@@ -36,7 +39,7 @@ def transform_shader(input_path: Path, output_path: Path, verbose=False):
     for line in lines:
         m = pattern.match(line)
         if m:
-            inc = m.group(1)
+            inc = normalize_include_path(m.group(1))
             inc_path = Path(inc)
             if should_skip_include(inc_path):
                 if verbose:
@@ -47,11 +50,11 @@ def transform_shader(input_path: Path, output_path: Path, verbose=False):
             if resolved_hdr.exists():
                 if verbose:
                     print(f"  Using HDR include: {hdr_path} and original: {inc}")
-                out_lines.append(f'#include "{hdr_path}"\n#include "{inc}"\n')
+                out_lines.append(f'#include "{inc}"\n#include "{hdr_path.as_posix()}"\n')
             else:
                 if verbose:
                     print(f"  Keeping include: {inc} (no HDR variant found)")
-                out_lines.append(line)
+                out_lines.append(f'#include "{inc}"\n')
         else:
             out_lines.append(line)
     output_path.parent.mkdir(parents=True, exist_ok=True)
