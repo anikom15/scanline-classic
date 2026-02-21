@@ -61,7 +61,7 @@ Controls the presentation of the simulated display on the output display
 
   * CHROMATIC_ADAPTATION - Chromatic adaptation (off, Linear Bradford, Zhang-Li, Bradford): Selects the technique for translating the source whitepoint to the display whitepoint; either Linear Bradford or Zhang-Li is recommmended
 
-  * GAMUT_COMPRESSION - Gamut mapping (off, basic, advanced clip, advanced compress): SDR only; selects the technique for translating out of gamut colors to the display gamut; advanced compress is recommended; choose off or basic for speeed
+  * GAMUT_COMPRESSION - Gamut mapping (off, basic, advanced Luv, advanced IPT): SDR only; selects the technique for translating out of gamut colors to the display gamut; advanced Luv is recommended; choose off or basic for speeed
 
 ### Bezel
 
