@@ -52,10 +52,10 @@ def transform_preset(input_path: Path, output_path: Path, add_gamut_select=False
             if key == 'TVL':
                 try:
                     tvl_value = float(value)
-                    if tvl_value > 400.0:
+                    if tvl_value > 320.0:
                         if verbose:
-                            print(f"  Capped: TVL = {tvl_value} -> 400.0")
-                        transformed_lines.append('TVL = "400.0"')
+                            print(f"  Capped: TVL = {tvl_value} -> 320.0")
+                        transformed_lines.append('TVL = "320.0"')
                     else:
                         transformed_lines.append(line)
                 except ValueError:

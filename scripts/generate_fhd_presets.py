@@ -2,7 +2,6 @@
 Generates FHD (1080p) presets from UHD-4K presets.
 Rules:
 - Scan uhd-4k-sdr and uhd-4k-hdr for all .slangp files recursively.
-- Replace MASK_DIFFUSION = 2.0 with MASK_DIFFUSION = 3.0.
 - Write outputs to fhd-sdr and fhd-hdr with matching directory structure and filenames.
 """
 import concurrent.futures
@@ -32,7 +31,7 @@ def default_workers():
     return max(1, min(32, count))
 
 def transform_preset(input_path: Path, output_path: Path, verbose=False):
-    """Transform a UHD preset to FHD by adjusting MASK_DIFFUSION."""
+    """Transform a UHD preset to FHD by capping TVL to 640."""
     if verbose:
         print(f"Transforming {input_path} -> {output_path}")
     
@@ -46,10 +45,19 @@ def transform_preset(input_path: Path, output_path: Path, verbose=False):
             key = key.strip()
             value = value.strip().strip('"')
             
-            if key == 'MASK_DIFFUSION' and value == '2.0':
-                if verbose:
-                    print(f"  Replaced: MASK_DIFFUSION = 2.0 -> MASK_DIFFUSION = 3.0")
-                transformed_lines.append('MASK_DIFFUSION = "3.0"')
+            # Cap TVL to 640 if it's greater
+            if key == 'TVL':
+                try:
+                    tvl_value = float(value)
+                    if tvl_value > 640.0:
+                        if verbose:
+                            print(f"  Capped: TVL = {tvl_value} -> 640.0")
+                        transformed_lines.append('TVL = "640.0"')
+                    else:
+                        transformed_lines.append(line)
+                except ValueError:
+                    # If we can't parse as float, keep the line as is
+                    transformed_lines.append(line)
             elif key == 'BORDER' and is_share_path(value):
                 new_value, changed = append_fhd_suffix_to_image(value)
                 new_value_exists = (input_path.parent / Path(new_value)).exists()
