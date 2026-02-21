@@ -184,6 +184,9 @@ def main():
     # Generate FHD presets after HDR presets are ready
     run_script('generate_fhd_presets.py', ['--root-dir', OUT])
 
+    # Generate Steam Deck presets after WCG presets are ready
+    run_script('generate_deck_presets.py', ['--root-dir', OUT])
+
     print("Build complete. Output in 'out' folder.")
 
 if __name__ == '__main__':
