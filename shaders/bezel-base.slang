@@ -122,9 +122,11 @@ int glow_diffusion_steps()
 layout(std140, set = 0, binding = 0) uniform UBO
 {
     mat4 MVP;
+#ifdef HAS_HDR_GLOBALS
     float EnableHDR;
     float MaxNits;
     float PaperWhiteNits;
+#endif
 } global;
 
 #pragma stage vertex
@@ -849,6 +851,7 @@ void main()
     FragColor = vec4(clamp(pq(final_linear), 0.0, 1.0), 1.0);
 #endif
 #ifdef WCG
+#ifdef HAS_HDR_GLOBALS
     // WCG requires manual HDR10 handling when HDR is enabled
     if (global.EnableHDR > 0.5) {
         // Map linear RGB to nits using RA inverse tonemapping
@@ -856,11 +859,15 @@ void main()
 
         // PQ output: SMPTE ST.2084 encoding for HDR10
         FragColor = vec4(clamp(pq(hdr_linear), 0.0, 1.0), 1.0);
+        
     } else {
+#endif  // HAS_HDR_GLOBALS
         // SDR WCG output: apply CRT gamma directly to linear RGB
         FragColor = vec4(crt_gamma(clamp(final_linear, 0.0, 1.0)), 1.0);
+#if HAS_HDR_GLOBALS
     }
-#endif
+#endif  // HAS_HDR_GLOBALS
+#endif  // WCG
 #ifdef SDR
     // Gamma output: use inverse CRT gamma to preserve shadow detail
     FragColor = vec4(crt_gamma(clamp(final_linear, 0.0, 1.0)), 1.0);
