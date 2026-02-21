@@ -523,11 +523,15 @@ vec2 soft_guard01(vec2 uv01, float margin, float softness)
 }
 
 // Convenience: safe mirrored sampling
+// Adapts edge guard based on effective glow radius to prevent over-clamping at lower resolutions
 vec3 sample_mirror_safe(sampler2D tex, vec2 uv)
 {
     vec2 m = mirror01(uv);
-    float effective_margin = EDGE_GUARD_PERCENT * 0.01;
-    float effective_softness = 0.02;
+    // Reduce edge margin when glow radius is small (lower resolutions with smaller glow width)
+    // This prevents aggressive clamping from creating visible banding
+    float radius_factor = mix(0.5, 1.0, clamp(EFFECTIVE_GLOW_RADIUS * 5.0, 0.0, 1.0));
+    float effective_margin = EDGE_GUARD_PERCENT * 0.01 * radius_factor;
+    float effective_softness = 0.02 * radius_factor;
 
     vec2 safe = soft_guard01(m, effective_margin, effective_softness);
     return texture(tex, safe).rgb;
@@ -597,8 +601,9 @@ vec3 calculate_glow(vec2 coord, float radius, float diffusion_steps, float radia
             vec2 base_offset = dir * step_radius * anisotropic_scale;
             
             // Add jitter to eliminate banding and shadow line artifacts
+            // Use screen-space coordinate to break periodicity at different resolutions
             vec2 jitter = jitter_enabled
-                ? random_offset(coord * 100.0 + vec2(float(step), float(i)), GLOW_JITTER * radius)
+                ? random_offset(coord + vec2(float(step) * 0.73, float(i) * 0.37), GLOW_JITTER * radius)
                 : vec2(0.0);
             vec2 offset = base_offset + jitter;
             
@@ -678,8 +683,9 @@ vec3 calculate_glow_mipmapped(vec2 coord, float radius, float diffusion_steps, f
             vec2 base_offset = dir * step_radius * anisotropic_scale;
             
             // Jitter intensity reduces at higher LODs (mipmap blur makes it less necessary)
+            // Use screen-space coordinate to break periodicity at different resolutions
             vec2 jitter = jitter_enabled && (step_lod < 2.0)
-                ? random_offset(coord * 100.0 + vec2(float(step), float(i)), GLOW_JITTER * radius * (1.0 - step_lod * 0.3))
+                ? random_offset(coord + vec2(float(step) * 0.73, float(i) * 0.37), GLOW_JITTER * radius * (1.0 - step_lod * 0.3))
                 : vec2(0.0);
             vec2 offset = base_offset + jitter;
             

@@ -34,7 +34,7 @@
 - `build.py` runs generation in parallel (`ThreadPoolExecutor`), so avoid introducing non-thread-safe shared mutable state in scripts.
 
 ## Validation expectations for AI edits
-- If touching preset generation or scripts, run at least: `python build.py --jobs 4`.
+- If touching preset generation or scripts, run at least: `python build.py`.
 - If touching trim logic, also run: `python build-trim.py`.
 - If touching bezel/glow shader params, verify both source and menu parameter includes stay aligned (for example `bezel-base.slang` push constants vs `output-bezel.inc` pragmas).
 - Keep edits minimal and preserve existing naming/layout conventions in shader params and JSON keys.
