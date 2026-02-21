@@ -53,6 +53,7 @@
 
 layout(push_constant) uniform Push
 {
+    vec4 SourceSize;
     vec4 OutputSize;
     vec4 BORDERSize;
     float ASPECT;
@@ -143,6 +144,8 @@ layout(location = 2) out float AspectRatio;
 layout(location = 3) out vec2 viewport_scale; // Precomputed scale of aspect-corrected viewport
 layout(location = 4) out vec2 viewport_offset; // Precomputed offset for centered/shifted viewport
 layout(location = 5) out vec2 viewport_max_dist; // Precomputed normalization distances for radial falloff
+layout(location = 6) out float viewport_downscale_factor; // Precomputed source->viewport downscale factor
+layout(location = 7) out float viewport_downscale_lod; // Precomputed mip LOD from downscale factor
 
 /**
  * Vertex shader: Transforms the vertex position and calculates texture coordinates
@@ -156,7 +159,9 @@ void main()
 
     // Fit border in display area based on texture to ouput aspect ratio
     float border_dar = config.BORDERSize.x / config.BORDERSize.y;
-    border_dar = 3840.0 / 2160.0; // Force 16:9 for now
+
+    // RA has a bug where BORDERSize is not updated when loading presets, so use 16:9 for now
+    border_dar = 16.0 / 9.0;
     float output_dar = config.OutputSize.x / config.OutputSize.y;
 
     vec2 corrected_size;
@@ -179,9 +184,16 @@ void main()
         scale = config.OutputSize.xy / corrected_size;
     }
 
+    // Determine viewport downscale factor from source resolution vs corrected viewport size.
+    // >1.0 means downscaling; <=1.0 means 1:1 or upscaling.
+    vec2 viewport_size = max(corrected_size, vec2(1.0));
+    vec2 source_to_viewport = config.SourceSize.xy / viewport_size;
+    float downscale_factor = max(1.0, max(source_to_viewport.x, source_to_viewport.y));
+    float downscale_lod = max(0.0, log2(downscale_factor));
+
     // Normalize viewport position offsets to texture coordinate space
-    float h_shift = VIEWPORT_H_POS / config.OutputSize.x;
-    float v_shift = VIEWPORT_V_POS / config.OutputSize.y;
+    float h_shift = (VIEWPORT_H_POS / 100.0) - 0.5;
+    float v_shift = (VIEWPORT_V_POS / 100.0) - 0.5;
 
     // Center the viewport, then apply user shift (in normalized texture space)
     vec2 offset = (1.0 - scale) * 0.5 + vec2(-h_shift, v_shift) * scale;
@@ -196,11 +208,14 @@ void main()
     viewport_scale = scale;
     viewport_offset = offset;
     viewport_max_dist = max_dist;
+    viewport_downscale_factor = downscale_factor;
+    viewport_downscale_lod = downscale_lod;
 
     tex = tex * scale + offset;
 
     // Map texture coordinates to the scaled and shifted screen viewport
-    screen_coord = tex;
+    // Align to pixel centers to ensure stable sampling
+    screen_coord = (floor(tex * config.OutputSize.xy) + 0.5) * config.OutputSize.zw;
 
     // Mixed technique: fill output area up to viewport
     vec2 final_border_size;
@@ -208,17 +223,17 @@ void main()
     if (border_dar > AspectRatio) {
         // Border is wider than view area: scale up X to fill viewport
         final_border_size = vec2(corrected_size.y * border_dar, corrected_size.y);
-        scale = corrected_size.xy / final_border_size;
+        scale = config.OutputSize.xy / final_border_size;
     } else {
         // Border is taller than view area: scale up Y to fill viewport
         final_border_size = vec2(corrected_size.x, corrected_size.x / border_dar);
-        scale = corrected_size.xy / final_border_size;
+        scale = config.OutputSize.xy / final_border_size;
     }
 
     // Apply bezel zoom
     scale /= (BEZEL_ZOOM / 100.0);
 
-    vTexCoord = (tex - 0.5) * scale + 0.5;
+    vTexCoord = (TexCoord.xy - 0.5) * scale + 0.5;
 }
 
 #pragma stage fragment
@@ -228,6 +243,8 @@ layout(location = 2) in float AspectRatio;
 layout(location = 3) in vec2 viewport_scale;
 layout(location = 4) in vec2 viewport_offset;
 layout(location = 5) in vec2 viewport_max_dist;
+layout(location = 6) in float viewport_downscale_factor;
+layout(location = 7) in float viewport_downscale_lod;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 layout(set = 0, binding = 4) uniform sampler2D BORDER;
@@ -711,6 +728,69 @@ vec3 calculate_glow_mipmapped(vec2 coord, float radius, float diffusion_steps, f
     return total_weight > 0.0 ? glow / total_weight : glow;
 }
 
+vec3 sample_source_average_nomip(vec2 coord, float downscale_factor)
+{
+    if (downscale_factor <= 1.01)
+        return texture(Source, coord).rgb;
+
+    // Approximate area-average with adaptive box kernel over source texels.
+    // 2x2 for moderate downscale, 4x4 for stronger downscale.
+    int kernel = (downscale_factor < 1.75) ? 2 : 4;
+    vec2 texel = config.SourceSize.zw;
+    float footprint = downscale_factor;
+    vec2 span = texel * footprint;
+
+    vec3 accum = vec3(0.0);
+    float weight_sum = 0.0;
+
+    for (int y = 0; y < 4; y++)
+    {
+        if (y >= kernel) continue;
+        for (int x = 0; x < 4; x++)
+        {
+            if (x >= kernel) continue;
+
+            vec2 grid = (vec2(float(x) + 0.5, float(y) + 0.5) / float(kernel)) - 0.5;
+            vec2 sample_uv = coord + grid * span;
+            accum += texture(Source, sample_uv).rgb;
+            weight_sum += 1.0;
+        }
+    }
+
+    return (weight_sum > 0.0) ? (accum / weight_sum) : texture(Source, coord).rgb;
+}
+
+vec3 sample_source_average_mip(vec2 coord, float downscale_factor, float downscale_lod)
+{
+    if (downscale_factor <= 1.01)
+        return texture(Source, coord).rgb;
+
+    // Mip path: LOD already encodes source->viewport reduction (computed in vertex shader).
+    // A small 2x2 footprint stabilizes transitions and better approximates area averaging.
+    vec2 texel = config.SourceSize.zw;
+    vec2 span = texel * downscale_factor * 0.5;
+
+    vec2 uv00 = coord + vec2(-0.25, -0.25) * span;
+    vec2 uv10 = coord + vec2( 0.25, -0.25) * span;
+    vec2 uv01 = coord + vec2(-0.25,  0.25) * span;
+    vec2 uv11 = coord + vec2( 0.25,  0.25) * span;
+
+    vec3 c00 = textureLod(Source, uv00, downscale_lod).rgb;
+    vec3 c10 = textureLod(Source, uv10, downscale_lod).rgb;
+    vec3 c01 = textureLod(Source, uv01, downscale_lod).rgb;
+    vec3 c11 = textureLod(Source, uv11, downscale_lod).rgb;
+
+    return 0.25 * (c00 + c10 + c01 + c11);
+}
+
+vec3 sample_source_viewport(vec2 coord)
+{
+    if (USE_MIPMAPPING > 0.5)
+        return sample_source_average_mip(coord, viewport_downscale_factor, viewport_downscale_lod);
+
+    return sample_source_average_nomip(coord, viewport_downscale_factor);
+}
+
 // RA Inverse Tonemapper
 vec3 inverse_tonemap(const vec3 sdr_linear, const float max_nits, const float paper_white_nits)
 {
@@ -741,7 +821,7 @@ vec3 inverse_tonemap(const vec3 sdr_linear, const float max_nits, const float pa
 void main()
 {
     // Sample the main CRT screen content with smooth edge guard
-    vec4 screen = texture(Source, screen_coord);
+    vec4 screen = vec4(sample_source_viewport(screen_coord), 1.0);
     screen.rgb = screen.rgb;
     screen.a = 1.0;  // Ensure opaque screen
 
@@ -751,14 +831,31 @@ void main()
 #ifdef HDR
         FragColor = vec4(clamp(pq(screen.rgb), 0.0, 1.0), 1.0);
         return;
-#else
+#endif
+#ifdef WCG
+        // WCG requires manual HDR10 handling when HDR is enabled
+        if (global.EnableHDR > 0.5) {
+            // Map linear RGB to nits using RA inverse tonemapping
+            vec3 hdr_linear = inverse_tonemap(screen.rgb, global.MaxNits, global.PaperWhiteNits);
+
+            // PQ output: SMPTE ST.2084 encoding for HDR10
+            FragColor = vec4(clamp(pq(hdr_linear), 0.0, 1.0), 1.0);
+        } else {
+            // SDR WCG output: apply CRT gamma directly to linear RGB
+            FragColor = vec4(crt_gamma(clamp(screen.rgb, 0.0, 1.0)), 1.0);
+        }
+        return;
+#endif
+#ifdef SDR
         FragColor = vec4(crt_gamma(clamp(screen.rgb, 0.0, 1.0)), 1.0);
         return;
 #endif
     }
 
-    // Sample background/bezel texture
-    vec4 background = texture(BORDER, vTexCoord);
+    // Sample background/bezel texture with pixel-aligned sampling
+    vec2 uv = floor(vTexCoord * textureSize(BORDER, 0)) + 0.5;  // Align to pixel centers;
+    vec2 tex = uv / textureSize(BORDER, 0);
+    vec4 background = texture(BORDER, tex);
 
     // Color key against green to create transparency in bezel when JPEG is used
     // Smooth chroma key: alpha is 0 for pure green, 1 for non-green, smooth in between
