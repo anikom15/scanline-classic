@@ -677,7 +677,7 @@ void main()
     vec3 masked_color = mix(color, color * mask_color, mask_intensity);
 
     if (MASK_DEBUG_OUT_OF_RANGE >= 1.0) {
-        masked_color = zebra(masked_color, 0.0, 100.0, vTexCoord, config.OutputSize.xy, config.FrameCount, 2.0);
+        masked_color = zebra(masked_color, 0.0, 10000.0, vTexCoord, config.OutputSize.xy, config.FrameCount, 2.0);
     }
 
     // Combine incoming gain with average mask gain
