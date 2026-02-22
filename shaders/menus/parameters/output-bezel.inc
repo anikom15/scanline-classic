@@ -16,4 +16,4 @@
 #pragma parameter GLOW_DIFFUSION "Glow diffusion (low, medium, high)" 1.0 0.0 2.0 1.0
 #pragma parameter GLOW_RADIUS_PERCENT "Glow radius" 6.0 0.5 20.0 0.5
 #pragma parameter GLOW_COMPRESSION "Glow saturation" 0.5 0.0 1.0 0.01
-#pragma parameter GLOW_FALLOFF "Glow falloff" 1.0 0.5 10.0 0.1
+#pragma parameter GLOW_FALLOFF "Glow falloff" 0.30 0.0 1.0 0.01

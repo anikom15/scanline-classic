@@ -51,6 +51,8 @@
 #pragma parameter GLOW_BYPASS "Bypass glow" 0.0 0.0 1.0 1.0
 #pragma parameter KEY_THRESH "Bezel chroma key threshold" 0.18 0.0 0.5 0.01
 
+#pragma parameter DEBUG_GLOW "Debug glow" 0.0 0.0 1.0 1.0
+
 layout(push_constant) uniform Push
 {
     vec4 OutputSize;
@@ -75,6 +77,7 @@ layout(push_constant) uniform Push
 #ifdef WCG
     float GAMUT_SELECT;
 #endif
+    float DEBUG_GLOW;
 } config;
 
 #define ASPECT config.ASPECT
@@ -113,6 +116,8 @@ layout(push_constant) uniform Push
 #define GAMUT_SELECT config.GAMUT_SELECT
 #endif
 
+#define DEBUG_GLOW config.DEBUG_GLOW
+
 // Map GLOW_DIFFUSION preset to base diffusion steps
 // 0 = Low (8 steps), 1 = Medium (12 steps), 2 = High (16 steps)
 int glow_diffusion_steps()
@@ -140,9 +145,7 @@ layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
 layout(location = 1) out vec2 screen_coord;
 layout(location = 2) out float AspectRatio;
-layout(location = 3) out vec2 viewport_scale; // Precomputed scale of aspect-corrected viewport
-layout(location = 4) out vec2 viewport_offset; // Precomputed offset for centered/shifted viewport
-layout(location = 5) out vec2 viewport_max_dist; // Precomputed normalization distances for radial falloff
+layout(location = 3) out vec2 viewport_max_dist; // Precomputed normalization distances for radial falloff
 
 /**
  * Vertex shader: Transforms the vertex position and calculates texture coordinates
@@ -194,11 +197,6 @@ void main()
         max(offset.y / scale.y, (1.0 - offset.y - scale.y) / scale.y)
     );
 
-    // Export precomputed values to fragment stage
-    viewport_scale = scale;
-    viewport_offset = offset;
-    viewport_max_dist = max_dist;
-
     tex = tex * scale + offset;
 
     // Map texture coordinates to the scaled and shifted screen viewport
@@ -222,15 +220,16 @@ void main()
     scale /= (BEZEL_ZOOM / 100.0);
 
     vTexCoord = (TexCoord.xy - 0.5) * scale + 0.5;
+
+    // Precompute max distances
+    viewport_max_dist = abs((final_border_size - corrected_size) * 0.5) * config.OutputSize.zw;
 }
 
 #pragma stage fragment
 layout(location = 0) in vec2 vTexCoord;
 layout(location = 1) in vec2 screen_coord;
 layout(location = 2) in float AspectRatio;
-layout(location = 3) in vec2 viewport_scale;
-layout(location = 4) in vec2 viewport_offset;
-layout(location = 5) in vec2 viewport_max_dist;
+layout(location = 3) in vec2 viewport_max_dist;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 layout(set = 0, binding = 4) uniform sampler2D BORDER;
@@ -453,9 +452,8 @@ float compute_manual_lod(vec2 coord, float radius, float distance_factor)
 
 float glow_falloff(float radial_dist)
 {
-    float x = max(0.0, radial_dist * GLOW_FALLOFF);
-    float xx = x * x;
-    return 1.0 / (1.0 + x + 0.48 * xx);
+    float x = clamp(radial_dist * GLOW_FALLOFF, 0.0, 1.0);
+    return 1.0 - x;
 }
 
 int adaptive_glow_steps(int base_steps, float radial_dist)
@@ -800,24 +798,11 @@ void main()
         float radius = EFFECTIVE_GLOW_RADIUS;
 
         // === Calculate radial falloff for glow intensity ===
-        // Use precomputed viewport scale and offset from vertex stage
-        vec2 viewport_pos = (vTexCoord - viewport_offset) / viewport_scale;
-        vec2 clamped_pos = clamp(viewport_pos, 0.0, 1.0);
-        vec2 outside_dist = abs(viewport_pos - clamped_pos);
-
-        // Normalize outside distance using precomputed maximum distances
-        vec2 normalized_dist = outside_dist / max(viewport_max_dist, vec2(EPS));
-        float radial_dist = length(normalized_dist);
-
+        float radial_dist = length(screen_coord - clamp(screen_coord, vec2(0.0), vec2(1.0))) / length(viewport_max_dist);
         float falloff = glow_falloff(radial_dist);
         effective_glow_weight = GLOW_WEIGHT * falloff;
 
-        // Only calculate glow if we're relatively close to viewport
-        // This avoids sampling artifacts from far outside the screen area
-        vec2 dist_from_viewport = max(vec2(0.0), abs(screen_coord - vec2(0.5)) - vec2(0.5));
-        float max_dist = max(dist_from_viewport.x, dist_from_viewport.y);
-
-        if (effective_glow_weight > GLOW_MIN_WEIGHT && max_dist < radius * 2.0) {
+        if (effective_glow_weight > GLOW_MIN_WEIGHT) {
             // Calculate glow effect with preset-based diffusion steps
             int diffusion_steps = glow_diffusion_steps();
             
@@ -847,9 +832,15 @@ void main()
     float bezel_gain = pow(10.0, BEZEL_GAIN / 20.0);
     float bezel_bias = BEZEL_BIAS / 100.0;
     vec3 background_adjusted = (background_linear + bezel_bias) * bezel_gain;
-    
+
+    vec3 background_with_glow;
     // Multiply blending with color compression
-    vec3 background_with_glow = blend(background_adjusted, glow);
+    if (DEBUG_GLOW > 0.5) {
+        background_adjusted = BLACK;
+        background_with_glow = glow;
+    } else {
+        background_with_glow = blend(background_adjusted, glow);
+    }
     vec3 background_final = mix(background_adjusted, background_with_glow, effective_glow_weight * background.a);
 
     // Final composite: blend CRT screen over glowing background using alpha
