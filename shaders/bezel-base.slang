@@ -52,6 +52,7 @@
 #pragma parameter KEY_THRESH "Bezel chroma key threshold" 0.18 0.0 0.5 0.01
 
 #pragma parameter DEBUG_GLOW "Debug glow" 0.0 0.0 1.0 1.0
+#pragma parameter GLOW_EXP "Glow exponent" 3.0 0.1 10.0 0.1
 
 layout(push_constant) uniform Push
 {
@@ -75,10 +76,12 @@ layout(push_constant) uniform Push
     float KEY_THRESH;
     float GLOW_QUALITY_PRESET;
     float GLOW_RADIUS_PERCENT;
+    float EDGE_GUARD_PERCENT;
 #ifdef WCG
     float GAMUT_SELECT;
 #endif
     float DEBUG_GLOW;
+    float GLOW_EXP;
 } config;
 
 #define ASPECT config.ASPECT
@@ -104,7 +107,7 @@ layout(push_constant) uniform Push
 #define GLOW_QUALITY_PRESET config.GLOW_QUALITY_PRESET
 
 #define GLOW_RADIUS_PERCENT config.GLOW_RADIUS_PERCENT
-#define EDGE_GUARD_PERCENT 6.0
+#define EDGE_GUARD_PERCENT config.EDGE_GUARD_PERCENT
 
 #define GLOW_MIN_WEIGHT 0.001
 
@@ -115,6 +118,7 @@ layout(push_constant) uniform Push
 #endif
 
 #define DEBUG_GLOW config.DEBUG_GLOW
+#define GLOW_EXP config.GLOW_EXP
 
 // Map GLOW_DIFFUSION preset to base diffusion steps
 // 0 = Low (8 steps), 1 = Medium (12 steps), 2 = High (16 steps)
@@ -462,19 +466,14 @@ int adaptive_glow_steps(int base_steps, float radial_dist)
     return max(1, int(floor(float(clamped_base) * quality + 0.5)));
 }
 
-// ==== Mirrored sampling with soft edge guard ====
-// Tunables for edge protection (guard band and soft fade width)
-#define EDGE_MARGIN   0.06   // How far from 0/1 to keep samples (0..0.25 is sensible)
-#define EDGE_SOFTNESS 0.02   // Fade width into the margin (0 = hard, >0 = smooth)
-
-// Mirror a continuous UV into [0,1] using mirrored repeat, robust for negative UVs too
+// Mirror a continuous UV into [0,1] using mirrored once, robust for negative UVs too
 vec2 mirror01(vec2 uv)
 {
     vec2 t = mod(uv, 2.0);
     return 1.0 - abs(t - 1.0);
 }
 
-// Smoothly keep mirrored UV away from edges by EDGE_MARGIN, with a soft ramp of EDGE_SOFTNESS
+// Smoothly keep mirrored UV away from edges
 vec2 soft_guard01(vec2 uv01, float margin, float softness)
 {
     // Distance to nearest edge per axis
@@ -494,15 +493,25 @@ vec2 soft_guard01(vec2 uv01, float margin, float softness)
 // Adapts edge guard based on effective glow radius to prevent over-clamping at lower resolutions
 vec3 sample_mirror_safe(sampler2D tex, vec2 uv)
 {
-    vec2 m = mirror01(uv);
-    // Reduce edge margin when glow radius is small (lower resolutions with smaller glow width)
-    // This prevents aggressive clamping from creating visible banding
-    float radius_factor = mix(0.5, 1.0, clamp(EFFECTIVE_GLOW_RADIUS * 5.0, 0.0, 1.0));
-    float effective_margin = EDGE_GUARD_PERCENT * 0.01 * radius_factor;
-    float effective_softness = 0.02 * radius_factor;
+    uv = clamp(uv, -2.0, 2.0);
 
-    vec2 safe = soft_guard01(m, effective_margin, effective_softness);
-    return texture(tex, safe).rgb;
+    // Margin sign
+    vec2 s;
+
+    s.x = uv.x < 0.0 || uv.x > 1.0 ? -1.0 : 1.0;
+    s.y = uv.y < 0.0 || uv.y > 1.0 ? -1.0 : 1.0;
+
+    // Shift to normal space
+    uv -= vec2(0.5);
+
+    float margin = EDGE_GUARD_PERCENT * 0.01;
+    float edge_scale = 1.0 - 2.0 * margin;
+
+    uv = uv * pow(vec2(edge_scale), s) + s * margin;
+    uv += vec2(0.5) * pow(vec2(edge_scale), s);
+    vec2 m = mirror01(uv);
+
+    return texture(tex, m).rgb;
 }
 
 /**
