@@ -51,9 +51,6 @@
 #pragma parameter GLOW_BYPASS "Bypass glow" 0.0 0.0 1.0 1.0
 #pragma parameter KEY_THRESH "Bezel chroma key threshold" 0.18 0.0 0.5 0.01
 
-#pragma parameter LOD "Debug LOD screen" 0.0 0.0 16.0 0.1
-#pragma parameter BORDER_LOD "Debug border LOD" 0.0 0.0 16.0 0.1
-
 layout(push_constant) uniform Push
 {
     vec4 OutputSize;
@@ -78,8 +75,6 @@ layout(push_constant) uniform Push
 #ifdef WCG
     float GAMUT_SELECT;
 #endif
-    float LOD;
-    float BORDER_LOD;
 } config;
 
 #define ASPECT config.ASPECT
@@ -117,9 +112,6 @@ layout(push_constant) uniform Push
 #ifdef WCG
 #define GAMUT_SELECT config.GAMUT_SELECT
 #endif
-
-#define LOD config.LOD
-#define BORDER_LOD config.BORDER_LOD
 
 // Map GLOW_DIFFUSION preset to base diffusion steps
 // 0 = Low (8 steps), 1 = Medium (12 steps), 2 = High (16 steps)
@@ -752,7 +744,7 @@ vec3 inverse_tonemap(const vec3 sdr_linear, const float max_nits, const float pa
 void main()
 {
     // Sample the main CRT screen content with smooth edge guard
-    vec4 screen = vec4(textureLod(Source, screen_coord, LOD).rgb, 1.0);
+    vec4 screen = vec4(texture(Source, screen_coord).rgb, 1.0);
     screen.rgb = screen.rgb;
     screen.a = 1.0;  // Ensure opaque screen
 
@@ -786,7 +778,7 @@ void main()
     // Sample background/bezel texture with pixel-aligned sampling
     vec2 uv = floor(vTexCoord * textureSize(BORDER, 0)) + 0.5;  // Align to pixel centers;
     vec2 tex = uv / textureSize(BORDER, 0);
-    vec4 background = textureLod(BORDER, tex, BORDER_LOD);
+    vec4 background = texture(BORDER, tex);
 
     // Color key against green to create transparency in bezel when JPEG is used
     // Smooth chroma key: alpha is 0 for pure green, 1 for non-green, smooth in between

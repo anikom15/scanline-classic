@@ -10,16 +10,7 @@ from pathlib import Path
 import argparse
 
 
-def append_fhd_suffix_to_image(path_value: str):
-    """Append -fhd before .png/.jpg extension if not already present."""
-    lower = path_value.lower()
-    for ext in ('.png', '.jpg'):
-        if lower.endswith(ext):
-            base = path_value[:-len(ext)]
-            if base.lower().endswith('-fhd'):
-                return path_value, False
-            return f"{base}-fhd{path_value[-len(ext):]}", True
-    return path_value, False
+## -fhd suffix logic removed (mipmaps supported)
 
 
 def is_share_path(path_value: str):
@@ -64,16 +55,7 @@ def transform_preset(input_path: Path, output_path: Path, add_gamut_select=False
                     # If we can't parse as float, keep the line as is
                     transformed_lines.append(line)
             elif key == 'BORDER' and is_share_path(value):
-                new_value, changed = append_fhd_suffix_to_image(value)
-                new_value_exists = (input_path.parent / Path(new_value)).exists()
-                if changed and new_value_exists:
-                    if verbose:
-                        print(f"  Replaced: BORDER = {value} -> {new_value}")
-                    transformed_lines.append(f'BORDER = "{new_value}"')
-                else:
-                    if verbose and changed and not new_value_exists:
-                        print(f"  Skipped: BORDER FHD resource not found: {new_value}")
-                    transformed_lines.append(line)
+                transformed_lines.append(line)
             elif key == 'ZOOM':
                 try:
                     zoom_value = float(value)
