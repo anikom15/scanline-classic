@@ -730,34 +730,7 @@ vec3 calculate_glow_mipmapped(vec2 coord, float radius, float diffusion_steps, f
 
 vec3 sample_source_average_nomip(vec2 coord, float downscale_factor)
 {
-    if (downscale_factor <= 1.01)
-        return texture(Source, coord).rgb;
-
-    // Approximate area-average with adaptive box kernel over source texels.
-    // 2x2 for moderate downscale, 4x4 for stronger downscale.
-    int kernel = (downscale_factor < 1.75) ? 2 : 4;
-    vec2 texel = config.SourceSize.zw;
-    float footprint = downscale_factor;
-    vec2 span = texel * footprint;
-
-    vec3 accum = vec3(0.0);
-    float weight_sum = 0.0;
-
-    for (int y = 0; y < 4; y++)
-    {
-        if (y >= kernel) continue;
-        for (int x = 0; x < 4; x++)
-        {
-            if (x >= kernel) continue;
-
-            vec2 grid = (vec2(float(x) + 0.5, float(y) + 0.5) / float(kernel)) - 0.5;
-            vec2 sample_uv = coord + grid * span;
-            accum += texture(Source, sample_uv).rgb;
-            weight_sum += 1.0;
-        }
-    }
-
-    return (weight_sum > 0.0) ? (accum / weight_sum) : texture(Source, coord).rgb;
+    return texture(Source, coord).rgb;
 }
 
 vec3 sample_source_average_mip(vec2 coord, float downscale_factor, float downscale_lod)

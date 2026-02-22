@@ -40,14 +40,16 @@ def transform_preset(input_path: Path, output_path: Path, add_gamut_select=False
     lines = input_path.read_text(encoding='utf-8').splitlines()
     transformed_lines = []
     gamut_select_added = False
-    
+    zoom_found = False
+    bezel_zoom_found = False
+
     for line in lines:
         # Check if this line sets a parameter
         if '=' in line:
             key, value = line.split('=', 1)
             key = key.strip()
             value = value.strip().strip('"')
-            
+
             # Cap TVL to 400 if it's greater
             if key == 'TVL':
                 try:
@@ -72,10 +74,40 @@ def transform_preset(input_path: Path, output_path: Path, add_gamut_select=False
                     if verbose and changed and not new_value_exists:
                         print(f"  Skipped: BORDER FHD resource not found: {new_value}")
                     transformed_lines.append(line)
+            elif key == 'ZOOM':
+                try:
+                    zoom_value = float(value)
+                    new_zoom = int(round(zoom_value * 1.06))
+                    if verbose:
+                        print(f"  Increased: ZOOM = {zoom_value} -> {new_zoom}")
+                    transformed_lines.append(f'ZOOM = "{new_zoom}"')
+                    zoom_found = True
+                except ValueError:
+                    transformed_lines.append(line)
+            elif key == 'BEZEL_ZOOM':
+                try:
+                    bezel_zoom_value = float(value)
+                    new_bezel_zoom = int(round(bezel_zoom_value * 1.06))
+                    if verbose:
+                        print(f"  Increased: BEZEL_ZOOM = {bezel_zoom_value} -> {new_bezel_zoom}")
+                    transformed_lines.append(f'BEZEL_ZOOM = "{new_bezel_zoom}"')
+                    bezel_zoom_found = True
+                except ValueError:
+                    transformed_lines.append(line)
             else:
                 transformed_lines.append(line)
         else:
             transformed_lines.append(line)
+
+    # If ZOOM or BEZEL_ZOOM were not found, add them with value 106.0
+    if not zoom_found:
+        if verbose:
+            print("  Added: ZOOM = 106.0 (default, not found in preset)")
+        transformed_lines.append('ZOOM = "106.0"')
+    if not bezel_zoom_found:
+        if verbose:
+            print("  Added: BEZEL_ZOOM = 106.0 (default, not found in preset)")
+        transformed_lines.append('BEZEL_ZOOM = "106.0"')
     
     # Add GAMUT_SELECT = 1.0 for OLED presets (insert before the first shader line or at the end)
     if add_gamut_select:
