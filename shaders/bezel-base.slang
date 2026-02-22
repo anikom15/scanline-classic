@@ -57,6 +57,7 @@ layout(push_constant) uniform Push
 {
     vec4 OutputSize;
     vec4 BORDERSize;
+    uint FrameCount;
     float ASPECT;
     float VIEWPORT_H_POS;
     float VIEWPORT_V_POS;
@@ -105,9 +106,6 @@ layout(push_constant) uniform Push
 #define GLOW_RADIUS_PERCENT config.GLOW_RADIUS_PERCENT
 #define EDGE_GUARD_PERCENT 6.0
 
-#define GLOW_JITTER 0.3
-#define GLOW_JITTER_DIST_THRESHOLD 0.9
-#define GLOW_JITTER_WEIGHT_THRESHOLD 0.01
 #define GLOW_MIN_WEIGHT 0.001
 
 #define EFFECTIVE_GLOW_RADIUS (GLOW_RADIUS_PERCENT * 0.01)
@@ -400,35 +398,6 @@ vec3 shift_temperature(vec3 color, float temperature)
 }
 
 /**
- * Hash function for generating pseudo-random values from 2D coordinates.
- * Uses a simple but effective fractional pattern to generate deterministic randomness.
- * 
- * @param p Input 2D coordinate
- * @return Pseudo-random value in range [0, 1)
- */
-float hash(vec2 p)
-{
-    vec3 p3 = fract(vec3(p.xyx) * 0.1031);
-    p3 += dot(p3, p3.yzx + 33.33);
-    return fract((p3.x + p3.y) * p3.z);
-}
-
-/**
- * Generates a random 2D offset vector for jittering.
- * Uses the hash function to create a random direction and distance.
- * 
- * @param seed Input coordinate used as random seed
- * @param magnitude Maximum offset distance
- * @return Random 2D offset vector
- */
-vec2 random_offset(vec2 seed, float magnitude)
-{
-    float angle = hash(seed) * 2.0 * PI;
-    float distance = hash(seed + vec2(1.0)) * magnitude;
-    return vec2(cos(angle), sin(angle)) * distance;
-}
-
-/**
  * Calculate screen-space LOD for mipmapped texture sampling.
  * Estimates appropriate mipmap level based on sampling radius and output resolution.
  * 
@@ -447,7 +416,7 @@ float compute_manual_lod(vec2 coord, float radius, float distance_factor)
     // Far samples (distance_factor ≈ 1) → LOD 2-3 (blurred, lower bandwidth)
     float lod = log2(max(1.0, coord_pixel_space / 8.0));
     
-    return clamp(lod, 0.0, 5.0);
+    return lod;
 }
 
 float glow_falloff(float radial_dist)
@@ -543,9 +512,6 @@ vec3 sample_mirror_safe(sampler2D tex, vec2 uv)
  * 
  * Features:
  * - Multi-step diffusion: samples at varying distances for smooth falloff
- * - Anisotropic scaling: more perpendicular spread
- * - Vertical bias: emphasizes vertical glow (CRT scanline characteristic)
- * - Jitter: randomized offsets to eliminate banding artifacts
  * - Color compression: reduces extreme brightness impact
  * 
  * @param coord Base texture coordinate to sample around
@@ -553,7 +519,7 @@ vec3 sample_mirror_safe(sampler2D tex, vec2 uv)
  * @param diffusion_steps Number of distance steps per direction (higher = smoother)
  * @return Accumulated glow color
  */
-vec3 calculate_glow(vec2 coord, float radius, float diffusion_steps, float radial_dist, float glow_weight)
+vec3 calculate_glow(vec2 coord, float radius, float diffusion_steps, float radial_dist)
 {
     // Define 8 cardinal and intercardinal directions (N, NE, E, SE, S, SW, W, NW)
     const vec2 directions[8] = vec2[8](
@@ -570,7 +536,6 @@ vec3 calculate_glow(vec2 coord, float radius, float diffusion_steps, float radia
     vec3 glow = vec3(0.0);
     float total_weight = 0.0;
     int num_steps = adaptive_glow_steps(int(diffusion_steps), radial_dist);
-    bool jitter_enabled = (radial_dist <= GLOW_JITTER_DIST_THRESHOLD) && (glow_weight >= GLOW_JITTER_WEIGHT_THRESHOLD);
     
     // Sample in each direction with multiple distance steps for smooth diffusion
     for (int step = 1; step <= num_steps; step++)
@@ -584,28 +549,10 @@ vec3 calculate_glow(vec2 coord, float radius, float diffusion_steps, float radia
         {
             vec2 dir = directions[i];
             
-            // Decompose direction into horizontal and vertical components
-            float horizontal_component = abs(dir.x);
-            float vertical_component = abs(dir.y);
-            
-            // Anisotropic scaling: increase perpendicular diffusion
-            // Horizontal rays spread vertically, vertical rays spread horizontally
-            vec2 anisotropic_scale = vec2(
-                1.0 + vertical_component * 2.0,    // Expand X when moving vertically
-                1.0 + horizontal_component * 2.0   // Expand Y when moving horizontally
-            );
-            
             // Calculate sample offset with anisotropic scaling
             float step_radius = radius * distance_factor;
-            vec2 base_offset = dir * step_radius * anisotropic_scale;
-            
-            // Add jitter to eliminate banding and shadow line artifacts
-            // Use screen-space coordinate to break periodicity at different resolutions
-            vec2 jitter = jitter_enabled
-                ? random_offset(coord + vec2(float(step) * 0.73, float(i) * 0.37), GLOW_JITTER * radius)
-                : vec2(0.0);
-            vec2 offset = base_offset + jitter;
-            
+            vec2 offset = dir * step_radius;
+
             // Sample and compress color to reduce extreme brightness impact
             vec3 sample_linear = sample_mirror_safe(Source, coord + offset);
             vec3 sample_color = compress_color_glow(sample_linear, GLOW_COMPRESSION);
@@ -629,17 +576,15 @@ vec3 calculate_glow(vec2 coord, float radius, float diffusion_steps, float radia
  * Key differences from base calculate_glow():
  * - Uses textureLod() instead of texture() for explicit LOD control
  * - LOD increases with distance: near=LOD0 (sharp), far=LOD2-3 (blurred)
- * - Reduced jitter at higher LODs (already blurred by mipmapping)
  * - Edge guard softness scales with LOD to prevent harsh transitions
  * 
  * @param coord Base texture coordinate
  * @param radius Glow radius in texture space
  * @param diffusion_steps Number of distance steps per direction
  * @param radial_dist Normalized distance from viewport (for adaptive sampling)
- * @param glow_weight Effective glow weight (for jitter conditional)
  * @return Accumulated glow color
  */
-vec3 calculate_glow_mipmapped(vec2 coord, float radius, float diffusion_steps, float radial_dist, float glow_weight)
+vec3 calculate_glow_mipmapped(vec2 coord, float radius, float diffusion_steps, float radial_dist)
 {
     // Define 8 cardinal and intercardinal directions
     const vec2 directions[8] = vec2[8](
@@ -656,7 +601,6 @@ vec3 calculate_glow_mipmapped(vec2 coord, float radius, float diffusion_steps, f
     vec3 glow = vec3(0.0);
     float total_weight = 0.0;
     int num_steps = adaptive_glow_steps(int(diffusion_steps), radial_dist);
-    bool jitter_enabled = (radial_dist <= GLOW_JITTER_DIST_THRESHOLD) && (glow_weight >= GLOW_JITTER_WEIGHT_THRESHOLD);
     
     // Sample in each direction with multiple distance steps
     for (int step = 1; step <= num_steps; step++)
@@ -670,24 +614,10 @@ vec3 calculate_glow_mipmapped(vec2 coord, float radius, float diffusion_steps, f
         for (int i = 0; i < 8; i++)
         {
             vec2 dir = directions[i];
-            float horizontal_component = abs(dir.x);
-            float vertical_component = abs(dir.y);
-            
-            vec2 anisotropic_scale = vec2(
-                1.0 + vertical_component * 2.0,
-                1.0 + horizontal_component * 2.0
-            );
             
             float step_radius = radius * distance_factor;
-            vec2 base_offset = dir * step_radius * anisotropic_scale;
-            
-            // Jitter intensity reduces at higher LODs (mipmap blur makes it less necessary)
-            // Use screen-space coordinate to break periodicity at different resolutions
-            vec2 jitter = jitter_enabled && (step_lod < 2.0)
-                ? random_offset(coord + vec2(float(step) * 0.73, float(i) * 0.37), GLOW_JITTER * radius * (1.0 - step_lod * 0.3))
-                : vec2(0.0);
-            vec2 offset = base_offset + jitter;
-            
+            vec2 offset = dir * step_radius;
+         
             // Mirror and apply edge guard with LOD-scaled softness
             vec2 sample_coord = coord + offset;
             vec2 mirrored = mirror01(sample_coord);
@@ -808,10 +738,10 @@ void main()
             
             if (USE_MIPMAPPING > 0.5) {
                 // Use mipmapped variant for reduced bandwidth and better quality at distance
-                glow = calculate_glow_mipmapped(screen_coord, radius, float(diffusion_steps), radial_dist, effective_glow_weight);
+                glow = calculate_glow_mipmapped(screen_coord, radius, float(diffusion_steps), radial_dist);
             } else {
                 // Standard multi-sample glow (Phase 1 optimization)
-                glow = calculate_glow(screen_coord, radius, float(diffusion_steps), radial_dist, effective_glow_weight);
+                glow = calculate_glow(screen_coord, radius, float(diffusion_steps), radial_dist);
             }
 
             // Shift glow color temperature to simulate bluish CRT reflection

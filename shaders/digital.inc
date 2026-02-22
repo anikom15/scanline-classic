@@ -164,18 +164,6 @@ vec3 unlimit_ycbcr(vec3 ycbcr, int bits)
     return vec3(y, cb, cr);
 }
 
-// Generate blue noise dither pattern using hash-based pseudo-random function
-// Input: screen coordinates (pixel position), frame count for temporal variation
-// Output: dither value in range [-0.5, 0.5]
-float blue_noise(vec2 coord, uint frame)
-{
-    // Hash function for blue noise with temporal variation
-    vec2 p = fract(coord * 0.3183099 + vec2(0.71, 0.113) + sin(vec2(frame) * 0.1));
-    p *= 17.0;
-    float result = fract(p.x * p.y * (p.x + p.y));
-    return result - 0.5;  // Center around 0
-}
-
 // Apply blue noise dithering before quantization
 // Input: value to dither, working bit depth, output bit depth, screen coordinates, frame count
 // Output: dithered value
