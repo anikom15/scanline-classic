@@ -5,12 +5,8 @@
         "bezel" : "bezel-sdr"
     },
     "options" : {
-        "color": {
-            "filter_linear" : true
-        },
         "bezel": {
             "filter_linear" : true,
-            "scale_type" : ["viewport"],
             "mipmap_input" : "true"
         }
     },
