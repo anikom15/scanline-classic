@@ -52,7 +52,6 @@
 #pragma parameter KEY_THRESH "Bezel chroma key threshold" 0.18 0.0 0.5 0.01
 
 #pragma parameter DEBUG_GLOW "Debug glow" 0.0 0.0 1.0 1.0
-#pragma parameter GLOW_EXP "Glow exponent" 3.0 0.1 10.0 0.1
 
 layout(push_constant) uniform Push
 {
@@ -81,7 +80,6 @@ layout(push_constant) uniform Push
     float GAMUT_SELECT;
 #endif
     float DEBUG_GLOW;
-    float GLOW_EXP;
 } config;
 
 #define ASPECT config.ASPECT
@@ -118,7 +116,6 @@ layout(push_constant) uniform Push
 #endif
 
 #define DEBUG_GLOW config.DEBUG_GLOW
-#define GLOW_EXP config.GLOW_EXP
 
 // Map GLOW_DIFFUSION preset to base diffusion steps
 // 0 = Low (8 steps), 1 = Medium (12 steps), 2 = High (16 steps)
@@ -412,13 +409,13 @@ vec3 shift_temperature(vec3 color, float temperature)
  */
 float compute_manual_lod(vec2 coord, float radius, float distance_factor)
 {
+    const float LOD_FACTOR = 4.0;  // Lower -> more blurred
+
     // Convert texture-space radius to pixel-space based on output resolution
     float coord_pixel_space = radius * distance_factor * config.OutputSize.y;
     
     // LOD scales logarithmically with pixel spread
-    // Near samples (distance_factor ≈ 0) → LOD 0 (full detail)
-    // Far samples (distance_factor ≈ 1) → LOD 2-3 (blurred, lower bandwidth)
-    float lod = log2(max(1.0, coord_pixel_space / 8.0));
+    float lod = log2(max(1.0, coord_pixel_space / LOD_FACTOR));
     
     return lod;
 }
@@ -473,25 +470,9 @@ vec2 mirror01(vec2 uv)
     return 1.0 - abs(t - 1.0);
 }
 
-// Smoothly keep mirrored UV away from edges
-vec2 soft_guard01(vec2 uv01, float margin, float softness)
-{
-    // Distance to nearest edge per axis
-    vec2 d = min(uv01, 1.0 - uv01);
-
-    // s = 0 near edges (d <= margin), s = 1 past margin+softness
-    vec2 s = smoothstep(vec2(margin), vec2(margin + max(softness, 1e-5)), d);
-
-    // Hard-clamped safe coordinate
-    vec2 clamped = clamp(uv01, margin, 1.0 - margin);
-
-    // Blend from clamped (near edges) to original (away from edges)
-    return mix(clamped, uv01, s);
-}
-
 // Convenience: safe mirrored sampling
 // Adapts edge guard based on effective glow radius to prevent over-clamping at lower resolutions
-vec3 sample_mirror_safe(sampler2D tex, vec2 uv)
+vec3 sample_mirror_safe(sampler2D tex, vec2 uv, float lod)
 {
     uv = clamp(uv, -2.0, 2.0);
 
@@ -511,7 +492,7 @@ vec3 sample_mirror_safe(sampler2D tex, vec2 uv)
     uv += vec2(0.5) * pow(vec2(edge_scale), s);
     vec2 m = mirror01(uv);
 
-    return texture(tex, m).rgb;
+    return textureLod(tex, m, lod).rgb;
 }
 
 /**
@@ -558,12 +539,12 @@ vec3 calculate_glow(vec2 coord, float radius, float diffusion_steps, float radia
         {
             vec2 dir = directions[i];
             
-            // Calculate sample offset with anisotropic scaling
+            // Calculate sample offset with distance scaling
             float step_radius = radius * distance_factor;
             vec2 offset = dir * step_radius;
 
             // Sample and compress color to reduce extreme brightness impact
-            vec3 sample_linear = sample_mirror_safe(Source, coord + offset);
+            vec3 sample_linear = sample_mirror_safe(Source, coord + offset, 0.0);
             vec3 sample_color = compress_color_glow(sample_linear, GLOW_COMPRESSION);
             
             // Combine weights and accumulate
@@ -623,23 +604,13 @@ vec3 calculate_glow_mipmapped(vec2 coord, float radius, float diffusion_steps, f
         for (int i = 0; i < 8; i++)
         {
             vec2 dir = directions[i];
-            
+
+            // Calculate sample offset with distance scaling
             float step_radius = radius * distance_factor;
             vec2 offset = dir * step_radius;
-         
-            // Mirror and apply edge guard with LOD-scaled softness
-            vec2 sample_coord = coord + offset;
-            vec2 mirrored = mirror01(sample_coord);
-            
-            // Scale edge guard parameters with LOD to maintain smooth transitions
-            float lod_scale = pow(2.0, step_lod * 0.5);
-            float scaled_margin = EDGE_GUARD_PERCENT * 0.01 * lod_scale;
-            float scaled_softness = 0.02 * lod_scale;
-            vec2 safe = soft_guard01(mirrored, scaled_margin, scaled_softness);
             
             // Sample with explicit LOD
-            vec3 sample_linear = textureLod(Source, safe, step_lod).rgb;
-            
+            vec3 sample_linear = sample_mirror_safe(Source, coord + offset, step_lod).rgb;
             vec3 sample_color = compress_color_glow(sample_linear, GLOW_COMPRESSION);
             
             float weight = diffusion_weight;
