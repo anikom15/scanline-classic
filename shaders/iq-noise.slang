@@ -24,6 +24,8 @@ layout(push_constant) uniform Push
     vec4 OriginalSize;
     vec4 OutputSize;
     uint FrameCount;
+    uint CurrentSubFrame;
+    uint TotalSubFrames;
     float OriginalFPS;
     float BYPASS_NOISE;
     float NOISE_MODE;
@@ -101,7 +103,12 @@ void main()
 
     // Coordinate hashing
     ivec2 icoord = ivec2(floor(vTexCoord * config.OutputSize.xy));
-    uint frame = config.FrameCount;
+    uint frame;
+    if (config.TotalSubFrames > 1u) {
+        frame = (config.FrameCount << 4) + (config.CurrentSubFrame << 4) / config.TotalSubFrames;
+    } else {
+        frame = config.FrameCount;
+    }
     vec2 u1 = vec2(hash_float(uvec2(icoord.x ^ frame, icoord.y)), hash_float(uvec2(icoord.x + 13u ^ frame, icoord.y + 7u)));
     vec2 gauss = box_muller(u1);
 

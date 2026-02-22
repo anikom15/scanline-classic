@@ -58,6 +58,8 @@ layout(push_constant) uniform Push
     vec4 OutputSize;
     vec4 BORDERSize;
     uint FrameCount;
+    uint CurrentSubFrame;
+    uint TotalSubFrames;
     float ASPECT;
     float VIEWPORT_H_POS;
     float VIEWPORT_V_POS;
@@ -707,9 +709,15 @@ void main()
             glow = shift_temperature(glow, GLOW_TEMPERATURE);
 
             // Add blue noise jitter to break up banding and create a more organic glow texture
-            float noise = blue_noise(screen_coord * config.OutputSize.xy, config.FrameCount);
+            uint frame;
+            if (config.TotalSubFrames > 1u) {
+                frame = (config.FrameCount << 4) + (config.CurrentSubFrame << 4) / config.TotalSubFrames;
+            } else {
+                frame = config.FrameCount;
+            }
+            float noise = blue_noise(screen_coord * config.OutputSize.xy, frame);
             float noise_power = pow(10.0, GLOW_DITHER / 10.0);
-            
+
             glow += noise * noise_power;
             
             // Clamp glow to prevent negative values before tonemapping

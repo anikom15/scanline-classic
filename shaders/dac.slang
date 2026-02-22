@@ -42,6 +42,8 @@ layout(push_constant) uniform Push
     vec4 SourceSize;
     vec4 OutputSize;
     uint FrameCount;
+    uint CurrentSubFrame;
+    uint TotalSubFrames;
     float DAC_BYPASS;
     float WORKING_BITS;
     float DAC_BITS;
@@ -127,7 +129,13 @@ void main()
         // Apply dithering before quantization
         if (DITHER > 0.5) {
             vec2 screen_coord = vTexCoord.xy * config.OutputSize.xy;
-            ycbcr = apply_dither(ycbcr, working_bits, bits, screen_coord, config.FrameCount);
+            uint frame;
+            if (config.TotalSubFrames > 1u) {
+                frame = (config.FrameCount << 4) + (config.CurrentSubFrame << 4) / config.TotalSubFrames;
+            } else {
+                frame = config.FrameCount;
+            }
+            ycbcr = apply_dither(ycbcr, working_bits, bits, screen_coord, frame);
         }
 
         // Quantize to output bit depth
