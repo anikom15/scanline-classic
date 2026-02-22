@@ -4,13 +4,20 @@
         "color" : "color-sdr",
         "bezel" : "bezel-sdr"
     },
+    "textures" : [
+        "BORDER"
+    ],
     "options" : {
         "bezel": {
             "filter_linear" : true,
-            "mipmap_input" : "true"
+            "mipmap_input" : true
         }
     },
-    "parameters" : {
-        "textures" : "BORDER"
+    "texture_options" : {
+        "BORDER" : {
+            "linear" : true,
+            "wrap_mode" : "clamp_to_edge",
+            "mipmap" : true
+        }
     }
 }
