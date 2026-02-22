@@ -71,9 +71,9 @@ layout(push_constant) uniform Push
     float GLOW_DIFFUSION;
     float GLOW_COMPRESSION;
     float GLOW_FALLOFF;
+    float GLOW_DITHER;
     float GLOW_TEMPERATURE;
     float KEY_THRESH;
-    float GLOW_QUALITY_PRESET;
     float GLOW_RADIUS_PERCENT;
     float EDGE_GUARD_PERCENT;
 #ifdef WCG
@@ -98,11 +98,10 @@ layout(push_constant) uniform Push
 #define GLOW_COMPRESSION config.GLOW_COMPRESSION
 #define GLOW_FALLOFF config.GLOW_FALLOFF
 #define GLOW_TEMPERATURE config.GLOW_TEMPERATURE
+#define GLOW_DITHER config.GLOW_DITHER
 
 #define KEY_THRESH config.KEY_THRESH
 #define KEY_SOFT 0.08
-
-#define GLOW_QUALITY_PRESET config.GLOW_QUALITY_PRESET
 
 #define GLOW_RADIUS_PERCENT config.GLOW_RADIUS_PERCENT
 #define EDGE_GUARD_PERCENT config.EDGE_GUARD_PERCENT
@@ -122,11 +121,15 @@ layout(push_constant) uniform Push
 int glow_diffusion_steps()
 {
     if (GLOW_DIFFUSION < 0.5) {
+        if (USE_MIPMAPPING > 0.5)
+            return 4;
         return 8;   // Low: performance mode
     } else if (GLOW_DIFFUSION < 1.5) {
+        if (USE_MIPMAPPING > 0.5)
+            return 8;
         return 12;  // Medium: balanced
     } else {
-        return 16;  // High: quality mode (default)
+        return 16;  // High: quality mode
     }
 }
 
@@ -431,34 +434,10 @@ int adaptive_glow_steps(int base_steps, float radial_dist)
     int clamped_base = max(1, base_steps);
     float quality = 1.0;
 
-    if (GLOW_QUALITY_PRESET < 0.5)
-    {
-        quality = (radial_dist < 0.25) ? 1.00
-            : (radial_dist < 0.50) ? 0.75
-            : (radial_dist < 0.75) ? 0.50
-            : 0.35;
-    }
-    else if (GLOW_QUALITY_PRESET < 1.5)
-    {
-        quality = (radial_dist < 0.25) ? 0.85
-            : (radial_dist < 0.50) ? 0.60
-            : (radial_dist < 0.75) ? 0.40
-            : 0.25;
-    }
-    else if (GLOW_QUALITY_PRESET < 2.5)
-    {
-        quality = (radial_dist < 0.25) ? 1.00
-            : (radial_dist < 0.50) ? 0.80
-            : (radial_dist < 0.75) ? 0.60
-            : 0.40;
-    }
-    else
-    {
-        quality = (radial_dist < 0.25) ? 1.00
-            : (radial_dist < 0.50) ? 0.90
-            : (radial_dist < 0.75) ? 0.75
-            : 0.60;
-    }
+    quality = (radial_dist < 0.25)   ? 1.00
+              : (radial_dist < 0.50) ? 0.75
+              : (radial_dist < 0.75) ? 0.50
+                                     : 0.35;
 
     return max(1, int(floor(float(clamped_base) * quality + 0.5)));
 }
@@ -726,6 +705,12 @@ void main()
 
             // Shift glow color temperature to simulate bluish CRT reflection
             glow = shift_temperature(glow, GLOW_TEMPERATURE);
+
+            // Add blue noise jitter to break up banding and create a more organic glow texture
+            float noise = blue_noise(screen_coord * config.OutputSize.xy, config.FrameCount);
+            float noise_power = pow(10.0, GLOW_DITHER / 10.0);
+            
+            glow += noise * noise_power;
             
             // Clamp glow to prevent negative values before tonemapping
             glow = max(glow, vec3(0.0));
