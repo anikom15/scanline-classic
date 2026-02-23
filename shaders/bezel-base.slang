@@ -49,7 +49,7 @@
 
 #pragma parameter BEZEL_BYPASS "Bypass bezel" 0.0 0.0 1.0 1.0
 #pragma parameter GLOW_BYPASS "Bypass glow" 0.0 0.0 1.0 1.0
-#pragma parameter KEY_THRESH "Bezel chroma key threshold" 0.18 0.0 0.5 0.01
+#pragma parameter KEY_THRESH "Bezel chroma key threshold" 0.5 0.0 1.0 0.01
 
 #pragma parameter DEBUG_GLOW "Debug glow" 0.0 0.0 1.0 1.0
 
@@ -664,22 +664,27 @@ void main()
 #endif
     }
 
+    vec3 glow;
+    float effective_glow_weight;
+
     // Sample background/bezel texture with pixel-aligned sampling
-    vec2 uv = floor(vTexCoord * textureSize(BORDER, 0)) + 0.5;  // Align to pixel centers;
+    vec2 uv = floor(vTexCoord * textureSize(BORDER, 0)) + 0.5; // Align to pixel centers;
     vec2 tex = uv / textureSize(BORDER, 0);
     vec4 background = texture(BORDER, tex);
 
+    // Use sRGB for background texture
+    vec3 background_linear = srgb_linear(background.rgb);
+
     // Color key against green to create transparency in bezel when JPEG is used
     // Smooth chroma key: alpha is 0 for pure green, 1 for non-green, smooth in between
-    float key_thresh = KEY_THRESH; // Tolerance for keying (tweak as needed)
-    float key_soft = KEY_SOFT;   // Soft edge width for smooth transition
-    vec3 key_color = vec3(0.0, 1.0, 0.0);
-    float key_dist = distance(background.rgb, key_color);
-    float key_alpha = smoothstep(key_thresh, key_thresh + key_soft, key_dist);
-    background.a *= key_alpha;
-
-    vec3 glow;
-    float effective_glow_weight;
+    if (background.a > 1.0 - EPS) {
+        float key_thresh = KEY_THRESH; // Tolerance for keying (tweak as needed)
+        float key_soft = KEY_SOFT;     // Soft edge width for smooth transition
+        vec3 key_color = vec3(0.0, 1.0, 0.0);
+        float key_dist = distance(background.rgb, key_color);
+        float key_alpha = smoothstep(key_thresh, key_thresh + key_soft, key_dist);
+        background.a *= key_alpha;
+    }
 
     // === GLOW_BYPASS implementation ===
     if (GLOW_BYPASS > 0.5 || background.a < EPS) {
@@ -726,11 +731,8 @@ void main()
             glow = vec3(0.0);
         }
     }
-
-    // === Blend glow with background ===
-    // Use sRGB for background texture
-    vec3 background_linear = srgb_linear(background.rgb);
     
+    // === Blend glow with background ===
     // Apply bezel gain and bias first
     float bezel_gain = pow(10.0, BEZEL_GAIN / 20.0);
     float bezel_bias = BEZEL_BIAS / 100.0;
