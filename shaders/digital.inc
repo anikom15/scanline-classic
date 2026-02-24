@@ -19,8 +19,8 @@
 // -------------------------
 // Quantization functions for simulating fixed-point bit depth encodings.
 
-#ifndef __DIGITAL_INC__
-#define __DIGITAL_INC__
+#ifndef DIGITAL_INC
+#define DIGITAL_INC
 
 // Quantize a value to 6-bit linear precision (64 levels)
 // Input: normalized value in range [0.0, 1.0]
@@ -203,4 +203,4 @@ vec3 apply_dither(vec3 value, int working_bits, int output_bits, vec2 coord, uin
     );
 }
 
-#endif  // __DIGITAL_INC__
+#endif  // DIGITAL_INC

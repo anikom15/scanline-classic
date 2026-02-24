@@ -42,6 +42,7 @@
 
 #include "common.inc"
 #include "color.inc"
+#include "digital.inc"
 #include "texture.inc"
 
 #include "menus/parameters/factory-geometry.inc"
@@ -739,9 +740,21 @@ void main()
     vec3 screen_linear = screen.rgb;
     vec3 final_linear = mix(screen_linear, background_adjusted, background.a);
 
+    // Dither variables
+    const int WORKING_BITS = 16;
+    uint frame;
+    if (config.TotalSubFrames > 1u) {
+        frame = (config.FrameCount << 4) + (config.CurrentSubFrame << 4) / config.TotalSubFrames;
+    } else {
+        frame = config.FrameCount;
+    }
+
 #ifdef HDR
     // PQ output: SMPTE ST.2084 encoded values
-    FragColor = vec4(clamp(pq(final_linear), 0.0, 1.0), 1.0);
+    vec3 final_pq = pq(final_linear);
+
+    final_pq = apply_dither(final_pq, WORKING_BITS, 10, vTexCoord * config.OutputSize.xy, frame);
+    FragColor = vec4(clamp(final_pq, 0.0, 1.0), 1.0);
 #endif
 #ifdef WCG
     // WCG requires manual HDR10 handling when HDR is enabled
@@ -749,16 +762,22 @@ void main()
         // Map linear RGB to nits using RA inverse tonemapping
         vec3 hdr_linear = inverse_tonemap(final_linear, global.MaxNits, global.PaperWhiteNits);
 
+        vec3 hdr_pq = pq(hdr_linear);
+        hdr_pq = apply_dither(hdr_pq, WORKING_BITS, 10, vTexCoord * config.OutputSize.xy, frame);
         // PQ output: SMPTE ST.2084 encoding for HDR10
-        FragColor = vec4(clamp(pq(hdr_linear), 0.0, 1.0), 1.0);
+        FragColor = vec4(clamp(hdr_pq, 0.0, 1.0), 1.0);
         
     } else {
         // SDR WCG output: apply CRT gamma directly to linear RGB
-        FragColor = vec4(crt_gamma(clamp(final_linear, 0.0, 1.0)), 1.0);
+        vec3 final_gamma = crt_gamma(clamp(final_linear, 0.0, 1.0));
+        final_gamma = apply_dither(final_gamma, WORKING_BITS, 8, vTexCoord * config.OutputSize.xy, frame);
+        FragColor = vec4(clamp(final_gamma, 0.0, 1.0), 1.0);
     }
 #endif
 #ifdef SDR
     // Gamma output: use inverse CRT gamma to preserve shadow detail
-    FragColor = vec4(crt_gamma(clamp(final_linear, 0.0, 1.0)), 1.0);
+    vec3 final_gamma = crt_gamma(clamp(final_linear, 0.0, 1.0));
+    final_gamma = apply_dither(final_gamma, WORKING_BITS, 8, vTexCoord * config.OutputSize.xy, frame);
+    FragColor = vec4(clamp(final_gamma, 0.0, 1.0), 1.0);
 #endif
 }
