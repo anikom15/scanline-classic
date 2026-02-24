@@ -177,15 +177,15 @@ float apply_dither(float value, int working_bits, int output_bits, vec2 coord, u
     // Dither amplitude
     float dither_amount;
 
-    // Noise is half LSB of output bit depth
+    // Noise is LSB of output bit depth (blue noise range is [-0.5, 0.5])
     if (output_bits == 6) {
-        dither_amount = 0.5 / 63.0;
+        dither_amount = 1.0 / 63.0;
     } else if (output_bits == 8) {
-        dither_amount = 0.5 / 255.0;
+        dither_amount = 1.0 / 255.0;
     } else if (output_bits == 10) {
-        dither_amount = 0.5 / 1023.0;
+        dither_amount = 1.0 / 1023.0;
     } else {
-        dither_amount = 0.5 / (pow(2.0, float(output_bits)) - 1.0);
+        dither_amount = 1.0 / (pow(2.0, float(output_bits)) - 1.0);
     }
     
     // Add blue noise dither with temporal variation
