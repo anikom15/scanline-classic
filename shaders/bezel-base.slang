@@ -239,16 +239,6 @@ layout(set = 0, binding = 2) uniform sampler2D Source;
 layout(set = 0, binding = 4) uniform sampler2D BORDER;
 
 /**
- * Blends two colors using multiply blend mode in linear space.
- * This creates a darkening effect where overlapping colors become darker.
- *
- * @param col1 Base color (linear)
- * @param col2 Blend color (linear)
- * @return Blended color (linear)
- */
-#define blend(c1, c2) (c1 * c2)
-
-/**
  * Apply PQ curve to LMS tristimulus values for ICtCp conversion
  * (Raw PQ without nits scaling - for ICtCp color space)
  */
@@ -738,19 +728,16 @@ void main()
     float bezel_bias = BEZEL_BIAS / 100.0;
     vec3 background_adjusted = (background_linear + bezel_bias) * bezel_gain;
 
-    vec3 background_with_glow;
-    // Multiply blending with color compression
     if (DEBUG_GLOW > 0.5) {
         background_adjusted = BLACK;
-        background_with_glow = glow;
-    } else {
-        background_with_glow = blend(background_adjusted, glow);
     }
-    vec3 background_final = mix(background_adjusted, background_with_glow, effective_glow_weight * background.a);
 
-    // Final composite: blend CRT screen over glowing background using alpha
+    // Blend background with glow
+    background_adjusted = mix(background_adjusted, background_adjusted * glow, effective_glow_weight);
+
+    // Final composite: transparent over opaque composite
     vec3 screen_linear = screen.rgb;
-    vec3 final_linear = mix(screen_linear, background_final, background.a);
+    vec3 final_linear = mix(screen_linear, background_adjusted, background.a);
 
 #ifdef HDR
     // PQ output: SMPTE ST.2084 encoded values
