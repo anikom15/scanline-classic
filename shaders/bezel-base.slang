@@ -346,10 +346,31 @@ vec3 compress_color_glow(vec3 color, float compression)
     
     return max(rgb_compressed, vec3(0.0));
 #else
-    // Map compression [0,1] to power curve exponent [0.3, 1.0]
-    // Lower exponents compress bright values more aggressively
-    float power = mix(0.3, 1.0, compression);
-    return pow(color, vec3(power));
+    float c = clamp(compression, 0.0, 1.0);
+    float amount = 1.0 - c;
+
+    if (amount <= EPS)
+        return color;
+
+    // SDR/WCG alignment path: YCbCr-style chroma compression with preserved luma
+    vec3 color_gamma = crt_gamma(color);
+    vec3 ycbcr = RGB_TO_YCbCr * color_gamma;
+
+    // Match HDR branch behavior: base chroma compression plus highlight-dependent boost
+    float intensity_factor = clamp(ycbcr.r, 0.0, 1.0);
+    float chroma_scale = mix(0.3, 1.0, c);
+
+    if (intensity_factor > 0.5) {
+        float intensity_boost = (intensity_factor - 0.5) * 2.0;
+        chroma_scale *= mix(1.0, 0.4, intensity_boost * (1.0 - c));
+    }
+
+    ycbcr.g *= chroma_scale;
+    ycbcr.b *= chroma_scale;
+
+    vec3 rgb_compressed = YCbCr_TO_RGB * ycbcr;
+
+    return max(crt_linear(rgb_compressed), vec3(0.0));
 #endif
 }
 
@@ -515,19 +536,22 @@ vec3 calculate_glow(vec2 coord, float radius, float diffusion_steps, float radia
             float step_radius = radius * distance_factor;
             vec2 offset = dir * step_radius;
 
-            // Sample and compress color to reduce extreme brightness impact
+            // Sample source color
             vec3 sample_linear = sample_mirror_safe(Source, coord + offset, 0.0);
-            vec3 sample_color = compress_color_glow(sample_linear, GLOW_COMPRESSION);
             
             // Combine weights and accumulate
             float weight = diffusion_weight;
-            glow += sample_color * weight;
+            glow += sample_linear * weight;
             total_weight += weight;
         }
     }
     
-    // Normalize to maintain consistent brightness regardless of sample count
-    return total_weight > 0.0 ? glow / total_weight : glow;
+    // Normalize to maintain consistent brightness regardless of sample count,
+    // then apply compression once per pixel
+    if (total_weight > 0.0)
+        glow /= total_weight;
+
+    return compress_color_glow(glow, GLOW_COMPRESSION);
 }
 
 /**
@@ -583,15 +607,17 @@ vec3 calculate_glow_mipmapped(vec2 coord, float radius, float diffusion_steps, f
             
             // Sample with explicit LOD
             vec3 sample_linear = sample_mirror_safe(Source, coord + offset, step_lod).rgb;
-            vec3 sample_color = compress_color_glow(sample_linear, GLOW_COMPRESSION);
             
             float weight = diffusion_weight;
-            glow += sample_color * weight;
+            glow += sample_linear * weight;
             total_weight += weight;
         }
     }
     
-    return total_weight > 0.0 ? glow / total_weight : glow;
+    if (total_weight > 0.0)
+        glow /= total_weight;
+
+    return compress_color_glow(glow, GLOW_COMPRESSION);
 }
 
 // RA Inverse Tonemapper
