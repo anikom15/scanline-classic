@@ -296,123 +296,88 @@ vec3 ictcp_to_lms_pq(vec3 ictcp)
 }
 
 /**
- * Compresses color dynamic range to reduce extreme highlights and shadows.
- * Uses a power curve to soften the visual impact of bright/dark areas in the glow effect.
- * 
- * @param color Input color to compress
- * @param compression Compression amount [0-1]: 0=maximum compression, 1=no compression
- * @return Compressed color with reduced dynamic range
- */
-vec3 compress_color_glow(vec3 color, float compression)
-{
-#ifdef HDR
-    float c = clamp(compression, 0.0, 1.0);
-    float amount = 1.0 - c;
-
-    if (amount <= EPS)
-        return color;
-
-    // Convert RGB → XYZ → LMS
-    vec3 xyz = COLOR_SPACE_TO_XYZ * color;
-    vec3 lms = XYZ_TO_LMS * xyz;
-    
-    // Apply PQ curve to LMS
-    vec3 lms_pq = lms_apply_pq(lms);
-    
-    // Convert to ICtCp
-    vec3 ictcp = lms_pq_to_ictcp(lms_pq);
-    
-    // Compress chroma (Ct, Cp) components while preserving intensity (I)
-    // Use logarithmic compression for high-intensity colors
-    float intensity_factor = ictcp.x;  // I component (0-1 range after PQ)
-    
-    // Compress chroma more aggressively as intensity increases
-    float chroma_scale = mix(0.3, 1.0, c);  // amount inverted: c=1 → scale=1 (no compression)
-    
-    // Additional intensity-based compression: reduce saturation for bright values
-    if (intensity_factor > 0.5) {
-        float intensity_boost = (intensity_factor - 0.5) * 2.0;
-        chroma_scale *= mix(1.0, 0.4, intensity_boost * (1.0 - c));
-    }
-    
-    ictcp.y *= chroma_scale;  // Compress Ct (red-green)
-    ictcp.z *= chroma_scale;  // Compress Cp (yellow-blue)
-    
-    // Convert back: ICtCp → LMS(PQ) → LMS → XYZ → RGB
-    vec3 lms_pq_compressed = ictcp_to_lms_pq(ictcp);
-    vec3 lms_compressed = lms_remove_pq(lms_pq_compressed);
-    vec3 xyz_compressed = LMS_TO_XYZ * lms_compressed;
-    vec3 rgb_compressed = XYZ_TO_COLOR_SPACE * xyz_compressed;
-    
-    return max(rgb_compressed, vec3(0.0));
-#else
-    float c = clamp(compression, 0.0, 1.0);
-    float amount = 1.0 - c;
-
-    if (amount <= EPS)
-        return color;
-
-    // SDR/WCG alignment path: YCbCr-style chroma compression with preserved luma
-    vec3 color_gamma = crt_gamma(color);
-    vec3 ycbcr = RGB_TO_YCbCr * color_gamma;
-
-    // Match HDR branch behavior: base chroma compression plus highlight-dependent boost
-    float intensity_factor = clamp(ycbcr.r, 0.0, 1.0);
-    float chroma_scale = mix(0.3, 1.0, c);
-
-    if (intensity_factor > 0.5) {
-        float intensity_boost = (intensity_factor - 0.5) * 2.0;
-        chroma_scale *= mix(1.0, 0.4, intensity_boost * (1.0 - c));
-    }
-
-    ycbcr.g *= chroma_scale;
-    ycbcr.b *= chroma_scale;
-
-    vec3 rgb_compressed = YCbCr_TO_RGB * ycbcr;
-
-    return max(crt_linear(rgb_compressed), vec3(0.0));
-#endif
-}
-
-/**
- * Shifts color temperature of the input color.
- * Negative values make colors warmer, positive values make them cooler.
- * This simulates the psychological perception of CRT glow which appears bluish due to
- * reflections and the contrast between the bright screen and darker surroundings.
- * 
+ * Combined glow color processing: dynamic-range compression + temperature shift.
+ * Consolidates color-space conversions so glow is converted back to RGB once.
+ *
  * @param color Input color in linear RGB space
+ * @param compression Compression amount [0-1]: 0=maximum compression, 1=no compression
  * @param temperature Temperature shift [-0.5 to 0.5]: negative=warmer, positive=cooler
- * @return Color with shifted temperature
+ * @return Processed glow color
  */
-vec3 shift_temperature(vec3 color, float temperature)
+vec3 process_glow_color(vec3 color, float compression, float temperature)
 {
+    float c = clamp(compression, 0.0, 1.0);
+    float amount = 1.0 - c;
     float t = clamp(temperature, -0.5, 0.5);
-    vec3 xyz = COLOR_SPACE_TO_XYZ * color;
-    vec3 lms = XYZ_TO_LMS * xyz;
 
-    // LMS-domain adaptation: positive t cools (boost S), negative t warms (boost L/M)
-    vec3 lms_scale = vec3(
-        1.0 - t * 0.35,
-        1.0 - t * 0.10,
-        1.0 + t * 0.55
-    );
+    if (amount <= EPS && abs(t) <= EPS)
+        return max(color, vec3(0.0));
 
-    vec3 shifted_lms = lms * lms_scale;
-    vec3 shifted = XYZ_TO_COLOR_SPACE * (LMS_TO_XYZ * shifted_lms);
+    vec3 xyz_in = COLOR_SPACE_TO_XYZ * color;
+    vec3 xyz_base = xyz_in;
 
-    vec3 w = vec3(
-        COLOR_SPACE_TO_XYZ[0][1],
-        COLOR_SPACE_TO_XYZ[1][1],
-        COLOR_SPACE_TO_XYZ[2][1]
-    );
-    float original_luma = max(dot(color, w), EPS);
-    float shifted_luma = max(dot(shifted, w), EPS);
+#ifdef HDR
+    if (amount > EPS) {
+        // HDR compression path: RGB → XYZ → LMS(PQ) → ICtCp, then back to XYZ
+        vec3 lms = XYZ_TO_LMS * xyz_in;
+        vec3 lms_pq = lms_apply_pq(lms);
+        vec3 ictcp = lms_pq_to_ictcp(lms_pq);
 
-    // Log-domain luminance normalization remains stable across SDR and HDR ranges
-    float gain = exp2(clamp(log2(original_luma) - log2(shifted_luma), -2.0, 2.0));
-    shifted *= gain;
+        float intensity_factor = ictcp.x;  // I component (0-1 range after PQ)
+        float chroma_scale = mix(0.3, 1.0, c);  // amount inverted: c=1 → scale=1 (no compression)
 
-    return max(shifted, vec3(0.0));
+        if (intensity_factor > 0.5) {
+            float intensity_boost = (intensity_factor - 0.5) * 2.0;
+            chroma_scale *= mix(1.0, 0.4, intensity_boost * (1.0 - c));
+        }
+
+        ictcp.y *= chroma_scale;  // Compress Ct (red-green)
+        ictcp.z *= chroma_scale;  // Compress Cp (yellow-blue)
+
+        vec3 lms_compressed = lms_remove_pq(ictcp_to_lms_pq(ictcp));
+        xyz_base = LMS_TO_XYZ * lms_compressed;
+    }
+#else
+    if (amount > EPS) {
+        // SDR/WCG compression path: chroma compression in CIE Luv
+        vec3 luv = XYZ_to_CIE_LUV(xyz_in);
+
+        float intensity_factor = clamp(luv.x, 0.0, 1.0);
+        float chroma_scale = mix(0.3, 1.0, c);
+
+        if (intensity_factor > 0.5) {
+            float intensity_boost = (intensity_factor - 0.5) * 2.0;
+            chroma_scale *= mix(1.0, 0.4, intensity_boost * (1.0 - c));
+        }
+
+        luv.y *= chroma_scale;
+        luv.z *= chroma_scale;
+
+        xyz_base = CIE_LUV_to_XYZ(luv);
+    }
+#endif
+
+    if (abs(t) > EPS) {
+        vec3 lms = XYZ_TO_LMS * xyz_base;
+
+        // LMS-domain adaptation: positive t cools (boost S), negative t warms (boost L/M)
+        vec3 lms_scale = vec3(
+            1.0 - t * 0.35,
+            1.0 - t * 0.10,
+            1.0 + t * 0.55
+        );
+
+        vec3 xyz_shifted = LMS_TO_XYZ * (lms * lms_scale);
+
+        // Log-domain luminance normalization using XYZ Y channel
+        float original_luma = max(xyz_base.y, EPS);
+        float shifted_luma = max(xyz_shifted.y, EPS);
+        float gain = exp2(clamp(log2(original_luma) - log2(shifted_luma), -2.0, 2.0));
+
+        xyz_base = xyz_shifted * gain;
+    }
+
+    return max(XYZ_TO_COLOR_SPACE * xyz_base, vec3(0.0));
 }
 
 /**
@@ -546,12 +511,11 @@ vec3 calculate_glow(vec2 coord, float radius, float diffusion_steps, float radia
         }
     }
     
-    // Normalize to maintain consistent brightness regardless of sample count,
-    // then apply compression once per pixel
+    // Normalize to maintain consistent brightness regardless of sample count
     if (total_weight > 0.0)
         glow /= total_weight;
 
-    return compress_color_glow(glow, GLOW_COMPRESSION);
+    return max(glow, vec3(0.0));
 }
 
 /**
@@ -617,7 +581,7 @@ vec3 calculate_glow_mipmapped(vec2 coord, float radius, float diffusion_steps, f
     if (total_weight > 0.0)
         glow /= total_weight;
 
-    return compress_color_glow(glow, GLOW_COMPRESSION);
+    return max(glow, vec3(0.0));
 }
 
 // RA Inverse Tonemapper
@@ -642,7 +606,7 @@ vec3 inverse_tonemap(const vec3 sdr_linear, const float max_nits, const float pa
  * 2. If bypass is enabled, return screen content directly
  * 3. Sample background/bezel texture
  * 4. Calculate glow effect from screen content
- * 5. Shift glow color temperature (cooler/bluer for realistic CRT reflection)
+ * 5. Process glow color (compression + temperature) in a single pass
  * 6. Apply radial falloff to glow based on distance from viewport
  * 7. Blend glow with background
  * 8. Composite screen over glowing background
@@ -727,8 +691,8 @@ void main()
                 glow = calculate_glow(screen_coord, radius, float(diffusion_steps), radial_dist);
             }
 
-            // Shift glow color temperature to simulate bluish CRT reflection
-            glow = shift_temperature(glow, GLOW_TEMPERATURE);
+            // Combined glow color processing: compression + temperature shift
+            glow = process_glow_color(glow, GLOW_COMPRESSION, GLOW_TEMPERATURE);
 
             // Add blue noise jitter to break up banding and create a more organic glow texture
             uint frame;
