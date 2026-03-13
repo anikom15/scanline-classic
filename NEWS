@@ -1,3 +1,21 @@
+Version 10.0
+
+* WCG mode gamut selection: BT.2020 and DCI
+
+* Steam Deck optimized presets
+
+* IPT option for gamut compression
+
+* Mipmap usage improvements, bezel optimizations
+
+* Bezel option cleanup
+
+* Final pass dithering
+
+* Noise models support subframes
+
+* Fixes dither amount calculation
+
 Version 9.0
 
 * HDR response is fixed
