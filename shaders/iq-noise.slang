@@ -51,29 +51,6 @@ layout(std140, set = 0, binding = 0) uniform UBO
     mat4 MVP;
 } global;
 
-// Hash helpers (integer-based to avoid trig cost)
-uint hash_u32(uint x)
-{
-    x ^= x >> 17; x *= 0xED5AD4BBu;
-    x ^= x >> 11; x *= 0xAC4C1B51u;
-    x ^= x >> 15; x *= 0x31848BABu;
-    x ^= x >> 14; return x;
-}
-
-float hash_float(uvec2 v)
-{
-    return float(hash_u32(v.x * 0x9E3779B9u ^ v.y)) * (1.0 / 4294967295.0);
-}
-
-// Box-Muller from two uniforms
-vec2 box_muller(vec2 u)
-{
-    u = max(u, vec2(1e-6));
-    float r = sqrt(-2.0 * log(u.x));
-    float th = 6.28318530718 * u.y; // 2π
-    return vec2(r * cos(th), r * sin(th));
-}
-
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;

@@ -236,8 +236,8 @@ layout(location = 1) in vec2 screen_coord;
 layout(location = 2) in float AspectRatio;
 layout(location = 3) in vec2 viewport_max_dist;
 layout(location = 0) out vec4 FragColor;
-layout(set = 0, binding = 2) uniform sampler2D Source;
-layout(set = 0, binding = 4) uniform sampler2D BORDER;
+layout(set = 0, binding = 1) uniform sampler2D Source;
+layout(set = 0, binding = 2) uniform sampler2D BORDER;
 
 /**
  * Apply PQ curve to LMS tristimulus values for ICtCp conversion
@@ -302,56 +302,69 @@ vec3 ictcp_to_lms_pq(vec3 ictcp)
  * @param color Input color in linear RGB space
  * @param compression Compression amount [0-1]: 0=maximum compression, 1=no compression
  * @param temperature Temperature shift [-0.5 to 0.5]: negative=warmer, positive=cooler
+ * @param noise Signed blue-TPDF jitter sample in [-0.5, 0.5]
+ * @param noise_power Jitter amplitude scale
  * @return Processed glow color
  */
-vec3 process_glow_color(vec3 color, float compression, float temperature)
+vec3 process_glow_color(vec3 color, float compression, float temperature, float noise, float noise_power)
 {
     float c = clamp(compression, 0.0, 1.0);
     float amount = 1.0 - c;
     float t = clamp(temperature, -0.5, 0.5);
+    float dither = max(noise_power, 0.0);
 
-    if (amount <= EPS && abs(t) <= EPS)
+    if (amount <= EPS && abs(t) <= EPS && dither <= EPS)
         return max(color, vec3(0.0));
 
     vec3 xyz_in = COLOR_SPACE_TO_XYZ * color;
     vec3 xyz_base = xyz_in;
 
 #ifdef HDR
-    if (amount > EPS) {
-        // HDR compression path: RGB → XYZ → LMS(PQ) → ICtCp, then back to XYZ
+    if (amount > EPS || dither > EPS) {
+        // HDR processing path: RGB → XYZ → LMS(PQ) → ICtCp, then back to XYZ
         vec3 lms = XYZ_TO_LMS * xyz_in;
         vec3 lms_pq = lms_apply_pq(lms);
         vec3 ictcp = lms_pq_to_ictcp(lms_pq);
 
-        float intensity_factor = ictcp.x;  // I component (0-1 range after PQ)
-        float chroma_scale = mix(0.3, 1.0, c);  // amount inverted: c=1 → scale=1 (no compression)
+        if (amount > EPS) {
+            float intensity_factor = ictcp.x;  // I component (0-1 range after PQ)
+            float chroma_scale = mix(0.3, 1.0, c);  // amount inverted: c=1 → scale=1 (no compression)
 
-        if (intensity_factor > 0.5) {
-            float intensity_boost = (intensity_factor - 0.5) * 2.0;
-            chroma_scale *= mix(1.0, 0.4, intensity_boost * (1.0 - c));
+            if (intensity_factor > 0.5) {
+                float intensity_boost = (intensity_factor - 0.5) * 2.0;
+                chroma_scale *= mix(1.0, 0.4, intensity_boost * (1.0 - c));
+            }
+
+            ictcp.y *= chroma_scale;  // Compress Ct (red-green)
+            ictcp.z *= chroma_scale;  // Compress Cp (yellow-blue)
         }
 
-        ictcp.y *= chroma_scale;  // Compress Ct (red-green)
-        ictcp.z *= chroma_scale;  // Compress Cp (yellow-blue)
+        if (dither > EPS)
+            ictcp.x = clamp(ictcp.x + noise * dither, 0.0, 1.0);
 
-        vec3 lms_compressed = lms_remove_pq(ictcp_to_lms_pq(ictcp));
-        xyz_base = LMS_TO_XYZ * lms_compressed;
+        vec3 lms_processed = lms_remove_pq(ictcp_to_lms_pq(ictcp));
+        xyz_base = LMS_TO_XYZ * lms_processed;
     }
 #else
-    if (amount > EPS) {
-        // SDR/WCG compression path: chroma compression in CIE Luv
+    if (amount > EPS || dither > EPS) {
+        // SDR/WCG processing path: chroma compression + L* dither in CIE Luv
         vec3 luv = XYZ_to_CIE_LUV(xyz_in);
 
-        float intensity_factor = clamp(luv.x, 0.0, 1.0);
-        float chroma_scale = mix(0.3, 1.0, c);
+        if (amount > EPS) {
+            float intensity_factor = clamp(luv.x, 0.0, 1.0);
+            float chroma_scale = mix(0.3, 1.0, c);
 
-        if (intensity_factor > 0.5) {
-            float intensity_boost = (intensity_factor - 0.5) * 2.0;
-            chroma_scale *= mix(1.0, 0.4, intensity_boost * (1.0 - c));
+            if (intensity_factor > 0.5) {
+                float intensity_boost = (intensity_factor - 0.5) * 2.0;
+                chroma_scale *= mix(1.0, 0.4, intensity_boost * (1.0 - c));
+            }
+
+            luv.y *= chroma_scale;
+            luv.z *= chroma_scale;
         }
 
-        luv.y *= chroma_scale;
-        luv.z *= chroma_scale;
+        if (dither > EPS)
+            luv.x = clamp(luv.x + noise * dither * 100.0, EPS, 100.0);
 
         xyz_base = CIE_LUV_to_XYZ(luv);
     }
@@ -598,6 +611,42 @@ vec3 inverse_tonemap(const vec3 sdr_linear, const float max_nits, const float pa
     return sdr_linear * (tonemapped_val / max(input_val, EPS));
 }
 
+void write_output_color(vec3 final_linear, uint frame)
+{
+    const int WORKING_BITS = 16;
+
+#ifdef HDR
+    // PQ output: SMPTE ST.2084 encoded values
+    vec3 final_pq = pq(final_linear);
+
+    final_pq = apply_dither_blue(final_pq, WORKING_BITS, 10, vTexCoord * config.OutputSize.xy, frame);
+    FragColor = vec4(clamp(final_pq, 0.0, 1.0), 1.0);
+#endif
+#ifdef WCG
+    // WCG requires manual HDR10 handling when HDR is enabled
+    if (global.EnableHDR > 0.5) {
+        // Map linear RGB to nits using RA inverse tonemapping
+        vec3 hdr_linear = inverse_tonemap(final_linear, global.MaxNits, global.PaperWhiteNits);
+
+        vec3 hdr_pq = pq(hdr_linear);
+        hdr_pq = apply_dither_blue(hdr_pq, WORKING_BITS, 10, vTexCoord * config.OutputSize.xy, frame);
+        // PQ output: SMPTE ST.2084 encoding for HDR10
+        FragColor = vec4(clamp(hdr_pq, 0.0, 1.0), 1.0);
+    } else {
+        // SDR WCG output: apply CRT gamma directly to linear RGB
+        vec3 final_gamma = crt_gamma(clamp(final_linear, 0.0, 1.0));
+        final_gamma = apply_dither_blue(final_gamma, WORKING_BITS, 8, vTexCoord * config.OutputSize.xy, frame);
+        FragColor = vec4(clamp(final_gamma, 0.0, 1.0), 1.0);
+    }
+#endif
+#ifdef SDR
+    // Gamma output: use inverse CRT gamma to preserve shadow detail
+    vec3 final_gamma = crt_gamma(clamp(final_linear, 0.0, 1.0));
+    final_gamma = apply_dither_blue(final_gamma, WORKING_BITS, 8, vTexCoord * config.OutputSize.xy, frame);
+    FragColor = vec4(clamp(final_gamma, 0.0, 1.0), 1.0);
+#endif
+}
+
 /**
  * Fragment shader: Composites the CRT screen with bezel/background and glow effect.
  * 
@@ -613,6 +662,13 @@ vec3 inverse_tonemap(const vec3 sdr_linear, const float max_nits, const float pa
  */
 void main()
 {
+    uint frame;
+    if (config.TotalSubFrames > 1u) {
+        frame = (config.FrameCount << 4) + (config.CurrentSubFrame << 4) / config.TotalSubFrames;
+    } else {
+        frame = config.FrameCount;
+    }
+
     // Sample the main CRT screen content with smooth edge guard
     vec4 screen = vec4(texture(Source, screen_coord).rgb, 1.0);
     screen.rgb = screen.rgb;
@@ -621,28 +677,8 @@ void main()
     // Bypass mode: pass through screen content without bezel/glow processing
     if (BEZEL_BYPASS > 0.5)
     {
-#ifdef HDR
-        FragColor = vec4(clamp(pq(screen.rgb), 0.0, 1.0), 1.0);
+        write_output_color(screen.rgb, frame);
         return;
-#endif
-#ifdef WCG
-        // WCG requires manual HDR10 handling when HDR is enabled
-        if (global.EnableHDR > 0.5) {
-            // Map linear RGB to nits using RA inverse tonemapping
-            vec3 hdr_linear = inverse_tonemap(screen.rgb, global.MaxNits, global.PaperWhiteNits);
-
-            // PQ output: SMPTE ST.2084 encoding for HDR10
-            FragColor = vec4(clamp(pq(hdr_linear), 0.0, 1.0), 1.0);
-        } else {
-            // SDR WCG output: apply CRT gamma directly to linear RGB
-            FragColor = vec4(crt_gamma(clamp(screen.rgb, 0.0, 1.0)), 1.0);
-        }
-        return;
-#endif
-#ifdef SDR
-        FragColor = vec4(crt_gamma(clamp(screen.rgb, 0.0, 1.0)), 1.0);
-        return;
-#endif
     }
 
     vec3 glow;
@@ -692,19 +728,11 @@ void main()
             }
 
             // Combined glow color processing: compression + temperature shift
-            glow = process_glow_color(glow, GLOW_COMPRESSION, GLOW_TEMPERATURE);
-
-            // Add blue noise jitter to break up banding and create a more organic glow texture
-            uint frame;
-            if (config.TotalSubFrames > 1u) {
-                frame = (config.FrameCount << 4) + (config.CurrentSubFrame << 4) / config.TotalSubFrames;
-            } else {
-                frame = config.FrameCount;
-            }
-            float noise = blue_noise(screen_coord * config.OutputSize.xy, frame);
+            // Apply selected dither in perceptual space before converting back to RGB.
+            float noise = tpdf_blue_noise(screen_coord * config.OutputSize.xy, frame);
             float noise_power = pow(10.0, GLOW_DITHER / 10.0);
 
-            glow += noise * noise_power;
+            glow = process_glow_color(glow, GLOW_COMPRESSION, GLOW_TEMPERATURE, noise, noise_power);
             
             // Clamp glow to prevent negative values before tonemapping
             glow = max(glow, vec3(0.0));
@@ -720,7 +748,7 @@ void main()
     vec3 background_adjusted = (background_linear + bezel_bias) * bezel_gain;
 
     if (DEBUG_GLOW > 0.5) {
-        background_adjusted = BLACK;
+        background_adjusted = WHITE;
     }
 
     // Blend background with glow
@@ -730,44 +758,5 @@ void main()
     vec3 screen_linear = screen.rgb;
     vec3 final_linear = mix(screen_linear, background_adjusted, background.a);
 
-    // Dither variables
-    const int WORKING_BITS = 16;
-    uint frame;
-    if (config.TotalSubFrames > 1u) {
-        frame = (config.FrameCount << 4) + (config.CurrentSubFrame << 4) / config.TotalSubFrames;
-    } else {
-        frame = config.FrameCount;
-    }
-
-#ifdef HDR
-    // PQ output: SMPTE ST.2084 encoded values
-    vec3 final_pq = pq(final_linear);
-
-    final_pq = apply_dither(final_pq, WORKING_BITS, 10, vTexCoord * config.OutputSize.xy, frame);
-    FragColor = vec4(clamp(final_pq, 0.0, 1.0), 1.0);
-#endif
-#ifdef WCG
-    // WCG requires manual HDR10 handling when HDR is enabled
-    if (global.EnableHDR > 0.5) {
-        // Map linear RGB to nits using RA inverse tonemapping
-        vec3 hdr_linear = inverse_tonemap(final_linear, global.MaxNits, global.PaperWhiteNits);
-
-        vec3 hdr_pq = pq(hdr_linear);
-        hdr_pq = apply_dither(hdr_pq, WORKING_BITS, 10, vTexCoord * config.OutputSize.xy, frame);
-        // PQ output: SMPTE ST.2084 encoding for HDR10
-        FragColor = vec4(clamp(hdr_pq, 0.0, 1.0), 1.0);
-        
-    } else {
-        // SDR WCG output: apply CRT gamma directly to linear RGB
-        vec3 final_gamma = crt_gamma(clamp(final_linear, 0.0, 1.0));
-        final_gamma = apply_dither(final_gamma, WORKING_BITS, 8, vTexCoord * config.OutputSize.xy, frame);
-        FragColor = vec4(clamp(final_gamma, 0.0, 1.0), 1.0);
-    }
-#endif
-#ifdef SDR
-    // Gamma output: use inverse CRT gamma to preserve shadow detail
-    vec3 final_gamma = crt_gamma(clamp(final_linear, 0.0, 1.0));
-    final_gamma = apply_dither(final_gamma, WORKING_BITS, 8, vTexCoord * config.OutputSize.xy, frame);
-    FragColor = vec4(clamp(final_gamma, 0.0, 1.0), 1.0);
-#endif
+    write_output_color(final_linear, frame);
 }

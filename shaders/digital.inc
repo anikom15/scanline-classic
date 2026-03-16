@@ -164,7 +164,7 @@ vec3 unlimit_ycbcr(vec3 ycbcr, int bits)
     return vec3(y, cb, cr);
 }
 
-// Apply blue noise dithering before quantization
+// Apply TPDF noise dithering before quantization
 // Input: value to dither, working bit depth, output bit depth, screen coordinates, frame count
 // Output: dithered value
 float apply_dither(float value, int working_bits, int output_bits, vec2 coord, uint frame)
@@ -188,18 +188,96 @@ float apply_dither(float value, int working_bits, int output_bits, vec2 coord, u
         dither_amount = 1.0 / (pow(2.0, float(output_bits)) - 1.0);
     }
     
-    // Add blue noise dither with temporal variation
-    float dither = blue_noise(coord, frame) * dither_amount;
+    // Add TPDF dither (integer pixel + frame-seeded)
+    float dither = tpdf_noise(coord, frame) * dither_amount;
     return value + dither;
 }
 
-// Apply blue noise dithering to a vector
+// Apply blue-noise-like TPDF dithering before quantization
+// Input: value to dither, working bit depth, output bit depth, screen coordinates, frame count
+// Output: dithered value
+float apply_dither_blue(float value, int working_bits, int output_bits, vec2 coord, uint frame)
+{
+    if (working_bits <= output_bits) {
+        // No dithering needed if working bits are less than or equal to output bits
+        return value;
+    }
+
+    // Dither amplitude
+    float dither_amount;
+
+    // Noise is LSB of output bit depth (blue noise range is [-0.5, 0.5])
+    if (output_bits == 6) {
+        dither_amount = 1.0 / 63.0;
+    } else if (output_bits == 8) {
+        dither_amount = 1.0 / 255.0;
+    } else if (output_bits == 10) {
+        dither_amount = 1.0 / 1023.0;
+    } else {
+        dither_amount = 1.0 / (pow(2.0, float(output_bits)) - 1.0);
+    }
+
+    // Add blue-noise-like TPDF dither (integer pixel + frame-seeded)
+    float dither = tpdf_blue_noise(coord, frame) * dither_amount;
+    return value + dither;
+}
+
+// Apply 1D blue-noise-like TPDF dithering before quantization
+// Input: value to dither, working bit depth, output bit depth, screen coordinates, frame count
+// Output: dithered value
+float apply_dither_blue_1x(float value, int working_bits, int output_bits, vec2 coord, uint frame)
+{
+    if (working_bits <= output_bits) {
+        // No dithering needed if working bits are less than or equal to output bits
+        return value;
+    }
+
+    // Dither amplitude
+    float dither_amount;
+
+    // Noise is LSB of output bit depth (blue noise range is [-0.5, 0.5])
+    if (output_bits == 6) {
+        dither_amount = 1.0 / 63.0;
+    } else if (output_bits == 8) {
+        dither_amount = 1.0 / 255.0;
+    } else if (output_bits == 10) {
+        dither_amount = 1.0 / 1023.0;
+    } else {
+        dither_amount = 1.0 / (pow(2.0, float(output_bits)) - 1.0);
+    }
+
+    // Add 1D blue-noise-like TPDF dither (integer pixel + frame-seeded)
+    float dither = tpdf_blue_noise_1x(coord, frame) * dither_amount;
+    return value + dither;
+}
+
+// Apply TPDF noise dithering to a vector
 vec3 apply_dither(vec3 value, int working_bits, int output_bits, vec2 coord, uint frame)
 {
     return vec3(
         apply_dither(value.r, working_bits, output_bits, coord + vec2(0.0, 0.0), frame),
         apply_dither(value.g, working_bits, output_bits, coord + vec2(1.0, 0.0), frame),
         apply_dither(value.b, working_bits, output_bits, coord + vec2(2.0, 0.0), frame)
+    );
+}
+
+// Apply blue-noise-like TPDF dithering to a vector
+vec3 apply_dither_blue(vec3 value, int working_bits, int output_bits, vec2 coord, uint frame)
+{
+    return vec3(
+        apply_dither_blue(value.r, working_bits, output_bits, coord + vec2(0.0, 0.0), frame),
+        apply_dither_blue(value.g, working_bits, output_bits, coord + vec2(1.0, 0.0), frame),
+        apply_dither_blue(value.b, working_bits, output_bits, coord + vec2(2.0, 0.0), frame)
+    );
+}
+
+// Apply 1D blue-noise-like TPDF dithering to a vector
+vec3 apply_dither_blue_1x(vec3 value, int working_bits, int output_bits, vec2 coord, uint frame)
+{
+    return vec3(
+        apply_dither_blue_1x(value.r, working_bits, output_bits, coord + vec2(0.0, 0.0), frame),
+        apply_dither_blue_1x(value.g, working_bits, output_bits, coord + vec2(1.0, 0.0), frame),
+        apply_dither_blue_1x(value.b, working_bits, output_bits, coord + vec2(2.0, 0.0), frame)
     );
 }
 

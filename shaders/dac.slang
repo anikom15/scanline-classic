@@ -56,6 +56,7 @@ layout(push_constant) uniform Push
     float SYS_GAIN_Y;
     float SYS_GAIN_U;
     float SYS_GAIN_V;
+    float DEBUG_DITHER;
 } config;
 
 #define DAC_BYPASS config.DAC_BYPASS
@@ -70,6 +71,7 @@ layout(push_constant) uniform Push
 #define SYS_GAIN_Y config.SYS_GAIN_Y
 #define SYS_GAIN_U config.SYS_GAIN_U
 #define SYS_GAIN_V config.SYS_GAIN_V
+#define DEBUG_DITHER config.DEBUG_DITHER
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
@@ -163,8 +165,14 @@ void main()
     // Apply dithering before quantization
     if (DITHER > 0.5) {
         vec2 screen_coord = vTexCoord.xy * config.OutputSize.xy;
-        y = apply_dither(y, working_bits, bits, screen_coord, config.FrameCount);
-        c = apply_dither(c, working_bits, bits, screen_coord + vec2(0.5, 0.5), config.FrameCount);
+        uint frame;
+        if (config.TotalSubFrames > 1u) {
+            frame = (config.FrameCount << 4) + (config.CurrentSubFrame << 4) / config.TotalSubFrames;
+        } else {
+            frame = config.FrameCount;
+        }
+        y = apply_dither(y, working_bits, bits, screen_coord, frame);
+        c = apply_dither(c, working_bits, bits, screen_coord + vec2(0.5, 0.5), frame);
     }
 
     // Quantize to output bit depth
