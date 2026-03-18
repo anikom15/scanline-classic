@@ -1,6 +1,6 @@
 {
     "root_path" : "../../../shaders",
     "shaders" : {
-        "menu" : "menus/menu-rf-direct-sdr"
+        "menu" : "menus/menu-digital-composite-sdr"
     }
 }

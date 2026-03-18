@@ -39,9 +39,10 @@
 #include "parameters/colorimetry.inc"
 #include "parameters/phosphor.inc"
 #include "parameters/limiter.inc"
+#include "parameters/rf.inc"
 #include "parameters/sys-timing.inc"
-#include "parameters/sys-component.inc"
 #include "parameters/sys-encode.inc"
+#include "parameters/digital-component.inc"
 #include "parameters/debug-common.inc"
 
 #include "menu-base.slang"

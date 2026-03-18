@@ -5,7 +5,7 @@
   "description" : "All-in-one monitor with built-in PC Engine; could also be used as a MultiSync monitor for NEC PCs.",
   "pipeline_root" : "../../pipelines",
   "pipelines" : [
-    "misc/menu-rf-direct.json",
+    "misc/menu.json",
     "misc/frame-tv525.json",
     "sys/rgb.json",
     "disp/crt.json",

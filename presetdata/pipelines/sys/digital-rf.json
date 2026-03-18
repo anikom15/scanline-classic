@@ -6,7 +6,6 @@
         "upsample" : "digital-upsample",
         "mod" : "digital-svideo",
         "dac" : "dac",
-        "decimate" : "decimate",
         "composite-iq" : "composite-iq",
         "iq-filter" : "iq-filter",
         "iq-noise" : "iq-noise",
@@ -19,9 +18,6 @@
     "options" : {
         "upsample" : {
             "scale" : [2.0, 1.0]
-        },
-        "decimate" : {
-            "scale" : [0.5, 1.0]
         }
     }
 }
