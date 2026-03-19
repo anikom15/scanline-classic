@@ -2,11 +2,13 @@
     "parameters" : {
         "ENCODER_SETUP" : 0.0,
 
-        "DIGITAL_Cb_FILTER_DECIMATION" : 8.0,
-        "DIGITAL_Cr_FILTER_DECIMATION" : 8.0,
-        "WORKING_BITS" : 8.0,
+        "DIGITAL_Y_FILTER_DECIMATION" : 2.0,
+        "DIGITAL_Cb_FILTER_DECIMATION" : 2.0,
+        "DIGITAL_Cr_FILTER_DECIMATION" : 2.0,
+        "WORKING_BITS" : 10.0,
         "DAC_BITS" : 8.0,
-        "VIDEO_MODE" : 0.0,
+        "VIDEO_MODE" : 2.0,
+        "DITHER" : 0.0,
 
         "COLOR_FILTER_MODE" : 0.0,
 
