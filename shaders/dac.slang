@@ -141,12 +141,14 @@ void main()
         }
 
         // Quantize to output bit depth
-        if (bits < 7) {
+        if (bits == 6) {
             ycbcr = quantize_6bit(ycbcr);
-        } else if (bits < 9) {
+        } else if (bits == 8) {
             ycbcr = quantize_8bit(ycbcr);
-        } else {
+        } else if (bits == 10) {
             ycbcr = quantize_10bit(ycbcr);
+        } else {
+            ycbcr = quantize(ycbcr, bits);
         }
 
         // Restore full-range PbPr from limited range

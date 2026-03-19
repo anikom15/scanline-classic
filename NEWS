@@ -16,7 +16,11 @@ Version 10.0
 
 * Improved noise models, particularly for dithering
 
+* PC Engine presets use a hybrid digital pipeline
+
 * Fixes dither amount calculation
+
+* Fixes some timing issues related to PC Engine
 
 Version 9.0
 

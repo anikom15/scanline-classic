@@ -1,0 +1,12 @@
+{
+    "root_path" : "../../../shaders",
+    "shaders" : {
+        "frame" : "frameh"
+    },
+    "options" : {
+        "frame" : {
+            "scale_type" : ["absolute", "source"],
+            "scale" : [1365.0, 1.0]
+        }
+    }
+}
