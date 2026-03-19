@@ -14,7 +14,11 @@ Version 10.0
 
 * Noise models support subframes
 
+* PC Engine presets use a hybrid digital pipeline
+
 * Fixes dither amount calculation
+
+* Fixes some timing issues related to PC Engine
 
 Version 9.0
 
