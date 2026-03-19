@@ -5,14 +5,14 @@
         "DIGITAL_Cb_FILTER_DECIMATION" : 8.0,
         "DIGITAL_Cr_FILTER_DECIMATION" : 8.0,
         "WORKING_BITS" : 8.0,
-        "DAC_BITS" : 6.0,
-        "VIDEO_MODE" : 2.0,
+        "DAC_BITS" : 8.0,
+        "VIDEO_MODE" : 0.0,
 
         "COLOR_FILTER_MODE" : 0.0,
 
         "PIXEL_CLOCK_MODE" : 1.0,
         "PIXEL_CLOCK" : 6.0,
         "H_FREQ_MODE" : 1.0,
-        "H_FREQ" : 1370.0
+        "H_FREQ" : 1365.0
     }
 }

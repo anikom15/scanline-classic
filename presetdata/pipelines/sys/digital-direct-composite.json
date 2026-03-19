@@ -3,8 +3,8 @@
     "shaders" : {
         "component" : "digital-component",
         "filter" : "digital-ycc-filter",
+        "mod" : "digital-svideo",
         "dac" : "dac",
-        "mod" : "composite-mod",
         "prefilter" : "composite-prefilter",
         "demod" : "composite-demod",
         "disp-bandlimit" : "display-rgb-bandlimit",
