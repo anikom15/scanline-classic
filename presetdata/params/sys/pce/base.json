@@ -8,7 +8,6 @@
         "WORKING_BITS" : 10.0,
         "DAC_BITS" : 8.0,
         "VIDEO_MODE" : 2.0,
-        "DITHER" : 0.0,
 
         "COLOR_FILTER_MODE" : 0.0,
 
