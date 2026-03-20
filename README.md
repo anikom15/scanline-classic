@@ -21,7 +21,7 @@ README Edition 10
 
 Scanline Classic ships with a global options skeleton at `config/options.skel.cfg`.
 To use it, copy it to `config/options.cfg` in your Scanline Classic install, then uncomment the `#define` lines you want to enable.
-This lets you turn on global compile-time options such as disabling bezel rendering, forcing flat geometry, or preserving raw source color output.
+This lets you turn on global compile-time options such as disabling bezel rendering and forcing flat geometry.
 
 ## Preset Overview
 
@@ -78,7 +78,6 @@ Available options in the skeleton include:
 - `OPTION_NOSCANLINES`: disables blank scanlines
 - `OPTION_NOMASK`: disables mask effects
 - `OPTION_NOPHOSPHOR`: disables phosphor decay effects
-- `OPTION_RAW_OUTPUT`: disallows operations that change source image color
 
 Keep `options.skel.cfg` unchanged and put your own edits in `options.cfg`, since the skeleton file may be replaced by future updates.
 
