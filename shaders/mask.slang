@@ -28,6 +28,8 @@
 #include "menus/parameters/colorimetry.inc"
 #include "menus/parameters/factory-geometry.inc"
 
+#pragma include_optional "../config/options.cfg"
+
 #pragma name CRTMask
 #pragma format R16G16B16A16_SFLOAT
 
@@ -666,8 +668,13 @@ void main()
     float incoming_gain = color_gain.a;
 
     // If mask is bypassed, pass through incoming gain unchanged (mask gain = 1.0)
+#ifdef OPTION_NOMASK
+    float packed_gain = pack_gain_pair(incoming_gain, max(1.0, incoming_gain));
+    FragColor = vec4(color, packed_gain);
+    return;
+#else
     if (MASK_BYPASS >= 1.0) {
-        float packed_gain = pack_gain_pair(incoming_gain, peak_mask_gain);
+        float packed_gain = pack_gain_pair(incoming_gain, max(1.0, incoming_gain));
         FragColor = vec4(color, packed_gain);
         return;
     }
@@ -685,4 +692,5 @@ void main()
     float packed_gain = pack_gain_pair(combined_gain, peak_mask_gain);
 
     FragColor = vec4(masked_color, packed_gain);
+#endif  // OPTION_NOMASK
 }

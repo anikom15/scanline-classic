@@ -31,6 +31,8 @@
 #include "menus/parameters/scanraster.inc"
 #include "menus/parameters/sys-timing.inc"
 
+#pragma include_optional "../config/options.cfg"
+
 #pragma name FrameV
 #pragma format R16G16B16A16_SFLOAT
 
@@ -196,6 +198,9 @@ vec3 sample_active_content(float output_x, float output_y)
         original_y += 1.0;
 
     vec3 base = texture(Source, (vec2(original_x, original_y) + 0.5) / config.SourceSize.xy).rgb;
+#ifdef OPTION_NOSCANLINES
+    return base;
+#endif
     bool scaled_blank_line = v_scanline_offset >= 1.0;
 
     // Interlaced handling with parity-aware zero-stuffing

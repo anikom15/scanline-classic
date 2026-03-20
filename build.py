@@ -13,6 +13,7 @@ PRESETS_OUT = os.path.join(OUT, 'presets', 'uhd-4k-sdr')
 
 # Files to copy to OUT
 top_files = ['README.md', 'COPYING', 'NEWS']
+top_dirs = ['share', 'doc', 'config', 'shaders']
 
 def default_workers():
     count = os.cpu_count() or 4
@@ -28,25 +29,16 @@ def prepare_out_folder(verbose=False):
         print(f"Creating folder: {PRESETS_OUT}")
     os.makedirs(PRESETS_OUT, exist_ok=True)
 
-    # Copy share directory
-    share_src = os.path.join(ROOT, 'share')
-    share_dst = os.path.join(OUT, 'share')
-    if os.path.exists(share_src):
-        if verbose:
-            print(f"Copying {share_src} to {share_dst}")
-        shutil.copytree(share_src, share_dst, dirs_exist_ok=True)
-    else:
-        print(f"Warning: share directory not found at {share_src}")
-
-    # Copy doc directory
-    doc_src = os.path.join(ROOT, 'doc')
-    doc_dst = os.path.join(OUT, 'doc')
-    if os.path.exists(doc_src):
-        if verbose:
-            print(f"Copying {doc_src} to {doc_dst}")
-        shutil.copytree(doc_src, doc_dst, dirs_exist_ok=True)
-    else:
-        print(f"Warning: doc directory not found at {doc_src}")
+    # Copy top-level directories that ship with the build output.
+    for dirname in top_dirs:
+        src = os.path.join(ROOT, dirname)
+        dst = os.path.join(OUT, dirname)
+        if os.path.exists(src):
+            if verbose:
+                print(f"Copying {src} to {dst}")
+            shutil.copytree(src, dst, dirs_exist_ok=True)
+        else:
+            print(f"Warning: directory not found at {src}")
 
     # Copy top-level files
     for fname in top_files:
@@ -57,16 +49,6 @@ def prepare_out_folder(verbose=False):
             shutil.copy2(src, OUT)
         else:
             print(f"Warning: {fname} not found.")
-
-    # Copy shaders directory
-    shaders_src = os.path.join(ROOT, 'shaders')
-    shaders_dst = os.path.join(OUT, 'shaders')
-    if os.path.exists(shaders_src):
-        if verbose:
-            print(f"Copying {shaders_src} to {shaders_dst}")
-        shutil.copytree(shaders_src, shaders_dst, dirs_exist_ok=True)
-    else:
-        print(f"Warning: shaders directory not found at {shaders_src}")
 
 def get_python_executable():
     # Prefer .venv/Scripts/python.exe on Windows, .venv/bin/python on Unix

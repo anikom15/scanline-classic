@@ -13,11 +13,15 @@ https://github.com/anikom15/scanline-classic
 A general purpose RetroArch shader with an emphasis on realism while
 maintaining a high degree of flexibility and aesthetic quality. 
 
-Version 8.0
+Version 10.1
 
-README Edition 9
+README Edition 10
 
 ## Quick start
+
+Scanline Classic ships with a global options skeleton at `config/options.skel.cfg`.
+To use it, copy it to `config/options.cfg` in your Scanline Classic install, then uncomment the `#define` lines you want to enable.
+This lets you turn on global compile-time options such as disabling bezel rendering, forcing flat geometry, or preserving raw source color output.
 
 ## Preset Overview
 
@@ -61,6 +65,22 @@ For best results with Scanline Classic presets in RetroArch:
 - To save your configuration for future sessions, use **Quick Menu > Shaders > Save > Save Game Preset** (for per-game) or **Save Core Preset** (for all games on the current core).
 
 These settings help ensure the presets display as designed and make it easy to recall your preferred look.
+
+## Global configuration options
+
+The distribution includes `config/options.skel.cfg` as a template for optional global shader defines.
+Create `config/options.cfg` next to it and uncomment any options you want to enable globally.
+
+Available options in the skeleton include:
+
+- `OPTION_NOBEZEL`: disables bezel and glow rendering
+- `OPTION_FLAT`: forces flat geometry with no curvature or distortion
+- `OPTION_NOSCANLINES`: disables blank scanlines
+- `OPTION_NOMASK`: disables mask effects
+- `OPTION_NOPHOSPHOR`: disables phosphor decay effects
+- `OPTION_RAW_OUTPUT`: disallows operations that change source image color
+
+Keep `options.skel.cfg` unchanged and put your own edits in `options.cfg`, since the skeleton file may be replaced by future updates.
 
 ## Installing additional presets
 

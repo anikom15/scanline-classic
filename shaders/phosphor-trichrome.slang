@@ -24,6 +24,8 @@
 
 #include "menus/parameters/phosphor.inc"
 
+#pragma include_optional "../config/options.cfg"
+
 #pragma name Phosphor3
 #pragma format R16G16B16A16_SFLOAT
 
@@ -102,6 +104,10 @@ void main()
     float alpha = src.a;
 
     // Early exit for full bypass
+#ifdef OPTION_NOPHOSPHOR
+    FragColor = vec4(color, alpha);
+    return;
+#endif
     if (PHOSPHOR_BYPASS >= 1.0) {
         FragColor = vec4(color, alpha);
         return;

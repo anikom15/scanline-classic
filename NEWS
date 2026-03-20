@@ -1,3 +1,7 @@
+Version 10.1
+
+* Added global options file as config/options.cfg
+
 Version 10.0
 
 * WCG mode gamut selection: BT.2020 and DCI

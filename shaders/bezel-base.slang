@@ -48,6 +48,8 @@
 #include "menus/parameters/factory-geometry.inc"
 #include "menus/parameters/output-bezel.inc"
 
+#pragma include_optional "../config/options.cfg"
+
 #pragma parameter BEZEL_BYPASS "Bypass bezel" 0.0 0.0 1.0 1.0
 #pragma parameter GLOW_BYPASS "Bypass glow" 0.0 0.0 1.0 1.0
 #pragma parameter KEY_THRESH "Bezel chroma key threshold" 0.5 0.0 1.0 0.01
@@ -662,6 +664,11 @@ void write_output_color(vec3 final_linear, uint frame)
  */
 void main()
 {
+    // Sample the main CRT screen content with smooth edge guard
+    vec4 screen = vec4(texture(Source, screen_coord).rgb, 1.0);
+    screen.rgb = screen.rgb;
+    screen.a = 1.0; // Ensure opaque screen
+
     uint frame;
     if (config.TotalSubFrames > 1u) {
         frame = (config.FrameCount << 4) + (config.CurrentSubFrame << 4) / config.TotalSubFrames;
@@ -669,10 +676,10 @@ void main()
         frame = config.FrameCount;
     }
 
-    // Sample the main CRT screen content with smooth edge guard
-    vec4 screen = vec4(texture(Source, screen_coord).rgb, 1.0);
-    screen.rgb = screen.rgb;
-    screen.a = 1.0;  // Ensure opaque screen
+#ifdef OPTION_NOBEZEL
+    write_output_color(screen.rgb, frame);
+    return;
+#endif
 
     // Bypass mode: pass through screen content without bezel/glow processing
     if (BEZEL_BYPASS > 0.5)

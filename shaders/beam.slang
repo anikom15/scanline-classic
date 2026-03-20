@@ -31,6 +31,8 @@
 #include "menus/parameters/user-common.inc"
 #include "menus/parameters/user-uncommon.inc"
 
+#pragma include_optional "../config/options.cfg"
+
 #pragma name CRTBeam
 #pragma format R16G16B16A16_SFLOAT
 
@@ -218,6 +220,29 @@ void apply_geometry_pipeline(
     input_tex = uv_full * 0.5 + 0.5; // full video area [0,1]
 }
 
+// Same coordinate transform path as apply_geometry_pipeline, but with all
+// distortion/correction steps removed.
+void apply_geometry_pipeline_nodistort(
+    vec2 uv,
+    float dar,
+    out vec2 input_tex)
+{
+    vec2 uv_screen = uv * 2.0 - 1.0;
+    vec2 sq = vec2(uv_screen.x, uv_screen.y / dar);
+
+    // --- Electronic positioning/sizing and service corrections (all in square space) ---
+    float sx = USER_H_SIZE / 50.0;
+    float sy = USER_V_SIZE / 50.0;
+    float ox = (USER_H_POS - 50.0) / 50.0;
+    float oy = (USER_V_POS - 50.0) / 50.0;
+    float underscan_scale = (USER_UNDERSCAN_TOGGLE > 0.5) ? (1.0 - (UNDERSCAN * 0.01)) : 1.0;
+    // Offset/scale in display-geometry units (dar for X)
+    sq = (sq - vec2(ox * dar, oy)) / (vec2(sx, sy) * underscan_scale);
+
+    vec2 uv_full = vec2(sq.x, sq.y * dar);
+    input_tex = uv_full * 0.5 + 0.5;
+}
+
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
@@ -325,6 +350,12 @@ void main()
 
     // ---- Geometry pipeline ----
     vec2 geometry_uv;
+#ifdef OPTION_FLAT
+    apply_geometry_pipeline_nodistort(
+        active_uv,
+        maskAR,
+        geometry_uv);
+#else
     if (GEOMETRY_BYPASS > 0.5) {
         geometry_uv = active_uv;
     } else {
@@ -333,6 +364,7 @@ void main()
             maskAR,
             geometry_uv);
     }
+#endif
 
     // Remap from geometry UVs to input texture UVs
     vec2 input_uv = vec2(

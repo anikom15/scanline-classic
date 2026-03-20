@@ -30,6 +30,8 @@
 #include "menus/parameters/factory-geometry.inc"
 #include "menus/parameters/output-curve.inc"
 
+#pragma include_optional "../config/options.cfg"
+
 #pragma name Curve
 #pragma format R16G16B16A16_SFLOAT
 
@@ -102,6 +104,50 @@ vec2 barrel_theta(vec2 uv, const float theta_h, const float theta_v)
     return out_uv;
 }
 
+float curve_zoom_factor()
+{
+    float zoom = clamp(ZOOM, 50.0, 200.0) / 100.0; // 1.0 = 100%
+#ifdef OPTION_NOBEZEL_COMPENSATE_ZOOM
+    zoom *= 1.07; // Compensate for bezel cropping when zooming
+#endif
+    return zoom;
+}
+
+vec2 apply_curve_zoom(vec2 tex)
+{
+    return (tex - 0.5) / curve_zoom_factor() + 0.5;
+}
+
+bool curve_tex_out_of_bounds(vec2 tex)
+{
+    return tex.x < 0.0 || tex.x > 1.0 || tex.y < 0.0 || tex.y > 1.0;
+}
+
+void curve_filter_coefficients(out float B, out float C)
+{
+    float focus = clamp(SCREEN_FOCUS * 0.01, 0.0, 1.0);
+    C = -1.0 / 3.0 * focus * focus + 5.0 / 6.0 * focus;
+    B = 1.0 - 2.0 * C;
+}
+
+vec3 sample_curve_source(sampler2D source, vec2 tex, float B, float C)
+{
+    if (CURVE_FILTER < 0.5) {
+        return texture(source, tex).rgb;
+    }
+
+    return sample_bicubic(source, tex, config.SourceSize.zw, B, C);
+}
+
+vec3 apply_curve_debug(vec3 color, vec2 tex)
+{
+    if (CURVE_DEBUG_OUT_OF_RANGE > 0.5) {
+        return zebra(color, 0.0, 10000.0, tex, config.OutputSize.xy, config.FrameCount, 1.0);
+    }
+
+    return color;
+}
+
 // ---- Vertex Shader ----
 
 #pragma stage vertex
@@ -130,6 +176,11 @@ void main()
         return;
     }
 
+    vec2 tex;
+
+#ifdef OPTION_FLAT
+    tex = vTexCoord;
+#else
     // Selected target aspect ratio for framing
     float maskAR = (ASPECT < 0.5)   ? (4.0 / 3.0)
                    : (ASPECT < 1.5) ? (16.0 / 9.0)
@@ -151,38 +202,25 @@ void main()
 
     // Back to texture space
     vec2 uv2 = vec2(sq.x / maskAR, sq.y);
-    vec2 tex = uv2 * 0.5 + 0.5;
+    tex = uv2 * 0.5 + 0.5;
+#endif
 
-    // --- ZOOM implementation ---
-    float zoom = clamp(ZOOM, 50.0, 200.0) / 100.0; // 1.0 = 100%
-    tex = (tex - 0.5) / zoom + 0.5;
-    // ---------------------------
+    tex = apply_curve_zoom(tex);
 
-    // --- Debug: Show surround outside barrel ---
-    if (DEBUG_BARREL_SURROUND > 0.5 && (tex.x < 0.0 || tex.x > 1.0 || tex.y < 0.0 || tex.y > 1.0)) {
+    // Shared debug path for flat and curved sampling outside source bounds.
+    if (DEBUG_BARREL_SURROUND > 0.5 && curve_tex_out_of_bounds(tex)) {
         float alpha = texture(Source, clamp01(tex)).a;
         FragColor = vec4(0.0, 0.0, 0.5, alpha); // Blue
         return;
     }
-    // ------------------------------------------
 
-    // Compute bicubic filter coefficients from focus parameter
-    float focus = clamp(SCREEN_FOCUS * 0.01, 0.0, 1.0);
-    float C = -1.0 / 3.0 * focus * focus + 5.0 / 6.0 * focus;
-    float B = 1.0 - 2.0 * C;
+    float B;
+    float C;
+    curve_filter_coefficients(B, C);
 
-    // Bicubic/Lanczos3/Nearest resample from input texture
-    vec3 color;
     float alpha = texture(Source, clamp01(tex)).a;
-    if (CURVE_FILTER < 0.5) {
-        color = texture(Source, tex).rgb;
-    } else {
-        color = sample_bicubic(Source, tex, config.SourceSize.zw, B, C);
-    }
-
-    if (CURVE_DEBUG_OUT_OF_RANGE > 0.5) {
-        color = zebra(color, 0.0, 10000.0, vTexCoord, config.OutputSize.xy, config.FrameCount, 1.0);
-    }
+    vec3 color = sample_curve_source(Source, tex, B, C);
+    color = apply_curve_debug(color, tex);
 
     FragColor = vec4(max(color, 0.0), alpha);
 }
