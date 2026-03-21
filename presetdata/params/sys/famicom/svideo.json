@@ -1,0 +1,6 @@
+{
+    "parameters" : {
+        "SYS_GAIN_U" : -3.0,
+        "SYS_GAIN_V" : -3.0
+    }
+}

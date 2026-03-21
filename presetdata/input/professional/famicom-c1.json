@@ -1,0 +1,22 @@
+{
+  "filename" : "famicom-c1",
+  "type" : "professional",
+  "title" : "Famicom RGB shader set",
+  "description" : "Represents RGB output from e.g. Sharp C1 TV.  For additional RGB see arcade directory.",
+  "pipeline_root" : "../../pipelines",
+  "pipelines" : [
+    "sys/famicom-rgb.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_root" : "../../params",
+  "parameter_sets" : [
+    "sys/sfc/base.json",
+    "sys/sfc/ntsc.json",
+    "disp/ntscj.json",
+    "disp/trinitron.json",
+    "disp/tvl-400.json"
+  ],
+  "parameter_overrides" : {
+  }
+}

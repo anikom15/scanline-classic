@@ -1,0 +1,22 @@
+{
+  "filename" : "nvs",
+  "type" : "arcade",
+  "title" : "Nintendo Vs. System shader set",
+  "description" : "Arcade version of the Famicom/NES",
+  "pipeline_root" : "../../pipelines",
+  "pipelines" : [
+    "sys/famicom-rgb.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_root" : "../../params",
+  "parameter_sets" : [
+    "sys/sfc/base.json",
+    "sys/sfc/ntsc.json",
+    "disp/ntscj.json",
+    "disp/arcade-flat.json",
+    "disp/tvl-450.json"
+  ],
+  "parameter_overrides" : {
+  }
+}
