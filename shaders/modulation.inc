@@ -286,6 +286,20 @@ float compute_field_phase(
     bool is_interlaced, float pixel_time, float original_width,
     float shorten_odd_field_time)
 {
+    // NES/SNES progressive 240p mode: enforce strict 2-field cadence.
+    // This prevents small timing derivation differences from creating a 3/6/12-field
+    // phase walk when skipped-dot behavior is intended.
+    if (shorten_odd_field_time > 0.5 && is_ntsc && !is_interlaced) {
+        float odd_step_cycles = compute_odd_field_time_adjustment(
+            1.0, 1.0,
+            pixel_time, original_width,
+            is_ntsc, is_interlaced) * sc_freq_hz;
+
+        float odd_phase_cycles = fract(-odd_step_cycles);
+        float parity = mod(field, 2.0);
+        return normalize_phase(2.0 * PI * parity * odd_phase_cycles);
+    }
+
     // Derive field phase from discrete carrier cycles per line/field.
     // This avoids long-term drift caused by reciprocal frequency accumulation.
     float cycles_per_line = sc_freq_hz / h_freq_hz;
