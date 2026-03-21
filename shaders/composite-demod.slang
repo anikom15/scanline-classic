@@ -336,8 +336,9 @@ void main()
             // Right sample (output pixel lattice)
             vec3 pixelR = texture(Source, Tex + nf * dx).rgb;
             // Compute exact phase at right tap position to avoid drift
-            float phaseR_full = normalize_phase(phase0_full + phase_inc_px * nf);
-            float phase_prev_R = normalize_phase(phase_prev_center + phase_inc_px * nf);
+            float phase_delta_px = phase_inc_px * nf;  // Hoist per-iteration computation
+            float phaseR_full = normalize_phase(phase0_full + phase_delta_px);
+            float phase_prev_R = normalize_phase(phase_prev_center + phase_delta_px);
             vec2 carrierR = sincos_phase_raw(phaseR_full);
             float compositeR = pixelR.r;
             float chromaR = pixelR.g;
@@ -397,8 +398,8 @@ void main()
             // Left sample (output pixel lattice)
             vec3 pixelL = texture(Source, Tex - nf * dx).rgb;
             // Compute exact phase at left tap position to avoid drift
-            float phaseL_full = normalize_phase(phase0_full - phase_inc_px * nf);
-            float phase_prev_L = normalize_phase(phase_prev_center - phase_inc_px * nf);
+            float phaseL_full = normalize_phase(phase0_full - phase_delta_px);
+            float phase_prev_L = normalize_phase(phase_prev_center - phase_delta_px);
             vec2 carrierL = sincos_phase_raw(phaseL_full);
             float compositeL = pixelL.r;
             float chromaL = pixelL.g;

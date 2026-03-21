@@ -189,16 +189,17 @@ void main()
 
         // Subcarrier cycles per pixel for modulation (cycles/pixel)
         float f_sc_px = carrier.sc_freq_hz * carrier.pixel_time_px;
+        float phase_scale = 2.0 * PI * f_sc_px;  // Hoist constant multiplier
 
         // Center weights (include fractional horizontal offset Ax)
         float g_bp0 = gaussian(Ax, sigma_bp);
-        float w_bp0 = g_bp0 * cos(2.0 * PI * f_sc_px * Ax);
+        float w_bp0 = g_bp0 * cos(phase_scale * Ax);
 
         c_accum += w_bp0 * composite0;
         sum_c += g_bp0;
 
         float g_notch0 = gaussian(Ax, sigma_notch);
-        float w_notch0 = g_notch0 * cos(2.0 * PI * f_sc_px * Ax);
+        float w_notch0 = g_notch0 * cos(phase_scale * Ax);
         notch_accum += w_notch0 * composite0;
         sum_notch += g_notch0;
 
@@ -217,14 +218,14 @@ void main()
             // Right
             vec2 Tex_r = Tex + nf * dx;
             float comp_r = texture(Source, Tex_r).r;
-            float w_bp_r = g_bp_r * cos(2.0 * PI * f_sc_px * (nf - Ax));
-            float w_notch_r = g_notch_r * cos(2.0 * PI * f_sc_px * (nf - Ax));
+            float w_bp_r = g_bp_r * cos(phase_scale * (nf - Ax));
+            float w_notch_r = g_notch_r * cos(phase_scale * (nf - Ax));
 
             // Left
             vec2 Tex_l = Tex - nf * dx;
             float comp_l = texture(Source, Tex_l).r;
-            float w_bp_l = g_bp_l * cos(2.0 * PI * f_sc_px * (nf + Ax));
-            float w_notch_l = g_notch_l * cos(2.0 * PI * f_sc_px * (nf + Ax));
+            float w_bp_l = g_bp_l * cos(phase_scale * (nf + Ax));
+            float w_notch_l = g_notch_l * cos(phase_scale * (nf + Ax));
 
             c_accum += w_bp_r * comp_r + w_bp_l * comp_l;
             sum_c += g_bp_r + g_bp_l;

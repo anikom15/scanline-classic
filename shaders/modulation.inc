@@ -220,6 +220,7 @@ float compute_v_lines_per_field(
 }
 
 // Detect interlacing and video standard type
+// If both is_ntsc and is_pal are false, it's something else, like VGA
 void detect_scan_mode(
     float original_height, float v_lines_per_field,
     float core_refresh_hz,
@@ -262,7 +263,8 @@ void compute_h_timing(
     float fuzz_frac = h_blank_fuzz / 100.0;
     float clock_factor = max(1.0, round(total_cycles * fuzz_frac / original_width));
     total_pixels = total_cycles / clock_factor;
-    pixel_time = 1.0 / (h_freq_hz * total_pixels);
+    // Simplify: pixel_time = 1.0 / (h_freq_hz * total_pixels) = clock_factor / pixel_clock_hz
+    pixel_time = clock_factor / pixel_clock_hz;
 }
 
 // Compute output scaling factors for both horizontal and vertical dimensions
