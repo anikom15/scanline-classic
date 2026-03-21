@@ -292,5 +292,8 @@ void main()
 	// NES color gate: high when (color phase + sample phase) wraps into first half-cycle
 	float voltage = (wave_phase < 6) ? voltage_high : voltage_low;
 
+    // Shift voltage amount to match real-world contrast better
+    //voltage = (voltage - 0.075) / 0.925;
+
     FragColor = vec4(voltage, 0.0, 0.0, 1.0);
 }
