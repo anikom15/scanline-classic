@@ -119,11 +119,10 @@ void main()
 
     vec2 UV = vTexCoord * config.OutputSize.xy;
     float line = floor(UV.y);
-    float baseIndex = floor(UV.x);
-    float baseCenter = baseIndex + 0.5;
+    float baseCenter = floor(UV.x) + 0.5;
     vec2 Tex = vec2(
         baseCenter * config.OutputSize.z,
-        (floor(UV.y) + 0.5) * config.OutputSize.w);
+        (line + 0.5) * config.OutputSize.w);
 
     vec3 pixel0 = texture(Source, Tex).rgb;
     float t0 = line / carrier.h_freq_hz + baseCenter * carrier.pixel_time_px;

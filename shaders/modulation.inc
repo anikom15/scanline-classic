@@ -260,7 +260,7 @@ void compute_h_timing(
 {
     float total_cycles = pixel_clock_hz / h_freq_hz;
     float fuzz_frac = h_blank_fuzz / 100.0;
-    float clock_factor = round(total_cycles * fuzz_frac / original_width);
+    float clock_factor = max(1.0, round(total_cycles * fuzz_frac / original_width));
     total_pixels = total_cycles / clock_factor;
     pixel_time = 1.0 / (h_freq_hz * total_pixels);
 }
@@ -286,20 +286,6 @@ float compute_field_phase(
     bool is_interlaced, float pixel_time, float original_width,
     float shorten_odd_field_time)
 {
-    // NES/SNES progressive 240p mode: enforce strict 2-field cadence.
-    // This prevents small timing derivation differences from creating a 3/6/12-field
-    // phase walk when skipped-dot behavior is intended.
-    if (shorten_odd_field_time > 0.5 && is_ntsc && !is_interlaced) {
-        float odd_step_cycles = compute_odd_field_time_adjustment(
-            1.0, 1.0,
-            pixel_time, original_width,
-            is_ntsc, is_interlaced) * sc_freq_hz;
-
-        float odd_phase_cycles = fract(-odd_step_cycles);
-        float parity = mod(field, 2.0);
-        return normalize_phase(2.0 * PI * parity * odd_phase_cycles);
-    }
-
     // Derive field phase from discrete carrier cycles per line/field.
     // This avoids long-term drift caused by reciprocal frequency accumulation.
     float cycles_per_line = sc_freq_hz / h_freq_hz;
@@ -312,11 +298,18 @@ float compute_field_phase(
         is_ntsc, is_interlaced);
     float odd_cycles = odd_field_adjust * sc_freq_hz;
 
-    float phase_cycles = fract(field * cycles_per_field + odd_cycles);
-    return normalize_phase(2.0 * PI * phase_cycles);
+    // Progressive NTSC console path: stabilize phase against tiny floating-point drift.
+    // Quantize to 12-step cycle space, matching the field counter range used by timebase (0..11).
+    float frac_cycles_per_field = fract(cycles_per_field);
+    float frac_odd_cycles = fract(odd_cycles);
+
+    float cycles_per_field_q = floor(frac_cycles_per_field * 12.0 + 0.5) / 12.0;
+    float odd_cycles_q = floor(frac_odd_cycles * 12.0 + 0.5) / 12.0;
+
+    float phase_cycles_q = fract(field * cycles_per_field_q + odd_cycles_q);
+    return normalize_phase(2.0 * PI * phase_cycles_q);
 }
 
-// ============================================================================
 // Specialized timebase structs for different shader purposes
 // ============================================================================
 
@@ -421,7 +414,7 @@ FrameGeometry compute_frame_geometry(
     // Calculate horizontal pixels
     float total_cycles = pixel_clock_hz / h_freq_hz;
     float fuzz_frac = h_blank_fuzz / 100.0;
-    float clock_factor = round(total_cycles * fuzz_frac / original_size.x);
+    float clock_factor = max(1.0, round(total_cycles * fuzz_frac / original_size.x));
     geom.h_pixels = total_cycles / clock_factor;
 
     return geom;

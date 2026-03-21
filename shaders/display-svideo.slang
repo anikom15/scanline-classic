@@ -167,15 +167,15 @@ void main()
 
     // Position and base center
     vec2 UV = vTexCoord * config.OutputSize.xy;
+    float line = floor(UV.y);
     float baseIndex = floor(UV.x);
     float baseCenter = baseIndex + 0.5;
     float Ax = UV.x - baseCenter;
     vec2 Tex = vec2(baseCenter * config.OutputSize.z,
-        (floor(UV.y) + 0.5) * config.OutputSize.w);
+        (line + 0.5) * config.OutputSize.w);
     vec2 dx = vec2(config.OutputSize.z, 0.0);
 
     // Carrier phase for center sample
-    float line = floor(UV.y);
     float t0 = line / carrier.h_freq_hz + baseCenter * carrier.pixel_time_px;
     float phase_inc_px = 2.0 * PI * carrier.sc_freq_hz * carrier.pixel_time_px;
 
@@ -184,8 +184,6 @@ void main()
     vec3 pixel0 = texture(Source, Tex).rgb;
     float phase0 = compute_carrier_phase(t0, carrier.sc_freq_hz, carrier.field_phase);
     float phase0_user = normalize_phase(phase0 + c_phase);
-    phase0 = normalize_phase(phase0);
-    vec2 carrier0 = sincos_phase_raw(phase0);
     vec2 carrier0_user = sincos_phase_raw(phase0_user);
 
     // Input chroma already modulated: use directly
@@ -222,9 +220,7 @@ void main()
 
             // Right tap
             vec3 pixelR = texture(Source, Tex + nf * dx).rgb;
-            float phaseR = normalize_phase(phase0 + phase_inc_px * nf);
             float phaseR_user = normalize_phase(phase0_user + phase_inc_px * nf);
-            vec2 carrierR = sincos_phase_raw(phaseR);
             vec2 carrierR_user = sincos_phase_raw(phaseR_user);
             float chroma_modR = pixelR.g;
             float chroma_uR = chroma_modR * 2.0 * carrierR_user.x;
@@ -232,9 +228,7 @@ void main()
 
             // Left tap
             vec3 pixelL = texture(Source, Tex - nf * dx).rgb;
-            float phaseL = normalize_phase(phase0 - phase_inc_px * nf);
             float phaseL_user = normalize_phase(phase0_user - phase_inc_px * nf);
-            vec2 carrierL = sincos_phase_raw(phaseL);
             vec2 carrierL_user = sincos_phase_raw(phaseL_user);
             float chroma_modL = pixelL.g;
             float chroma_uL = chroma_modL * 2.0 * carrierL_user.x;

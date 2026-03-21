@@ -87,10 +87,9 @@ layout(std140, set = 0, binding = 0) uniform UBO
 layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
-layout(location = 1) out float base_cycles;
-layout(location = 2) out float cycles_per_pixel;
-layout(location = 3) out float cycles_per_line;
-layout(location = 4) out float field_phase_offset;
+layout(location = 1) out float cycles_per_pixel;
+layout(location = 2) out float cycles_per_line;
+layout(location = 3) out float field_phase_offset;
 
 void main()
 {
@@ -117,8 +116,7 @@ void main()
 
     CarrierPhaseConfig tb = extract_carrier_phase(tb_full);
 
-    // Precompute fractional cycle at top-left pixel center within field
-    base_cycles = 0.0;
+    // Precompute per-pixel and per-line carrier cycle increments
     cycles_per_pixel = tb.sc_freq_hz * tb.pixel_time_px;
     cycles_per_line = tb.sc_freq_hz / tb.h_freq_hz;
 
@@ -128,10 +126,9 @@ void main()
 #pragma stage fragment
 
 layout(location = 0) in vec2 vTexCoord;
-layout(location = 1) in float base_cycles;
-layout(location = 2) in float cycles_per_pixel;
-layout(location = 3) in float cycles_per_line;
-layout(location = 4) in float field_phase_offset;
+layout(location = 1) in float cycles_per_pixel;
+layout(location = 2) in float cycles_per_line;
+layout(location = 3) in float field_phase_offset;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
@@ -155,7 +152,7 @@ void main()
 
     // Phase via discrete carrier helper using within-field t00 plus field_phase offset
     float phase = compute_carrier_phase_discrete(
-        base_cycles,
+        0.0,
         cycles_per_pixel,
         cycles_per_line,
         pixel_x,

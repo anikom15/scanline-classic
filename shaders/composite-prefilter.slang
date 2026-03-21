@@ -164,13 +164,12 @@ void main()
     // Input composite baseband from previous stage
     vec2 UV = vTexCoord * config.OutputSize.xy;
     float line = floor(UV.y);
-    float baseIndex = floor(UV.x);
-    float baseCenter = baseIndex + 0.5;
+    float baseCenter = floor(UV.x) + 0.5;
     float Ax = UV.x - baseCenter;
 
     vec2 Tex = vec2(
         baseCenter * config.OutputSize.z,
-        (floor(UV.y) + 0.5) * config.OutputSize.w);
+        (line + 0.5) * config.OutputSize.w);
     vec2 dx = vec2(config.OutputSize.z, 0.0);
   
     // Center sample - input is already composite baseband from iq-demod.slang
@@ -274,25 +273,21 @@ void main()
         // Sample phase-aligned taps
         float comb_taps_composite = texture(Source, Tex + dxy).r;
 
-        if (COLOR_FILTER_MODE >= 0.5) {
-            // Mode 1: Simple comb filter using parallel single-tap filter
-            
-            // Single-tap filter
-            float y1 = 0.5 * (composite0 + comb_taps_composite);
-            float c1 = 0.5 * (composite0 - comb_taps_composite);
-            if (COLOR_FILTER_MODE >= 1.5) {
-                // Mode 2: Adaptive comb filter using magnitude-based correlation
-                float composite_corr = compute_point_correlation(abs(composite0), abs(comb_taps_composite));
+        // Mode 1: Simple comb filter using parallel single-tap filter
+        float y1 = 0.5 * (composite0 + comb_taps_composite);
+        float c1 = 0.5 * (composite0 - comb_taps_composite);
+        if (COLOR_FILTER_MODE >= 1.5) {
+            // Mode 2: Adaptive comb filter using magnitude-based correlation
+            float composite_corr = compute_point_correlation(abs(composite0), abs(comb_taps_composite));
 
-                // Smoothly mix using +/-0.05 transition around adapt thresholds
-                float luma_w = smoothstep(COMB_FILTER_LUMA_ADAPT - 0.05, COMB_FILTER_LUMA_ADAPT + 0.05, composite_corr);
+            // Smoothly mix using +/-0.05 transition around adapt thresholds
+            float luma_w = smoothstep(COMB_FILTER_LUMA_ADAPT - 0.05, COMB_FILTER_LUMA_ADAPT + 0.05, composite_corr);
 
-                color_comb.r = mix(y_notch, y1, luma_w);
-                color_comb.g = c1;  // Always use comb chroma
-            } else {
-                // Fixed-weight simple comb filter output
-                color_comb = vec2(y1, c1);
-            }
+            color_comb.r = mix(y_notch, y1, luma_w);
+            color_comb.g = c1;  // Always use comb chroma
+        } else {
+            // Fixed-weight simple comb filter output
+            color_comb = vec2(y1, c1);
         }
     }
 
@@ -321,8 +316,6 @@ void main()
     // BW monitor modes: route either luma-only or chroma-only to all channels
     if (BW_MODE < 0.5) {
         // Normal output (no user scaling applied here)
-    } else if (BW_MODE < 1.5) {
-        color = vec2(y_out, c_out);
     } else if (BW_MODE < 2.5) {
         color = vec2(y_out, 0.0);
     } else if (BW_MODE < 3.5) {

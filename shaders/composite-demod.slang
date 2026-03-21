@@ -191,12 +191,11 @@ void main()
     // Horizontal coordinate handling: nearest pixel center (no Y shift)
     vec2 UV = vTexCoord * config.OutputSize.xy;
     float line = floor(UV.y);
-    float baseIndex = floor(UV.x); // nearest pixel index
-    float baseCenter = baseIndex + 0.5;  // pixel center coordinate
+    float baseCenter = floor(UV.x) + 0.5; // nearest pixel center coordinate
     float Ax = UV.x - baseCenter;        // offset in [-0.5, 0.5]
     vec2 Tex = vec2(
         baseCenter * config.OutputSize.z,
-        (floor(UV.y) + 0.5) * config.OutputSize.w);
+        (line + 0.5) * config.OutputSize.w);
     vec2 dx = vec2(config.OutputSize.z, 0.0);
 
     vec3 wsum = vec3(0.0);
@@ -211,14 +210,13 @@ void main()
     float phase_prev_center = compute_carrier_phase(t0 - (1.0 / carrier.h_freq_hz), carrier.sc_freq_hz, carrier.field_phase);
     phase0_full = normalize_phase(phase0_full);
     phase_prev_center = normalize_phase(phase_prev_center);
-    vec2 carrier0;
 
     float composite0 = pixel0.r;
     float chroma0 = pixel0.g;
     float bypass = pixel0.b;
 
     // Compute phase-neutral carrier (PAL delay line handles alternation via add/subtract)
-    carrier0 = sincos_phase_raw(vec2(phase0_full));
+    vec2 carrier0 = sincos_phase_raw(phase0_full);
 
     // PAL V polarity correction: delay line subtraction produces alternating sign
     float pal_v_sign = 1.0 - 2.0 * floor(mod(line, 2.0)) * step(0.5, DECODER_TYPE);
@@ -261,22 +259,19 @@ void main()
 
     demod0.r = composite0;
 
-    float CORRELATION_MIN = CORRELATION - 0.05;
-    float CORRELATION_MAX = CORRELATION + 0.05;
+    const float CORRELATION_MIN = CORRELATION - 0.05;
+    const float CORRELATION_MAX = CORRELATION + 0.05;
+    const float PHASE_ERROR_MIN = 0.017453; // 1 degree in radians
+    const float PHASE_ERROR_MAX = 0.087266; // 5 degrees in radians
     
     // PAL decoder mode selection (phase-corrected delay-line, simple, or adaptive)
     if (DECODER_TYPE > 0.5) {
-        bool effective_delay_line = use_delay_line;
-
         // ADAPTIVE: blend delay-line with correlation based on phase error magnitude
         if (PAL_DECODER_MODE > 1.5) {
             // Check for external phase error (e.g., incorrect hue knob)
             float actual_phase_shift = normalize_phase(phase0_full - phase_prev_center);
             float phase_error = normalize_phase(actual_phase_shift - system_phase_shift);
             float phase_error_mag = abs(phase_error);
-            
-            const float PHASE_ERROR_MIN = 0.017453; // 1 degree in radians
-            const float PHASE_ERROR_MAX = 0.087266; // 5 degrees in radians
             
             // Blend factor: 0 = correlation decides, 1 = force delay-line
             float phase_blend = smoothstep(PHASE_ERROR_MIN, PHASE_ERROR_MAX, phase_error_mag);
@@ -343,23 +338,18 @@ void main()
             // Compute exact phase at right tap position to avoid drift
             float phaseR_full = normalize_phase(phase0_full + phase_inc_px * nf);
             float phase_prev_R = normalize_phase(phase_prev_center + phase_inc_px * nf);
-            vec2 carrierR = sincos_phase_raw(vec2(phaseR_full));
+            vec2 carrierR = sincos_phase_raw(phaseR_full);
             float compositeR = pixelR.r;
             float chromaR = pixelR.g;
             vec3 demodR;
 
             if (DECODER_TYPE > 0.5) {
-                bool effective_delay_line = use_delay_line;
-
                 // ADAPTIVE: blend delay-line with correlation based on phase error magnitude
                 if (PAL_DECODER_MODE > 1.5) {
                     // Check for external phase error at this sample position
                     float actual_phase_shift = normalize_phase(phaseR_full - phase_prev_R);
                     float phase_error = normalize_phase(actual_phase_shift - system_phase_shift);
                     float phase_error_mag = abs(phase_error);
-                    
-                    const float PHASE_ERROR_MIN = 0.017453; // 1 degree in radians
-                    const float PHASE_ERROR_MAX = 0.087266; // 5 degrees in radians
                     
                     float phase_blend = smoothstep(PHASE_ERROR_MIN, PHASE_ERROR_MAX, phase_error_mag);
 
@@ -409,23 +399,18 @@ void main()
             // Compute exact phase at left tap position to avoid drift
             float phaseL_full = normalize_phase(phase0_full - phase_inc_px * nf);
             float phase_prev_L = normalize_phase(phase_prev_center - phase_inc_px * nf);
-            vec2 carrierL = sincos_phase_raw(vec2(phaseL_full));
+            vec2 carrierL = sincos_phase_raw(phaseL_full);
             float compositeL = pixelL.r;
             float chromaL = pixelL.g;
             vec3 demodL;
 
             if (DECODER_TYPE > 0.5) {
-                bool effective_delay_line = use_delay_line;
-
                 // ADAPTIVE: blend delay-line with correlation based on phase error magnitude
                 if (PAL_DECODER_MODE > 1.5) {
                     // Check for external phase error at this sample position
                     float actual_phase_shift = normalize_phase(phaseL_full - phase_prev_L);
                     float phase_error = normalize_phase(actual_phase_shift - system_phase_shift);
                     float phase_error_mag = abs(phase_error);
-                    
-                    const float PHASE_ERROR_MIN = 0.017453; // 1 degree in radians
-                    const float PHASE_ERROR_MAX = 0.087266; // 5 degrees in radians
                     
                     float phase_blend = smoothstep(PHASE_ERROR_MIN, PHASE_ERROR_MAX, phase_error_mag);
 
@@ -508,8 +493,6 @@ void main()
 
     if (USER_MONOCHROME > 0.5) {
         // Monochrome modes
-        float mono;
-
         if (USER_MONOCHROME < 1.5) {
             // Standard black & white
             color.g = 0.0;

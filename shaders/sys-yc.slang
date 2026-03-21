@@ -140,11 +140,10 @@ void main()
 {
     vec2 UV = vTexCoord * config.OutputSize.xy;
     float line = floor(UV.y);
-    float baseIndex = floor(UV.x);
-    float baseCenter = baseIndex + 0.5;
+    float baseCenter = floor(UV.x) + 0.5;
     vec2 Tex = vec2(
         baseCenter * config.OutputSize.z,
-        (floor(UV.y) + 0.5) * config.OutputSize.w);
+        (line + 0.5) * config.OutputSize.w);
 
     // Convert RGB to selected luma-chroma space
     vec3 rgb = texture(Source, Tex).rgb;
@@ -154,10 +153,10 @@ void main()
     yc = gain * (yc + bias);
     
     // Modulate chroma onto subcarrier
-    vec2 pal_phase = vec2(0.0, floor(mod(line, 2.0)) * PI * PAL);
+    float pal_phase = floor(mod(line, 2.0)) * PI * PAL;
     float t0 = line / tb.h_freq_hz + baseCenter * tb.pixel_time_px;
     float phase0 = compute_carrier_phase(t0, tb.sc_freq_hz, tb.field_phase);
-    vec2 carrier0 = sincos_phase_raw(vec2(phase0) + pal_phase);
+    vec2 carrier0 = sincos_phase_raw(vec2(phase0, phase0 + pal_phase));
     float chroma0 = yc.g * carrier0.x + yc.b * carrier0.y;
 
     float y_gain = 1.0;

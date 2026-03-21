@@ -159,8 +159,7 @@ void main()
     // Input: Y/C signal (luma in R, chroma in G)
     vec2 UV = vTexCoord * config.OutputSize.xy;
     float line = floor(UV.y);
-    float baseIndex = floor(UV.x);
-    float baseCenter = baseIndex + 0.5;
+    float baseCenter = floor(UV.x) + 0.5;
     float Ax = UV.x - baseCenter;
 
     vec2 Tex = vec2(baseCenter * config.OutputSize.z,
@@ -170,11 +169,7 @@ void main()
     // If bypass is enabled, just sum Y+C and output
     if (BYPASS_YC_FILTER > 0.5) {
         vec2 yc = texture(Source, Tex).rg;
-        float y_out = yc.r;
-        float c_bp = yc.g;
-        float color = y_out + c_bp;
-        
-        FragColor = vec4(color, 0.0, 0.0, 1.0);
+        FragColor = vec4(yc.r + yc.g, 0.0, 0.0, 1.0);
         return;
     }
 
@@ -195,15 +190,16 @@ void main()
 
     // Subcarrier cycles per pixel for modulation (cycles/pixel)
     float f_sc_px = carrier.sc_freq_hz * carrier.pixel_time_px;
+    float phase_scale = 2.0 * PI * f_sc_px;
 
     // Center weights (include fractional horizontal offset Ax)
     float g_bp0 = gaussian(Ax, sigma_bp);
-    float w_bp0 = g_bp0 * cos(2.0 * PI * f_sc_px * Ax);
+    float w_bp0 = g_bp0 * cos(phase_scale * Ax);
     bp_accum_c += w_bp0 * chroma0;
     sum_bp += g_bp0;
 
     float g_notch0 = gaussian(Ax, sigma_notch);
-    float w_notch0 = g_notch0 * cos(2.0 * PI * f_sc_px * Ax);
+    float w_notch0 = g_notch0 * cos(phase_scale * Ax);
     notch_accum_y += w_notch0 * luma0;
     sum_notch += g_notch0;
 
@@ -234,12 +230,12 @@ void main()
         vec2 yc_l = texture(Source, Tex_l).rg;
 
         // Chroma bandpass weights
-        float w_bp_r = g_bp_r * cos(2.0 * PI * f_sc_px * (nf - Ax));
-        float w_bp_l = g_bp_l * cos(2.0 * PI * f_sc_px * (nf + Ax));
+        float w_bp_r = g_bp_r * cos(phase_scale * (nf - Ax));
+        float w_bp_l = g_bp_l * cos(phase_scale * (nf + Ax));
 
         // Luma notch bandpass weights
-        float w_notch_r = g_notch_r * cos(2.0 * PI * f_sc_px * (nf - Ax));
-        float w_notch_l = g_notch_l * cos(2.0 * PI * f_sc_px * (nf + Ax));
+        float w_notch_r = g_notch_r * cos(phase_scale * (nf - Ax));
+        float w_notch_l = g_notch_l * cos(phase_scale * (nf + Ax));
 
         // Accumulate chroma bandpass and luma notch bandpass
         bp_accum_c += w_bp_r * yc_r.g + w_bp_l * yc_l.g;

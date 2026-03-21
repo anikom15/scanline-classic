@@ -156,12 +156,12 @@ void main()
 
     // Horizontal coordinate handling using nearest pixel-center addressing
     vec2 UV  = vTexCoord * config.OutputSize.xy;
-    float baseIndex = floor(UV.x + 0.5);   // nearest pixel index
-    float baseCenter = baseIndex + 0.5;    // pixel center position
+    float baseCenter = floor(UV.x + 0.5) + 0.5;  // pixel center position
+    float line = floor(UV.y);
     float Ax = UV.x - baseCenter;          // offset from center in [-0.5, 0.5]
     vec2 Tex = vec2(
         baseCenter * config.OutputSize.z,
-        (floor(UV.y) + 0.5) * config.OutputSize.w);
+        (line + 0.5) * config.OutputSize.w);
     vec2 dx  = vec2(config.OutputSize.z, 0.0);
 
     // Accumulators and weights for Y, U/Db, V/Dr
