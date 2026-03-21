@@ -3,6 +3,7 @@
     "shaders" : {
         "frame" : "frameh",
         "special" : "famicom-special",
+        "filter" : "filter",
         "composite-iq" : "composite-iq",
         "iq-filter" : "iq-filter",
         "iq-noise" : "iq-noise",

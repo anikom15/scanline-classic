@@ -29,7 +29,7 @@ layout(push_constant) uniform Push
 {
     vec4 OriginalSize;
 	vec4 OutputSize;
-    vec4 FrameHSize;
+	vec4 FrameHSize;
     float OriginalFPS;
 	uint FrameCount;
     float SC_FREQ_MODE;
@@ -53,7 +53,8 @@ layout(std140, set = 0, binding = 0) uniform UBO
 layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
-layout(location = 1) out CarrierPhaseConfig carrier;
+layout(location = 1) out float h_scale;
+layout(location = 2) out CarrierPhaseConfig carrier;
 
 void main()
 {
@@ -78,6 +79,14 @@ void main()
         config.H_BLANK_FUZZ,
         config.SHORTEN_ODD_FIELD_TIME);
     carrier = extract_carrier_phase(tb);
+
+    compute_scale_factors(
+        config.FrameHSize.x,
+        config.OutputSize.x,
+        config.OutputSize.y,
+        tb.h_pixels,
+        tb.v_lines_per_field,
+        h_scale);
 }
 
 #pragma stage fragment
@@ -165,13 +174,73 @@ const vec4 IRE_HIGH_TABLE[] = vec4[](
     vec4(IRE_TABLE.x1d, IRE_TABLE.x1d, IRE_TABLE.x1d, IRE_TABLE.x1d)
 );
 
+const vec4 IRE_LOW_TABLE_EMPH[] = vec4[](
+    vec4(IRE_TABLE.x00_emph, IRE_TABLE.x10_emph, IRE_TABLE.x20_emph, IRE_TABLE.x30_emph),
+    vec4(IRE_TABLE.x0d_emph, IRE_TABLE.x1d_emph, IRE_TABLE.x2d_emph, IRE_TABLE.x3d_emph),
+    vec4(IRE_TABLE.x0d_emph, IRE_TABLE.x1d_emph, IRE_TABLE.x2d_emph, IRE_TABLE.x3d_emph),
+    vec4(IRE_TABLE.x0d_emph, IRE_TABLE.x1d_emph, IRE_TABLE.x2d_emph, IRE_TABLE.x3d_emph),
+    vec4(IRE_TABLE.x0d_emph, IRE_TABLE.x1d_emph, IRE_TABLE.x2d_emph, IRE_TABLE.x3d_emph),
+    vec4(IRE_TABLE.x0d_emph, IRE_TABLE.x1d_emph, IRE_TABLE.x2d_emph, IRE_TABLE.x3d_emph),
+    vec4(IRE_TABLE.x0d_emph, IRE_TABLE.x1d_emph, IRE_TABLE.x2d_emph, IRE_TABLE.x3d_emph),
+    vec4(IRE_TABLE.x0d_emph, IRE_TABLE.x1d_emph, IRE_TABLE.x2d_emph, IRE_TABLE.x3d_emph),
+    vec4(IRE_TABLE.x0d_emph, IRE_TABLE.x1d_emph, IRE_TABLE.x2d_emph, IRE_TABLE.x3d_emph),
+    vec4(IRE_TABLE.x0d_emph, IRE_TABLE.x1d_emph, IRE_TABLE.x2d_emph, IRE_TABLE.x3d_emph),
+    vec4(IRE_TABLE.x0d_emph, IRE_TABLE.x1d_emph, IRE_TABLE.x2d_emph, IRE_TABLE.x3d_emph),
+    vec4(IRE_TABLE.x0d_emph, IRE_TABLE.x1d_emph, IRE_TABLE.x2d_emph, IRE_TABLE.x3d_emph),
+    vec4(IRE_TABLE.x0d_emph, IRE_TABLE.x1d_emph, IRE_TABLE.x2d_emph, IRE_TABLE.x3d_emph),
+    vec4(IRE_TABLE.x0d_emph, IRE_TABLE.x1d_emph, IRE_TABLE.x2d_emph, IRE_TABLE.x3d_emph),
+    vec4(IRE_TABLE.x1d_emph, IRE_TABLE.x1d_emph, IRE_TABLE.x1d_emph, IRE_TABLE.x1d_emph),
+    vec4(IRE_TABLE.x1d_emph, IRE_TABLE.x1d_emph, IRE_TABLE.x1d_emph, IRE_TABLE.x1d_emph)
+);
+
+const vec4 IRE_HIGH_TABLE_EMPH[] = vec4[](
+    vec4(IRE_TABLE.x00_emph, IRE_TABLE.x10_emph, IRE_TABLE.x20_emph, IRE_TABLE.x30_emph),
+    vec4(IRE_TABLE.x00_emph, IRE_TABLE.x10_emph, IRE_TABLE.x20_emph, IRE_TABLE.x30_emph),
+    vec4(IRE_TABLE.x00_emph, IRE_TABLE.x10_emph, IRE_TABLE.x20_emph, IRE_TABLE.x30_emph),
+    vec4(IRE_TABLE.x00_emph, IRE_TABLE.x10_emph, IRE_TABLE.x20_emph, IRE_TABLE.x30_emph),
+    vec4(IRE_TABLE.x00_emph, IRE_TABLE.x10_emph, IRE_TABLE.x20_emph, IRE_TABLE.x30_emph),
+    vec4(IRE_TABLE.x00_emph, IRE_TABLE.x10_emph, IRE_TABLE.x20_emph, IRE_TABLE.x30_emph),
+    vec4(IRE_TABLE.x00_emph, IRE_TABLE.x10_emph, IRE_TABLE.x20_emph, IRE_TABLE.x30_emph),
+    vec4(IRE_TABLE.x00_emph, IRE_TABLE.x10_emph, IRE_TABLE.x20_emph, IRE_TABLE.x30_emph),
+    vec4(IRE_TABLE.x00_emph, IRE_TABLE.x10_emph, IRE_TABLE.x20_emph, IRE_TABLE.x30_emph),
+    vec4(IRE_TABLE.x00_emph, IRE_TABLE.x10_emph, IRE_TABLE.x20_emph, IRE_TABLE.x30_emph),
+    vec4(IRE_TABLE.x00_emph, IRE_TABLE.x10_emph, IRE_TABLE.x20_emph, IRE_TABLE.x30_emph),
+    vec4(IRE_TABLE.x00_emph, IRE_TABLE.x10_emph, IRE_TABLE.x20_emph, IRE_TABLE.x30_emph),
+    vec4(IRE_TABLE.x00_emph, IRE_TABLE.x10_emph, IRE_TABLE.x20_emph, IRE_TABLE.x30_emph),
+    vec4(IRE_TABLE.x0d_emph, IRE_TABLE.x1d_emph, IRE_TABLE.x2d_emph, IRE_TABLE.x3d_emph),
+    vec4(IRE_TABLE.x1d_emph, IRE_TABLE.x1d_emph, IRE_TABLE.x1d_emph, IRE_TABLE.x1d_emph),
+    vec4(IRE_TABLE.x1d_emph, IRE_TABLE.x1d_emph, IRE_TABLE.x1d_emph, IRE_TABLE.x1d_emph)
+);
+
+const float FAMICOM_PHASE_OFFSET_DEG = -60.0;
+const float FAMICOM_PHASE_OFFSET_CYCLES = FAMICOM_PHASE_OFFSET_DEG / 360.0;
+
+bool phase_gate_high(const int color_phase, const int phase_index)
+{
+    return int(mod(float(color_phase + phase_index), 12.0)) < 6;
+}
+
 layout(location = 0) in vec2 vTexCoord;
-layout(location = 1) in CarrierPhaseConfig carrier;
+layout(location = 1) in float h_scale;
+layout(location = 2) in CarrierPhaseConfig carrier;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
 void main()
 {
+	// Skip padding: output pixel must fall within centered active area.
+	// Active width = OriginalSize.x * h_scale = 256 * 8 = 2048 pixels.
+	// Output width = OutputSize.x = 2728 pixels.
+	// Centered: left edge = (2728-2048)/2 = 340, right edge = 340+2048 = 2388.
+	float output_x = vTexCoord.x * config.OutputSize.x;
+	float active_width = config.OriginalSize.x * h_scale;
+	float active_left = (config.OutputSize.x - active_width) * 0.5;
+	float active_right = active_left + active_width;
+	if (output_x < active_left || output_x >= active_right) {
+		FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+		return;
+	}
+
 	vec3 rgb = texture(Source, vTexCoord).rgb;
 
     // Extract the chroma, level, and emphasis from the normalized RGB triplet
@@ -185,12 +254,8 @@ void main()
 	int level_index = clamp(level, 0, 3);
 	float voltage_low = IRE_LOW_TABLE[color_index][level_index] / 100.0;
 	float voltage_high = IRE_HIGH_TABLE[color_index][level_index] / 100.0;
-
-    // Monochrome case
-    if (color == 0) {
-        FragColor = vec4(voltage_low, 0.0, 0.0, 1.0);
-        return;
-	}
+    float voltage_low_emph = IRE_LOW_TABLE_EMPH[color_index][level_index] / 100.0;
+    float voltage_high_emph = IRE_HIGH_TABLE_EMPH[color_index][level_index] / 100.0;
 
     vec2 UV = vTexCoord * config.OutputSize.xy;
     float line = floor(UV.y);
@@ -200,9 +265,29 @@ void main()
     float cycles_per_pixel = fract(carrier.sc_freq_hz * carrier.pixel_time_px);
     float cycles_per_line = fract(carrier.sc_freq_hz / carrier.h_freq_hz);
     float field_cycles = fract(carrier.field_phase / (2.0 * PI));
-    float phase_cycles = fract(base_center * cycles_per_pixel + line * cycles_per_line + field_cycles);
+    float phase_cycles = fract(
+        base_center * cycles_per_pixel
+        + line * cycles_per_line
+        + field_cycles
+        + FAMICOM_PHASE_OFFSET_CYCLES);
     int phase_index = int(mod(floor(12.0 * phase_cycles + 1e-4), 12.0));
     int wave_phase = int(mod(float(color + phase_index), 12.0));
+
+    // NES emphasis bits gate one shared attenuator by carrier phase:
+    // bit0 -> phase C, bit1 -> phase 4, bit2 -> phase 8.
+    // Colors E/F are not affected.
+    bool emph_active = false;
+    if (color < 14) {
+        emph_active =
+            (((emphasis & 0x1) != 0) && phase_gate_high(0xC, phase_index)) ||
+            (((emphasis & 0x2) != 0) && phase_gate_high(0x4, phase_index)) ||
+            (((emphasis & 0x4) != 0) && phase_gate_high(0x8, phase_index));
+    }
+
+    if (emph_active) {
+        voltage_low = voltage_low_emph;
+        voltage_high = voltage_high_emph;
+    }
 
 	// NES color gate: high when (color phase + sample phase) wraps into first half-cycle
 	float voltage = (wave_phase < 6) ? voltage_high : voltage_low;
