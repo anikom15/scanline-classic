@@ -17,6 +17,6 @@
 
         "PIXEL_CLOCK_MODE" : 1.0,
         "H_FREQ_MODE" : 1.0,
-        "H_BLANK_FUZZ" : 75.0
+        "H_BLANK_FUZZ" : 88.0
     }
 }
