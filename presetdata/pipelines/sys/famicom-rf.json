@@ -1,6 +1,7 @@
 {
     "root_path" : "../../../shaders",
     "shaders" : {
+        "menu" : "menus/menu-famicom-sdr",
         "frame" : "frameh",
         "special" : "famicom-special",
         "filter" : "filter",

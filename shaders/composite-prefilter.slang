@@ -27,7 +27,6 @@
 #include "bandlimit.inc"
 
 #include "menus/parameters/sys-timing.inc"
-#include "menus/parameters/sys-encode.inc"
 #include "menus/parameters/composite.inc"
 
 #pragma parameter BYPASS_PREFILTER "Bypass prefilter (off, on)" 0.0 0.0 1.0 1.0
