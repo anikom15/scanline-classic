@@ -1,8 +1,10 @@
 Version 10.1
 
+* Add Famicom presets and shaders
+
 * Added global options file as config/options.cfg
 
-* Add Famicom presets and shaders
+* Add an option for darker and brighter HDR output
 
 * Remove MASK_DIFFUSION; diffusion is handled automatically
 

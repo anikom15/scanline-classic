@@ -21,13 +21,13 @@
 #include "color.inc"
 #include "tools/zebra.inc"
 
-#include "menus/parameters/output-tonemap.inc"
 #include "menus/parameters/colorimetry.inc"
 #include "menus/parameters/output-color.inc"
 #include "menus/parameters/user-common.inc"
 
 #pragma parameter COLOR_CONVERSION_BYPASS "Bypass color correction" 0.0 0.0 1.0 1.0
 #pragma parameter DEBUG_COLOR_DELTA "Show color correction deltas" 0.0 0.0 1.0 1.0
+#pragma parameter MAKEUP_GAIN "Makeup gain (off, on)" 1.0 0.0 1.0 1.0
 #pragma parameter COLOR_DEBUG_OUT_OF_RANGE "Debug out-of-range colors" 0.0 0.0 1.0 1.0
 #pragma parameter DEBUG_CARD "Show debug card" 0.0 0.0 1.0 1.0
 
@@ -54,7 +54,11 @@ layout(push_constant) uniform Push
 #endif
     float COLOR_CONVERSION_BYPASS;
     float COLORIMETRY_PRESET;
+#ifdef HDR
+    float VIEWING_ENVIRONMENT;
+#else
     float TONEMAP_TYPE;
+#endif
     float MAKEUP_GAIN;
     float DEBUG_COLOR_DELTA;
     float COLOR_DEBUG_OUT_OF_RANGE;
@@ -83,7 +87,12 @@ layout(push_constant) uniform Push
 #define GAMUT_SELECT config.GAMUT_SELECT
 #endif
 
+#ifdef HDR
+#define VIEWING_ENVIRONMENT config.VIEWING_ENVIRONMENT
+#else
 #define TONEMAP_TYPE config.TONEMAP_TYPE
+#endif
+
 #define MAKEUP_GAIN config.MAKEUP_GAIN
 
 #define COLOR_CONVERSION_BYPASS config.COLOR_CONVERSION_BYPASS
@@ -618,7 +627,18 @@ vec3 render_debug_card(vec2 uv, float safe_gain, float peak_gain, Colorimetry co
 
 void main()
 {
+#ifdef HDR
+    float TARGET_NITS;
+    if (VIEWING_ENVIRONMENT < 0.5) {
+        TARGET_NITS = 100.0 / (48.0 / 100.0);
+    } else if (VIEWING_ENVIRONMENT < 1.5) {
+        TARGET_NITS = 100.0;
+    } else {
+        TARGET_NITS = 100.0 / (203.0 / 100.0);
+    }
+#else
     const float TARGET_NITS = 100.0;
+#endif
 
     vec4 src = texture(Source, vTexCoord);
     vec3 YrYgYb = src.rgb;
