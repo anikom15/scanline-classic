@@ -1,11 +1,11 @@
 {
-  "filename" : "famicom-c1",
+  "filename" : "nes",
   "type" : "professional",
-  "title" : "Famicom RGB shader set",
-  "description" : "Represents RGB output from e.g. Sharp C1 TV.  For additional RGB see arcade directory.",
+  "title" : "NES composite shader set (NTSC)",
+  "description" : "The NES was equipped with RF and A/V output.",
   "pipeline_root" : "../../pipelines",
   "pipelines" : [
-    "sys/famicom-rgb.json",
+    "sys/famicom-composite.json",
     "disp/crt.json",
     "misc/post.json"
   ],
@@ -13,8 +13,9 @@
   "parameter_sets" : [
     "sys/sfc/base.json",
     "sys/sfc/ntsc.json",
-    "disp/ntscj.json",
-    "disp/tv.json",
+    "sys/famicom/famicom-av.json",
+    "disp/ntsc.json",
+    "disp/trinitron.json",
     "disp/tvl-400.json"
   ],
   "parameter_overrides" : {
