@@ -1,4 +1,6 @@
 #pragma parameter FAMICOM_HEADER " —— System: Famicom/NES Settings —— " 0.0 0.0 0.0 0.0
+#pragma parameter PAL "Phase alternating line (off, on)" 0.0 0.0 1.0 1.0
+
 #pragma parameter FILTER_BANDWIDTH "Filter bandwidth (MHz)" 7.0 0.0 150.0 0.01
 #pragma parameter FILTER_CUTOFF_ATTEN "Filter cutoff attenuation (dB)" 20.0 0.0 30.0 1.0
 

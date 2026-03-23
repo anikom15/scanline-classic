@@ -24,6 +24,7 @@
 #include "modulation.inc"
 
 #include "menus/parameters/sys-timing.inc"
+#include "menus/parameters/famicom.inc"
 
 layout(push_constant) uniform Push
 {
@@ -41,8 +42,11 @@ layout(push_constant) uniform Push
     float V_FREQ_MODE;
     float V_FREQ;
     float H_BLANK_FUZZ;
-	float SHORTEN_ODD_FIELD_TIME;
+    float SHORTEN_ODD_FIELD_TIME;
+    float PAL;
 } config;
+
+#define PAL config.PAL
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
@@ -212,8 +216,8 @@ const vec4 IRE_HIGH_TABLE_EMPH[] = vec4[](
     vec4(IRE_TABLE.x1d_emph, IRE_TABLE.x1d_emph, IRE_TABLE.x1d_emph, IRE_TABLE.x1d_emph)
 );
 
-const float FAMICOM_PHASE_OFFSET_DEG = -60.0;
-const float FAMICOM_PHASE_OFFSET_CYCLES = FAMICOM_PHASE_OFFSET_DEG / 360.0;
+const float FAMICOM_PHASE_OFFSET_CYCLES_NTSC = -60.0 / 360.0;
+const float FAMICOM_PHASE_OFFSET_CYCLES_PAL = -75.0 / 360.0;
 
 bool phase_gate_high(const int color_phase, const int phase_index)
 {
@@ -228,10 +232,14 @@ layout(set = 0, binding = 2) uniform sampler2D Source;
 
 void main()
 {
-	// Skip padding: output pixel must fall within centered active area.
-	// Active width = OriginalSize.x * h_scale = 256 * 8 = 2048 pixels.
-	// Output width = OutputSize.x = 2728 pixels.
-	// Centered: left edge = (2728-2048)/2 = 340, right edge = 340+2048 = 2388.
+    // Skip padding: output pixel must fall within centered active area.
+    // Active width = OriginalSize.x * h_scale = 256 * 8 = 2048 pixels.
+    // Centering is dynamic from OutputSize.x:
+    //   active_left  = (OutputSize.x - active_width) / 2
+    //   active_right = active_left + active_width
+    // Examples:
+    //   OutputSize.x = 2728 -> [340, 2388)
+    //   OutputSize.x = 3410 -> [425, 2473)
 	float output_x = vTexCoord.x * config.OutputSize.x;
 	float active_width = config.OriginalSize.x * h_scale;
 	float active_left = (config.OutputSize.x - active_width) * 0.5;
@@ -265,11 +273,14 @@ void main()
     float cycles_per_pixel = fract(carrier.sc_freq_hz * carrier.pixel_time_px);
     float cycles_per_line = fract(carrier.sc_freq_hz / carrier.h_freq_hz);
     float field_cycles = fract(carrier.field_phase / (2.0 * PI));
-    float phase_cycles = fract(
+    float phase_offset_cycles = mix(FAMICOM_PHASE_OFFSET_CYCLES_NTSC, FAMICOM_PHASE_OFFSET_CYCLES_PAL, PAL);
+    float base_phase_cycles = fract(
         base_center * cycles_per_pixel
         + line * cycles_per_line
         + field_cycles
-        + FAMICOM_PHASE_OFFSET_CYCLES);
+        + phase_offset_cycles);
+    float pal_v_sign = 1.0 - 2.0 * floor(mod(line, 2.0)) * PAL;
+    float phase_cycles = fract(base_phase_cycles * pal_v_sign);
     int phase_index = int(mod(floor(12.0 * phase_cycles + 1e-4), 12.0));
     int wave_phase = int(mod(float(color + phase_index), 12.0));
 
