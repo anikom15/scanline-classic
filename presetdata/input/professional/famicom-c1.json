@@ -14,8 +14,8 @@
     "sys/sfc/base.json",
     "sys/sfc/ntsc.json",
     "disp/ntscj.json",
-    "disp/trinitron.json",
-    "disp/tvl-400.json"
+    "disp/tv.json",
+    "disp/tvl-300.json"
   ],
   "parameter_overrides" : {
   }

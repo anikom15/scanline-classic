@@ -17,7 +17,7 @@
     "sys/sfc/ntsc.json",
     "disp/ntscj.json",
     "disp/arcade-tvstyle.json",
-    "disp/tvl-450.json"
+    "disp/tvl-400.json"
   ],
   "parameter_overrides" : {
   }

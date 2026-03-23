@@ -16,7 +16,7 @@
     "sys/neogeo.json",
     "disp/ntscj.json",
     "disp/arcade-flat.json",
-    "disp/tvl-450.json"
+    "disp/tvl-400.json"
   ],
   "parameter_overrides" : {
   }
