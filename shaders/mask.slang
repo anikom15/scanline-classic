@@ -35,6 +35,7 @@
 
 #pragma parameter MASK_BYPASS "Bypass CRT mask" 0.0 0.0 1.0 1.0
 #pragma parameter MASK_DEBUG_OUT_OF_RANGE "Beam-mask: Show out-of-range colors" 0.0 0.0 1.0 1.0
+#pragma parameter SLOT_VERTICAL_BIAS "Slot mask vertical bias" 0.0 0.0 1.0 0.01
 
 layout(push_constant) uniform Push
 {
@@ -46,6 +47,7 @@ layout(push_constant) uniform Push
     float MASK_INTENSITY;
     float TVL;
     float MASK_DEBUG_OUT_OF_RANGE;
+    float SLOT_VERTICAL_BIAS;
 } config;
 
 layout(std140, set = 0, binding = 0) uniform UBO {
@@ -58,6 +60,7 @@ layout(std140, set = 0, binding = 0) uniform UBO {
 #define MASK_INTENSITY config.MASK_INTENSITY
 #define TVL config.TVL
 #define MASK_DEBUG_OUT_OF_RANGE config.MASK_DEBUG_OUT_OF_RANGE
+#define SLOT_VERTICAL_BIAS config.SLOT_VERTICAL_BIAS
 
 float derive_mask_sigma_value(float tvl, float output_height)
 {
@@ -121,79 +124,64 @@ vec3 integrate_aperture_grille_numerical(float x_min, float x_max, float sigma_x
     return sum / float(samples);
 }
 
-// 2D numerical integration for slot mask (18-unit horizontal, 3-unit vertical cycle)
+// 2D numerical integration for slot mask (12-unit horizontal, 3-unit vertical cycle)
 vec3 integrate_slot_mask_numerical(
     float x_min, float x_max, float y_min, float y_max,
     float sigma_x, float sigma_v,
     int samples_x, int samples_y)
 {
-    // Vertical weights for conjoined slot families:
-    // family 0 (12/14/16) bridges rows 0-1
-    // family 1 (0/2/4) bridges rows 1-2
-    // family 2 (6/8/10) bridges rows 2-0
-    vec3 family_weights = vec3(0.0);
+    // Vertical weights for 2-family slot cycle:
+    // family A (12/14/16) and family B (0/2/4)
+    // centers are symmetrically biased toward each other.
+    vec2 family_weights = vec2(0.0);
     float step_y = (y_max - y_min) / float(samples_y);
 
     for (int j = 0; j < samples_y; ++j) {
         float y = y_min + (float(j) + 0.5) * step_y;
         float vc = mod(y - 0.5, 3.0);
 
-        float w01 = slotFamilyWeight(vc, 0.5, sigma_v);
-        float w12 = slotFamilyWeight(vc, 1.5, sigma_v);
-        float w20 = slotFamilyWeight(vc, 2.5, sigma_v);
+        float wA = slotFamilyWeight(vc, 0.5 + SLOT_VERTICAL_BIAS, sigma_v);
+        float wB = slotFamilyWeight(vc, 2.0 - SLOT_VERTICAL_BIAS, sigma_v);
 
-        family_weights += vec3(w01, w12, w20);
+        family_weights += vec2(wA, wB);
     }
     family_weights /= float(samples_y);
 
-    // Horizontal integration for each conjoined family (18-unit cycle)
+    // Horizontal integration for each family (12-unit cycle)
     float step_x = (x_max - x_min) / float(samples_x);
-    vec3 family0 = vec3(0.0), family1 = vec3(0.0), family2 = vec3(0.0);
+    vec3 familyA = vec3(0.0), familyB = vec3(0.0);
 
     for (int i = 0; i < samples_x; ++i) {
         float x = x_min + (float(i) + 0.5) * step_x;
-        float cycle = mod(x - 0.5, 18.0);
+        float cycle = mod(x - 0.5, 12.0);
 
-        // Family 0 (rows 0-1): RGB at 12, 14, 16
-        float dR0 = cyclicDist(cycle, 12.0, 18.0);
-        float dG0 = cyclicDist(cycle, 14.0, 18.0);
-        float dB0 = cyclicDist(cycle, 16.0, 18.0);
+        // Family A: RGB at 0, 2, 4
+        float dR0 = cyclicDist(cycle, 0.0, 12.0);
+        float dG0 = cyclicDist(cycle, 2.0, 12.0);
+        float dB0 = cyclicDist(cycle, 4.0, 12.0);
 
-        family0 += vec3(
+        familyA += vec3(
             exp(-0.5 * dR0 * dR0 / (sigma_x * sigma_x)),
             exp(-0.5 * dG0 * dG0 / (sigma_x * sigma_x)),
             exp(-0.5 * dB0 * dB0 / (sigma_x * sigma_x))
         );
 
-        // Family 1 (rows 1-2): RGB at 0, 2, 4
-        float dR1 = cyclicDist(cycle, 0.0, 18.0);
-        float dG1 = cyclicDist(cycle, 2.0, 18.0);
-        float dB1 = cyclicDist(cycle, 4.0, 18.0);
+        // Family B: RGB at 6, 8, 10
+        float dR1 = cyclicDist(cycle, 6.0, 12.0);
+        float dG1 = cyclicDist(cycle, 8.0, 12.0);
+        float dB1 = cyclicDist(cycle, 10.0, 12.0);
 
-        family1 += vec3(
+        familyB += vec3(
             exp(-0.5 * dR1 * dR1 / (sigma_x * sigma_x)),
             exp(-0.5 * dG1 * dG1 / (sigma_x * sigma_x)),
             exp(-0.5 * dB1 * dB1 / (sigma_x * sigma_x))
         );
-
-        // Family 2 (rows 2-0): RGB at 6, 8, 10
-        float dR2 = cyclicDist(cycle, 6.0, 18.0);
-        float dG2 = cyclicDist(cycle, 8.0, 18.0);
-        float dB2 = cyclicDist(cycle, 10.0, 18.0);
-
-        family2 += vec3(
-            exp(-0.5 * dR2 * dR2 / (sigma_x * sigma_x)),
-            exp(-0.5 * dG2 * dG2 / (sigma_x * sigma_x)),
-            exp(-0.5 * dB2 * dB2 / (sigma_x * sigma_x))
-        );
     }
 
-    family0 /= float(samples_x);
-    family1 /= float(samples_x);
-    family2 /= float(samples_x);
+    familyA /= float(samples_x);
+    familyB /= float(samples_x);
 
-    // Combine conjoined slot families
-    return family_weights.x * family0 + family_weights.y * family1 + family_weights.z * family2;
+    return family_weights.x * familyA + family_weights.y * familyB;
 }
 
 // 2D numerical integration for shadow mask (6-unit horizontal, 4-unit vertical cycle)
@@ -273,45 +261,34 @@ vec3 compute_mask_point_sample(float x_units, float y_units, vec2 sigma, float m
     }
 
     if (mask_type < 1.5) {
-        float cycle = mod(x_units - 0.5, 18.0);
+        float cycle = mod(x_units - 0.5, 12.0);
         float vcycle = mod(y_units - 0.5, 3.0);
         float sigma_v = sigma.y;
-        float w01 = slotFamilyWeight(vcycle, 0.5, sigma_v);
-        float w12 = slotFamilyWeight(vcycle, 1.5, sigma_v);
-        float w20 = slotFamilyWeight(vcycle, 2.5, sigma_v);
+        float wA = slotFamilyWeight(vcycle, 0.5 + SLOT_VERTICAL_BIAS, sigma_v);
+        float wB = slotFamilyWeight(vcycle, 2.0 - SLOT_VERTICAL_BIAS, sigma_v);
 
-        // Family 0 (rows 0-1): RGB at 12, 14, 16
-        float dR0 = cyclicDist(cycle, 12.0, 18.0);
-        float dG0 = cyclicDist(cycle, 14.0, 18.0);
-        float dB0 = cyclicDist(cycle, 16.0, 18.0);
-        vec3 family0 = vec3(
+        // Family A: RGB at 0, 2, 4
+        float dR0 = cyclicDist(cycle, 0.0, 12.0);
+        float dG0 = cyclicDist(cycle, 2.0, 12.0);
+        float dB0 = cyclicDist(cycle, 4.0, 12.0);
+        vec3 familyA = vec3(
             exp(-0.5 * dR0 * dR0 / (sigma.x * sigma.x)),
             exp(-0.5 * dG0 * dG0 / (sigma.x * sigma.x)),
             exp(-0.5 * dB0 * dB0 / (sigma.x * sigma.x))
         );
 
-        // Family 1 (rows 1-2): RGB at 0, 2, 4
-        float dR1 = cyclicDist(cycle, 0.0, 18.0);
-        float dG1 = cyclicDist(cycle, 2.0, 18.0);
-        float dB1 = cyclicDist(cycle, 4.0, 18.0);
-        vec3 family1 = vec3(
+        // Family B: RGB at 6, 8, 10
+        float dR1 = cyclicDist(cycle, 6.0, 12.0);
+        float dG1 = cyclicDist(cycle, 8.0, 12.0);
+        float dB1 = cyclicDist(cycle, 10.0, 12.0);
+        vec3 familyB = vec3(
             exp(-0.5 * dR1 * dR1 / (sigma.x * sigma.x)),
             exp(-0.5 * dG1 * dG1 / (sigma.x * sigma.x)),
             exp(-0.5 * dB1 * dB1 / (sigma.x * sigma.x))
         );
 
-        // Family 2 (rows 2-0): RGB at 6, 8, 10
-        float dR2 = cyclicDist(cycle, 6.0, 18.0);
-        float dG2 = cyclicDist(cycle, 8.0, 18.0);
-        float dB2 = cyclicDist(cycle, 10.0, 18.0);
-        vec3 family2 = vec3(
-            exp(-0.5 * dR2 * dR2 / (sigma.x * sigma.x)),
-            exp(-0.5 * dG2 * dG2 / (sigma.x * sigma.x)),
-            exp(-0.5 * dB2 * dB2 / (sigma.x * sigma.x))
-        );
-
         float brightness_ratio = sqrt(1.0 + (sigma.y * sigma.y));
-        return (w01 * family0 + w12 * family1 + w20 * family2) / brightness_ratio;
+        return (wA * familyA + wB * familyB) / brightness_ratio;
     }
 
     float cycle = mod(x_units - 0.5, 6.0);
@@ -353,7 +330,7 @@ float compute_peak_mask_value(vec2 sigma, float mask_type)
     if (mask_type < 0.5) {
         samples_x = 144;
     } else if (mask_type < 1.5) {
-        period_x = 18.0;
+        period_x = 12.0;
         period_y = 3.0;
         samples_x = 216;
         samples_y = 72;
@@ -400,8 +377,8 @@ vec3 compute_mask(vec2 screen_uv, float units_x_total, float units_y_total, vec2
         passthrough_threshold_x = 2.0 / 6.0;   // 1/3
         passthrough_threshold_y = 0.0;         // No vertical component
     } else if (MASK_TYPE < 1.5) {
-        // Slot mask: 18-unit horizontal, 3-unit vertical periods
-        passthrough_threshold_x = 2.0 / 18.0;  // 1/9
+        // Slot mask: 12-unit horizontal, 3-unit vertical periods
+        passthrough_threshold_x = 2.0 / 12.0;  // 1/6
         passthrough_threshold_y = 2.0 / 3.0;   // 2/3
     } else {
         // Shadow mask: 6-unit horizontal, 4-unit vertical periods
@@ -443,7 +420,7 @@ vec3 compute_mask(vec2 screen_uv, float units_x_total, float units_y_total, vec2
             mask_color = compute_mask_point_sample(x_units, y_units, sigma, MASK_TYPE);
         }
     } else if (MASK_TYPE < 1.5) {
-        // Slot mask: 18-unit horizontal, 3-unit vertical cycle
+        // Slot mask: 12-unit horizontal, 3-unit vertical cycle
         // For now, only point sampling supported (integration TODO)
         if (passthrough_x && passthrough_y) {
             mask_color = vec3(1.0);
@@ -496,7 +473,7 @@ float compute_peak_mask_gain(float units_x_total, float units_y_total, vec2 pixe
         passthrough = (pixels_per_unit.x < passthrough_threshold_x);
     } else if (MASK_TYPE < 1.5) {
         // Slot mask: both horizontal and vertical patterns (require AND logic)
-        passthrough_threshold_x = 2.0 / 18.0;  // 1/9
+        passthrough_threshold_x = 2.0 / 12.0;  // 1/6
         passthrough_threshold_y = 2.0 / 3.0;   // 2/3
         passthrough = (pixels_per_unit.x < passthrough_threshold_x) && 
                       (pixels_per_unit.y < passthrough_threshold_y);
@@ -516,7 +493,7 @@ float compute_peak_mask_gain(float units_x_total, float units_y_total, vec2 pixe
     float period_y = 1.0;
 
     if (MASK_TYPE >= 0.5 && MASK_TYPE < 1.5) {
-        period_x = 18.0;
+        period_x = 12.0;
         period_y = 3.0;
     } else if (MASK_TYPE >= 1.5) {
         period_x = 6.0;
@@ -582,7 +559,7 @@ vec3 average_mask_color(vec2 pixels_per_unit, vec2 sigma, float peak_mask_value)
         passthrough = (pixels_per_unit.x < passthrough_threshold_x);
     } else if (MASK_TYPE < 1.5) {
         // Slot mask: both horizontal and vertical patterns (require AND logic)
-        passthrough_threshold_x = 2.0 / 18.0;  // 1/9
+        passthrough_threshold_x = 2.0 / 12.0;  // 1/6
         passthrough_threshold_y = 2.0 / 3.0;   // 2/3
         passthrough = (pixels_per_unit.x < passthrough_threshold_x) && 
                       (pixels_per_unit.y < passthrough_threshold_y);
@@ -606,7 +583,7 @@ vec3 average_mask_color(vec2 pixels_per_unit, vec2 sigma, float peak_mask_value)
     if (MASK_TYPE < 0.5) {
         samples_x = 144;
     } else if (MASK_TYPE < 1.5) {
-        period_x = 18.0;
+        period_x = 12.0;
         period_y = 3.0;
         samples_x = 216;
         samples_y = 72;
