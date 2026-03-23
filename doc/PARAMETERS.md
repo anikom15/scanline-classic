@@ -211,7 +211,6 @@ These settings represent design parameters that are fixed to the display and can
 
   * MASK_INTENSITY - Mask intensity (%): Adjusts the strength of the mask effect; recommended to leave at 100 unless brightness is limited
 
-  * MASK_DIFFUSION - Mask diffusion (standard deviations): Adjusts how phosphor dots are blended; it is often preferable to use this to reduce moire patterns due to insufficient resolution
 ### Colorimetry
 
   * COLORIMETRY_PRESET - Colorimetry preset (off, SMPTE, Japan, EBU, 709): Presets colorimetry to the given standard

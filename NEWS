@@ -2,6 +2,10 @@ Version 10.1
 
 * Added global options file as config/options.cfg
 
+* Add Famicom presets and shaders
+
+* Remove MASK_DIFFUSION; diffusion is handled automatically
+
 Version 10.0
 
 * WCG mode gamut selection: BT.2020 and DCI
