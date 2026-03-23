@@ -704,6 +704,7 @@ void main()
 
     // Convert YrYgYb to XYZ using native colorimetry
     vec3 XYZ = YrYgYb_to_XYZ(YrYgYb, colorimetry);
+    vec3 XYZ_baseline = XYZ;
     
     // Apply chromatic adaptation to XYZ directly (not to encoding matrix)
     if (CHROMATIC_ADAPTATION > 0.5 && COLOR_CONVERSION_BYPASS < 0.5) {
@@ -748,7 +749,7 @@ void main()
         RGB = toRGB * XYZ;
 
     if (DEBUG_COLOR_DELTA > 0.5) {
-        vec3 RGB_baseline = toRGB * XYZ;
+        vec3 RGB_baseline = toRGB * XYZ_baseline;
         vec3 delta = abs(RGB - RGB_baseline);
 
         FragColor = vec4(max(delta, 0.0), 1.0);
