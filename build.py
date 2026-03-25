@@ -97,16 +97,35 @@ def run_presetgen(verbose=False, jobs=1):
                 print(f"Error: presetgen failed for {infile}: {exc}")
                 sys.exit(1)
 
+
+def run_shader_lint(verbose=False):
+    python_exec = get_python_executable()
+    cmd = [python_exec, os.path.join(ROOT, 'scripts', 'lint_shaders.py')]
+    print(f"Running: {' '.join(cmd)}")
+    try:
+        subprocess.run(cmd, check=True)
+    except Exception as exc:
+        print(f"Error: shader lint failed: {exc}")
+        sys.exit(1)
+
 def parse_args():
     parser = argparse.ArgumentParser(description='Build scanline-classic output')
     parser.add_argument('-v', '--verbose', action='store_true')
     parser.add_argument('--jobs', type=int, default=default_workers())
+    parser.add_argument(
+        '--lint-shaders',
+        action='store_true',
+        help='Run shader lint (scripts/lint_shaders.py) before build steps',
+    )
     return parser.parse_args()
 
 def main():
     args = parse_args()
     verbose = args.verbose
     jobs = max(1, args.jobs)
+
+    if args.lint_shaders:
+        run_shader_lint(verbose=verbose)
 
     prepare_out_folder(verbose=verbose)
     run_presetgen(verbose=verbose, jobs=jobs)

@@ -90,6 +90,31 @@ Download the latest EXTRAS release from github and copy the files your installat
 The presets are built dynamically from a Python script, `build.py`.  See `external/presetgen` for dependency information.
 After building, the shaders can be found in the `out` directory.
 
+## Linting shader formatting
+
+To keep `.slang` and `.inc` formatting consistent in `shaders/`, run:
+
+- `python scripts/lint_shaders.py`
+
+For safe automatic cleanup (trailing whitespace, excessive blank lines, EOF newline):
+
+- `python scripts/lint_shaders.py --fix`
+
+To gate builds on shader lint, run:
+
+- `python build.py --lint-shaders`
+
+Current lint checks also include:
+
+- Enforced order in `.slang` files: parameter pragmas -> push block definition -> push semantic defines -> UBO definition -> UBO semantic defines
+- Push-constant size budgeting against a 128-byte limit
+- Push/UBO optimization warning when push constants are below 128 bytes and non-`MVP` semantics still live in UBO (evaluated against max possible push size across conditional paths)
+- Stage flow in `.slang`: exactly 1 vertex section and 1 fragment section, ordered as universal declarations -> vertex -> fragment
+- `.inc` files must not declare shader stages (`#pragma stage vertex|fragment`)
+- Universal functions/variables in `.slang` are expected to be shared by both vertex and fragment; stage-specific declarations are flagged for relocation into their respective section
+
+For day-to-day authoring guidance, see `doc/SHADER_AUTHORING_CHECKLIST.md`.
+
 ## Usage
 
 ### Shaders
