@@ -38,9 +38,12 @@
 #include "menus/parameters/rf.inc"
 
 // Bypass & control parameters
+
+#ifdef OPTION_DEBUG
 #pragma parameter BYPASS_IQ_MOD "Bypass I/Q filtering (off,on)" 0.0 0.0 1.0 1.0
 #pragma parameter BYPASS_I_FILTER "Bypass I lowpass (off,on)" 0.0 0.0 1.0 1.0
 #pragma parameter BYPASS_Q_FILTER "Bypass Q lowpass (off,on)" 0.0 0.0 1.0 1.0
+#endif  // OPTION_DEBUG
 
 #pragma name IQMod
 #pragma format R16G16_SFLOAT
@@ -52,9 +55,6 @@ layout(push_constant) uniform Push
     vec4 FrameHSize;
     uint FrameCount;
     float OriginalFPS;
-    float BYPASS_IQ_MOD;
-    float BYPASS_I_FILTER;
-    float BYPASS_Q_FILTER;
     float V_FREQ_MODE;
     float V_FREQ;
     float SHORTEN_ODD_FIELD_TIME;
@@ -69,11 +69,24 @@ layout(push_constant) uniform Push
     float LSB_BANDWIDTH;
     float USB_ROLL_OFF;
     float LSB_ROLL_OFF;
+
+#ifdef OPTION_DEBUG
+    float BYPASS_IQ_MOD;
+    float BYPASS_I_FILTER;
+    float BYPASS_Q_FILTER;
+#endif  // OPTION_DEBUG
+
 } config;
 
+#ifdef OPTION_DEBUG
 #define BYPASS_IQ_MOD      config.BYPASS_IQ_MOD
 #define BYPASS_I_FILTER    config.BYPASS_I_FILTER
+#endif  // OPTION_DEBUG
+
+#ifdef OPTION_DEBUG
 #define BYPASS_Q_FILTER    config.BYPASS_Q_FILTER
+#endif  // OPTION_DEBUG
+
 #define V_FREQ_MODE        config.V_FREQ_MODE
 #define V_FREQ             config.V_FREQ
 #define SHORTEN_ODD_FIELD_TIME config.SHORTEN_ODD_FIELD_TIME
@@ -192,19 +205,27 @@ void main()
     // Central sample from analytic input
     vec2 iq0 = texture(Source, Tex).rg;
 
+#ifdef OPTION_DEBUG
     if (BYPASS_IQ_MOD > 0.5) {
         FragColor = vec4(iq0.r, iq0.g, 0.0, 1.0); // pass-through analytic
         return;
     }
+#endif  // OPTION_DEBUG
 
     // Apply asymmetric lowpass filtering for VSB to the analytic input
     float i_signal = 0.0;
     float i_wsum = 0.0;
+
+#ifdef OPTION_DEBUG
     if (BYPASS_I_FILTER > 0.5) {
         i_signal = iq0.r;
         i_wsum = 1.0;
         max_tap_i = 0; // skip loop accumulation
     } else {
+#else
+    {
+#endif  // OPTION_DEBUG
+
         float coeff0_i = sinc_lowpass_hamming(-Ax, fc_i_norm, taps_i);
         i_signal = coeff0_i * iq0.r;
         i_wsum = coeff0_i;
@@ -212,11 +233,17 @@ void main()
     
     float q_signal = 0.0;
     float q_wsum = 0.0;
+
+#ifdef OPTION_DEBUG
     if (BYPASS_Q_FILTER > 0.5) {
         q_signal = iq0.g;
         q_wsum = 1.0;
         max_tap_q = 0;
     } else {
+#else
+    {
+#endif  // OPTION_DEBUG
+
         float coeff0_q = sinc_lowpass_hamming(-Ax, fc_q_norm, taps_q);
         q_signal = coeff0_q * iq0.g;
         q_wsum = coeff0_q;

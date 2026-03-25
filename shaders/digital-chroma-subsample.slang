@@ -36,7 +36,9 @@
 #pragma name DigitalChromaSubsample
 #pragma format A2B10G10R10_UNORM_PACK32
 
+#ifdef OPTION_DEBUG
 #pragma parameter CHROMA_SUBSAMPLE_BYPASS "Bypass chroma subsampling" 0.0 0.0 1.0 1.0
+#endif  // OPTION_DEBUG
 
 layout(push_constant) uniform Push
 {
@@ -46,7 +48,6 @@ layout(push_constant) uniform Push
     uint FrameCount;
     float OriginalFPS;
 
-    float CHROMA_SUBSAMPLE_BYPASS;
     float YCBCR_MODEL;
     float CHROMA_SUBSAMPLE;
     float SC_FREQ_MODE;
@@ -58,9 +59,17 @@ layout(push_constant) uniform Push
     float V_FREQ_MODE;
     float V_FREQ;
     float H_BLANK_FUZZ;
+
+#ifdef OPTION_DEBUG
+    float CHROMA_SUBSAMPLE_BYPASS;
+#endif  // OPTION_DEBUG
+
 } config;
 
+#ifdef OPTION_DEBUG
 #define CHROMA_SUBSAMPLE_BYPASS config.CHROMA_SUBSAMPLE_BYPASS
+#endif  // OPTION_DEBUG
+
 #define YCBCR_MODEL config.YCBCR_MODEL
 #define CHROMA_SUBSAMPLE config.CHROMA_SUBSAMPLE
 
@@ -99,10 +108,13 @@ layout(set = 0, binding = 2) uniform sampler2D Source;
 void main()
 {
     // Bypass check
+
+#ifdef OPTION_DEBUG
     if (CHROMA_SUBSAMPLE_BYPASS > 0.5) {
         FragColor = texture(Source, vTexCoord);
         return;
     }
+#endif  // OPTION_DEBUG
 
     // Determine subsampling mode
     float mode = CHROMA_SUBSAMPLE;

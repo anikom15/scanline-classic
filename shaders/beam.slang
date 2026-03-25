@@ -36,10 +36,12 @@
 #pragma name CRTBeam
 #pragma format R16G16B16A16_SFLOAT
 
+#ifdef OPTION_DEBUG
 #pragma parameter GEOMETRY_BYPASS "Bypass beam geometry" 0.0 0.0 1.0 1.0
 #pragma parameter FILTER_BYPASS "Bypass beam filter" 0.0 0.0 1.0 1.0
 
 #pragma parameter DAR_SCALE "Display Aspect Ratio Scale" 1.0 0.1 5.0 0.01
+#endif  // OPTION_DEBUG
 
 layout(push_constant) uniform Push
 {
@@ -52,21 +54,18 @@ layout(push_constant) uniform Push
     float OriginalFPS;
     float OriginalAspect;
     float ASPECT;
-    float GEOMETRY_BYPASS;
-    float FILTER_BYPASS;
     float V_FREQ_MODE;
     float V_FREQ;
     float SC_FREQ_MODE;
     float SC_FREQ;
-    float DAR_SCALE;
     float BEAM_FOCUS;
+    float PIXEL_CLOCK_MODE;
+    float PIXEL_CLOCK;
+    float H_FREQ_MODE;
 } config;
 
 layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 MVP;
-    float PIXEL_CLOCK_MODE;
-    float PIXEL_CLOCK;
-    float H_FREQ_MODE;
     float H_FREQ;
     float H_BLANK_FUZZ;
 
@@ -86,21 +85,26 @@ layout(std140, set = 0, binding = 0) uniform UBO {
     float UNDERSCAN;        // %
     float S_CORRECTION_H;   // %
     float S_CORRECTION_V;   // %
+
+#ifdef OPTION_DEBUG
+    // Debug-only stage bypass / diagnostics controls
+    float GEOMETRY_BYPASS;
+    float FILTER_BYPASS;
+    float DAR_SCALE;
+#endif  // OPTION_DEBUG
+
 } global;
 
 #define ASPECT config.ASPECT
-#define GEOMETRY_BYPASS config.GEOMETRY_BYPASS
-#define FILTER_BYPASS config.FILTER_BYPASS
 #define V_FREQ_MODE config.V_FREQ_MODE
 #define V_FREQ config.V_FREQ
 #define SC_FREQ_MODE config.SC_FREQ_MODE
 #define SC_FREQ config.SC_FREQ
-#define PIXEL_CLOCK_MODE global.PIXEL_CLOCK_MODE
-#define PIXEL_CLOCK global.PIXEL_CLOCK
-#define H_FREQ_MODE global.H_FREQ_MODE
+#define PIXEL_CLOCK_MODE config.PIXEL_CLOCK_MODE
+#define PIXEL_CLOCK config.PIXEL_CLOCK
+#define H_FREQ_MODE config.H_FREQ_MODE
 #define H_FREQ global.H_FREQ
 #define H_BLANK_FUZZ global.H_BLANK_FUZZ
-#define DAR_SCALE config.DAR_SCALE
 
 // Geometry macro bindings
 #define USER_H_SIZE global.USER_H_SIZE
@@ -116,6 +120,12 @@ layout(std140, set = 0, binding = 0) uniform UBO {
 #define S_CORRECTION_H global.S_CORRECTION_H
 #define S_CORRECTION_V global.S_CORRECTION_V
 #define BEAM_FOCUS config.BEAM_FOCUS
+
+#ifdef OPTION_DEBUG
+#define GEOMETRY_BYPASS global.GEOMETRY_BYPASS
+#define FILTER_BYPASS global.FILTER_BYPASS
+#define DAR_SCALE global.DAR_SCALE
+#endif // OPTION_DEBUG
 
 // ---- Local geometry helpers (subset; barrel handled later stage) ----
 // Parameterized pincushion (electrostatic/linear) using anisotropic angles (radians)
@@ -315,7 +325,10 @@ void main()
     float source_sar = config.SourceSize.x * config.SourceSize.w;
     float active_sar = active_width / max(active_height, 1.0);
     float source_dar = full_dar * source_sar / active_sar;
+
+#ifdef OPTION_DEBUG
     source_dar *= DAR_SCALE;
+#endif  // OPTION_DEBUG
 
     // Calculate active region bounds in texture UV space (centered)
     float active_left = (config.SourceSize.x - active_width) * 0.5 * config.SourceSize.z;
@@ -350,12 +363,15 @@ void main()
 
     // ---- Geometry pipeline ----
     vec2 geometry_uv;
+
 #ifdef OPTION_FLAT
     apply_geometry_pipeline_nodistort(
         active_uv,
         maskAR,
         geometry_uv);
 #else
+
+#ifdef OPTION_DEBUG
     if (GEOMETRY_BYPASS > 0.5) {
         geometry_uv = active_uv;
     } else {
@@ -364,7 +380,14 @@ void main()
             maskAR,
             geometry_uv);
     }
-#endif
+#else
+    apply_geometry_pipeline(
+        active_uv,
+        maskAR,
+        geometry_uv);
+#endif  // OPTION_DEBUG
+
+#endif  // OPTION_FLAT
 
     // Remap from geometry UVs to input texture UVs
     vec2 input_uv = vec2(
@@ -379,11 +402,16 @@ void main()
 
     vec3 color;
     float alpha = texture(Source, clamp01(input_uv)).a;
+
+#ifdef OPTION_DEBUG
     if (FILTER_BYPASS < 0.5) {
         color = sample_bicubic(Source, input_uv, config.SourceSize.zw, B, C);
     } else {
         color = texture(Source, input_uv).rgb;
     }
+#else
+    color = sample_bicubic(Source, input_uv, config.SourceSize.zw, B, C);
+#endif  // OPTION_DEBUG
 
     FragColor = vec4(max(color, 0.0), alpha);
 }

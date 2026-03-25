@@ -50,9 +50,11 @@
 #pragma name Limiter
 #pragma format R16G16B16A16_SFLOAT
 
+#ifdef OPTION_DEBUG
 #pragma parameter SHARPNENER_BYPASS "Bypass sharpener" 0.0 0.0 1.0 1.0
 #pragma parameter LIMITER_BYPASS "Bypass voltage limiter" 0.0 0.0 1.0 1.0
 #pragma parameter LIMITER_DEBUG_OUT_OF_RANGE "Limiter: show out-of-range colors" 0.0 0.0 1.0 1.0
+#endif  // OPTION_DEBUG
 
 layout(push_constant) uniform Push
 {
@@ -93,7 +95,6 @@ layout(push_constant) uniform Push
 #define USER_GAMMA config.USER_GAMMA
 #define USER_SHARPNESS config.USER_SHARPNESS
 
-
 layout(std140, set = 0, binding = 0) uniform UBO
 {
     mat4 MVP;
@@ -111,12 +112,15 @@ layout(std140, set = 0, binding = 0) uniform UBO
     float W_X;
 
     // Limiter
-    float SHARPNENER_BYPASS;
-    float LIMITER_BYPASS;
     float LIMITER_TYPE;
     float LIMITER_COMPRESSION_POINT;
     float LIMITER_MAX_OUTPUT;
+
+#ifdef OPTION_DEBUG
+    float SHARPNENER_BYPASS;
+    float LIMITER_BYPASS;
     float LIMITER_DEBUG_OUT_OF_RANGE;
+#endif  // OPTION_DEBUG
 
 } global;
 
@@ -133,13 +137,18 @@ layout(std140, set = 0, binding = 0) uniform UBO
 #define B_Y global.B_Y
 #define W_X global.W_X
 
+#ifdef OPTION_DEBUG
 #define SHARPNENER_BYPASS global.SHARPNENER_BYPASS
-
 #define LIMITER_BYPASS global.LIMITER_BYPASS
+#endif  // OPTION_DEBUG
+
 #define LIMITER_TYPE global.LIMITER_TYPE
 #define LIMITER_COMPRESSION_POINT global.LIMITER_COMPRESSION_POINT
 #define LIMITER_MAX_OUTPUT global.LIMITER_MAX_OUTPUT
+
+#ifdef OPTION_DEBUG
 #define LIMITER_DEBUG_OUT_OF_RANGE global.LIMITER_DEBUG_OUT_OF_RANGE
+#endif  // OPTION_DEBUG
 
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
@@ -248,6 +257,8 @@ void main()
         SHORTEN_ODD_FIELD_TIME);
 
     // Emphasis design parameters using timebase
+
+#ifdef OPTION_DEBUG
     if (SHARPNENER_BYPASS < 0.5) {
     float emphasis_center_hz = 3.1e6;
     float emphasis2_center_hz = 4.3e6;
@@ -257,6 +268,16 @@ void main()
     } else {
         sharpness_filters = vec4(0.0);
     }
+#else
+    {
+    float emphasis_center_hz = 3.1e6;
+    float emphasis2_center_hz = 4.3e6;
+    float emphasis_sigma = sigma_tb(tb, 0.6, 3.0);
+    float emphasis2_sigma = sigma_tb(tb, 0.4, 3.0);
+    sharpness_filters = vec4(emphasis_center_hz, emphasis_sigma, emphasis2_center_hz, emphasis2_sigma);
+    }
+#endif  // OPTION_DEBUG
+
 }
 
 #pragma stage fragment
@@ -274,7 +295,12 @@ void main()
     // Sharpness bandpass + harmonic (modulated Gaussian) before any other processing.
     float sharpness = USER_SHARPNESS / 100.0;
 
+#ifdef OPTION_DEBUG
     if (sharpness > 0.0 && SHARPNENER_BYPASS < 0.5) {
+#else
+    if (sharpness > 0.0) {
+#endif  // OPTION_DEBUG
+
         float emphasis_center_hz = sharpness_filters.x;
         float emphasis_sigma = sharpness_filters.y;
         float emphasis2_center_hz = sharpness_filters.z;
@@ -363,10 +389,13 @@ void main()
     }
 
     // Bypass limiter, but translate to expected unit
+
+#ifdef OPTION_DEBUG
     if (LIMITER_BYPASS >= 1.0) {
         FragColor = vec4(color, 1.0);
         return;
     }
+#endif  // OPTION_DEBUG
 
     float compression = LIMITER_COMPRESSION_POINT * 10e-3; // Convert IRE to V
 
@@ -400,9 +429,12 @@ void main()
         color.b = pow(color.b, gamma);
 
     // Debug: Visualize out-of-range colors with zebra pattern
+
+#ifdef OPTION_DEBUG
     if (LIMITER_DEBUG_OUT_OF_RANGE >= 1.0) {
         color = zebra(color, 0.0, compression, vTexCoord, config.OutputSize.xy, config.FrameCount, 1.0);
     }
+#endif  // OPTION_DEBUG
 
     FragColor = vec4(color, 1.0);
 }

@@ -10,8 +10,10 @@
 #pragma name Filter
 #pragma format R16_SFLOAT
 
+#ifdef OPTION_DEBUG
 #pragma parameter FILTER_BANDLIMIT_BYPASS "Filter bandlimit bypass" 0.0 0.0 1.0 1.0
 #pragma parameter FILTER_DPD_BYPASS "Filter DPD bypass" 0.0 0.0 1.0 1.0
+#endif  // OPTION_DEBUG
 
 layout(push_constant) uniform Push
 {
@@ -30,8 +32,12 @@ layout(push_constant) uniform Push
     float H_FREQ_MODE;
     float H_FREQ;
     float H_BLANK_FUZZ;
+
+#ifdef OPTION_DEBUG
     float FILTER_BANDLIMIT_BYPASS;
     float FILTER_DPD_BYPASS;
+#endif
+
     float FILTER_BANDWIDTH;
     float FILTER_CUTOFF_ATTEN;
     float FILTER_DPD_AMOUNT_NS;
@@ -40,8 +46,10 @@ layout(push_constant) uniform Push
     float FILTER_DPD_IN_MAX;
 } config;
 
+#ifdef OPTION_DEBUG
 #define FILTER_BANDLIMIT_BYPASS config.FILTER_BANDLIMIT_BYPASS
 #define FILTER_DPD_BYPASS config.FILTER_DPD_BYPASS
+#endif  // OPTION_DEBUG
 
 #define V_FREQ_MODE config.V_FREQ_MODE
 #define V_FREQ config.V_FREQ
@@ -128,8 +136,10 @@ float dpd_sample_r(vec2 uv, vec4 outputSize, sampler2D source, float pixelTimePx
 {
     float raw = sample_r_linear_x(uv, outputSize, source);
 
+#ifdef OPTION_DEBUG
     if (FILTER_DPD_BYPASS > 0.5)
         return raw;
+#endif
 
     float inSpan = max(FILTER_DPD_IN_MAX - FILTER_DPD_IN_MIN, EPS);
     float normalized = clamp((raw - FILTER_DPD_IN_MIN) / inSpan, 0.0, 1.0);
@@ -180,11 +190,14 @@ float bandlimit_convolve_gaussian_x_r(vec2 uv, vec4 outputSize, sampler2D source
 
 void main()
 {
+
+#ifdef OPTION_DEBUG
     if (FILTER_BANDLIMIT_BYPASS > 0.5) {
         float sourceR = texture(Source, vTexCoord).r;
         FragColor = vec4(sourceR, 0.0, 0.0, 1.0);
         return;
     }
+#endif
 
     float filteredR = bandlimit_convolve_gaussian_x_r(vTexCoord, config.OutputSize, Source, sigma, pixel_time_px);
     FragColor = vec4(filteredR, 0.0, 0.0, 1.0);

@@ -23,6 +23,25 @@
 #pragma name PhosphorLuma
 #pragma format R16G16B16A16_SFLOAT
 
+#ifdef OPTION_DEBUG
+#pragma parameter PHOSPHOR_HEADER " ==== Phosphor Luma Parameters ==== " 0.0 0.0 0.0 0.0
+#pragma parameter PHOSPHOR_LUMA_BYPASS "Phosphor luma bypass" 0.0 0.0 1.0 1.0
+#pragma parameter V_FREQ "Vertical frequency (Hz)" 59.94 1.0 240.0 0.01
+#pragma parameter COLOR_MODE "Chromaticity mode" 3.0 1.0 3.0 1.0
+#pragma parameter TO_GRAY_WEIGHT_R "Red channel to gray weight" 0.2124 0.0 1.0 0.01
+#pragma parameter TO_GRAY_WEIGHT_G "Green channel to gray weight" 0.7011 0.0 1.0 0.01
+#pragma parameter TO_GRAY_WEIGHT_B "Blue channel to gray weight" 0.0866 0.0 1.0 0.01
+#pragma parameter PHOSPHORESCENSE_A "Phosphorescense decay A (1/s)" 9.0 0.0 100.0 1.0
+#pragma parameter PHOSPHORESCENSE_B "Phosphorescense decay B (1/s)" 9.0 0.0 100.0 1.0
+#pragma parameter PHOSPHORESCENSE_C "Phosphorescense decay C (1/s)" 9.0 0.0 100.0 1.0
+#pragma parameter PHOS_EXP_A "Decay rate A (EE)" 5.0 0.0 10.0 1.0
+#pragma parameter PHOS_EXP_B "Decay rate B (EE)" 5.0 0.0 10.0 1.0
+#pragma parameter PHOS_EXP_C "Decay rate C (EE)" 5.0 0.0 10.0 1.0
+#pragma parameter PHOS_TRAP_A "Decay escape A (order)" 1.25 0.5 2.0 0.01
+#pragma parameter PHOS_TRAP_B "Decay escape B (order)" 1.25 0.5 2.0 0.01
+#pragma parameter PHOS_TRAP_C "Decay escape C (order)" 1.25 0.5 2.0 0.01
+#endif  // OPTION_DEBUG
+
 layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 MVP;
 } global;
@@ -31,6 +50,8 @@ layout(push_constant) uniform Push
 {
     vec4 SourceSize;
     vec4 PhosphorLumaFeedbackSize;
+
+#ifdef OPTION_DEBUG
     float V_FREQ;
     float COLOR_MODE;
     float TO_GRAY_WEIGHT_R;
@@ -46,46 +67,43 @@ layout(push_constant) uniform Push
     float PHOS_TRAP_B;
     float PHOS_TRAP_C;
     float PHOSPHOR_LUMA_BYPASS;
+#endif  // OPTION_DEBUG
+
 } config;
 
-#pragma parameter PHOSPHOR_HEADER " ==== Phosphor Luma Parameters ==== " 0.0 0.0 0.0 0.0
-
-#pragma parameter PHOSPHOR_LUMA_BYPASS "Phosphor luma bypass" 0.0 0.0 1.0 1.0
+#ifdef OPTION_DEBUG
 #define PHOSPHOR_LUMA_BYPASS config.PHOSPHOR_LUMA_BYPASS
-
-#pragma parameter V_FREQ "Vertical frequency (Hz)" 59.94 1.0 240.0 0.01
 #define V_FREQ config.V_FREQ
-
-#pragma parameter COLOR_MODE "Chromaticity mode" 3.0 1.0 3.0 1.0
 #define COLOR_MODE config.COLOR_MODE
-
-#pragma parameter TO_GRAY_WEIGHT_R "Red channel to gray weight" 0.2124 0.0 1.0 0.01
 #define TO_GRAY_WEIGHT_R config.TO_GRAY_WEIGHT_R
-#pragma parameter TO_GRAY_WEIGHT_G "Green channel to gray weight" 0.7011 0.0 1.0 0.01
 #define TO_GRAY_WEIGHT_G config.TO_GRAY_WEIGHT_G
-#pragma parameter TO_GRAY_WEIGHT_B "Blue channel to gray weight" 0.0866 0.0 1.0 0.01
 #define TO_GRAY_WEIGHT_B config.TO_GRAY_WEIGHT_B
-
-#pragma parameter PHOSPHORESCENSE_A "Phosphorescense decay A (1/s)" 9.0 0.0 100.0 1.0
 #define PHOSPHORESCENSE_A config.PHOSPHORESCENSE_A
-#pragma parameter PHOSPHORESCENSE_B "Phosphorescense decay B (1/s)" 9.0 0.0 100.0 1.0
 #define PHOSPHORESCENSE_B config.PHOSPHORESCENSE_B
-#pragma parameter PHOSPHORESCENSE_C "Phosphorescense decay C (1/s)" 9.0 0.0 100.0 1.0
 #define PHOSPHORESCENSE_C config.PHOSPHORESCENSE_C
-
-#pragma parameter PHOS_EXP_A "Decay rate A (EE)" 5.0 0.0 10.0 1.0
 #define PHOS_EXP_A config.PHOS_EXP_A
-#pragma parameter PHOS_EXP_B "Decay rate B (EE)" 5.0 0.0 10.0 1.0
 #define PHOS_EXP_B config.PHOS_EXP_B
-#pragma parameter PHOS_EXP_C "Decay rate C (EE)" 5.0 0.0 10.0 1.0
 #define PHOS_EXP_C config.PHOS_EXP_C
-
-#pragma parameter PHOS_TRAP_A "Decay escape A (order)" 1.25 0.5 2.0 0.01
 #define PHOS_TRAP_A config.PHOS_TRAP_A
-#pragma parameter PHOS_TRAP_B "Decay escape B (order)" 1.25 0.5 2.0 0.01
 #define PHOS_TRAP_B config.PHOS_TRAP_B
-#pragma parameter PHOS_TRAP_C "Decay escape C (order)" 1.25 0.5 2.0 0.01
 #define PHOS_TRAP_C config.PHOS_TRAP_C
+#else
+const float PHOSPHOR_LUMA_BYPASS = 0.0;
+const float V_FREQ = 59.94;
+const float COLOR_MODE = 3.0;
+const float TO_GRAY_WEIGHT_R = 0.2124;
+const float TO_GRAY_WEIGHT_G = 0.7011;
+const float TO_GRAY_WEIGHT_B = 0.0866;
+const float PHOSPHORESCENSE_A = 9.0;
+const float PHOSPHORESCENSE_B = 9.0;
+const float PHOSPHORESCENSE_C = 9.0;
+const float PHOS_EXP_A = 5.0;
+const float PHOS_EXP_B = 5.0;
+const float PHOS_EXP_C = 5.0;
+const float PHOS_TRAP_A = 1.25;
+const float PHOS_TRAP_B = 1.25;
+const float PHOS_TRAP_C = 1.25;
+#endif  // OPTION_DEBUG
 
 vec3 blend(vec3 col1, vec3 col2)
 {

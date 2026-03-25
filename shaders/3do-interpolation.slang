@@ -20,7 +20,10 @@
 #pragma parameter FAKE_CORNER_WEIGHTS "Simulate corner weights (off, on)" 1.0 0.0 1.0 1.0
 #pragma parameter SPECIAL_INTERP_H "Apply special interpolation horizontally" 1.0 0.0 1.0 1.0
 #pragma parameter SPECIAL_INTERP_V "Apply special interpolation vertically" 1.0 0.0 1.0 1.0
+
+#ifdef OPTION_DEBUG
 #pragma parameter DEBUG_SHOW_CORNERS "Debug: Show corner weight positions" 0.0 0.0 1.0 1.0
+#endif  // OPTION_DEBUG
 
 layout(push_constant) uniform Push
 {
@@ -32,14 +35,21 @@ layout(push_constant) uniform Push
     float FAKE_CORNER_WEIGHTS;
     float SPECIAL_INTERP_H;
     float SPECIAL_INTERP_V;
+
+#ifdef OPTION_DEBUG
     float DEBUG_SHOW_CORNERS;
+#endif  // OPTION_DEBUG
+
 } params;
 
 #define INTERPOLATION_MODE params.INTERPOLATION_MODE
 #define FAKE_CORNER_WEIGHTS params.FAKE_CORNER_WEIGHTS
 #define SPECIAL_INTERP_H params.SPECIAL_INTERP_H
 #define SPECIAL_INTERP_V params.SPECIAL_INTERP_V
+
+#ifdef OPTION_DEBUG
 #define DEBUG_SHOW_CORNERS params.DEBUG_SHOW_CORNERS
+#endif  // OPTION_DEBUG
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
@@ -350,10 +360,16 @@ void main()
 {
     vec4 color;
     
+
+#ifdef OPTION_DEBUG
     if (DEBUG_SHOW_CORNERS > 0.5) {
         // Show debug visualization of corner weights
         color = debug_show_corners(vTexCoord);
     } else if (INTERPOLATION_MODE < 0.5) {
+#else
+    if (INTERPOLATION_MODE < 0.5) {
+#endif  // OPTION_DEBUG
+
         color = nearest_neighbor(vTexCoord);
     } else if (INTERPOLATION_MODE < 1.5) {
         color = bilinear_interpolation(vTexCoord);

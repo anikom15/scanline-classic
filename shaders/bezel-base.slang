@@ -50,11 +50,12 @@
 
 #pragma include_optional "../config/options.cfg"
 
+#ifdef OPTION_DEBUG
 #pragma parameter BEZEL_BYPASS "Bypass bezel" 0.0 0.0 1.0 1.0
 #pragma parameter GLOW_BYPASS "Bypass glow" 0.0 0.0 1.0 1.0
 #pragma parameter KEY_THRESH "Bezel chroma key threshold" 0.5 0.0 1.0 0.01
-
 #pragma parameter DEBUG_GLOW "Debug glow" 0.0 0.0 1.0 1.0
+#endif  // OPTION_DEBUG
 
 layout(push_constant) uniform Push
 {
@@ -66,38 +67,54 @@ layout(push_constant) uniform Push
     float ASPECT;
     float VIEWPORT_H_POS;
     float VIEWPORT_V_POS;
-    float BEZEL_BYPASS;
     float BEZEL_ZOOM;
     float BEZEL_GAIN;
     float BEZEL_BIAS;
     float USE_MIPMAPPING;
-    float GLOW_BYPASS;
     float GLOW_WEIGHT;
     float GLOW_DIFFUSION;
     float GLOW_COMPRESSION;
     float GLOW_FALLOFF;
     float GLOW_DITHER;
     float GLOW_TEMPERATURE;
-    float KEY_THRESH;
     float GLOW_RADIUS_PERCENT;
     float EDGE_GUARD_PERCENT;
+
 #ifdef WCG
     float GAMUT_SELECT;
-#endif
+#endif  // WCG
+
+#ifdef OPTION_DEBUG
+    float BEZEL_BYPASS;
+    float GLOW_BYPASS;
+    float KEY_THRESH;
     float DEBUG_GLOW;
+#endif  // OPTION_DEBUG
+
 } config;
 
 #define ASPECT config.ASPECT
 #define VIEWPORT_H_POS config.VIEWPORT_H_POS
 #define VIEWPORT_V_POS config.VIEWPORT_V_POS
 
+#ifdef OPTION_DEBUG
 #define BEZEL_BYPASS config.BEZEL_BYPASS
+#else
+const float BEZEL_BYPASS = 0.0;
+#endif  // OPTION_DEBUG
+
 #define BEZEL_ZOOM config.BEZEL_ZOOM
 #define BEZEL_GAIN config.BEZEL_GAIN
 #define BEZEL_BIAS config.BEZEL_BIAS
 
 #define USE_MIPMAPPING config.USE_MIPMAPPING
+
+#ifdef OPTION_DEBUG
 #define GLOW_BYPASS config.GLOW_BYPASS
+#else
+const float GLOW_BYPASS = 0.0;
+#endif  // OPTION_DEBUG
+
 #define GLOW_WEIGHT config.GLOW_WEIGHT
 #define GLOW_DIFFUSION config.GLOW_DIFFUSION
 #define GLOW_COMPRESSION config.GLOW_COMPRESSION
@@ -105,7 +122,12 @@ layout(push_constant) uniform Push
 #define GLOW_TEMPERATURE config.GLOW_TEMPERATURE
 #define GLOW_DITHER config.GLOW_DITHER
 
+#ifdef OPTION_DEBUG
 #define KEY_THRESH config.KEY_THRESH
+#else
+const float KEY_THRESH = 0.5;
+#endif  // OPTION_DEBUG
+
 #define KEY_SOFT 0.08
 
 #define GLOW_RADIUS_PERCENT config.GLOW_RADIUS_PERCENT
@@ -117,9 +139,13 @@ layout(push_constant) uniform Push
 
 #ifdef WCG
 #define GAMUT_SELECT config.GAMUT_SELECT
-#endif
+#endif  // WCG
 
+#ifdef OPTION_DEBUG
 #define DEBUG_GLOW config.DEBUG_GLOW
+#else
+const float DEBUG_GLOW = 0.0;
+#endif  // OPTION_DEBUG
 
 // Map GLOW_DIFFUSION preset to base diffusion steps
 // 0 = Low (8 steps), 1 = Medium (12 steps), 2 = High (16 steps)
@@ -370,7 +396,7 @@ vec3 process_glow_color(vec3 color, float compression, float temperature, float 
 
         xyz_base = CIE_LUV_to_XYZ(luv);
     }
-#endif
+#endif  // HDR
 
     if (abs(t) > EPS) {
         vec3 lms = XYZ_TO_LMS * xyz_base;
@@ -623,7 +649,8 @@ void write_output_color(vec3 final_linear, uint frame)
 
     final_pq = apply_dither_blue(final_pq, WORKING_BITS, 10, vTexCoord * config.OutputSize.xy, frame);
     FragColor = vec4(clamp(final_pq, 0.0, 1.0), 1.0);
-#endif
+#endif  // HDR
+
 #ifdef WCG
     // WCG requires manual HDR10 handling when HDR is enabled
     if (global.EnableHDR > 0.5) {
@@ -640,13 +667,15 @@ void write_output_color(vec3 final_linear, uint frame)
         final_gamma = apply_dither_blue(final_gamma, WORKING_BITS, 8, vTexCoord * config.OutputSize.xy, frame);
         FragColor = vec4(clamp(final_gamma, 0.0, 1.0), 1.0);
     }
-#endif
+#endif  // WCG
+
 #ifdef SDR
     // Gamma output: use inverse CRT gamma to preserve shadow detail
     vec3 final_gamma = crt_gamma(clamp(final_linear, 0.0, 1.0));
     final_gamma = apply_dither_blue(final_gamma, WORKING_BITS, 8, vTexCoord * config.OutputSize.xy, frame);
     FragColor = vec4(clamp(final_gamma, 0.0, 1.0), 1.0);
-#endif
+#endif  // SDR
+
 }
 
 /**
@@ -679,7 +708,7 @@ void main()
 #ifdef OPTION_NOBEZEL
     write_output_color(screen.rgb, frame);
     return;
-#endif
+#endif  // OPTION_NOBEZEL
 
     // Bypass mode: pass through screen content without bezel/glow processing
     if (BEZEL_BYPASS > 0.5)

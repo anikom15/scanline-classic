@@ -25,11 +25,13 @@
 #include "menus/parameters/output-color.inc"
 #include "menus/parameters/user-common.inc"
 
+#ifdef OPTION_DEBUG
 #pragma parameter COLOR_CONVERSION_BYPASS "Bypass color correction" 0.0 0.0 1.0 1.0
 #pragma parameter DEBUG_COLOR_DELTA "Show color correction deltas" 0.0 0.0 1.0 1.0
 #pragma parameter MAKEUP_GAIN "Makeup gain (off, on)" 1.0 0.0 1.0 1.0
 #pragma parameter COLOR_DEBUG_OUT_OF_RANGE "Debug out-of-range colors" 0.0 0.0 1.0 1.0
 #pragma parameter DEBUG_CARD "Show debug card" 0.0 0.0 1.0 1.0
+#endif  // OPTION_DEBUG
 
 layout(push_constant) uniform Push
 {
@@ -46,25 +48,34 @@ layout(push_constant) uniform Push
     float W_Y;
     float CHROMATIC_ADAPTATION;
     float ADAPTATION_LEVEL;
+
 #ifdef SDR
     float GAMUT_COMPRESSION;
-#endif
+#endif  // SDR
+
 #ifdef WCG
     float GAMUT_SELECT;
-#endif
-    float COLOR_CONVERSION_BYPASS;
+#endif  // WCG
+
     float COLORIMETRY_PRESET;
+
 #ifdef HDR
     float VIEWING_ENVIRONMENT;
 #else
     float TONEMAP_TYPE;
-#endif
+#endif  // HDR
+
+    float USER_PICTURE;
+    float USER_BRIGHTNESS;
+
+#ifdef OPTION_DEBUG
+    float COLOR_CONVERSION_BYPASS;
     float MAKEUP_GAIN;
     float DEBUG_COLOR_DELTA;
     float COLOR_DEBUG_OUT_OF_RANGE;
     float DEBUG_CARD;
-    float USER_PICTURE;
-    float USER_BRIGHTNESS;
+#endif  // OPTION_DEBUG
+
 } config;
 
 #define COLORIMETRY_PRESET config.COLORIMETRY_PRESET
@@ -81,24 +92,31 @@ layout(push_constant) uniform Push
 
 #ifdef SDR
 #define GAMUT_COMPRESSION config.GAMUT_COMPRESSION
-#endif
+#endif  // SDR
 
 #ifdef WCG
 #define GAMUT_SELECT config.GAMUT_SELECT
-#endif
+#endif  // WCG
 
 #ifdef HDR
 #define VIEWING_ENVIRONMENT config.VIEWING_ENVIRONMENT
 #else
 #define TONEMAP_TYPE config.TONEMAP_TYPE
-#endif
+#endif  // HDR
 
+#ifdef OPTION_DEBUG
 #define MAKEUP_GAIN config.MAKEUP_GAIN
-
 #define COLOR_CONVERSION_BYPASS config.COLOR_CONVERSION_BYPASS
 #define DEBUG_COLOR_DELTA config.DEBUG_COLOR_DELTA
 #define COLOR_DEBUG_OUT_OF_RANGE config.COLOR_DEBUG_OUT_OF_RANGE
 #define DEBUG_CARD config.DEBUG_CARD
+#else
+const float MAKEUP_GAIN = 1.0;
+const float COLOR_CONVERSION_BYPASS = 0.0;
+const float DEBUG_COLOR_DELTA = 0.0;
+const float COLOR_DEBUG_OUT_OF_RANGE = 0.0;
+const float DEBUG_CARD = 0.0;
+#endif  // OPTION_DEBUG
 
 #define USER_PICTURE config.USER_PICTURE
 #define USER_BRIGHTNESS config.USER_BRIGHTNESS
@@ -313,6 +331,7 @@ float uncharted2_tonemap( float color, float exposure_bias)
 layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
+
 #ifdef WIDE_COLOR
 layout(location = 1) out float white_level;
 layout(location = 2) out float max_luma_weight;
@@ -320,7 +339,8 @@ layout(location = 3) out vec3 ref_XYZ;
 layout(location = 4) out mat3 cat_transform;
 layout(location = 7) out BradfordParams bradford_params;
 layout(location = 11) out Colorimetry colorimetry;
-#endif
+#endif  // WIDE_COLOR
+
 #ifdef SDR
 layout(location = 1) out float white_level;
 layout(location = 2) out float max_luma_weight;
@@ -330,7 +350,7 @@ layout(location = 5) out vec2 ipt_scale;
 layout(location = 6) out mat3 cat_transform;
 layout(location = 9) out BradfordParams bradford_params;
 layout(location = 13) out Colorimetry colorimetry;
-#endif
+#endif  // SDR
 
 void main()
 {
@@ -502,12 +522,13 @@ void main()
             ipt_scale = vec2(y_scale, c_scale);
         }
     }
-#endif
-}
+#endif  // SDR
 
+}
 
 #pragma stage fragment
 layout(location = 0) in vec2 vTexCoord;
+
 #ifdef WIDE_COLOR
 layout(location = 1) in float white_level;
 layout(location = 2) in float max_luma_weight;
@@ -515,7 +536,8 @@ layout(location = 3) in vec3 ref_XYZ;
 layout(location = 4) in mat3 cat_transform;
 layout(location = 7) in BradfordParams bradford_params;
 layout(location = 11) in Colorimetry colorimetry;
-#endif
+#endif  // WIDE_COLOR
+
 #ifdef SDR
 layout(location = 1) in float white_level;
 layout(location = 2) in float max_luma_weight;
@@ -525,7 +547,8 @@ layout(location = 5) in vec2 ipt_scale;
 layout(location = 6) in mat3 cat_transform;
 layout(location = 9) in BradfordParams bradford_params;
 layout(location = 13) in Colorimetry colorimetry;
-#endif
+#endif  // SDR
+
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 1) uniform sampler2D Source;
 
@@ -627,6 +650,7 @@ vec3 render_debug_card(vec2 uv, float safe_gain, float peak_gain, Colorimetry co
 
 void main()
 {
+
 #ifdef HDR
     float TARGET_NITS;
     if (VIEWING_ENVIRONMENT < 0.5) {
@@ -638,7 +662,7 @@ void main()
     }
 #else
     const float TARGET_NITS = 100.0;
-#endif
+#endif  // HDR
 
     vec4 src = texture(Source, vTexCoord);
     vec3 YrYgYb = src.rgb;
@@ -700,7 +724,7 @@ void main()
     }
 
     YrYgYb = clamp(YrYgYb, 0.0, 1.0);
-#endif
+#endif  // HDR
 
     // Convert YrYgYb to XYZ using native colorimetry
     vec3 XYZ = YrYgYb_to_XYZ(YrYgYb, colorimetry);
@@ -728,6 +752,7 @@ void main()
     vec3 RGB;
 
     // Convert adapted XYZ to output color space
+
 #ifdef SDR
         // Take advantage of intermediate for advanced compression
         if (GAMUT_COMPRESSION < 1.5) {
@@ -745,7 +770,8 @@ void main()
             Ipt.yz *= ipt_scale.y;
             XYZ = IPT_to_XYZ(Ipt);
         }
-#endif
+#endif  // SDR
+
         RGB = toRGB * XYZ;
 
     if (DEBUG_COLOR_DELTA > 0.5) {
@@ -766,7 +792,7 @@ void main()
         // Advanced gamut compression
         // Already applied earlier
     }
-#endif
+#endif  // SDR
 
     // Debug: Visualize out-of-range colors with sinusoid modulation
     if (COLOR_DEBUG_OUT_OF_RANGE > 0.5) {

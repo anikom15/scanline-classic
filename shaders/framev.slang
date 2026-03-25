@@ -36,9 +36,11 @@
 #pragma name FrameV
 #pragma format R16G16B16A16_SFLOAT
 
+#ifdef OPTION_DEBUG
 #pragma parameter FRAME_VIZ_ACTIVE "Show active content" 1.0 0.0 1.0 1.0
 #pragma parameter FRAME_VIZ_BLANKING "Show frame blanking (yellow)" 0.0 0.0 1.0 1.0
 #pragma parameter FRAME_VIZ_PADDING "Show padding (magenta)" 0.0 0.0 1.0 1.0
+#endif  // OPTION_DEBUG
 
 // Push constants
 layout(push_constant) uniform Push
@@ -49,9 +51,6 @@ layout(push_constant) uniform Push
     float OriginalFPS;
     uint CurrentSubFrame;
     uint TotalSubFrames;
-    float FRAME_VIZ_ACTIVE;
-    float FRAME_VIZ_BLANKING;
-    float FRAME_VIZ_PADDING;
     float V_FREQ_MODE;
     float V_FREQ;
     float SC_FREQ_MODE;
@@ -63,11 +62,24 @@ layout(push_constant) uniform Push
     float H_BLANK_FUZZ;
     float DOUBLE_REFRESH;
     float SCANLINE_BLANK_WEIGHT;
+
+#ifdef OPTION_DEBUG
+    float FRAME_VIZ_ACTIVE;
+    float FRAME_VIZ_BLANKING;
+    float FRAME_VIZ_PADDING;
+#endif  // OPTION_DEBUG
+
 } config;
 
+#ifdef OPTION_DEBUG
 #define FRAME_VIZ_ACTIVE config.FRAME_VIZ_ACTIVE
 #define FRAME_VIZ_BLANKING config.FRAME_VIZ_BLANKING
+#endif  // OPTION_DEBUG
+
+#ifdef OPTION_DEBUG
 #define FRAME_VIZ_PADDING config.FRAME_VIZ_PADDING
+#endif  // OPTION_DEBUG
+
 #define V_FREQ_MODE config.V_FREQ_MODE
 #define V_FREQ config.V_FREQ
 #define SC_FREQ_MODE config.SC_FREQ_MODE
@@ -198,9 +210,11 @@ vec3 sample_active_content(float output_x, float output_y)
         original_y += 1.0;
 
     vec3 base = texture(Source, (vec2(original_x, original_y) + 0.5) / config.SourceSize.xy).rgb;
+
 #ifdef OPTION_NOSCANLINES
     return base;
-#endif
+#endif  // OPTION_NOSCANLINES
+
     bool scaled_blank_line = v_scanline_offset >= 1.0;
 
     // Interlaced handling with parity-aware zero-stuffing
@@ -318,6 +332,7 @@ void main()
 
     vec4 color_gain;
 
+#ifdef OPTION_DEBUG
     if (in_active && FRAME_VIZ_ACTIVE > 0.5) {
         vec3 color = sample_active_content(output_x, output_y);
         color_gain = vec4(color, average_active_gain());
@@ -326,6 +341,13 @@ void main()
     } else if (!in_frame && FRAME_VIZ_PADDING > 0.5) {
         color_gain = vec4(vec3(1.0, 0.0, 1.0) * 0.5, average_active_gain()); // Magenta
     } else {
+#else
+    if (in_active) {
+        vec3 color = sample_active_content(output_x, output_y);
+        color_gain = vec4(color, average_active_gain());
+    } else {
+#endif  // OPTION_DEBUG
+
         color_gain = vec4(vec3(0.0), average_active_gain()); // Black
     }
 

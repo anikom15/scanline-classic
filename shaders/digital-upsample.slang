@@ -37,7 +37,9 @@
 #pragma name DigitalUpsample
 #pragma format A2B10G10R10_UNORM_PACK32
 
+#ifdef OPTION_DEBUG
 #pragma parameter UPSAMPLE_BYPASS "Bypass upsampling stage" 0.0 0.0 1.0 1.0
+#endif  // OPTION_DEBUG
 
 layout(push_constant) uniform Push
 {
@@ -45,15 +47,23 @@ layout(push_constant) uniform Push
     vec4 OutputSize;
 
     float WORKING_BITS;
-    float UPSAMPLE_BYPASS;
     float UPSAMPLER_INPUT;
     float GAMMA_CORRECT_BLENDING;
+
+#ifdef OPTION_DEBUG
+    float UPSAMPLE_BYPASS;
+#endif  // OPTION_DEBUG
+
 } config;
 
+#ifdef OPTION_DEBUG
 #define UPSAMPLE_BYPASS config.UPSAMPLE_BYPASS
+#endif  // OPTION_DEBUG
+
 #define WORKING_BITS config.WORKING_BITS
 #define KAISER_BETA 5.87  // Default value for ~62 dB stopband attenuation
 #define TRANSITION_WIDTH 0.15  // Default transition width factor, max 0.5 dB passband ripple
+
 #define UPSAMPLER_INPUT config.UPSAMPLER_INPUT
 #define GAMMA_CORRECT_BLENDING config.GAMMA_CORRECT_BLENDING
 
@@ -134,10 +144,14 @@ layout(set = 0, binding = 2) uniform sampler2D Source;
 void main()
 {
     // Bypass check
+
+#ifdef OPTION_DEBUG
     if (UPSAMPLE_BYPASS > 0.5) {
         FragColor = texture(Source, vTexCoord);
         return;
     }
+#endif  // OPTION_DEBUG
+
     
     // Check if upsampling is needed
     if (scale.x < 1.001 && scale.y < 1.001) {

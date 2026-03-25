@@ -161,8 +161,10 @@
 #pragma name SVideo
 #pragma format R16G16B16A16_SFLOAT
 
+#ifdef OPTION_DEBUG
 #pragma parameter BYPASS_SVIDEO "Bypass S-Video processing (0=Off, 1=On)" 0.0 0.0 1.0 1.0
 #pragma parameter SVIDEO_FILTER_BYPASS "S-Video filter bypass (use center sample)" 0.0 0.0 1.0 1.0
+#endif  // OPTION_DEBUG
 
 layout(push_constant) uniform Push
 {
@@ -214,17 +216,23 @@ layout(push_constant) uniform Push
 layout(std140, set = 0, binding = 0) uniform UBO
 {
     mat4 MVP;
-    float BYPASS_SVIDEO;
-    float SVIDEO_FILTER_BYPASS;
     float BW_MODE;
     float ENCODER_SETUP;
     float DECODER_SETUP;
     float PAL;
     float DECODER_TYPE;
+
+#ifdef OPTION_DEBUG
+    float BYPASS_SVIDEO;
+    float SVIDEO_FILTER_BYPASS;
+#endif  // OPTION_DEBUG
+
 } global;
 
+#ifdef OPTION_DEBUG
 #define BYPASS_SVIDEO global.BYPASS_SVIDEO
 #define SVIDEO_FILTER_BYPASS global.SVIDEO_FILTER_BYPASS
+#endif  // OPTION_DEBUG
 
 #define BW_MODE global.BW_MODE
 
@@ -288,10 +296,13 @@ layout(set = 0, binding = 2) uniform sampler2D Source;
 
 void main()
 {
+
+#ifdef OPTION_DEBUG
     if (BYPASS_SVIDEO >= 1.0) {
         FragColor = vec4(texture(Source, vTexCoord).rgb, 1.0);
         return;
     }
+#endif  // OPTION_DEBUG
 
     // Horizontal coordinate handling using nearest pixel center (keep Y center)
     vec2 UV = vTexCoord * config.OutputSize.xy;
@@ -343,6 +354,8 @@ void main()
     vec3 color;
 
     // Optional filter bypass: use center-sample demodulated values directly
+
+#ifdef OPTION_DEBUG
     if (SVIDEO_FILTER_BYPASS < 0.5) {
         float wy0 = gaussian(Ax, sigma.x);
         float wc0 = gaussian(Ax, sigma.y); // sigma.y == sigma.z for chroma
@@ -398,8 +411,69 @@ void main()
         // Normalized outputs
         color = accum / max(wsum, vec3(EPS));
     } else {
+#else
+    {
+        float wy0 = gaussian(Ax, sigma.x);
+        float wc0 = gaussian(Ax, sigma.y); // sigma.y == sigma.z for chroma
+
+        accum += vec3(wy0 * yc0.r, wc0 * yc0.g, wc0 * yc0.b);
+        wsum  += vec3(wy0, wc0, wc0);
+
+        // Symmetric lobes
+        // Limited to 16 iterations for faster shader compilation
+        // Gaussian weights fall off rapidly, so early exit handles quality
+        for (int n = 1; n <= 16; ++n) {
+            float nf = float(n);
+            // Symmetric distances: right = n - Ax, left = n + Ax
+            float wy_r = gaussian(nf - Ax, sigma.x);
+            float wy_l = gaussian(nf + Ax, sigma.x);
+            float wc_r = gaussian(nf - Ax, sigma.y);
+            float wc_l = gaussian(nf + Ax, sigma.y);
+            if (wy_r < FILTER_THRESHOLD && wy_l < FILTER_THRESHOLD && wc_r < FILTER_THRESHOLD && wc_l < FILTER_THRESHOLD)
+                break;
+
+            vec3 pixelR = texture(Source, Tex + nf * dx).rgb;
+            // Compute exact phase at right tap position to avoid drift
+            float phaseR = normalize_phase(phase0 + phase_inc_px * nf);
+            float phaseR_user = normalize_phase(phase0_user + phase_inc_px * nf);
+            vec2 carrierR = sincos_phase_raw(phaseR);
+            vec2 carrierR_user = sincos_phase_raw(phaseR_user);
+            float chromaR = pixelR.g * carrierR.x + pal_v_sign * pixelR.b * carrierR.y;
+            vec3 ycR;
+            ycR.r = y_gain * (pixelR.r + y_offset);
+            ycR.g = chromaR * 2.0 * carrierR_user.x;
+            ycR.b = chromaR * 2.0 * carrierR_user.y * pal_v_sign_decoder;
+
+            vec3 pixelL = texture(Source, Tex - nf * dx).rgb;
+            // Compute exact phase at left tap position to avoid drift
+            float phaseL = normalize_phase(phase0 - phase_inc_px * nf);
+            float phaseL_user = normalize_phase(phase0_user - phase_inc_px * nf);
+            vec2 carrierL = sincos_phase_raw(phaseL);
+            vec2 carrierL_user = sincos_phase_raw(phaseL_user);
+            float chromaL = pixelL.g * carrierL.x + pal_v_sign * pixelL.b * carrierL.y;
+            vec3 ycL;
+            ycL.r = y_gain * (pixelL.r + y_offset);
+            ycL.g = chromaL * 2.0 * carrierL_user.x;
+            ycL.b = chromaL * 2.0 * carrierL_user.y * pal_v_sign_decoder;
+
+            accum.x += wy_r * ycR.x + wy_l * ycL.x;
+            accum.y += wc_r * ycR.y + wc_l * ycL.y;
+            accum.z += wc_r * ycR.z + wc_l * ycL.z;
+            wsum.x  += wy_r + wy_l;
+            wsum.y  += wc_r + wc_l;
+            wsum.z  += wc_r + wc_l;
+        }
+
+        // Normalized outputs
+        color = accum / max(wsum, vec3(EPS));
+    }
+#endif  // OPTION_DEBUG
+
+#ifdef OPTION_DEBUG
+    if (SVIDEO_FILTER_BYPASS >= 0.5) {
         color = vec3(y_out, yc0.g, yc0.b);
     }
+#endif  // OPTION_DEBUG
 
     if (USER_MONOCHROME > 0.5) {
         // Monochrome modes

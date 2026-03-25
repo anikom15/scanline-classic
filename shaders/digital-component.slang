@@ -38,7 +38,9 @@
 #pragma name DigitalComponent
 #pragma format A2B10G10R10_UNORM_PACK32
 
+#ifdef OPTION_DEBUG
 #pragma parameter DIGITAL_COMPONENT_BYPASS "Bypass system component stage" 0.0 0.0 1.0 1.0
+#endif  // OPTION_DEBUG
 
 layout(push_constant) uniform Push
 {
@@ -47,10 +49,16 @@ layout(push_constant) uniform Push
 
     float WORKING_BITS;
     float YCBCR_MODEL;
+
+#ifdef OPTION_DEBUG
     float DIGITAL_COMPONENT_BYPASS;
+#endif  // OPTION_DEBUG
+
 } config;
 
+#ifdef OPTION_DEBUG
 #define DIGITAL_COMPONENT_BYPASS config.DIGITAL_COMPONENT_BYPASS
+#endif  // OPTION_DEBUG
 
 #define YCBCR_MODEL config.YCBCR_MODEL
 #define WORKING_BITS config.WORKING_BITS
@@ -80,10 +88,13 @@ layout(set = 0, binding = 2) uniform sampler2D Source;
 void main()
 {
     // Full stage bypass: pass through RGB
+
+#ifdef OPTION_DEBUG
     if (DIGITAL_COMPONENT_BYPASS > 0.5) {
         FragColor = vec4(texture(Source, vTexCoord).rgb, 1.0);
         return;
     }
+#endif  // OPTION_DEBUG
 
     // Sample input and convert to luma-chroma space
     vec3 rgb = texture(Source, vTexCoord).rgb;

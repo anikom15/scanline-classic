@@ -36,7 +36,9 @@
 #pragma name DigitalYCCFilter
 #pragma format A2B10G10R10_UNORM_PACK32
 
+#ifdef OPTION_DEBUG
 #pragma parameter DIGITAL_YC_FILTER_BYPASS "Bypass digital YC filter" 0.0 0.0 1.0 1.0
+#endif  // OPTION_DEBUG
 
 layout(push_constant) uniform Push
 {
@@ -46,7 +48,6 @@ layout(push_constant) uniform Push
     uint FrameCount;
     float OriginalFPS;
     float WORKING_BITS;
-    float DIGITAL_YC_FILTER_BYPASS;
     float DIGITAL_Y_FILTER_DECIMATION;
     float DIGITAL_Cb_FILTER_DECIMATION;
     float DIGITAL_Cr_FILTER_DECIMATION;
@@ -60,9 +61,17 @@ layout(push_constant) uniform Push
     float V_FREQ;
     float SHORTEN_ODD_FIELD_TIME;
     float H_BLANK_FUZZ;
+
+#ifdef OPTION_DEBUG
+    float DIGITAL_YC_FILTER_BYPASS;
+#endif  // OPTION_DEBUG
+
 } config;
 
+#ifdef OPTION_DEBUG
 #define DIGITAL_YC_FILTER_BYPASS config.DIGITAL_YC_FILTER_BYPASS
+#endif  // OPTION_DEBUG
+
 #define WORKING_BITS config.WORKING_BITS
 #define DIGITAL_Y_FILTER_DECIMATION config.DIGITAL_Y_FILTER_DECIMATION
 #define DIGITAL_Cb_FILTER_DECIMATION config.DIGITAL_Cb_FILTER_DECIMATION
@@ -138,10 +147,13 @@ layout(set = 0, binding = 2) uniform sampler2D Source;
 
 void main()
 {
+
+#ifdef OPTION_DEBUG
     if (DIGITAL_YC_FILTER_BYPASS > 0.5) {
         FragColor = texture(Source, vTexCoord);
         return;
     }
+#endif  // OPTION_DEBUG
 
     // Skip filtering at decimation factor 1 (bypass)
     if (DIGITAL_Cb_FILTER_DECIMATION <= 1.0 && DIGITAL_Cr_FILTER_DECIMATION <= 1.0 && DIGITAL_Y_FILTER_DECIMATION <= 1.0) {

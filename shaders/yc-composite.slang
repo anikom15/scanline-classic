@@ -33,7 +33,9 @@
 #pragma name YCComposite
 #pragma format R16_SFLOAT
 
+#ifdef OPTION_DEBUG
 #pragma parameter BYPASS_YC_FILTER "Bypass Y/C filter (off, on)" 0.0 0.0 1.0 1.0
+#endif
 
 layout(push_constant) uniform Push
 {
@@ -42,7 +44,11 @@ layout(push_constant) uniform Push
     vec4 FrameHSize;
     uint FrameCount;
     float OriginalFPS;
+
+#ifdef OPTION_DEBUG
     float BYPASS_YC_FILTER;
+#endif
+
     float V_FREQ_MODE;
     float V_FREQ;
     float SHORTEN_ODD_FIELD_TIME;
@@ -62,7 +68,9 @@ layout(push_constant) uniform Push
     float LUMA_NOTCH_ATTEN_DB;
 } config;
 
+#ifdef OPTION_DEBUG
 #define BYPASS_YC_FILTER config.BYPASS_YC_FILTER
+#endif
 
 #define V_FREQ_MODE config.V_FREQ_MODE
 #define V_FREQ config.V_FREQ
@@ -167,11 +175,14 @@ void main()
     vec2 dx = vec2(config.OutputSize.z, 0.0);
 
     // If bypass is enabled, just sum Y+C and output
+
+#ifdef OPTION_DEBUG
     if (BYPASS_YC_FILTER > 0.5) {
         vec2 yc = texture(Source, Tex).rg;
         FragColor = vec4(yc.r + yc.g, 0.0, 0.0, 1.0);
         return;
     }
+#endif
 
     const float THRESHOLD = 1.0 / 255.0;
 

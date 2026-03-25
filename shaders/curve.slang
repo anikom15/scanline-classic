@@ -35,10 +35,12 @@
 #pragma name Curve
 #pragma format R16G16B16A16_SFLOAT
 
+#ifdef OPTION_DEBUG
 #pragma parameter CURVE_BYPASS "Bypass Curvature" 0 0 1.0 1.0
 #pragma parameter CURVE_FILTER "Curvature filter (0=off, 1=on)" 1.0 0.0 1.0 1.0
 #pragma parameter DEBUG_BARREL_SURROUND "Debug: Show surround outside barrel" 0.0 0.0 1.0 1.0
 #pragma parameter CURVE_DEBUG_OUT_OF_RANGE "Curve: Show out-of-range colors" 0.0 0.0 1.0 1.0
+#endif  // OPTION_DEBUG
 
 layout(push_constant) uniform Push
 {
@@ -48,32 +50,44 @@ layout(push_constant) uniform Push
     uint FrameCount;
 
     // Control
-    float CURVE_BYPASS;
-    float CURVE_FILTER;
     float SCREEN_FOCUS;
     float ZOOM;
-    float DEBUG_BARREL_SURROUND;
 
     // Factory geometry (angles in degrees)
     float ASPECT;
     float SCREEN_ANGLE_H;
     float SCREEN_ANGLE_V;
 
+#ifdef OPTION_DEBUG
+    float CURVE_BYPASS;
+    float CURVE_FILTER;
+    float DEBUG_BARREL_SURROUND;
     float CURVE_DEBUG_OUT_OF_RANGE;
+#endif  // OPTION_DEBUG
+
 } config;
 
 // Macro bindings for consistency with code style
+
+#ifdef OPTION_DEBUG
 #define CURVE_BYPASS config.CURVE_BYPASS
 #define CURVE_FILTER config.CURVE_FILTER
+#endif  // OPTION_DEBUG
+
 #define SCREEN_FOCUS config.SCREEN_FOCUS
 #define ZOOM config.ZOOM
+
+#ifdef OPTION_DEBUG
 #define DEBUG_BARREL_SURROUND config.DEBUG_BARREL_SURROUND
+#endif  // OPTION_DEBUG
 
 #define ASPECT config.ASPECT
 #define SCREEN_ANGLE_H config.SCREEN_ANGLE_H
 #define SCREEN_ANGLE_V config.SCREEN_ANGLE_V
 
+#ifdef OPTION_DEBUG
 #define CURVE_DEBUG_OUT_OF_RANGE config.CURVE_DEBUG_OUT_OF_RANGE
+#endif  // OPTION_DEBUG
 
 // MVP / matrix UBO (matches project convention)
 layout(std140, set = 0, binding = 0) uniform UBO {
@@ -107,9 +121,11 @@ vec2 barrel_theta(vec2 uv, const float theta_h, const float theta_v)
 float curve_zoom_factor()
 {
     float zoom = clamp(ZOOM, 50.0, 200.0) / 100.0; // 1.0 = 100%
+
 #ifdef OPTION_NOBEZEL_COMPENSATE_ZOOM
     zoom *= 1.07; // Compensate for bezel cropping when zooming
-#endif
+#endif  // OPTION_NOBEZEL_COMPENSATE_ZOOM
+
     return zoom;
 }
 
@@ -132,18 +148,24 @@ void curve_filter_coefficients(out float B, out float C)
 
 vec3 sample_curve_source(sampler2D source, vec2 tex, float B, float C)
 {
+
+#ifdef OPTION_DEBUG
     if (CURVE_FILTER < 0.5) {
         return texture(source, tex).rgb;
     }
+#endif  // OPTION_DEBUG
 
     return sample_bicubic(source, tex, config.SourceSize.zw, B, C);
 }
 
 vec3 apply_curve_debug(vec3 color, vec2 tex)
 {
+
+#ifdef OPTION_DEBUG
     if (CURVE_DEBUG_OUT_OF_RANGE > 0.5) {
         return zebra(color, 0.0, 10000.0, tex, config.OutputSize.xy, config.FrameCount, 1.0);
     }
+#endif  // OPTION_DEBUG
 
     return color;
 }
@@ -171,10 +193,13 @@ layout(set = 0, binding = 1) uniform sampler2D Source;
 void main()
 {
     // Simple bypass
+
+#ifdef OPTION_DEBUG
     if (CURVE_BYPASS > 0.5) {
         FragColor = vec4(texture(Source, vTexCoord).rgb, texture(Source, clamp01(vTexCoord)).a);
         return;
     }
+#endif  // OPTION_DEBUG
 
     vec2 tex;
 
@@ -203,16 +228,19 @@ void main()
     // Back to texture space
     vec2 uv2 = vec2(sq.x / maskAR, sq.y);
     tex = uv2 * 0.5 + 0.5;
-#endif
+#endif  // OPTION_FLAT
 
     tex = apply_curve_zoom(tex);
 
     // Shared debug path for flat and curved sampling outside source bounds.
+
+#ifdef OPTION_DEBUG
     if (DEBUG_BARREL_SURROUND > 0.5 && curve_tex_out_of_bounds(tex)) {
         float alpha = texture(Source, clamp01(tex)).a;
         FragColor = vec4(0.0, 0.0, 0.5, alpha); // Blue
         return;
     }
+#endif  // OPTION_DEBUG
 
     float B;
     float C;

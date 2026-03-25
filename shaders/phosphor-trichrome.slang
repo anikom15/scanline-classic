@@ -29,13 +29,14 @@
 #pragma name Phosphor3
 #pragma format R16G16B16A16_SFLOAT
 
+#ifdef OPTION_DEBUG
 #pragma parameter PHOSPHOR_BYPASS "Phosphor trichrome bypass" 0.0 0.0 1.0 1.0
+#endif  // OPTION_DEBUG
 
 layout(push_constant) uniform Push
 {
     float OriginalFPS;
     uint TotalSubFrames;
-    float PHOSPHOR_BYPASS;
     float PHOSPHOR_MANTISSA_R;
     float PHOSPHOR_MANTISSA_G;
     float PHOSPHOR_MANTISSA_B;
@@ -45,9 +46,16 @@ layout(push_constant) uniform Push
     float PHOSPHOR_HOLD_R;
     float PHOSPHOR_HOLD_G;
     float PHOSPHOR_HOLD_B;
+
+#ifdef OPTION_DEBUG
+    float PHOSPHOR_BYPASS;
+#endif  // OPTION_DEBUG
+
 } config;
 
+#ifdef OPTION_DEBUG
 #define PHOSPHOR_BYPASS config.PHOSPHOR_BYPASS
+#endif  // OPTION_DEBUG
 
 // Subframe support
 #define TOTAL_SUBFRAMES config.TotalSubFrames
@@ -104,14 +112,18 @@ void main()
     float alpha = src.a;
 
     // Early exit for full bypass
+
 #ifdef OPTION_NOPHOSPHOR
     FragColor = vec4(color, alpha);
     return;
-#endif
+#endif  // OPTION_NOPHOSPHOR
+
+#ifdef OPTION_DEBUG
     if (PHOSPHOR_BYPASS >= 1.0) {
         FragColor = vec4(color, alpha);
         return;
     }
+#endif  // OPTION_DEBUG
 
     vec3 n = vec3(1.0 / PHOSPHOR_HOLD_R,
                   1.0 / PHOSPHOR_HOLD_G,

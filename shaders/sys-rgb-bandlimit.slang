@@ -28,6 +28,10 @@
 #pragma name SysRGBBandlimit
 #pragma format R16G16B16A16_SFLOAT
 
+#ifdef OPTION_DEBUG
+#pragma parameter SYS_RGB_BANDLIMIT_BYPASS "System RGB bandlimit bypass" 0.0 0.0 1.0 1.0
+#endif  // OPTION_DEBUG
+
 layout(push_constant) uniform Push
 {
     vec4 OriginalSize;
@@ -45,7 +49,11 @@ layout(push_constant) uniform Push
     float H_FREQ_MODE;
     float H_FREQ;
     float H_BLANK_FUZZ;
+
+#ifdef OPTION_DEBUG
     float SYS_RGB_BANDLIMIT_BYPASS;
+#endif
+
     float SYS_BANDWIDTH_R;
     float SYS_BANDWIDTH_G;
     float SYS_BANDWIDTH_B;
@@ -54,8 +62,11 @@ layout(push_constant) uniform Push
     float SYS_CUTOFF_ATTEN_B;
 } config;
 
-#pragma parameter SYS_RGB_BANDLIMIT_BYPASS "System RGB bandlimit bypass" 0.0 0.0 1.0 1.0
+#ifdef OPTION_DEBUG
 #define SYS_RGB_BANDLIMIT_BYPASS config.SYS_RGB_BANDLIMIT_BYPASS
+#else
+const float SYS_RGB_BANDLIMIT_BYPASS = 0.0;
+#endif  // OPTION_DEBUG
 
 #define V_FREQ_MODE config.V_FREQ_MODE
 #define V_FREQ config.V_FREQ
@@ -125,10 +136,13 @@ layout(set = 0, binding = 2) uniform sampler2D Source;
 
 void main()
 {
+
+#ifdef OPTION_DEBUG
     if (SYS_RGB_BANDLIMIT_BYPASS > 0.5) {
         FragColor = texture(Source, vTexCoord);
         return;
     }
+#endif
 
     // Single-pass lobe-based horizontal Gaussian convolution
     vec3 color = bandlimit_convolve_gaussian_x(vTexCoord, config.OutputSize, Source, sigma);

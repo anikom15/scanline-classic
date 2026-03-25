@@ -29,7 +29,9 @@
 #include "menus/parameters/sys-timing.inc"
 #include "menus/parameters/composite.inc"
 
+#ifdef OPTION_DEBUG
 #pragma parameter BYPASS_PREFILTER "Bypass prefilter (off, on)" 0.0 0.0 1.0 1.0
+#endif  // OPTION_DEBUG
 
 #pragma name CompositePreFilter
 #pragma format R16G16B16A16_SFLOAT
@@ -41,7 +43,6 @@ layout(push_constant) uniform Push
     vec4 FrameHSize;
     uint FrameCount;
     float OriginalFPS;
-    float BYPASS_PREFILTER;
     float V_FREQ_MODE;
     float V_FREQ;
     float SHORTEN_ODD_FIELD_TIME;
@@ -59,9 +60,16 @@ layout(push_constant) uniform Push
     float BANDPASS_ATTEN_DB;
     float COMB_FILTER_LUMA_ADAPT;
     float COMB_FILTER_CHROMA_ADAPT;
+
+#ifdef OPTION_DEBUG
+    float BYPASS_PREFILTER;
+#endif  // OPTION_DEBUG
+
 } config;
 
+#ifdef OPTION_DEBUG
 #define BYPASS_PREFILTER config.BYPASS_PREFILTER
+#endif  // OPTION_DEBUG
 
 #define V_FREQ_MODE config.V_FREQ_MODE
 #define V_FREQ config.V_FREQ
@@ -155,10 +163,13 @@ float compute_point_correlation(float ref, float cmp) {
 
 void main()
 {
+
+#ifdef OPTION_DEBUG
     if (BYPASS_PREFILTER > 0.5) {
         FragColor = vec4(texture(Source, vTexCoord).rgb, 1.0);
         return;
     }
+#endif  // OPTION_DEBUG
 
     // Input composite baseband from previous stage
     vec2 UV = vTexCoord * config.OutputSize.xy;

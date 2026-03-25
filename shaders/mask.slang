@@ -33,21 +33,27 @@
 #pragma name CRTMask
 #pragma format R16G16B16A16_SFLOAT
 
+#ifdef OPTION_DEBUG
 #pragma parameter MASK_BYPASS "Bypass CRT mask" 0.0 0.0 1.0 1.0
 #pragma parameter MASK_DEBUG_OUT_OF_RANGE "Beam-mask: Show out-of-range colors" 0.0 0.0 1.0 1.0
 #pragma parameter SLOT_VERTICAL_BIAS "Slot mask vertical bias" 0.0 0.0 1.0 0.01
+#endif  // OPTION_DEBUG
 
 layout(push_constant) uniform Push
 {
     vec4 OutputSize;     // xy = output size in pixels
     uint FrameCount;
     float ASPECT;
-    float MASK_BYPASS;
     float MASK_TYPE;
     float MASK_INTENSITY;
     float TVL;
+
+#ifdef OPTION_DEBUG
+    float MASK_BYPASS;
     float MASK_DEBUG_OUT_OF_RANGE;
     float SLOT_VERTICAL_BIAS;
+#endif  // OPTION_DEBUG
+
 } config;
 
 layout(std140, set = 0, binding = 0) uniform UBO {
@@ -55,12 +61,19 @@ layout(std140, set = 0, binding = 0) uniform UBO {
 } global;
 
 #define ASPECT config.ASPECT
+
+#ifdef OPTION_DEBUG
 #define MASK_BYPASS config.MASK_BYPASS
+#endif  // OPTION_DEBUG
+
 #define MASK_TYPE config.MASK_TYPE
 #define MASK_INTENSITY config.MASK_INTENSITY
 #define TVL config.TVL
+
+#ifdef OPTION_DEBUG
 #define MASK_DEBUG_OUT_OF_RANGE config.MASK_DEBUG_OUT_OF_RANGE
 #define SLOT_VERTICAL_BIAS config.SLOT_VERTICAL_BIAS
+#endif  // OPTION_DEBUG
 
 float derive_mask_sigma_value(float tvl, float output_height)
 {
@@ -98,6 +111,17 @@ float slotFamilyWeight(float vcycle, float center, float sigma_v)
 {
     float dist_to_segment = max(cyclicDist(vcycle, center, 3.0) - 0.5, 0.0);
     return exp(-0.5 * dist_to_segment * dist_to_segment / (sigma_v * sigma_v));
+}
+
+float slot_vertical_bias()
+{
+
+#ifdef OPTION_DEBUG
+    return SLOT_VERTICAL_BIAS;
+#else
+    return 0.0;
+#endif  // OPTION_DEBUG
+
 }
 
 // ---- Mask computation with numerical integration for anti-aliasing ----
@@ -140,8 +164,9 @@ vec3 integrate_slot_mask_numerical(
         float y = y_min + (float(j) + 0.5) * step_y;
         float vc = mod(y - 0.5, 3.0);
 
-        float wA = slotFamilyWeight(vc, 0.5 + SLOT_VERTICAL_BIAS, sigma_v);
-        float wB = slotFamilyWeight(vc, 2.0 - SLOT_VERTICAL_BIAS, sigma_v);
+        float vertical_bias = slot_vertical_bias();
+        float wA = slotFamilyWeight(vc, 0.5 + vertical_bias, sigma_v);
+        float wB = slotFamilyWeight(vc, 2.0 - vertical_bias, sigma_v);
 
         family_weights += vec2(wA, wB);
     }
@@ -264,8 +289,9 @@ vec3 compute_mask_point_sample(float x_units, float y_units, vec2 sigma, float m
         float cycle = mod(x_units - 0.5, 12.0);
         float vcycle = mod(y_units - 0.5, 3.0);
         float sigma_v = sigma.y;
-        float wA = slotFamilyWeight(vcycle, 0.5 + SLOT_VERTICAL_BIAS, sigma_v);
-        float wB = slotFamilyWeight(vcycle, 2.0 - SLOT_VERTICAL_BIAS, sigma_v);
+        float vertical_bias = slot_vertical_bias();
+        float wA = slotFamilyWeight(vcycle, 0.5 + vertical_bias, sigma_v);
+        float wB = slotFamilyWeight(vcycle, 2.0 - vertical_bias, sigma_v);
 
         // Family A: RGB at 0, 2, 4
         float dR0 = cyclicDist(cycle, 0.0, 12.0);
@@ -679,25 +705,31 @@ void main()
     float incoming_gain = color_gain.a;
 
     // If mask is bypassed, pass through incoming gain unchanged (mask gain = 1.0)
+
 #ifdef OPTION_NOMASK
     float packed_gain = pack_gain_pair(incoming_gain, max(1.0, incoming_gain));
     FragColor = vec4(color, packed_gain);
     return;
 #else
+
+#ifdef OPTION_DEBUG
     if (MASK_BYPASS >= 1.0) {
         float packed_gain = pack_gain_pair(incoming_gain, max(1.0, incoming_gain));
         FragColor = vec4(color, packed_gain);
         return;
     }
+#endif  // OPTION_DEBUG
 
     // Use units and mask_intensity computed in vertex shader
     vec2 sigma = derive_effective_mask_sigma();
     vec3 mask_color = compute_mask(vTexCoord, units_x_total, units_y_total, pixels_per_unit, sigma, peak_mask_value);
     vec3 masked_color = mix(color, color * mask_color, mask_intensity);
 
+#ifdef OPTION_DEBUG
     if (MASK_DEBUG_OUT_OF_RANGE >= 1.0) {
         masked_color = zebra(masked_color, 0.0, 10000.0, vTexCoord, config.OutputSize.xy, config.FrameCount, 2.0);
     }
+#endif  // OPTION_DEBUG
 
     // Combine incoming gain with average mask gain
     float combined_gain = incoming_gain * avg_mask_gain;
@@ -705,4 +737,5 @@ void main()
 
     FragColor = vec4(masked_color, packed_gain);
 #endif  // OPTION_NOMASK
+
 }

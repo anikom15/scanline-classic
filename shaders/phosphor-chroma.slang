@@ -23,6 +23,22 @@
 #pragma name PhosphorChroma
 #pragma format R16G16B16A16_SFLOAT
 
+#ifdef OPTION_DEBUG
+#pragma parameter PHOSPHOR_CHROMA_HEADER " ==== Phosphor Chroma Parameters ==== " 0.0 0.0 0.0 0.0
+#pragma parameter PHOSPHOR_CHROMA_BYPASS "Phosphor chroma bypass" 0.0 0.0 1.0 1.0
+#pragma parameter CHROMA_A_X "Chromaticity A x" 0.630 0.0 1.0 0.001
+#pragma parameter CHROMA_A_Y "Chromaticity A y" 0.340 0.0 1.0 0.001
+#pragma parameter CHROMA_B_X "Chromaticity B x" 0.310 0.0 1.0 0.001
+#pragma parameter CHROMA_B_Y "Chromaticity B y" 0.595 0.0 1.0 0.001
+#pragma parameter CHROMA_C_X "Chromaticity C x" 0.155 0.0 1.0 0.001
+#pragma parameter CHROMA_C_Y "Chromaticity C y" 0.070 0.0 1.0 0.001
+#pragma parameter CHROMA_A_WEIGHT "Chromaticity A luminance weight" 0.2124 0.0 1.0 0.01
+#pragma parameter CHROMA_B_WEIGHT "Chromaticity B luminance weight" 0.7011 0.0 1.0 0.01
+#pragma parameter CHROMA_C_WEIGHT "Chromaticity C luminance weight" 0.0866 0.0 1.0 0.01
+#pragma parameter SCALE_W "Scale white point" 0.0 0.0 1.0 1.0
+#pragma parameter COLOR_SPACE "Output color space" 1.0 1.0 4.0 1.0
+#endif  // OPTION_DEBUG
+
 layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 MVP;
 } global;
@@ -30,6 +46,8 @@ layout(std140, set = 0, binding = 0) uniform UBO {
 layout(push_constant) uniform Push
 {
     vec4 SourceSize;
+
+#ifdef OPTION_DEBUG
     float CHROMA_A_X;
     float CHROMA_A_Y;
     float CHROMA_B_X;
@@ -42,39 +60,37 @@ layout(push_constant) uniform Push
     float SCALE_W;
     float COLOR_SPACE;
     float PHOSPHOR_CHROMA_BYPASS;
+#endif  // OPTION_DEBUG
+
 } config;
 
-#pragma parameter PHOSPHOR_CHROMA_HEADER " ==== Phosphor Chroma Parameters ==== " 0.0 0.0 0.0 0.0
-
-#pragma parameter PHOSPHOR_CHROMA_BYPASS "Phosphor chroma bypass" 0.0 0.0 1.0 1.0
+#ifdef OPTION_DEBUG
 #define PHOSPHOR_CHROMA_BYPASS config.PHOSPHOR_CHROMA_BYPASS
-
-#pragma parameter CHROMA_A_X "Chromaticity A x" 0.630 0.0 1.0 0.001
 #define CHROMA_A_X config.CHROMA_A_X
-#pragma parameter CHROMA_A_Y "Chromaticity A y" 0.340 0.0 1.0 0.001
 #define CHROMA_A_Y config.CHROMA_A_Y
-
-#pragma parameter CHROMA_B_X "Chromaticity B x" 0.310 0.0 1.0 0.001
 #define CHROMA_B_X config.CHROMA_B_X
-#pragma parameter CHROMA_B_Y "Chromaticity B y" 0.595 0.0 1.0 0.001
 #define CHROMA_B_Y config.CHROMA_B_Y
-
-#pragma parameter CHROMA_C_X "Chromaticity C x" 0.155 0.0 1.0 0.001
 #define CHROMA_C_X config.CHROMA_C_X
-#pragma parameter CHROMA_C_Y "Chromaticity C y" 0.070 0.0 1.0 0.001
 #define CHROMA_C_Y config.CHROMA_C_Y
-
-#pragma parameter CHROMA_A_WEIGHT "Chromaticity A luminance weight" 0.2124 0.0 1.0 0.01
 #define CHROMA_A_WEIGHT config.CHROMA_A_WEIGHT
-#pragma parameter CHROMA_B_WEIGHT "Chromaticity B luminance weight" 0.7011 0.0 1.0 0.01
 #define CHROMA_B_WEIGHT config.CHROMA_B_WEIGHT
-#pragma parameter CHROMA_C_WEIGHT "Chromaticity C luminance weight" 0.0866 0.0 1.0 0.01
 #define CHROMA_C_WEIGHT config.CHROMA_C_WEIGHT
-
-#pragma parameter SCALE_W "Scale white point" 0.0 0.0 1.0 1.0
 #define SCALE_W config.SCALE_W
-#pragma parameter COLOR_SPACE "Output color space" 1.0 1.0 4.0 1.0
 #define COLOR_SPACE config.COLOR_SPACE
+#else
+const float PHOSPHOR_CHROMA_BYPASS = 0.0;
+const float CHROMA_A_X = 0.630;
+const float CHROMA_A_Y = 0.340;
+const float CHROMA_B_X = 0.310;
+const float CHROMA_B_Y = 0.595;
+const float CHROMA_C_X = 0.155;
+const float CHROMA_C_Y = 0.070;
+const float CHROMA_A_WEIGHT = 0.2124;
+const float CHROMA_B_WEIGHT = 0.7011;
+const float CHROMA_C_WEIGHT = 0.0866;
+const float SCALE_W = 0.0;
+const float COLOR_SPACE = 1.0;
+#endif  // OPTION_DEBUG
 
 vec3 Yrgb_to_RGB(mat3 toRGB, vec3 W, vec3 Yrgb)
 {

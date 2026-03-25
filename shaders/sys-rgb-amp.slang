@@ -32,20 +32,30 @@
 
 #include "menus/parameters/sys-rgb.inc"
 
+#ifdef OPTION_DEBUG
 #pragma parameter SYS_RGB_AMP_BYPASS "Bypass RGB Amplifier" 0 0 1 1
+#endif  // OPTION_DEBUG
 
 layout(push_constant) uniform Push
 {
-    float SYS_RGB_AMP_BYPASS;
     float SYS_BIAS_R;
     float SYS_BIAS_G;
     float SYS_BIAS_B;
     float SYS_GAIN_R;
     float SYS_GAIN_G;
     float SYS_GAIN_B;
+
+#ifdef OPTION_DEBUG
+    float SYS_RGB_AMP_BYPASS;
+#endif  // OPTION_DEBUG
+
 } config;
 
+#ifdef OPTION_DEBUG
 #define SYS_RGB_AMP_BYPASS config.SYS_RGB_AMP_BYPASS
+#else
+const float SYS_RGB_AMP_BYPASS = 0;
+#endif  // OPTION_DEBUG
 
 #define SYS_BIAS_R config.SYS_BIAS_R
 #define SYS_BIAS_G config.SYS_BIAS_G

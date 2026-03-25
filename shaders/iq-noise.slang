@@ -17,7 +17,9 @@
 #pragma name IQNoise
 #pragma format R16G16_SFLOAT
 
+#ifdef OPTION_DEBUG
 #pragma parameter BYPASS_NOISE "Bypass noise (off,on)" 0.0 0.0 1.0 1.0
+#endif  // OPTION_DEBUG
 
 layout(push_constant) uniform Push
 {
@@ -27,7 +29,6 @@ layout(push_constant) uniform Push
     uint CurrentSubFrame;
     uint TotalSubFrames;
     float OriginalFPS;
-    float BYPASS_NOISE;
     float NOISE_MODE;
     float NOISE_AWGN_DB;
     float NOISE_PHASE_JITTER_DEG;
@@ -35,9 +36,17 @@ layout(push_constant) uniform Push
     float NOISE_GHOST1_PIX;
     float NOISE_IMPULSE_RATE;
     float NOISE_IMPULSE_DB;
+
+#ifdef OPTION_DEBUG
+    float BYPASS_NOISE;
+#endif  // OPTION_DEBUG
+
 } config;
 
+#ifdef OPTION_DEBUG
 #define BYPASS_NOISE            config.BYPASS_NOISE
+#endif  // OPTION_DEBUG
+
 #define NOISE_MODE              config.NOISE_MODE
 #define NOISE_AWGN_DB           config.NOISE_AWGN_DB
 #define NOISE_PHASE_JITTER_DEG  config.NOISE_PHASE_JITTER_DEG
@@ -70,10 +79,13 @@ layout(set = 0, binding = 2) uniform sampler2D Source; // Input IQ
 void main()
 {
     vec2 iq = texture(Source, vTexCoord).rg;
+
+#ifdef OPTION_DEBUG
     if (BYPASS_NOISE > 0.5) {
         FragColor = vec4(iq, 0.0, 1.0);
         return;
     }
+#endif  // OPTION_DEBUG
 
     // Base AWGN amplitude (linear)
     float awgn_amp = exp(NOISE_AWGN_DB * 0.1151292546); // ln(10)/20

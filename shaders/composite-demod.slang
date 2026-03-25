@@ -29,11 +29,13 @@
 #pragma name CompositeDemod
 #pragma format R16G16B16A16_SFLOAT
 
+#ifdef OPTION_DEBUG
 #pragma parameter BYPASS_COMPOSITE_DEMOD "Bypass composite demodulation (off, on)" 0.0 0.0 1.0 1.0
 #pragma parameter COMPOSITE_DEMOD_FILTER_BYPASS "Bypass composite demodulation filter (off, on)" 0.0 0.0 1.0 1.0
 #pragma parameter CORRELATION "Correlation" 0.5 0.0 1.0 0.01
 #pragma parameter COMB_ADJUST_X "Comb filter phase adjustment X (texels)" 0.0 -10.0 10.0 0.01
 #pragma parameter COMB_ADJUST_Y "Comb filter phase adjustment Y (texels)" 0.0 -10.0 10.0 0.01
+#endif  // OPTION_DEBUG
 
 layout(push_constant) uniform Push
 {
@@ -42,7 +44,6 @@ layout(push_constant) uniform Push
     vec4 FrameHSize;
     uint FrameCount;
     float OriginalFPS;
-    float BYPASS_COMPOSITE_DEMOD;
     float V_FREQ_MODE;
     float V_FREQ;
     float SHORTEN_ODD_FIELD_TIME;
@@ -60,9 +61,18 @@ layout(push_constant) uniform Push
     float DISPLAY_CUTOFF_ATTEN_Y;
     float DISPLAY_CUTOFF_ATTEN_C;
     float BW_MODE;
+
+#ifdef OPTION_DEBUG
+    float BYPASS_COMPOSITE_DEMOD;
+#endif  // OPTION_DEBUG
+
 } config;
 
+#ifdef OPTION_DEBUG
 #define BYPASS_COMPOSITE_DEMOD config.BYPASS_COMPOSITE_DEMOD
+#else
+const float BYPASS_COMPOSITE_DEMOD = 0.0;
+#endif  // OPTION_DEBUG
 
 #define V_FREQ_MODE config.V_FREQ_MODE
 #define V_FREQ config.V_FREQ
@@ -86,7 +96,6 @@ layout(push_constant) uniform Push
 
 #define BW_MODE config.BW_MODE
 
-
 layout(std140, set = 0, binding = 0) uniform UBO
 {
     mat4 MVP;
@@ -96,10 +105,14 @@ layout(std140, set = 0, binding = 0) uniform UBO
     float DECODER_TYPE; // Decoder type
     float DECODER_SETUP;
     float USER_MONOCHROME; // Monochrome mode (off, B&W, sepia)
+
+#ifdef OPTION_DEBUG
     float COMB_ADJUST_X;
     float COMB_ADJUST_Y;
     float COMPOSITE_DEMOD_FILTER_BYPASS;
     float CORRELATION;
+#endif  // OPTION_DEBUG
+
 } global;
 
 #define USER_COLOR global.USER_COLOR
@@ -109,10 +122,18 @@ layout(std140, set = 0, binding = 0) uniform UBO
 #define DECODER_TYPE global.DECODER_TYPE
 #define DECODER_SETUP global.DECODER_SETUP
 #define USER_MONOCHROME global.USER_MONOCHROME
+
+#ifdef OPTION_DEBUG
 #define COMB_ADJUST_X global.COMB_ADJUST_X
 #define COMB_ADJUST_Y global.COMB_ADJUST_Y
 #define COMPOSITE_DEMOD_FILTER_BYPASS global.COMPOSITE_DEMOD_FILTER_BYPASS
 #define CORRELATION global.CORRELATION
+#else
+const float COMB_ADJUST_X = 0.0;
+const float COMB_ADJUST_Y = 0.0;
+const float COMPOSITE_DEMOD_FILTER_BYPASS = 0.0;
+const float CORRELATION = 0.5;
+#endif  // OPTION_DEBUG
 
 #pragma stage vertex
 layout(location = 0) in vec4 Position;

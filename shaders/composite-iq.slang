@@ -28,7 +28,9 @@
 #include "menus/parameters/sys-timing.inc"
 #include "menus/parameters/sys-encode.inc"
 
+#ifdef OPTION_DEBUG
 #pragma parameter HILBERT_BYPASS "Bypass Hilbert transform (I only)" 0.0 0.0 1.0 1.0
+#endif  // OPTION_DEBUG
 
 #pragma name CompositeIQ
 #pragma format R16G16_SFLOAT
@@ -37,10 +39,16 @@ layout(push_constant) uniform Push
 {
     vec4 OriginalSize;
     vec4 OutputSize;
+
+#ifdef OPTION_DEBUG
     float HILBERT_BYPASS;
+#endif  // OPTION_DEBUG
+
 } config;
 
+#ifdef OPTION_DEBUG
 #define HILBERT_BYPASS config.HILBERT_BYPASS
+#endif  // OPTION_DEBUG
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
@@ -66,11 +74,14 @@ layout(set = 0, binding = 2) uniform sampler2D Source;
 
 void main()
 {
+
+#ifdef OPTION_DEBUG
     if (HILBERT_BYPASS > 0.5) {
         vec3 rgb = texture(Source, vTexCoord_in).rgb;
         FragColor = vec4(rgb.r, 0.0, 0.0, 1.0);
         return;
     }
+#endif  // OPTION_DEBUG
 
     vec2 UV = vTexCoord_in * config.OutputSize.xy;
     float baseCenter = floor(UV.x) + 0.5;

@@ -37,7 +37,9 @@
 #include "menus/parameters/sys-encode.inc"
 #include "menus/parameters/rf.inc"
 
+#ifdef OPTION_DEBUG
 #pragma parameter BYPASS_IQ_DEMOD "Bypass IQ demod (off, on)" 0.0 0.0 1.0 1.0
+#endif  // OPTION_DEBUG
 
 #pragma name IQDemod
 #pragma format R16_SFLOAT
@@ -49,7 +51,6 @@ layout(push_constant) uniform Push
     vec4 FrameHSize;
     uint FrameCount;
     float OriginalFPS;
-    float BYPASS_IQ_DEMOD;
     float IQ_DEMOD_Q_WEIGHT;
     float V_FREQ_MODE;
     float V_FREQ;
@@ -65,9 +66,17 @@ layout(push_constant) uniform Push
     float LSB_BANDWIDTH;
     float USB_ROLL_OFF;
     float LSB_ROLL_OFF;
+
+#ifdef OPTION_DEBUG
+    float BYPASS_IQ_DEMOD;
+#endif  // OPTION_DEBUG
+
 } config;
 
+#ifdef OPTION_DEBUG
 #define BYPASS_IQ_DEMOD config.BYPASS_IQ_DEMOD
+#endif  // OPTION_DEBUG
+
 #define IQ_DEMOD_Q_WEIGHT config.IQ_DEMOD_Q_WEIGHT
 #define V_FREQ_MODE config.V_FREQ_MODE
 #define V_FREQ config.V_FREQ
@@ -166,12 +175,15 @@ layout(set = 0, binding = 2) uniform sampler2D Source;
 
 void main()
 {
+
+#ifdef OPTION_DEBUG
     if (BYPASS_IQ_DEMOD > 0.5) {
         // Passthrough I as composite for quick debug
         vec2 iq_passthru = texture(Source, vTexCoord).rg;
         FragColor = vec4(iq_passthru.r, 0.0, 0.0, 1.0);
         return;
     }
+#endif  // OPTION_DEBUG
 
     vec2 UV = vTexCoord * config.OutputSize.xy;
     float line = floor(UV.y);

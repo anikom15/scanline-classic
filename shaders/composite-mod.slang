@@ -30,7 +30,9 @@
 #pragma name CompositeMod
 #pragma format R16_SFLOAT
 
+#ifdef OPTION_DEBUG
 #pragma parameter COMPOSITE_MOD_BYPASS "Composite Modulation Bypass" 0.0 0.0 1.0 1.0
+#endif  // OPTION_DEBUG
 
 layout(push_constant) uniform Push
 {
@@ -51,7 +53,11 @@ layout(push_constant) uniform Push
     float H_BLANK_FUZZ;
     float ENCODER_SETUP;
     float PAL;
+
+#ifdef OPTION_DEBUG
     float COMPOSITE_MOD_BYPASS;
+#endif  // OPTION_DEBUG
+
 } config;
 
 #define V_FREQ_MODE config.V_FREQ_MODE
@@ -66,7 +72,10 @@ layout(push_constant) uniform Push
 #define H_BLANK_FUZZ config.H_BLANK_FUZZ
 #define ENCODER_SETUP config.ENCODER_SETUP
 #define PAL config.PAL
+
+#ifdef OPTION_DEBUG
 #define COMPOSITE_MOD_BYPASS config.COMPOSITE_MOD_BYPASS
+#endif  // OPTION_DEBUG
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
@@ -112,10 +121,13 @@ layout(set = 0, binding = 2) uniform sampler2D Source;
 
 void main()
 {
+
+#ifdef OPTION_DEBUG
     if (COMPOSITE_MOD_BYPASS > 0.5) {
         FragColor = texture(Source, vTexCoord);
         return;
     }
+#endif  // OPTION_DEBUG
 
     vec2 UV = vTexCoord * config.OutputSize.xy;
     float line = floor(UV.y);

@@ -40,7 +40,9 @@
 #pragma name DigitalCompositeMod
 #pragma format A2B10G10R10_UNORM_PACK32
 
+#ifdef OPTION_DEBUG
 #pragma parameter DIGITAL_COMPOSITE_MOD_BYPASS "Bypass digital composite mod" 0.0 0.0 1.0 1.0
+#endif  // OPTION_DEBUG
 
 layout(push_constant) uniform Push
 {
@@ -49,7 +51,6 @@ layout(push_constant) uniform Push
     vec4 FrameHSize;
     float OriginalFPS;
     uint FrameCount;
-    float DIGITAL_COMPOSITE_MOD_BYPASS;
     float WORKING_BITS;
     float SC_FREQ_MODE;
     float SC_FREQ;
@@ -62,9 +63,17 @@ layout(push_constant) uniform Push
     float H_BLANK_FUZZ;
     float SHORTEN_ODD_FIELD_TIME;
     float PAL;
+
+#ifdef OPTION_DEBUG
+    float DIGITAL_COMPOSITE_MOD_BYPASS;
+#endif  // OPTION_DEBUG
+
 } config;
 
+#ifdef OPTION_DEBUG
 #define DIGITAL_COMPOSITE_MOD_BYPASS config.DIGITAL_COMPOSITE_MOD_BYPASS
+#endif  // OPTION_DEBUG
+
 #define WORKING_BITS config.WORKING_BITS
 #define SC_FREQ_MODE config.SC_FREQ_MODE
 #define SC_FREQ config.SC_FREQ
@@ -134,10 +143,13 @@ layout(set = 0, binding = 2) uniform sampler2D Source;
 
 void main()
 {
+
+#ifdef OPTION_DEBUG
     if (DIGITAL_COMPOSITE_MOD_BYPASS > 0.5) {
         FragColor = texture(Source, vTexCoord);
         return;
     }
+#endif  // OPTION_DEBUG
 
     // Pixel and line positions
     vec2 UV = vTexCoord * config.OutputSize.xy;

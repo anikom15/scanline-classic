@@ -33,9 +33,11 @@
 #pragma name FrameH
 #pragma format R8G8B8A8_UNORM
 
+#ifdef OPTION_DEBUG
 #pragma parameter FRAME_VIZ_ACTIVE "Show active content" 1.0 0.0 1.0 1.0
 #pragma parameter FRAME_VIZ_BLANKING "Show frame blanking (yellow)" 0.0 0.0 1.0 1.0
 #pragma parameter FRAME_VIZ_PADDING "Show padding (magenta)" 0.0 0.0 1.0 1.0
+#endif  // OPTION_DEBUG
 
 // Push constants
 layout(push_constant) uniform Push
@@ -46,9 +48,6 @@ layout(push_constant) uniform Push
     float OriginalFPS;
     uint CurrentSubFrame;
     uint TotalSubFrames;
-    float FRAME_VIZ_ACTIVE;
-    float FRAME_VIZ_BLANKING;
-    float FRAME_VIZ_PADDING;
     float V_FREQ_MODE;
     float V_FREQ;
     float SC_FREQ_MODE;
@@ -60,11 +59,24 @@ layout(push_constant) uniform Push
     float H_BLANK_FUZZ;
     float DOUBLE_REFRESH;
     float SCANLINE_BLANK_WEIGHT;
+
+#ifdef OPTION_DEBUG
+    float FRAME_VIZ_ACTIVE;
+    float FRAME_VIZ_BLANKING;
+    float FRAME_VIZ_PADDING;
+#endif  // OPTION_DEBUG
+
 } config;
 
+#ifdef OPTION_DEBUG
 #define FRAME_VIZ_ACTIVE config.FRAME_VIZ_ACTIVE
 #define FRAME_VIZ_BLANKING config.FRAME_VIZ_BLANKING
+#endif  // OPTION_DEBUG
+
+#ifdef OPTION_DEBUG
 #define FRAME_VIZ_PADDING config.FRAME_VIZ_PADDING
+#endif  // OPTION_DEBUG
+
 #define V_FREQ_MODE config.V_FREQ_MODE
 #define V_FREQ config.V_FREQ
 #define SC_FREQ_MODE config.SC_FREQ_MODE
@@ -170,6 +182,7 @@ void main()
 
     vec3 color;
 
+#ifdef OPTION_DEBUG
     if (in_active && FRAME_VIZ_ACTIVE > 0.5) {
         color = sample_active_content(output_x, output_y);
     } else if (in_frame && !in_active && FRAME_VIZ_BLANKING > 0.5) {
@@ -177,6 +190,12 @@ void main()
     } else if (!in_frame && FRAME_VIZ_PADDING > 0.5) {
         color = vec3(1.0, 0.0, 1.0) * 0.5;
     } else {
+#else
+    if (in_active) {
+        color = sample_active_content(output_x, output_y);
+    } else {
+#endif  // OPTION_DEBUG
+
         color = vec3(0.0);
     }
 

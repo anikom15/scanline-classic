@@ -29,8 +29,10 @@
 #pragma name DisplayRGBBandlimit
 #pragma format R16G16B16A16_SFLOAT
 
+#ifdef OPTION_DEBUG
 #pragma parameter DISPLAY_RGB_AMP_BYPASS "Bypass display RGB amplifier" 0.0 0.0 1.0 1.0
 #pragma parameter DISPLAY_RGB_FILTER_BYPASS "Bypass display RGB filter" 0.0 0.0 1.0 1.0
+#endif  // OPTION_DEBUG
 
 layout(push_constant) uniform Push
 {
@@ -79,24 +81,29 @@ layout(push_constant) uniform Push
 #define DISPLAY_CUTOFF_ATTEN_B config.DISPLAY_CUTOFF_ATTEN_B
 
 
-
 #define USER_BLUE_ONLY config.USER_BLUE_ONLY
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
     mat4 MVP;
-    float DISPLAY_RGB_FILTER_BYPASS;
-    float DISPLAY_RGB_AMP_BYPASS;
     float DISPLAY_GAIN_R;
     float DISPLAY_GAIN_G;
     float DISPLAY_GAIN_B;
     float DISPLAY_BIAS_R;
     float DISPLAY_BIAS_G;
     float DISPLAY_BIAS_B;
+
+#ifdef OPTION_DEBUG
+    float DISPLAY_RGB_FILTER_BYPASS;
+    float DISPLAY_RGB_AMP_BYPASS;
+#endif  // OPTION_DEBUG
+
 } global;
 
+#ifdef OPTION_DEBUG
 #define DISPLAY_RGB_FILTER_BYPASS global.DISPLAY_RGB_FILTER_BYPASS
 #define DISPLAY_RGB_AMP_BYPASS global.DISPLAY_RGB_AMP_BYPASS
+#endif  // OPTION_DEBUG
 
 #define DISPLAY_GAIN_R global.DISPLAY_GAIN_R
 #define DISPLAY_GAIN_G global.DISPLAY_GAIN_G
@@ -166,16 +173,26 @@ void main()
 {
     vec3 color;
 
+#ifdef OPTION_DEBUG
     if (DISPLAY_RGB_FILTER_BYPASS < 0.5) {
         color = bandlimit_convolve_gaussian_x(vTexCoord, config.OutputSize, Source, sigma);
     } else {
+#else
+    {
+#endif  // OPTION_DEBUG
+
         color = texture(Source, vTexCoord).rgb;
     }
 
     // RGB amplifier
+
+#ifdef OPTION_DEBUG
     if (DISPLAY_RGB_AMP_BYPASS < 0.5) {
         color = gain * (color + bias);
     }
+#else
+    color = gain * (color + bias);
+#endif  // OPTION_DEBUG
 
     // Apply blue-only filter
     color.r *= 1.0 - USER_BLUE_ONLY;
