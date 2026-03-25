@@ -44,6 +44,5 @@
 #include "parameters/sys-encode.inc"
 #include "parameters/digital-component.inc"
 #include "parameters/digital-upsample.inc"
-#include "parameters/debug-common.inc"
 
 #include "menu-base.slang"

@@ -44,6 +44,5 @@
 #include "parameters/sys-rgb.inc"
 #include "parameters/sys-encode.inc"
 #include "parameters/sys-yc.inc"
-#include "parameters/debug-common.inc"
 
 #include "menu-base.slang"

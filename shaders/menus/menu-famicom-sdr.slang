@@ -42,6 +42,5 @@
 #include "parameters/rf.inc"
 #include "parameters/sys-timing.inc"
 #include "parameters/famicom.inc"
-#include "parameters/debug-common.inc"
 
 #include "menu-base.slang"

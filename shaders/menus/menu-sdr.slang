@@ -39,6 +39,5 @@
 #include "parameters/limiter.inc"
 #include "parameters/sys-timing.inc"
 #include "parameters/sys-rgb.inc"
-#include "parameters/debug-common.inc"
 
 #include "menu-base.slang"
