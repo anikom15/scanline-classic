@@ -26,7 +26,6 @@
 #include "modulation.inc"
 
 #include "menus/parameters/sys-timing.inc"
-#include "menus/parameters/sys-encode.inc"
 
 #pragma include_optional "../config/options.cfg"
 

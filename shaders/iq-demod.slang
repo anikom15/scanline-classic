@@ -34,7 +34,6 @@
 #include "window.inc"
 
 #include "menus/parameters/sys-timing.inc"
-#include "menus/parameters/sys-encode.inc"
 #include "menus/parameters/rf.inc"
 
 #pragma include_optional "../config/options.cfg"
