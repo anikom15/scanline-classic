@@ -1,6 +1,6 @@
 #version 450
 
-// Filename: svideo-mod.slang
+// Filename: sys-yc.slang
 //
 // Copyright (C) 2025 W. M. Martinez
 //
@@ -22,15 +22,15 @@
 // Input: RGB voltage signal
 // Output: Luma and chroma (R16G16_SFLOAT, R=luma, G=chroma)
 
+#pragma name SysYC
+#pragma format R16G16_SFLOAT
+
 #include "common.inc"
 #include "color.inc"
 #include "modulation.inc"
 #include "menus/parameters/sys-timing.inc"
 #include "menus/parameters/sys-encode.inc"
 #include "menus/parameters/sys-yc.inc"
-
-#pragma name SysYC
-#pragma format R16G16_SFLOAT
 
 layout(push_constant) uniform Push
 {

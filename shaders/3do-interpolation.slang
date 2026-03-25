@@ -15,6 +15,10 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+#pragma name Interpolation3DO
+
+#pragma include_optional "../config/options.cfg"
+
 #pragma parameter INTERPOLATION_3DO_HEADER " —— 3DO Interpolation —— " 0.0 0.0 0.0 0.0
 #pragma parameter INTERPOLATION_MODE "Interpolation mode (nearest, bilinear, original)" 2.0 0.0 2.0 1.0
 #pragma parameter FAKE_CORNER_WEIGHTS "Simulate corner weights (off, on)" 1.0 0.0 1.0 1.0

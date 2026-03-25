@@ -1,3 +1,4 @@
+#pragma include_optional "../config/options.cfg"
 // Filename: color-base.slang
 //
 // Copyright (C) 2025-2026 W. M. Martinez

@@ -1,6 +1,6 @@
 #version 450
 
-// Filename: menu.slang
+// Filename: menu-composite-yc-sdr.slang
 //
 // Copyright (C) 2023, 2025 W. M. Martinez
 //

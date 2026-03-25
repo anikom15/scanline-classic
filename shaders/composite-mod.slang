@@ -22,13 +22,15 @@
 // Input: Component voltage signal (from sys-component.slang)
 // Output: Composite baseband (R16_SFLOAT, R channel)
 
+#pragma name CompositeMod
+#pragma format R16_SFLOAT
+
 #include "common.inc"
 #include "modulation.inc"
 #include "menus/parameters/sys-timing.inc"
 #include "menus/parameters/sys-encode.inc"
 
-#pragma name CompositeMod
-#pragma format R16_SFLOAT
+#pragma include_optional "../config/options.cfg"
 
 #ifdef OPTION_DEBUG
 #pragma parameter COMPOSITE_MOD_BYPASS "Composite Modulation Bypass" 0.0 0.0 1.0 1.0

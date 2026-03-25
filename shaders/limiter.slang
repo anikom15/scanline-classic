@@ -1,6 +1,6 @@
 #version 450
 
-// Filename: limiter-sdr.slang
+// Filename: limiter.slang
 //
 // Copyright (C) 2025 W. M. Martinez
 //
@@ -35,6 +35,9 @@
 // apply distortion to signals that have been modified by the
 // amplifiers in the previous stages to go beyond 100 IRE.
 
+#pragma name Limiter
+#pragma format R16G16B16A16_SFLOAT
+
 #include "common.inc"
 #include "color.inc"
 #include "tools/zebra.inc"
@@ -47,8 +50,7 @@
 #include "menus/parameters/output-tonemap.inc"
 #include "menus/parameters/limiter.inc"
 
-#pragma name Limiter
-#pragma format R16G16B16A16_SFLOAT
+#pragma include_optional "../config/options.cfg"
 
 #ifdef OPTION_DEBUG
 #pragma parameter SHARPNENER_BYPASS "Bypass sharpener" 0.0 0.0 1.0 1.0

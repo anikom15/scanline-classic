@@ -20,6 +20,9 @@
 // Input: Linear RGB signal
 // Output: Linear RGB signal
 
+#pragma name Curve
+#pragma format R16G16B16A16_SFLOAT
+
 #include "common.inc"
 #include "geometry.inc"
 #include "modulation.inc"
@@ -31,9 +34,6 @@
 #include "menus/parameters/output-curve.inc"
 
 #pragma include_optional "../config/options.cfg"
-
-#pragma name Curve
-#pragma format R16G16B16A16_SFLOAT
 
 #ifdef OPTION_DEBUG
 #pragma parameter CURVE_BYPASS "Bypass Curvature" 0 0 1.0 1.0

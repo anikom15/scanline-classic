@@ -20,6 +20,9 @@
 // Input: Linear YrYgYb signal
 // Output: Linear YrYgYb signal
 
+#pragma name CRTBeam
+#pragma format R16G16B16A16_SFLOAT
+
 #include "common.inc"
 #include "geometry.inc"
 #include "modulation.inc"
@@ -32,9 +35,6 @@
 #include "menus/parameters/user-uncommon.inc"
 
 #pragma include_optional "../config/options.cfg"
-
-#pragma name CRTBeam
-#pragma format R16G16B16A16_SFLOAT
 
 #ifdef OPTION_DEBUG
 #pragma parameter GEOMETRY_BYPASS "Bypass beam geometry" 0.0 0.0 1.0 1.0

@@ -1,149 +1,148 @@
 #version 450
 
-/* Filename: svideo.slang
+// Filename: svideo.slang
+//
+// Copyright (C) 2025 W. M. Martinez
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+//
+// S-Video (Y/C) demodulation + low-pass reconstruction
+//
+// Overview
+// --------
+// This shader simulates an S-Video (Y/C) signal path and reconstructs baseband
+// luma/chroma suitable for downstream display processing. The input texture is
+// interpreted as:
+//   - R: Luma (Y)
+//   - G: Quadrature chroma component (U-like, 90°)
+//   - B: In-phase chroma component (V-like, 0°)
+// These baseband U/V components are modulated against a color subcarrier to
+// form a scalar chroma signal c(t) at the local carrier phase. The shader then
+// demodulates and low-pass filters chroma to reject 2·fSC images and recover
+// U′/V′, while luma is filtered independently with a higher bandwidth.
 
-   Copyright (C) 2025 W. M. Martinez
+// Signal model
+// ------------
+// Let ω = 2π·fSC and φ = field_phase. For a given sample time t:
+//   c(t) = U·sin(ωt + φ) + V·cos(ωt + φ)
+// We estimate baseband chroma via quadrature demod + low-pass:
+//   U_est = 2·LPF{ c(t)·sin(ωt + φ) }
+//   V_est = 2·LPF{ c(t)·cos(ωt + φ) }
+// In practice:
+//   - Accumulate symmetric Gaussian taps horizontally.
+//   - Use σY and σC to control bandwidth and roll-off independently.
+//   - The factor 2 recovers correct baseband amplitude after LPF removes
+//     double-frequency terms (cos/sin at 2·ω).
 
-   This program is free software: you can redistribute it and/or modify
-   it under the terms of the GNU General Public License as published by
-   the Free Software Foundation, either version 3 of the License, or
-   (at your option) any later version.
-
-   This program is distributed in the hope that it will be useful,
-   but WITHOUT ANY WARRANTY; without even the implied warranty of
-   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-   GNU General Public License for more details.
-
-   You should have received a copy of the GNU General Public License
-   along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-
-    S-Video (Y/C) demodulation + low-pass reconstruction
-
-    Overview
-    --------
-    This shader simulates an S-Video (Y/C) signal path and reconstructs baseband
-    luma/chroma suitable for downstream display processing. The input texture is
-    interpreted as:
-      - R: Luma (Y)
-      - G: Quadrature chroma component (U-like, 90°)
-      - B: In-phase chroma component (V-like, 0°)
-    These baseband U/V components are modulated against a color subcarrier to
-    form a scalar chroma signal c(t) at the local carrier phase. The shader then
-    demodulates and low-pass filters chroma to reject 2·fSC images and recover
-    U′/V′, while luma is filtered independently with a higher bandwidth.
-
-    Signal model
-    ------------
-    Let ω = 2π·fSC and φ = field_phase. For a given sample time t:
-      c(t) = U·sin(ωt + φ) + V·cos(ωt + φ)
-    We estimate baseband chroma via quadrature demod + low-pass:
-      U_est = 2·LPF{ c(t)·sin(ωt + φ) }
-      V_est = 2·LPF{ c(t)·cos(ωt + φ) }
-    In practice:
-      - Accumulate symmetric Gaussian taps horizontally.
-      - Use σY and σC to control bandwidth and roll-off independently.
-      - The factor 2 recovers correct baseband amplitude after LPF removes
-        double-frequency terms (cos/sin at 2·ω).
-
-    Timebase and subcarrier
-    -----------------------
-    Time per pixel and carrier phase are derived via compute_timebase():
-      - V_LINES_PER_FIELD is computed internally from V_FREQ and core refresh rate
-      - H frequency: H_FREQ_HZ derived from timing mode parameters
-      - Total pixels per line derived from PIXEL_CLOCK and H_FREQ_HZ
-      - Pixel time: pixel_time = LINE_TIME / total_pixels, where LINE_TIME = 1/H_FREQ_HZ
-      - Subcarrier frequency fSC:
-          SC_FREQ_MODE = 0 (Auto): Derived from H rate and pixel clock
-          SC_FREQ_MODE = 1 (NTSC): fSC = NTSC_FSC
-          SC_FREQ_MODE = 2 (PAL):  fSC = PAL_FSC
-          SC_FREQ_MODE = 3 (Custom): fSC = SC_FREQ (MHz) · 1e6
-      - Field phase:
-          field_phase = mod(FIELD_TIME · field · 2π·fSC - Δt_odd · 2π·fSC, 2π) - π
-        with FIELD_TIME = 1/V_FREQ and:
-          Δt_odd = ceil(field/2) · odd_time_adjust · SHORTEN_ODD_FIELD_TIME
-        Here odd_time_adjust = (OriginalSize.x / 256) · pixel_time, which approximates
-        the half-line offset behavior at common horizontal sizes.
+// Timebase and subcarrier
+// -----------------------
+// Time per pixel and carrier phase are derived via compute_timebase():
+//   - V_LINES_PER_FIELD is computed internally from V_FREQ and core refresh rate
+//   - H frequency: H_FREQ_HZ derived from timing mode parameters
+//   - Total pixels per line derived from PIXEL_CLOCK and H_FREQ_HZ
+//   - Pixel time: pixel_time = LINE_TIME / total_pixels, where LINE_TIME = 1/H_FREQ_HZ
+//   - Subcarrier frequency fSC:
+//       SC_FREQ_MODE = 0 (Auto): Derived from H rate and pixel clock
+//       SC_FREQ_MODE = 1 (NTSC): fSC = NTSC_FSC
+//       SC_FREQ_MODE = 2 (PAL):  fSC = PAL_FSC
+//       SC_FREQ_MODE = 3 (Custom): fSC = SC_FREQ (MHz) · 1e6
+//   - Field phase:
+//       field_phase = mod(FIELD_TIME · field · 2π·fSC - Δt_odd · 2π·fSC, 2π) - π
+//     with FIELD_TIME = 1/V_FREQ and:
+//       Δt_odd = ceil(field/2) · odd_time_adjust · SHORTEN_ODD_FIELD_TIME
+//     Here odd_time_adjust = (OriginalSize.x / 256) · pixel_time, which approximates
+//     the half-line offset behavior at common horizontal sizes.
 
     Demodulation and filtering
     --------------------------
     For each horizontal sample:
-      1) Compute per-sample carrier phase using precision-safe accumulation:
-          phase = 2π · fract(fSC · t) + field_phase
-        where t = line · LINE_TIME + x · pixel_time.
-      2) Form local sin/cos with a single paired call:
-          carrier = (sin(phase), cos(phase))
-      3) Chroma projection:
-          chroma = U · carrier.x + V · carrier.y
-      4) Remodulate for quadrature LP extraction (per sample):
-          U′_sample = 2 · chroma · carrier.x
-          V′_sample = 2 · chroma · carrier.y
-      5) Accumulate symmetric Gaussian lobes horizontally with σY/σC.
-        Early exit once both weights fall below FILTER_THRESHOLD.
-
-    Output mapping
-    --------------
-    - Normal: R = filtered Y, G = filtered U′, B = filtered V′
-    - BW modes:
-        1: Y-only to all channels
-        2: C-only (scalar chroma) to all channels
-        3: YC split (R=Y, B=C, G=0)
-      The center-sample fast path can be enabled with SVIDEO_FILTER_BYPASS.
-
-    Performance and precision
-    -------------------------
-    - Carrier math is optimized via:
-        • phase = 2π·fract(fSC·t) + field_phase  (keeps phase bounded)
-        • a single “sincos” pair (sincos_phase) per sample
-      This avoids large-argument trig loss and removes repeated mod() calls.
-    - Gaussian accumulation does up to 32 taps per side with early exit. σY/σC
-      and FILTER_THRESHOLD control cost/quality.
-
-    Parameters (UI)
-    ---------------
-    - BYPASS_SVIDEO: Bypass shader
-    - SVIDEO_FILTER_BYPASS: Use center-sample demod (skip Gaussian)
-    - V_FREQ_MODE: Vertical frequency mode (0=Core, 1=NTSC, 2=PAL, 3=From H, 4=Custom)
-    - V_FREQ: Custom vertical frequency (Hz) when mode is Custom
-    - SHORTEN_ODD_FIELD_TIME: Enable odd-field timing offset (interlaced behavior)
-    - SC_FREQ_MODE:
-        0 Auto   • derive from H rate and total pixels
-        1 NTSC   • fSC = 3.579545 MHz
-        2 PAL    • fSC = 4.43361875 MHz
-        3 Custom • fSC = SC_FREQ (MHz)
-    - SC_FREQ: Custom fSC in MHz when mode is Custom
-    - PIXEL_CLOCK_MODE: Pixel clock mode (0=Fixed MHz, 1=Multiple of subcarrier)
-    - PIXEL_CLOCK: Pixel clock in MHz or multiplier (determines total horizontal pixels)
-    - H_FREQ_MODE: Horizontal frequency mode (0=Standard, 1=From pixel clock, 2=Custom)
-    - H_FREQ: Custom H frequency or divisor (kHz or cycles)
-    - H_BLANK_FUZZ: Horizontal blanking adjustment (%)
-    - DISPLAY_BANDWIDTH_Y/C: Display bandwidth (MHz) for Y and C
-    - DISPLAY_CUTOFF_ATTEN_Y/C: Gaussian cutoff attenuation (dB)
-    - BW_MODE: 0=Normal, 1=BW (Y-only), 2=Y, 3=C, 4=Y+C split
-
-    Implementation notes
-    --------------------
-    - Dependencies:
-        • common.h: PI, EPS, helpers
-        • color.h: NTSC_FSC, PAL_FSC constants
-        • bandlimit.inc: sigma601() for bandwidth→σ mapping
-        • modulation.inc: sincos_phase(), compute_carrier_phase()
-    - Coordinates:
-        • Timing uses OriginalSize.{x,y} for subcarrier derivation and line index,
-          matching composite.slang’s behavior.
-        • Sampling uses OutputSize to locate the current pixel, then converts to Source space.
-    - Threshold:
-        • FILTER_THRESHOLD = 1/510 controls early exit on both Y/C lobes.
-    - Odd field adjust:
-        • odd_time_adjust = (OriginalSize.x / 256) · pixel_time; scaled to approximate
-          half-line shortening for interlaced fields across common widths.
-
-    Tuning tips
-    -----------
-    - NTSC: SC_FREQ_MODE=1, V_FREQ_MODE=1 (59.94 Hz, 262.5 lines computed)
-    - PAL:  SC_FREQ_MODE=2, V_FREQ_MODE=2 (50.00 Hz, 312.5 lines computed)
-    - Reduce dot crawl/zipper: Increase DISPLAY_CUTOFF_ATTEN_C or reduce DISPLAY_BANDWIDTH_C
-    - Sharper luma: Increase DISPLAY_BANDWIDTH_Y, balance with C to avoid color bleeding
+//   1) Compute per-sample carrier phase using precision-safe accumulation:
+//       phase = 2π · fract(fSC · t) + field_phase
+//     where t = line · LINE_TIME + x · pixel_time.
+//   2) Form local sin/cos with a single paired call:
+//       carrier = (sin(phase), cos(phase))
+//   3) Chroma projection:
+//       chroma = U · carrier.x + V · carrier.y
+//   4) Remodulate for quadrature LP extraction (per sample):
+//       U′_sample = 2 · chroma · carrier.x
+//       V′_sample = 2 · chroma · carrier.y
+//   5) Accumulate symmetric Gaussian lobes horizontally with σY/σC.
+//     Early exit once both weights fall below FILTER_THRESHOLD.
+//
+// Output mapping
+// --------------
+// - Normal: R = filtered Y, G = filtered U′, B = filtered V′
+// - BW modes:
+//     1: Y-only to all channels
+//     2: C-only (scalar chroma) to all channels
+//     3: YC split (R=Y, B=C, G=0)
+//   The center-sample fast path can be enabled with SVIDEO_FILTER_BYPASS.
+//
+// Performance and precision
+// -------------------------
+// - Carrier math is optimized via:
+//     • phase = 2π·fract(fSC·t) + field_phase  (keeps phase bounded)
+//     • a single “sincos” pair (sincos_phase) per sample
+//   This avoids large-argument trig loss and removes repeated mod() calls.
+// - Gaussian accumulation does up to 32 taps per side with early exit. σY/σC
+//   and FILTER_THRESHOLD control cost/quality.
+//
+// Parameters (UI)
+// ---------------
+// - BYPASS_SVIDEO: Bypass shader
+// - SVIDEO_FILTER_BYPASS: Use center-sample demod (skip Gaussian)
+// - V_FREQ_MODE: Vertical frequency mode (0=Core, 1=NTSC, 2=PAL, 3=From H, 4=Custom)
+// - V_FREQ: Custom vertical frequency (Hz) when mode is Custom
+// - SHORTEN_ODD_FIELD_TIME: Enable odd-field timing offset (interlaced behavior)
+// - SC_FREQ_MODE:
+//     0 Auto   • derive from H rate and total pixels
+//     1 NTSC   • fSC = 3.579545 MHz
+//     2 PAL    • fSC = 4.43361875 MHz
+//     3 Custom • fSC = SC_FREQ (MHz)
+// - SC_FREQ: Custom fSC in MHz when mode is Custom
+// - PIXEL_CLOCK_MODE: Pixel clock mode (0=Fixed MHz, 1=Multiple of subcarrier)
+// - PIXEL_CLOCK: Pixel clock in MHz or multiplier (determines total horizontal pixels)
+// - H_FREQ_MODE: Horizontal frequency mode (0=Standard, 1=From pixel clock, 2=Custom)
+// - H_FREQ: Custom H frequency or divisor (kHz or cycles)
+// - H_BLANK_FUZZ: Horizontal blanking adjustment (%)
+// - DISPLAY_BANDWIDTH_Y/C: Display bandwidth (MHz) for Y and C
+// - DISPLAY_CUTOFF_ATTEN_Y/C: Gaussian cutoff attenuation (dB)
+// - BW_MODE: 0=Normal, 1=BW (Y-only), 2=Y, 3=C, 4=Y+C split
+//
+// Implementation notes
+// --------------------
+// - Dependencies:
+//     • common.h: PI, EPS, helpers
+//     • color.h: NTSC_FSC, PAL_FSC constants
+//     • bandlimit.inc: sigma601() for bandwidth→σ mapping
+//     • modulation.inc: sincos_phase(), compute_carrier_phase()
+// - Coordinates:
+//     • Timing uses OriginalSize.{x,y} for subcarrier derivation and line index,
+//       matching composite.slang’s behavior.
+//     • Sampling uses OutputSize to locate the current pixel, then converts to Source space.
+// - Threshold:
+//     • FILTER_THRESHOLD = 1/510 controls early exit on both Y/C lobes.
+// - Odd field adjust:
+//     • odd_time_adjust = (OriginalSize.x / 256) · pixel_time; scaled to approximate
+//       half-line shortening for interlaced fields across common widths.
+//
+// Tuning tips
+// -----------
+// - NTSC: SC_FREQ_MODE=1, V_FREQ_MODE=1 (59.94 Hz, 262.5 lines computed)
+// - PAL:  SC_FREQ_MODE=2, V_FREQ_MODE=2 (50.00 Hz, 312.5 lines computed)
+// - Reduce dot crawl/zipper: Increase DISPLAY_CUTOFF_ATTEN_C or reduce DISPLAY_BANDWIDTH_C
+// - Sharper luma: Increase DISPLAY_BANDWIDTH_Y, balance with C to avoid color bleeding
     - If phase jitter appears over long runs, ensure timing parameters reflect the source
       so timebase derivation aligns well; otherwise pick NTSC/PAL mode explicitly.
 */
@@ -159,6 +158,8 @@
 #include "menus/parameters/sys-encode.inc"
 
 #pragma name SVideo
+
+#pragma include_optional "../config/options.cfg"
 #pragma format R16G16B16A16_SFLOAT
 
 #ifdef OPTION_DEBUG

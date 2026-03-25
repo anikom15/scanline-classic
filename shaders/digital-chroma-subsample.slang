@@ -25,6 +25,9 @@
 // Performs chroma subsampling by sampling luma from source RGB
 // and applying nearest-neighbor chroma sampling.
 
+#pragma name DigitalChromaSubsample
+#pragma format A2B10G10R10_UNORM_PACK32
+
 #include "common.inc"
 #include "color.inc"
 #include "modulation.inc"
@@ -33,8 +36,7 @@
 #include "menus/parameters/digital-component.inc"
 #include "menus/parameters/digital-chroma-subsample.inc"
 
-#pragma name DigitalChromaSubsample
-#pragma format A2B10G10R10_UNORM_PACK32
+#pragma include_optional "../config/options.cfg"
 
 #ifdef OPTION_DEBUG
 #pragma parameter CHROMA_SUBSAMPLE_BYPASS "Bypass chroma subsampling" 0.0 0.0 1.0 1.0

@@ -25,11 +25,13 @@
 // Cutoff frequency set to fc = 0.5 * scale = 0.25 cycles/sample
 // for uniform 0.5 downsampling.
 
+#pragma name Decimate
+#pragma format R16G16B16A16_SFLOAT
+
 #include "common.inc"
 #include "window.inc"
 
-#pragma name Decimate
-#pragma format R16G16B16A16_SFLOAT
+#pragma include_optional "../config/options.cfg"
 
 #ifdef OPTION_DEBUG
 #pragma parameter BYPASS_DECIMATE_FILTER "Bypass decimation filter" 0.0 0.0 1.0 1.0

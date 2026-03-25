@@ -25,6 +25,9 @@
 // Applies Gaussian lowpass filters per channel with decimation-based
 // bandwidth control. Operates horizontally on already-demodulated data.
 
+#pragma name DigitalYCCFilter
+#pragma format A2B10G10R10_UNORM_PACK32
+
 #include "common.inc"
 #include "digital.inc"
 #include "window.inc"
@@ -33,8 +36,7 @@
 #include "menus/parameters/sys-timing.inc"
 #include "menus/parameters/digital-component.inc"
 
-#pragma name DigitalYCCFilter
-#pragma format A2B10G10R10_UNORM_PACK32
+#pragma include_optional "../config/options.cfg"
 
 #ifdef OPTION_DEBUG
 #pragma parameter DIGITAL_YC_FILTER_BYPASS "Bypass digital YC filter" 0.0 0.0 1.0 1.0

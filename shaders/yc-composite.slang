@@ -22,6 +22,9 @@
 // Input: Luma (R) and chroma (G) signals from sys-yc.slang
 // Output: Composite baseband signal (R16_SFLOAT)
 
+#pragma name YCComposite
+#pragma format R16_SFLOAT
+
 #include "common.inc"
 #include "modulation.inc"
 #include "bandlimit.inc"
@@ -30,8 +33,7 @@
 #include "menus/parameters/sys-encode.inc"
 #include "menus/parameters/sys-yc.inc"
 
-#pragma name YCComposite
-#pragma format R16_SFLOAT
+#pragma include_optional "../config/options.cfg"
 
 #ifdef OPTION_DEBUG
 #pragma parameter BYPASS_YC_FILTER "Bypass Y/C filter (off, on)" 0.0 0.0 1.0 1.0

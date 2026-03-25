@@ -26,6 +26,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_SHADER_DIR = ROOT / "shaders"
+OPTIONS_SKELETON_PATH = ROOT / "config" / "options.skel.cfg"
 SHADER_EXTENSIONS = {".slang", ".inc"}
 
 CONTROL_PATTERN = re.compile(r"^\s*(if|for|while|switch)\b")
@@ -46,9 +47,33 @@ COMMENT_BLOCK_PATTERN = re.compile(r"/\*.*?\*/", re.DOTALL)
 STAGE_PATTERN = re.compile(r"^\s*#pragma\s+stage\s+(vertex|fragment)\b")
 INCLUDE_PATTERN = re.compile(r'^\s*#include\s+"([^"]+)"')
 ALLOW_STAGE_LOCAL_DIRECTIVE = "lint: allow-stage-local"
+PREPROCESSOR_CHECK_PATTERN = re.compile(r"^\s*#\s*(if|ifdef|ifndef|elif)\b")
+OPTION_TOKEN_PATTERN = re.compile(r"\bOPTION_[A-Za-z0-9_]+\b")
+OPTION_DEFINE_PATTERN = re.compile(r"^\s*(?://\s*)?#\s*define\s+(OPTION_[A-Za-z0-9_]+)\b")
+INCLUDE_OPTIONS_CFG_PATTERN = re.compile(r'^\s*#pragma\s+include_optional\s+"\.\./config/options\.cfg"\s*$')
 VARIABLE_DECL_PATTERN = re.compile(
     r"^\s*(?:const\s+)?[A-Za-z_]\w*\s+([A-Za-z_]\w*)\s*(?:\[[^\]]+\])?\s*(?:=[^;]*)?;\s*$"
 )
+VERSION_PATTERN = re.compile(r"^\s*#version\b")
+PRAGMA_NAME_PATTERN = re.compile(r"^\s*#pragma\s+name\b")
+PRAGMA_FORMAT_PATTERN = re.compile(r"^\s*#pragma\s+format\b")
+FILENAME_COMMENT_PATTERN = re.compile(r"^\s*//\s*Filename:\s*(?P<filename>[^\s]+)\s*$")
+COPYRIGHT_START_PATTERN = re.compile(r"^\s*//\s*Copyright\b")
+
+
+def load_valid_options_from_skeleton(path: Path) -> set[str]:
+    if not path.exists() or not path.is_file():
+        return set()
+
+    options: set[str] = set()
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        match = OPTION_DEFINE_PATTERN.match(raw_line)
+        if match:
+            options.add(match.group(1))
+    return options
+
+
+VALID_OPTIONS = load_valid_options_from_skeleton(OPTIONS_SKELETON_PATH)
 
 
 @dataclass(frozen=True)
@@ -795,6 +820,208 @@ def check_control_kr_braces(path: Path, lines: list[str], issues: list[LintIssue
             )
 
 
+def check_options_include_requirement(path: Path, lines: list[str], issues: list[LintIssue]) -> None:
+    if path.suffix.lower() != ".slang":
+        return
+
+    option_lines: list[tuple[int, set[str]]] = []
+    for idx, line in enumerate(lines):
+        if not PREPROCESSOR_CHECK_PATTERN.match(line):
+            continue
+        found = set(OPTION_TOKEN_PATTERN.findall(line))
+        if found:
+            option_lines.append((idx + 1, found))
+
+    if not option_lines:
+        return
+
+    include_line = next(
+        (idx + 1 for idx, line in enumerate(lines) if INCLUDE_OPTIONS_CFG_PATTERN.match(line)),
+        None,
+    )
+
+    if include_line is not None:
+        first_option_line = option_lines[0][0]
+        if include_line > first_option_line:
+            issues.append(
+                LintIssue(
+                    path=path,
+                    line=first_option_line,
+                    message=(
+                        "Options include order violation: "
+                        "'#pragma include_optional \"../config/options.cfg\"' "
+                        "must appear before any OPTION preprocessor check"
+                    ),
+                )
+            )
+        return
+
+    used_options = sorted({name for _, names in option_lines for name in names})
+    known_options = [name for name in used_options if name in VALID_OPTIONS]
+
+    if known_options:
+        used_desc = ", ".join(known_options)
+    else:
+        used_desc = ", ".join(used_options)
+
+    issues.append(
+        LintIssue(
+            path=path,
+            line=option_lines[0][0],
+            message=(
+                "Missing required options include: OPTION preprocessor check(s) detected "
+                f"({used_desc}) but file is missing '#pragma include_optional \"../config/options.cfg\"'"
+            ),
+        )
+    )
+
+
+def check_header_section_order(path: Path, lines: list[str], issues: list[LintIssue]) -> None:
+    if path.suffix.lower() != ".slang" or not lines:
+        return
+
+    version_idx = next((idx for idx, line in enumerate(lines) if VERSION_PATTERN.match(line)), None)
+    if version_idx is None:
+        return
+
+    expected_filename_line = version_idx + 2
+    if expected_filename_line >= len(lines):
+        issues.append(
+            LintIssue(
+                path=path,
+                line=version_idx + 1,
+                message="Missing filename identifier comment after '#version'",
+            )
+        )
+        return
+
+    filename_match = FILENAME_COMMENT_PATTERN.match(lines[expected_filename_line])
+    if filename_match is None:
+        issues.append(
+            LintIssue(
+                path=path,
+                line=min(version_idx + 2, len(lines)),
+                message="Header order violation: expected '// Filename: <file-name>' immediately after '#version'",
+            )
+        )
+        return
+
+    declared_filename = filename_match.group("filename")
+    if declared_filename != path.name:
+        issues.append(
+            LintIssue(
+                path=path,
+                line=expected_filename_line + 1,
+                message=(
+                    "Filename identifier mismatch: "
+                    f"expected '// Filename: {path.name}' but found '// Filename: {declared_filename}'"
+                ),
+            )
+        )
+
+    separator_idx = expected_filename_line + 1
+    if separator_idx >= len(lines) or lines[separator_idx].strip() != "//":
+        issues.append(
+            LintIssue(
+                path=path,
+                line=min(separator_idx + 1, len(lines)),
+                message="Header order violation: expected blank comment line '//' after the filename identifier",
+            )
+        )
+        return
+
+    copyright_idx = next((idx for idx, line in enumerate(lines) if COPYRIGHT_START_PATTERN.match(line)), None)
+    if copyright_idx is None:
+        issues.append(
+            LintIssue(
+                path=path,
+                line=version_idx + 1,
+                message="Missing copyright declaration comment block after filename identifier",
+            )
+        )
+        return
+
+    if copyright_idx != separator_idx + 1:
+        issues.append(
+            LintIssue(
+                path=path,
+                line=copyright_idx + 1,
+                message="Header order violation: copyright block must start immediately after the blank comment line following the filename identifier",
+            )
+        )
+
+    for idx in range(copyright_idx):
+        if idx == version_idx:
+            continue
+        if idx == expected_filename_line:
+            continue
+        if idx == separator_idx:
+            continue
+        stripped = lines[idx].strip()
+        if not stripped:
+            continue
+        if stripped:
+            issues.append(
+                LintIssue(
+                    path=path,
+                    line=idx + 1,
+                    message="Header order violation: only '#version', '// Filename: ...', and a blank comment line may appear above the copyright declaration block",
+                )
+            )
+            break
+
+    section_end = copyright_idx
+    while section_end < len(lines) and lines[section_end].lstrip().startswith("//"):
+        section_end += 1
+
+    state_order = {
+        "name": 0,
+        "format": 1,
+        "include": 2,
+        "include_optional": 3,
+        "parameter": 4,
+    }
+    seen_state = -1
+
+    for idx in range(section_end, len(lines)):
+        stripped = lines[idx].strip()
+        if not stripped:
+            continue
+
+        if PRAGMA_NAME_PATTERN.match(lines[idx]):
+            current = state_order["name"]
+            label = "#pragma name"
+        elif PRAGMA_FORMAT_PATTERN.match(lines[idx]):
+            current = state_order["format"]
+            label = "#pragma format"
+        elif INCLUDE_PATTERN.match(lines[idx]):
+            current = state_order["include"]
+            label = "#include"
+        elif lines[idx].lstrip().startswith("#pragma include_optional"):
+            current = state_order["include_optional"]
+            label = "#pragma include_optional"
+        elif PRAGMA_PARAMETER_PATTERN.match(lines[idx]):
+            current = state_order["parameter"]
+            label = "#pragma parameter"
+        else:
+            break
+
+        if current < seen_state:
+            issues.append(
+                LintIssue(
+                    path=path,
+                    line=idx + 1,
+                    message=(
+                        "Header section order violation: expected optional sections after copyright block in order "
+                        "'#pragma name', '#pragma format', '#include', '#pragma include_optional', '#pragma parameter'"
+                    ),
+                )
+            )
+            break
+
+        seen_state = current
+
+
 def lint_one_file(path: Path, fix: bool, strict_structure: bool) -> tuple[list[LintIssue], bool]:
     raw = path.read_text(encoding="utf-8")
     lines = raw.splitlines()
@@ -841,8 +1068,10 @@ def lint_one_file(path: Path, fix: bool, strict_structure: bool) -> tuple[list[L
         fixed_lines.append(line)
 
     check_control_kr_braces(path, lines, issues)
+    check_options_include_requirement(path, lines, issues)
 
     if strict_structure:
+        check_header_section_order(path, lines, issues)
         check_shader_stage_flow(path, lines, issues)
 
     if strict_structure and path.suffix.lower() == ".slang":

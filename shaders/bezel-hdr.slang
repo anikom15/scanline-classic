@@ -1,6 +1,6 @@
 #version 450
 
-// Filename: bezel-wcg.slang
+// Filename: bezel-hdr.slang
 //
 // Copyright (C) 2025 W. M. Martinez
 //

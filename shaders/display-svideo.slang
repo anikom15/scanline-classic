@@ -28,6 +28,9 @@
 //  - applies Gaussian low-pass for luma/chroma
 //  - outputs RGB
 
+#pragma name DisplaySVideo
+#pragma format R16G16B16A16_SFLOAT
+
 #include "common.inc"
 #include "color.inc"
 #include "modulation.inc"
@@ -36,8 +39,7 @@
 #include "menus/parameters/sys-timing.inc"
 #include "menus/parameters/svideo.inc"
 
-#pragma name DisplaySVideo
-#pragma format R16G16B16A16_SFLOAT
+#pragma include_optional "../config/options.cfg"
 
 #ifdef OPTION_DEBUG
 #pragma parameter BYPASS_SVIDEO "Bypass S-Video processing" 0.0 0.0 1.0 1.0

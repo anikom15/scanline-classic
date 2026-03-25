@@ -2,6 +2,21 @@
 
 // Filename: iq-noise.slang
 //
+// Copyright (C) 2025 W. M. Martinez
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+//
 // Noise post-processing pass for IQ baseband.
 // Consumes filtered analytic IQ (R=I, G=Q) and injects noise effects.
 // Modes:
@@ -9,13 +24,15 @@
 //  - Advanced: band-limited AWGN + optional ghost, impulse, phase jitter.
 // Output: R16G16_SFLOAT (no alpha usage).
 
+#pragma name IQNoise
+#pragma format R16G16_SFLOAT
+
 #include "common.inc"
 #include "window.inc"
 
 #include "menus/parameters/rf.inc"
 
-#pragma name IQNoise
-#pragma format R16G16_SFLOAT
+#pragma include_optional "../config/options.cfg"
 
 #ifdef OPTION_DEBUG
 #pragma parameter BYPASS_NOISE "Bypass noise (off,on)" 0.0 0.0 1.0 1.0

@@ -25,12 +25,14 @@
 // Can be used to alter channel level, e.g. to compensate an emulator's
 // output being too dark or too bright
 
-#include "common.inc"
-
 #pragma name Amplifier
 #pragma format R16G16B16A16_SFLOAT
 
+#include "common.inc"
+
 #include "menus/parameters/sys-rgb.inc"
+
+#pragma include_optional "../config/options.cfg"
 
 #ifdef OPTION_DEBUG
 #pragma parameter SYS_RGB_AMP_BYPASS "Bypass RGB Amplifier" 0 0 1 1

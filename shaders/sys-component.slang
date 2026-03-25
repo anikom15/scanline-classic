@@ -35,6 +35,9 @@
 //     SYS_COMPONENT_BYPASS          -> output source RGB unmodified (skip color conversion + filter)
 //     SYS_COMPONENT_FILTER_BYPASS   -> convert to selected color space and apply SYS_GAIN/BIAS, but skip filtering
 
+#pragma name SysComponent
+#pragma format R16G16B16A16_SFLOAT
+
 #include "common.inc"
 #include "color.inc"
 #include "modulation.inc"
@@ -42,8 +45,7 @@
 #include "menus/parameters/sys-component.inc"
 #include "menus/parameters/sys-timing.inc"
 
-#pragma name SysComponent
-#pragma format R16G16B16A16_SFLOAT
+#pragma include_optional "../config/options.cfg"
 
 #ifdef OPTION_DEBUG
 #pragma parameter SYS_COMPONENT_BYPASS "Bypass system component stage" 0.0 0.0 1.0 1.0

@@ -24,14 +24,16 @@
 //
 // This pass does not perform vertical framing or zero-stuffing.
 
+#pragma name FrameH
+#pragma format R8G8B8A8_UNORM
+
 #include "common.inc"
 #include "modulation.inc"
 
 #include "menus/parameters/scanraster.inc"
 #include "menus/parameters/sys-timing.inc"
 
-#pragma name FrameH
-#pragma format R8G8B8A8_UNORM
+#pragma include_optional "../config/options.cfg"
 
 #ifdef OPTION_DEBUG
 #pragma parameter FRAME_VIZ_ACTIVE "Show active content" 1.0 0.0 1.0 1.0

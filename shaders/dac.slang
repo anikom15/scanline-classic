@@ -26,14 +26,16 @@
 // channels, simulating DAC-level signal conditioning. Also applies
 // encoder setup pedestal to luma if enabled.
 
+#pragma name DAC
+#pragma format R16G16B16A16_SFLOAT
+
 #include "common.inc"
 #include "digital.inc"
 
 #include "menus/parameters/digital-component.inc"
 #include "menus/parameters/sys-encode.inc"
 
-#pragma name DAC
-#pragma format R16G16B16A16_SFLOAT
+#pragma include_optional "../config/options.cfg"
 
 #ifdef OPTION_DEBUG
 #pragma parameter DAC_BYPASS "Bypass DAC stage" 0.0 0.0 1.0 1.0

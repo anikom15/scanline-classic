@@ -25,14 +25,14 @@
 // Linearizes CRT display output using BT.1886 transfer function
 // with user-configurable brightness and picture controls.
 
+#pragma name CRTLinear
+#pragma format R16G16B16A16_SFLOAT
+
 #include "common.inc"
 #include "color.inc"
 
 #include "menus/parameters/user-common.inc"
 #include "menus/parameters/colorimetry.inc"
-
-#pragma name CRTLinear
-#pragma format R16G16B16A16_SFLOAT
 
 layout(push_constant) uniform Push
 {

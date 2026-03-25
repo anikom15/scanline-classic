@@ -29,14 +29,16 @@
 //
 // By default, 4:2:2 subsampling is used for rec. 601 and 4:2:0 for rec. 709.
 
+#pragma name DigitalComponent
+#pragma format A2B10G10R10_UNORM_PACK32
+
 #include "common.inc"
 #include "color.inc"
 #include "digital.inc"
 
 #include "menus/parameters/digital-component.inc"
 
-#pragma name DigitalComponent
-#pragma format A2B10G10R10_UNORM_PACK32
+#pragma include_optional "../config/options.cfg"
 
 #ifdef OPTION_DEBUG
 #pragma parameter DIGITAL_COMPONENT_BYPASS "Bypass system component stage" 0.0 0.0 1.0 1.0

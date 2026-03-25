@@ -20,6 +20,9 @@
 // Input: Linear YrYgYb signal
 // Output: Linear YrYgYb signal
 
+#pragma name CRTMask
+#pragma format R16G16B16A16_SFLOAT
+
 #include "common.inc"
 #include "color.inc"
 #include "tools/zebra.inc"
@@ -29,9 +32,6 @@
 #include "menus/parameters/factory-geometry.inc"
 
 #pragma include_optional "../config/options.cfg"
-
-#pragma name CRTMask
-#pragma format R16G16B16A16_SFLOAT
 
 #ifdef OPTION_DEBUG
 #pragma parameter MASK_BYPASS "Bypass CRT mask" 0.0 0.0 1.0 1.0

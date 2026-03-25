@@ -1,6 +1,6 @@
 #version 450
 
-// Filename: menu.slang
+// Filename: menu-composite-sdr.slang
 //
 // Copyright (C) 2023, 2025 W. M. Martinez
 //
@@ -43,6 +43,5 @@
 #include "parameters/sys-rgb.inc"
 #include "parameters/sys-component.inc"
 #include "parameters/sys-encode.inc"
-#include "parameters/debug-common.inc"
 
 #include "menu-base.slang"

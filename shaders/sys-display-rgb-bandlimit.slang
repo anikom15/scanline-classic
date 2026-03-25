@@ -25,6 +25,9 @@
 // Consolidates two cascaded Gaussian bandlimit passes into a single pass
 // using variance addition: sigma_total = sqrt(sigma_sys^2 + sigma_disp^2)
 
+#pragma name SysDisplayRGBBandlimit
+#pragma format R16G16B16A16_SFLOAT
+
 #include "common.inc"
 #include "modulation.inc"
 #include "bandlimit.inc"
@@ -35,8 +38,7 @@
 #include "menus/parameters/sys-rgb.inc"
 #include "menus/parameters/sys-timing.inc"
 
-#pragma name SysDisplayRGBBandlimit
-#pragma format R16G16B16A16_SFLOAT
+#pragma include_optional "../config/options.cfg"
 
 #ifdef OPTION_DEBUG
 #pragma parameter SYS_DISPLAY_RGB_BANDLIMIT_BYPASS "Bypass System+Display RGB Bandlimit" 0.0 0.0 1.0 1.0

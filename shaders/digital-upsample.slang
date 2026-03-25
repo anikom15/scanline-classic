@@ -27,6 +27,9 @@
 // Uses zero-insertion approach optimized for integer scale factors.
 // Tap count automatically determined based on scale factors.
 
+#pragma name DigitalUpsample
+#pragma format A2B10G10R10_UNORM_PACK32
+
 #include "common.inc"
 #include "digital.inc"
 #include "window.inc"
@@ -34,8 +37,7 @@
 #include "menus/parameters/digital-component.inc"
 #include "menus/parameters/digital-upsample.inc"
 
-#pragma name DigitalUpsample
-#pragma format A2B10G10R10_UNORM_PACK32
+#pragma include_optional "../config/options.cfg"
 
 #ifdef OPTION_DEBUG
 #pragma parameter UPSAMPLE_BYPASS "Bypass upsampling stage" 0.0 0.0 1.0 1.0

@@ -1,6 +1,6 @@
 #version 450
 
-// Filename: iq-mod.slang
+// Filename: iq-filter.slang
 //
 // Copyright (C) 2025 W. M. Martinez
 //
@@ -29,6 +29,9 @@
 // - Optional overall I/Q bypass for quick debugging
 // - Operates entirely at baseband (no RF carrier)
 
+#pragma name IQMod
+#pragma format R16G16_SFLOAT
+
 // Includes trimmed to what is needed for timebase and windowed sinc
 #include "common.inc"
 #include "window.inc"
@@ -37,6 +40,8 @@
 #include "menus/parameters/sys-timing.inc"
 #include "menus/parameters/rf.inc"
 
+#pragma include_optional "../config/options.cfg"
+
 // Bypass & control parameters
 
 #ifdef OPTION_DEBUG
@@ -44,9 +49,6 @@
 #pragma parameter BYPASS_I_FILTER "Bypass I lowpass (off,on)" 0.0 0.0 1.0 1.0
 #pragma parameter BYPASS_Q_FILTER "Bypass Q lowpass (off,on)" 0.0 0.0 1.0 1.0
 #endif  // OPTION_DEBUG
-
-#pragma name IQMod
-#pragma format R16G16_SFLOAT
 
 layout(push_constant) uniform Push
 {

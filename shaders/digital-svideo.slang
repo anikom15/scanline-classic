@@ -29,6 +29,9 @@
 // Simplified: no timebase struct, no encoder setup pedestal. PAL
 // alternation inferred from subcarrier frequency (PAL if > 4 MHz).
 
+#pragma name DigitalCompositeMod
+#pragma format A2B10G10R10_UNORM_PACK32
+
 #include "common.inc"
 #include "digital.inc"
 #include "modulation.inc"
@@ -37,8 +40,7 @@
 #include "menus/parameters/sys-timing.inc"
 #include "menus/parameters/sys-encode.inc"
 
-#pragma name DigitalCompositeMod
-#pragma format A2B10G10R10_UNORM_PACK32
+#pragma include_optional "../config/options.cfg"
 
 #ifdef OPTION_DEBUG
 #pragma parameter DIGITAL_COMPOSITE_MOD_BYPASS "Bypass digital composite mod" 0.0 0.0 1.0 1.0
