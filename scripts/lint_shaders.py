@@ -44,6 +44,7 @@ BLOCK_MEMBER_PATTERN = re.compile(
 )
 COMMENT_BLOCK_PATTERN = re.compile(r"/\*.*?\*/", re.DOTALL)
 STAGE_PATTERN = re.compile(r"^\s*#pragma\s+stage\s+(vertex|fragment)\b")
+INCLUDE_PATTERN = re.compile(r'^\s*#include\s+"([^"]+)"')
 VARIABLE_DECL_PATTERN = re.compile(
     r"^\s*(?:const\s+)?[A-Za-z_]\w*\s+([A-Za-z_]\w*)\s*(?:\[[^\]]+\])?\s*(?:=[^;]*)?;\s*$"
 )
@@ -207,6 +208,53 @@ def collect_universal_symbols(lines: list[str], universal_end_idx: int) -> list[
     return symbols
 
 
+def resolve_shader_include_path(parent_file: Path, include_target: str) -> Path | None:
+    include_path = Path(include_target)
+    candidates = [
+        (parent_file.parent / include_path).resolve(),
+        (DEFAULT_SHADER_DIR / include_path).resolve(),
+    ]
+
+    for candidate in candidates:
+        if candidate.exists() and candidate.is_file() and candidate.suffix.lower() in SHADER_EXTENSIONS:
+            return candidate
+
+    return None
+
+
+def collect_effective_stage_markers(
+    path: Path,
+    lines: list[str],
+    visited_stack: set[Path] | None = None,
+) -> list[tuple[Path, int, str]]:
+    stack = visited_stack or set()
+    if path in stack:
+        return []
+
+    stack.add(path)
+    markers: list[tuple[Path, int, str]] = []
+
+    for idx, line in enumerate(lines):
+        stage_match = STAGE_PATTERN.match(line)
+        if stage_match:
+            markers.append((path, idx + 1, stage_match.group(1)))
+
+        include_match = INCLUDE_PATTERN.match(line)
+        if not include_match:
+            continue
+
+        include_target = include_match.group(1)
+        include_path = resolve_shader_include_path(path, include_target)
+        if include_path is None:
+            continue
+
+        include_lines = include_path.read_text(encoding="utf-8").splitlines()
+        markers.extend(collect_effective_stage_markers(include_path, include_lines, stack))
+
+    stack.remove(path)
+    return markers
+
+
 def check_shader_stage_flow(path: Path, lines: list[str], issues: list[LintIssue]) -> None:
     stage_markers: list[tuple[int, str]] = []
     for idx, line in enumerate(lines):
@@ -230,29 +278,46 @@ def check_shader_stage_flow(path: Path, lines: list[str], issues: list[LintIssue
     if ext != ".slang":
         return
 
+    effective_markers = collect_effective_stage_markers(path, lines)
+    effective_vertex = [(p, line) for p, line, stage in effective_markers if stage == "vertex"]
+    effective_fragment = [(p, line) for p, line, stage in effective_markers if stage == "fragment"]
+
+    if len(effective_vertex) != 1:
+        line_hint = effective_vertex[0][1] if effective_vertex and effective_vertex[0][0] == path else 1
+        issues.append(
+            LintIssue(
+                path=path,
+                line=line_hint,
+                message=(
+                    "Shader flow violation: expected exactly 1 vertex shader section "
+                    f"after include expansion, found {len(effective_vertex)}"
+                ),
+            )
+        )
+
+    if len(effective_fragment) != 1:
+        line_hint = effective_fragment[0][1] if effective_fragment and effective_fragment[0][0] == path else 1
+        issues.append(
+            LintIssue(
+                path=path,
+                line=line_hint,
+                message=(
+                    "Shader flow violation: expected exactly 1 fragment shader section "
+                    f"after include expansion, found {len(effective_fragment)}"
+                ),
+            )
+        )
+
+    if len(effective_vertex) != 1 or len(effective_fragment) != 1:
+        return
+
+    # Wrapper shaders may intentionally contribute no local stage declarations,
+    # relying on included shader files to provide the full stage flow.
+    if not stage_markers:
+        return
+
     vertex_lines = [line for line, stage in stage_markers if stage == "vertex"]
     fragment_lines = [line for line, stage in stage_markers if stage == "fragment"]
-
-    if len(vertex_lines) != 1:
-        line_hint = vertex_lines[0] if vertex_lines else 1
-        issues.append(
-            LintIssue(
-                path=path,
-                line=line_hint,
-                message=f"Shader flow violation: expected exactly 1 vertex shader section, found {len(vertex_lines)}",
-            )
-        )
-
-    if len(fragment_lines) != 1:
-        line_hint = fragment_lines[0] if fragment_lines else 1
-        issues.append(
-            LintIssue(
-                path=path,
-                line=line_hint,
-                message=f"Shader flow violation: expected exactly 1 fragment shader section, found {len(fragment_lines)}",
-            )
-        )
-
     if len(vertex_lines) != 1 or len(fragment_lines) != 1:
         return
 
