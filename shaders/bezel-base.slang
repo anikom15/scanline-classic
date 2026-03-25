@@ -278,7 +278,7 @@ vec3 lms_apply_pq(vec3 lms)
     const float c1 = 0.8359375;
     const float c2 = 18.8515625;
     const float c3 = 18.6875;
-    
+
     vec3 y = pow(max(lms * 0.0001, vec3(0.0)), vec3(m1));
     return pow((c1 + c2 * y) / (1.0 + c3 * y), vec3(m2));
 }
@@ -293,7 +293,7 @@ vec3 lms_remove_pq(vec3 lms_pq)
     const float c1 = 0.8359375;
     const float c2 = 18.8515625;
     const float c3 = 18.6875;
-    
+
     vec3 p = pow(max(lms_pq, vec3(0.0)), vec3(1.0 / m2));
     vec3 y = pow(max(p - c1, vec3(0.0)) / (c2 - c3 * p), vec3(1.0 / m1));
     return y * 10000.0;
@@ -424,7 +424,7 @@ vec3 process_glow_color(vec3 color, float compression, float temperature, float 
 /**
  * Calculate screen-space LOD for mipmapped texture sampling.
  * Estimates appropriate mipmap level based on sampling radius and output resolution.
- * 
+ *
  * @param coord Base texture coordinate
  * @param radius Glow radius in texture space
  * @param distance_factor Normalized distance from viewport (0=near, 1=far)
@@ -436,10 +436,10 @@ float compute_manual_lod(vec2 coord, float radius, float distance_factor)
 
     // Convert texture-space radius to pixel-space based on output resolution
     float coord_pixel_space = radius * distance_factor * config.OutputSize.y;
-    
+
     // LOD scales logarithmically with pixel spread
     float lod = log2(max(1.0, coord_pixel_space / LOD_FACTOR));
-    
+
     return lod;
 }
 
@@ -498,11 +498,11 @@ vec3 sample_mirror_safe(sampler2D tex, vec2 uv, float lod)
  * Calculates a glow effect by sampling surrounding pixels in multiple directions.
  * Uses an 8-directional sampling pattern with configurable diffusion steps.
  * Supports anisotropic scaling and vertical bias for more natural-looking CRT glow.
- * 
+ *
  * Features:
  * - Multi-step diffusion: samples at varying distances for smooth falloff
  * - Color compression: reduces extreme brightness impact
- * 
+ *
  * @param coord Base texture coordinate to sample around
  * @param radius Maximum sampling radius in texture space
  * @param diffusion_steps Number of distance steps per direction (higher = smoother)
@@ -521,37 +521,35 @@ vec3 calculate_glow(vec2 coord, float radius, float diffusion_steps, float radia
         vec2(-1.0, 0.0),      // West
         vec2(-0.707, 0.707)   // Northwest
     );
-    
+
     vec3 glow = vec3(0.0);
     float total_weight = 0.0;
     int num_steps = adaptive_glow_steps(int(diffusion_steps), radial_dist);
-    
+
     // Sample in each direction with multiple distance steps for smooth diffusion
-    for (int step = 1; step <= num_steps; step++)
-    {
+    for (int step = 1; step <= num_steps; step++) {
         float distance_factor = float(step) / float(num_steps);
-        
+
         // Closer samples contribute more (linear falloff)
         float diffusion_weight = 1.0 - (distance_factor - 1.0 / float(num_steps));
-        
-        for (int i = 0; i < 8; i++)
-        {
+
+        for (int i = 0; i < 8; i++) {
             vec2 dir = directions[i];
-            
+
             // Calculate sample offset with distance scaling
             float step_radius = radius * distance_factor;
             vec2 offset = dir * step_radius;
 
             // Sample source color
             vec3 sample_linear = sample_mirror_safe(Source, coord + offset, 0.0);
-            
+
             // Combine weights and accumulate
             float weight = diffusion_weight;
             glow += sample_linear * weight;
             total_weight += weight;
         }
     }
-    
+
     // Normalize to maintain consistent brightness regardless of sample count
     if (total_weight > 0.0)
         glow /= total_weight;
@@ -563,12 +561,12 @@ vec3 calculate_glow(vec2 coord, float radius, float diffusion_steps, float radia
  * MIPMAPPED VARIANT: Calculates glow with LOD-based texture sampling.
  * Uses mipmaps for distant samples to reduce memory bandwidth and aliasing.
  * This path is optimized for backends with proper mipmap support (GL, Vulkan).
- * 
+ *
  * Key differences from base calculate_glow():
  * - Uses textureLod() instead of texture() for explicit LOD control
  * - LOD increases with distance: near=LOD0 (sharp), far=LOD2-3 (blurred)
  * - Edge guard softness scales with LOD to prevent harsh transitions
- * 
+ *
  * @param coord Base texture coordinate
  * @param radius Glow radius in texture space
  * @param diffusion_steps Number of distance steps per direction
@@ -588,37 +586,35 @@ vec3 calculate_glow_mipmapped(vec2 coord, float radius, float diffusion_steps, f
         vec2(-1.0, 0.0),      // West
         vec2(-0.707, 0.707)   // Northwest
     );
-    
+
     vec3 glow = vec3(0.0);
     float total_weight = 0.0;
     int num_steps = adaptive_glow_steps(int(diffusion_steps), radial_dist);
-    
+
     // Sample in each direction with multiple distance steps
-    for (int step = 1; step <= num_steps; step++)
-    {
+    for (int step = 1; step <= num_steps; step++) {
         float distance_factor = float(step) / float(num_steps);
         float diffusion_weight = 1.0 - (distance_factor - 1.0 / float(num_steps));
-        
+
         // Compute LOD for this distance step
         float step_lod = compute_manual_lod(coord, radius, distance_factor);
-        
-        for (int i = 0; i < 8; i++)
-        {
+
+        for (int i = 0; i < 8; i++) {
             vec2 dir = directions[i];
 
             // Calculate sample offset with distance scaling
             float step_radius = radius * distance_factor;
             vec2 offset = dir * step_radius;
-            
+
             // Sample with explicit LOD
             vec3 sample_linear = sample_mirror_safe(Source, coord + offset, step_lod).rgb;
-            
+
             float weight = diffusion_weight;
             glow += sample_linear * weight;
             total_weight += weight;
         }
     }
-    
+
     if (total_weight > 0.0)
         glow /= total_weight;
 
@@ -680,7 +676,7 @@ void write_output_color(vec3 final_linear, uint frame)
 
 /**
  * Fragment shader: Composites the CRT screen with bezel/background and glow effect.
- * 
+ *
  * Pipeline:
  * 1. Sample screen content (with viewport bounds checking)
  * 2. If bypass is enabled, return screen content directly
@@ -711,8 +707,7 @@ void main()
 #endif  // OPTION_NOBEZEL
 
     // Bypass mode: pass through screen content without bezel/glow processing
-    if (BEZEL_BYPASS > 0.5)
-    {
+    if (BEZEL_BYPASS > 0.5) {
         write_output_color(screen.rgb, frame);
         return;
     }
@@ -754,7 +749,7 @@ void main()
         if (effective_glow_weight > GLOW_MIN_WEIGHT) {
             // Calculate glow effect with preset-based diffusion steps
             int diffusion_steps = glow_diffusion_steps();
-            
+
             if (USE_MIPMAPPING > 0.5) {
                 // Use mipmapped variant for reduced bandwidth and better quality at distance
                 glow = calculate_glow_mipmapped(screen_coord, radius, float(diffusion_steps), radial_dist);
@@ -769,14 +764,14 @@ void main()
             float noise_power = pow(10.0, GLOW_DITHER / 10.0);
 
             glow = process_glow_color(glow, GLOW_COMPRESSION, GLOW_TEMPERATURE, noise, noise_power);
-            
+
             // Clamp glow to prevent negative values before tonemapping
             glow = max(glow, vec3(0.0));
         } else {
             glow = vec3(0.0);
         }
     }
-    
+
     // === Blend glow with background ===
     // Apply bezel gain and bias first
     float bezel_gain = pow(10.0, BEZEL_GAIN / 20.0);

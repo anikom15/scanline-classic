@@ -96,6 +96,10 @@ To keep `.slang` and `.inc` formatting consistent in `shaders/`, run:
 
 - `python scripts/lint_shaders.py`
 
+For stricter structural checks (stage flow, universal declaration placement, and push/UBO structure checks), run:
+
+- `python scripts/lint_shaders.py --strict-structure`
+
 For safe automatic cleanup (trailing whitespace, excessive blank lines, EOF newline):
 
 - `python scripts/lint_shaders.py --fix`
@@ -104,7 +108,19 @@ To gate builds on shader lint, run:
 
 - `python build.py --lint-shaders`
 
-Current lint checks also include:
+To gate builds on strict structural shader lint, run:
+
+- `python build.py --lint-shaders --strict-structure`
+
+To enable local pre-commit shader lint in this repo, run once:
+
+- `git config core.hooksPath .githooks`
+
+Default lint checks include:
+
+- Spaces-only policy (tab characters are not allowed)
+
+Strict-mode lint checks (`--strict-structure`) include:
 
 - Enforced order in `.slang` files: parameter pragmas -> push block definition -> push semantic defines -> UBO definition -> UBO semantic defines
 - Push-constant size budgeting against a 128-byte limit
@@ -114,6 +130,8 @@ Current lint checks also include:
 - Universal functions/variables in `.slang` are expected to be shared by both vertex and fragment; stage-specific declarations are flagged for relocation into their respective section
 
 For day-to-day authoring guidance, see `doc/SHADER_AUTHORING_CHECKLIST.md`.
+
+Continuous integration also runs `python scripts/lint_shaders.py` via `.github/workflows/shader-lint.yml` on pushes and pull requests.
 
 ## Usage
 

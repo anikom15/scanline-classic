@@ -98,9 +98,11 @@ def run_presetgen(verbose=False, jobs=1):
                 sys.exit(1)
 
 
-def run_shader_lint(verbose=False):
+def run_shader_lint(verbose=False, strict_structure=False):
     python_exec = get_python_executable()
     cmd = [python_exec, os.path.join(ROOT, 'scripts', 'lint_shaders.py')]
+    if strict_structure:
+        cmd.append('--strict-structure')
     print(f"Running: {' '.join(cmd)}")
     try:
         subprocess.run(cmd, check=True)
@@ -117,6 +119,11 @@ def parse_args():
         action='store_true',
         help='Run shader lint (scripts/lint_shaders.py) before build steps',
     )
+    parser.add_argument(
+        '--strict-structure',
+        action='store_true',
+        help='Use strict shader structure checks when running --lint-shaders',
+    )
     return parser.parse_args()
 
 def main():
@@ -124,8 +131,12 @@ def main():
     verbose = args.verbose
     jobs = max(1, args.jobs)
 
+    if args.strict_structure and not args.lint_shaders:
+        print("Error: --strict-structure requires --lint-shaders")
+        sys.exit(2)
+
     if args.lint_shaders:
-        run_shader_lint(verbose=verbose)
+        run_shader_lint(verbose=verbose, strict_structure=args.strict_structure)
 
     prepare_out_folder(verbose=verbose)
     run_presetgen(verbose=verbose, jobs=jobs)

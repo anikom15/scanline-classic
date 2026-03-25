@@ -131,7 +131,7 @@ void main()
         V_FREQ,
         H_BLANK_FUZZ,
         SHORTEN_ODD_FIELD_TIME);
- 
+
     // Enforce minimum edge attenuation to guarantee ~48 dB DC rejection for chroma
     const float TARGET_DC_ATTEN_DB = 48.0;
     float f_sc_mhz = tb.sc_freq_hz * 1.0e-6; // Hz → MHz
@@ -181,14 +181,14 @@ void main()
         baseCenter * config.OutputSize.z,
         (line + 0.5) * config.OutputSize.w);
     vec2 dx = vec2(config.OutputSize.z, 0.0);
-  
+
     // Center sample - input is already composite baseband from iq-demod.slang
     float composite0 = texture(Source, Tex).r;
 
     // Notch/bandpass filtering (always computed for modes < 0.5 and as fallback)
     float y_notch = 0.0;
     float c_notch = 0.0;
-    
+
     if (COLOR_FILTER_MODE < 0.5 || COLOR_FILTER_MODE >= 2.0) {
         // Chroma bandpass accumulators
         float c_accum = 0.0;
@@ -306,7 +306,7 @@ void main()
     vec2 color;
     float y_out;
     float c_out;
-    
+
     if (COLOR_FILTER_MODE < 0.5) {
         // Mode 0: Notch filter output only
         y_out = y_notch;

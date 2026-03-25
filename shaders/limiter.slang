@@ -414,7 +414,7 @@ void main()
         // Hyperbolic tangent gives us a smooth roll-off
         vec3 softColor = distortion * tanh((color - compression) / distortion) + compression;
 
-        color = min(color, softColor);        
+        color = min(color, softColor);
     }
 
     // Apply user video adjustments

@@ -59,7 +59,7 @@ layout(push_constant) uniform Push
     float TO_GRAY_WEIGHT_B;
     float PHOSPHORESCENSE_A;
     float PHOSPHORESCENSE_B;
-    float PHOSPHORESCENSE_C; 
+    float PHOSPHORESCENSE_C;
     float PHOS_EXP_A;
     float PHOS_EXP_B;
     float PHOS_EXP_C;
@@ -115,7 +115,7 @@ vec3 phosphor_inv_pow3(vec3 col, vec3 gamma, vec3 n)
     vec3 mask = step(vec3(EPS), col);
     vec3 safe_col = max(col, vec3(EPS));
     vec3 y = pow(gamma / V_FREQ + pow(1.0 / safe_col, 1.0 / n), -n);
-    
+
     return mask * min(y, col - EPS);
 }
 
@@ -140,21 +140,21 @@ void main()
 {
     vec2 uv = floor(config.PhosphorLumaFeedbackSize.xy * vTexCoord);
     uv = (uv + 0.5) * config.PhosphorLumaFeedbackSize.zw;
-    
+
     vec3 rgb = crt_linear(texture(Source, uv).rgb);
-    
+
     // Early exit for full bypass
     if (PHOSPHOR_LUMA_BYPASS >= 1.0) {
         FragColor = vec4(rgb, 1.0);
         return;
     }
-    
+
     vec3 Yrgb;
     vec3 Wrgb = vec3(
         TO_GRAY_WEIGHT_R,
         TO_GRAY_WEIGHT_G,
         TO_GRAY_WEIGHT_B);
-    
+
     if (COLOR_MODE < 2.0) {
         Yrgb = vec3(dot(Wrgb, rgb), 0.0, 0.0);
     } else if (COLOR_MODE < 3.0) {
@@ -166,7 +166,7 @@ void main()
 
     // Sample feedback
     vec3 Yrgb1 = texture(PhosphorLumaFeedback, uv).rgb;
-    
+
     // Precompute gamma values
     float gamma_a = PHOSPHORESCENSE_A * pow(10.0, PHOS_EXP_A);
     float gamma_b = PHOSPHORESCENSE_B * pow(10.0, PHOS_EXP_B);
@@ -175,8 +175,8 @@ void main()
     Yrgb1 = phosphor_inv_pow3(Yrgb1,
         vec3(gamma_a, gamma_b, gamma_c),
         vec3(PHOS_TRAP_A, PHOS_TRAP_B, PHOS_TRAP_C));
-    
+
     Yrgb = blend(Yrgb, Yrgb1);
-    
+
     FragColor = vec4(Yrgb, 1.0);
 }

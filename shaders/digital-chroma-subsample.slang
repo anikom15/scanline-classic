@@ -118,7 +118,7 @@ void main()
 
     // Determine subsampling mode
     float mode = CHROMA_SUBSAMPLE;
-    
+
     // Auto mode: choose based on color model
     if (mode < 0.5) {
         if (YCBCR_MODEL < 0.5) {
@@ -131,7 +131,7 @@ void main()
     // Sample full-resolution YCbCr
     vec3 yc_full = texture(Source, vTexCoord).rgb;
     float y = yc_full.r; // Y component passes through unchanged
-    
+
     // If mode 4:4:4, no chroma subsampling needed
     if (mode < 1.5) {
         FragColor = vec4(yc_full, 1.0);
@@ -140,24 +140,24 @@ void main()
 
     // For 4:2:2 or 4:2:0: subsample chroma (G, B components)
     vec2 output_pixel = vTexCoord * config.OutputSize.xy;
-    
+
     // Sample from neighboring pixels for blending
     vec2 chroma_pixel_0 = output_pixel;
     vec2 chroma_pixel_1 = output_pixel + vec2(1.0, 0.0);
-    
+
     // For 4:2:0, also include vertical neighbors
     if (mode > 2.5) {
         vec2 chroma_pixel_2 = output_pixel + vec2(0.0, 1.0);
         vec2 chroma_pixel_3 = output_pixel + vec2(1.0, 1.0);
     }
-    
+
     // Average chroma samples from neighboring pixels
     vec2 chroma = vec2(0.0);
     int sample_count = 0;
-    
+
     for (int dx = 0; dx < 2; dx++) {
         vec2 chroma_pixel = output_pixel + vec2(float(dx), 0.0);
-        
+
         int y_end = (mode > 2.5) ? 2 : 1;
         for (int dy = 0; dy < y_end; dy++) {
             vec2 sample_pos = chroma_pixel + vec2(0.0, float(dy));
@@ -166,8 +166,8 @@ void main()
             sample_count++;
         }
     }
-    
+
     chroma /= float(sample_count);
-    
+
     FragColor = vec4(y, chroma.x, chroma.y, 1.0);
 }

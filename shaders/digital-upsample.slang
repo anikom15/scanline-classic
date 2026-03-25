@@ -105,13 +105,13 @@ void main()
 {
     gl_Position = global.MVP * Position;
     vTexCoord = TexCoord;
-    
+
     // Compute scale factors (truncate to integers for zero-insertion)
     scale = floor(config.OutputSize.xy / config.SourceSize.xy);
-    
+
     // Normalized cutoff frequency: always 0.5 for zero-insertion upsampling
     fc_norm = vec2(0.5);
-    
+
     // Improved Kaiser tap count formula incorporating scale factor
     // Derived from: N = (A_s - 13) / (14.6 * (Δf / f_s))
     // where transition band Δf/f_s = TRANSITION_WIDTH / scale
@@ -119,15 +119,15 @@ void main()
     // This ensures tap count scales linearly with upsampling ratio for consistent quality
     float A_s = 8.0 + 2.285 * KAISER_BETA;  // Stopband attenuation (dB)
     const float KAISER_DESIGN_CONST = 14.6;  // Standard Kaiser design constant
-    
+
     vec2 taps_calc = (A_s - 13.0) * scale / (KAISER_DESIGN_CONST * TRANSITION_WIDTH);
-    
+
     // Round to odd numbers for symmetric filtering
     taps.x = ceil(taps_calc.x);
     if (mod(taps.x, 2.0) == 0.0) taps.x += 1.0;
     taps.y = ceil(taps_calc.y);
     if (mod(taps.y, 2.0) == 0.0) taps.y += 1.0;
-    
+
     // Clamp to reasonable range
     taps = clamp(taps, vec2(5.0), vec2(65.0));
 }
@@ -152,7 +152,7 @@ void main()
     }
 #endif  // OPTION_DEBUG
 
-    
+
     // Check if upsampling is needed
     if (scale.x < 1.001 && scale.y < 1.001) {
         // No upsampling needed: direct pass-through
@@ -163,19 +163,19 @@ void main()
     // Map this output pixel into source space
     vec2 output_pixel = vTexCoord * config.OutputSize.xy;
     vec2 source_pixel = output_pixel / scale;
-    
+
     // Base source index and fractional phase (source-space)
     float src_idx = source_pixel.x;
     float base_idx = floor(src_idx);
     float frac = src_idx - (base_idx + 0.5);  // phase relative to source pixel center
-    
+
     // Source pixel center for sampling
     vec2 src_center = vec2(base_idx + 0.5, floor(source_pixel.y) + 0.5);
-    
+
     // Apply separable 2D Kaiser-windowed sinc filtering
     vec3 sum = vec3(0.0);
     float weight_sum = 0.0;
-    
+
     int max_tap_half_x = int(floor(taps.x * 0.5));
     int scale_x = int(scale.x);
 
@@ -183,7 +183,7 @@ void main()
     {
         float window0;
         float weight0 = sinc_lowpass_kaiser(-frac, fc_norm.x, taps.x, KAISER_BETA, window0);
-        
+
         vec2 sample_coord = src_center * config.SourceSize.zw;
         vec3 color0;
         if (sample_coord.x >= 0.0 && sample_coord.x <= 1.0) {
@@ -192,7 +192,7 @@ void main()
             // Out of bounds: use (0, 0.5, 0.5) for YCC, (0, 0, 0) for RGB
             color0 = (UPSAMPLER_INPUT > 0.5) ? vec3(0.0, 0.5, 0.5) : vec3(0.0);
         }
-        
+
         if (UPSAMPLER_INPUT < 0.5)
             color0 = to_linear(color0);
         sum += color0 * weight0;
@@ -247,7 +247,7 @@ void main()
             weight_sum += weight_neg;
         }
     }
-    
+
     // Normalize to preserve gain
     vec3 result = sum / max(weight_sum, EPS);
 
@@ -267,8 +267,8 @@ void main()
     } else if (bits == 10) {
         result = quantize_10bit(result);
     } else {
-        result = quantize(result, bits);    
+        result = quantize(result, bits);
     }
-    
+
     FragColor = vec4(result, 1.0);
 }

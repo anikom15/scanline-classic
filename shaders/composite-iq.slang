@@ -105,7 +105,7 @@ void main()
         float comp_l = texture(Source, Tex - nf * dx).r;
         float pos_l = -nf - Ax;
         float h_l = (2.0 / PI) * pow(sin(PI * pos_l * 0.5), 2.0) / pos_l;
-        
+
         q_analytic += h_r * comp_r + h_l * comp_l;
         q_wsum += abs(h_r) + abs(h_l);
 

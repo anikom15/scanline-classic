@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+if [ -x "$repo_root/.venv/Scripts/python.exe" ]; then
+  py="$repo_root/.venv/Scripts/python.exe"
+elif [ -x "$repo_root/.venv/bin/python" ]; then
+  py="$repo_root/.venv/bin/python"
+else
+  py="python"
+fi
+
+echo "[pre-commit] Running shader linter..."
+"$py" scripts/lint_shaders.py

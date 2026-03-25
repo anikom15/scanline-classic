@@ -148,10 +148,10 @@ void main()
     // Convert RGB to selected luma-chroma space
     vec3 rgb = texture(Source, Tex).rgb;
     vec3 yc = rgb_to_luma_chroma(rgb, YC_MODEL);
-    
+
     // Apply gain and bias
     yc = gain * (yc + bias);
-    
+
     // Modulate chroma onto subcarrier
     float pal_phase = floor(mod(line, 2.0)) * PI * PAL;
     float t0 = line / tb.h_freq_hz + baseCenter * tb.pixel_time_px;

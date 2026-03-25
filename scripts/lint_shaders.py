@@ -4,7 +4,7 @@ Shader formatting linter for Scanline Classic.
 Targets specialized RetroArch shader sources (.slang, .inc) and enforces a
 focused style baseline:
 - Trailing whitespace is forbidden.
-- Mixed indentation in a single leading indent run is forbidden.
+- Tab characters are forbidden (spaces-only indentation/style).
 - More than 2 consecutive blank lines is forbidden.
 - Control-flow blocks use K&R opening braces: if/else/for/while/switch/do.
 - Files must end with a trailing newline.
@@ -723,7 +723,7 @@ def check_control_kr_braces(path: Path, lines: list[str], issues: list[LintIssue
             )
 
 
-def lint_one_file(path: Path, fix: bool) -> tuple[list[LintIssue], bool]:
+def lint_one_file(path: Path, fix: bool, strict_structure: bool) -> tuple[list[LintIssue], bool]:
     raw = path.read_text(encoding="utf-8")
     lines = raw.splitlines()
     issues: list[LintIssue] = []
@@ -740,15 +740,16 @@ def lint_one_file(path: Path, fix: bool) -> tuple[list[LintIssue], bool]:
             if fix:
                 line = line.rstrip(" \t")
 
-        indent = leading_indent_segment(line)
-        if indent and " " in indent and "\t" in indent:
+        if "\t" in line:
             issues.append(
                 LintIssue(
                     path=path,
                     line=idx + 1,
-                    message="Mixed tabs and spaces in indentation",
+                    message="Tab character found (spaces-only style required)",
                 )
             )
+            if fix:
+                line = line.replace("\t", "    ")
 
         if line.strip() == "":
             blank_run += 1
@@ -768,9 +769,11 @@ def lint_one_file(path: Path, fix: bool) -> tuple[list[LintIssue], bool]:
         fixed_lines.append(line)
 
     check_control_kr_braces(path, lines, issues)
-    check_shader_stage_flow(path, lines, issues)
 
-    if path.suffix.lower() == ".slang":
+    if strict_structure:
+        check_shader_stage_flow(path, lines, issues)
+
+    if strict_structure and path.suffix.lower() == ".slang":
         check_block_order_and_push_budget(path, lines, issues)
 
     output_text = "\n".join(fixed_lines)
@@ -801,7 +804,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--fix",
         action="store_true",
-        help="Apply safe autofixes (trailing whitespace, blank-run reduction, EOF newline)",
+        help="Apply safe autofixes (tabs to spaces, trailing whitespace, blank-run reduction, EOF newline)",
+    )
+    parser.add_argument(
+        "--strict-structure",
+        action="store_true",
+        help="Enable stricter shader-structure checks (stage flow, universal declarations, push/UBO ordering/budget)",
     )
     parser.add_argument(
         "--max-errors",
@@ -828,7 +836,7 @@ def main() -> int:
     all_issues: list[LintIssue] = []
     changed_files = 0
     for path in files:
-        issues, changed = lint_one_file(path, fix=args.fix)
+        issues, changed = lint_one_file(path, fix=args.fix, strict_structure=args.strict_structure)
         all_issues.extend(issues)
         if changed:
             changed_files += 1

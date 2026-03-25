@@ -125,7 +125,7 @@ layout(set = 0, binding = 2) uniform sampler2D Source;
 void main()
 {
     const float TARGET_NITS = 100.0;
-    
+
     // Linearize input using BT.1886 transfer function
     vec3 color = bt1886_linear(texture(Source, vTexCoord).rgb, bt1886_a, bt1886_b);
 

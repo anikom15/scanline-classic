@@ -28,10 +28,10 @@
 layout(push_constant) uniform Push
 {
     vec4 OriginalSize;
-	vec4 OutputSize;
-	vec4 FrameHSize;
+    vec4 OutputSize;
+    vec4 FrameHSize;
     float OriginalFPS;
-	uint FrameCount;
+    uint FrameCount;
     float SC_FREQ_MODE;
     float SC_FREQ;
     float PIXEL_CLOCK_MODE;
@@ -41,12 +41,12 @@ layout(push_constant) uniform Push
     float V_FREQ_MODE;
     float V_FREQ;
     float H_BLANK_FUZZ;
-	float SHORTEN_ODD_FIELD_TIME;
+    float SHORTEN_ODD_FIELD_TIME;
 } config;
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
-	mat4 MVP;
+    mat4 MVP;
 } global;
 
 #pragma stage vertex
@@ -132,16 +132,16 @@ layout(set = 0, binding = 2) uniform sampler2D Source;
 
 void main()
 {
-	float output_x = vTexCoord.x * config.OutputSize.x;
-	float active_width = config.OriginalSize.x * h_scale;
-	float active_left = (config.OutputSize.x - active_width) * 0.5;
-	float active_right = active_left + active_width;
-	if (output_x < active_left || output_x >= active_right) {
-		FragColor = vec4(0.0, 0.0, 0.0, 1.0);
-		return;
-	}
+    float output_x = vTexCoord.x * config.OutputSize.x;
+    float active_width = config.OriginalSize.x * h_scale;
+    float active_left = (config.OutputSize.x - active_width) * 0.5;
+    float active_right = active_left + active_width;
+    if (output_x < active_left || output_x >= active_right) {
+        FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+        return;
+    }
 
-	vec3 packed = texture(Source, vTexCoord).rgb;
+    vec3 packed = texture(Source, vTexCoord).rgb;
     int color = clamp(int(floor((packed.r * 15.0) + 0.5)), 0, 15);
     int level = clamp(int(floor((packed.g * 3.0) + 0.5)), 0, 3);
     int emphasis = clamp(int(floor((packed.b * 7.0) + 0.5)), 0, 7);

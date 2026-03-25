@@ -117,6 +117,6 @@ void main()
     } else {
         ycbcr = quantize(ycbcr, bits);
     }
-    
+
     FragColor = vec4(ycbcr, 1.0);
 }

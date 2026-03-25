@@ -67,7 +67,7 @@ const float SYS_RGB_AMP_BYPASS = 0;
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
-	mat4 MVP;
+    mat4 MVP;
 } global;
 
 #pragma stage vertex

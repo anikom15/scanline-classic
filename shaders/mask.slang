@@ -394,10 +394,10 @@ vec3 compute_mask(vec2 screen_uv, float units_x_total, float units_y_total, vec2
     // Case 3: pixels_per_unit < Nyquist -> Passthrough (pattern unresolvable)
     // Nyquist criterion: need at least 2 samples per period
     const float INTEGRATION_THRESHOLD = 1.0;
-    
+
     // Compute Nyquist thresholds based on mask type and period
     float passthrough_threshold_x, passthrough_threshold_y;
-    
+
     if (MASK_TYPE < 0.5) {
         // Aperture grille: 6-unit horizontal period, no vertical pattern
         passthrough_threshold_x = 2.0 / 6.0;   // 1/3
@@ -492,7 +492,7 @@ float compute_peak_mask_gain(float units_x_total, float units_y_total, vec2 pixe
     // Compute Nyquist thresholds based on mask type
     float passthrough_threshold_x, passthrough_threshold_y;
     bool passthrough;
-    
+
     if (MASK_TYPE < 0.5) {
         // Aperture grille: only horizontal pattern
         passthrough_threshold_x = 2.0 / 6.0;   // 1/3
@@ -501,16 +501,16 @@ float compute_peak_mask_gain(float units_x_total, float units_y_total, vec2 pixe
         // Slot mask: both horizontal and vertical patterns (require AND logic)
         passthrough_threshold_x = 2.0 / 12.0;  // 1/6
         passthrough_threshold_y = 2.0 / 3.0;   // 2/3
-        passthrough = (pixels_per_unit.x < passthrough_threshold_x) && 
+        passthrough = (pixels_per_unit.x < passthrough_threshold_x) &&
                       (pixels_per_unit.y < passthrough_threshold_y);
     } else {
         // Shadow mask: both horizontal and vertical patterns (require AND logic)
         passthrough_threshold_x = 2.0 / 6.0;   // 1/3
         passthrough_threshold_y = 2.0 / 4.0;   // 1/2
-        passthrough = (pixels_per_unit.x < passthrough_threshold_x) && 
+        passthrough = (pixels_per_unit.x < passthrough_threshold_x) &&
                       (pixels_per_unit.y < passthrough_threshold_y);
     }
-    
+
     if (passthrough) {
         return 1.0;  // No mask attenuation at very low resolution
     }
@@ -578,7 +578,7 @@ vec3 average_mask_color(vec2 pixels_per_unit, vec2 sigma, float peak_mask_value)
     // Compute Nyquist thresholds based on mask type
     float passthrough_threshold_x, passthrough_threshold_y;
     bool passthrough;
-    
+
     if (MASK_TYPE < 0.5) {
         // Aperture grille: only horizontal pattern
         passthrough_threshold_x = 2.0 / 6.0;   // 1/3
@@ -587,13 +587,13 @@ vec3 average_mask_color(vec2 pixels_per_unit, vec2 sigma, float peak_mask_value)
         // Slot mask: both horizontal and vertical patterns (require AND logic)
         passthrough_threshold_x = 2.0 / 12.0;  // 1/6
         passthrough_threshold_y = 2.0 / 3.0;   // 2/3
-        passthrough = (pixels_per_unit.x < passthrough_threshold_x) && 
+        passthrough = (pixels_per_unit.x < passthrough_threshold_x) &&
                       (pixels_per_unit.y < passthrough_threshold_y);
     } else {
         // Shadow mask: both horizontal and vertical patterns (require AND logic)
         passthrough_threshold_x = 2.0 / 6.0;   // 1/3
         passthrough_threshold_y = 2.0 / 4.0;   // 1/2
-        passthrough = (pixels_per_unit.x < passthrough_threshold_x) && 
+        passthrough = (pixels_per_unit.x < passthrough_threshold_x) &&
                       (pixels_per_unit.y < passthrough_threshold_y);
     }
 

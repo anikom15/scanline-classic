@@ -94,10 +94,10 @@ float compute_odd_field_time_adjustment(
 {
     if (shorten_odd_field_time < 0.5)
         return 0.0;
-    
+
     float odd_time_adjust = original_width / 256.0 * pixel_time;
     float adjustment = 0.0;
-    
+
     if (is_ntsc) {
         // NTSC: Apply shortening only for progressive scan
         if (!is_interlaced) {
@@ -110,7 +110,7 @@ float compute_odd_field_time_adjustment(
             adjustment = odd_time_adjust;
         }
     }
-    
+
     return ceil(field / 2.0) * adjustment;
 }
 
@@ -284,7 +284,7 @@ void compute_scale_factors(
 // Compute field phase with intelligent odd-field timing adjustment
 float compute_field_phase(
     float field, float h_freq_hz, float v_lines_per_field,
-    float v_freq, float sc_freq_hz, bool is_ntsc, 
+    float v_freq, float sc_freq_hz, bool is_ntsc,
     bool is_interlaced, float pixel_time, float original_width,
     float shorten_odd_field_time)
 {
@@ -408,7 +408,7 @@ FrameGeometry compute_frame_geometry(
 
     // Calculate frame dimensions
     geom.v_lines_per_frame = geom.v_lines_per_field * 2.0 + 2.0;
-    
+
     if (is_interlaced) {
         geom.v_lines_per_field += 0.5;
     }

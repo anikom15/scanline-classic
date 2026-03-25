@@ -161,7 +161,7 @@ vec3 bradford_fast(vec3 color_XYZ, const BradfordParams params)
 // color_XYZ: Input color in XYZ space
 // wref_XYZ: Reference white point in XYZ space
 //
-// Inputs should be normalized by Y before calling this function. 
+// Inputs should be normalized by Y before calling this function.
 vec3 bradford(vec3 color_XYZ, vec3 wref_XYZ)
 {
     // Target white point is always D65
@@ -441,10 +441,10 @@ void main()
              0.8951, -0.7502,  0.0389,
              0.2664,  1.7135, -0.0685,
             -0.1614,  0.0367,  1.0296);
-        
+
         vec3 wref_RGB = M * ref_XYZ;
         vec3 wout_RGB = M * D65_XYZ;
-        
+
         bradford_params.wref_RGB = wref_RGB;
         bradford_params.rg_scale = wout_RGB.rg / wref_RGB.rg;
         bradford_params.b_out = wout_RGB.b;
@@ -456,13 +456,13 @@ void main()
     // Apply chromatic adaptation to primary XYZ values for output gamut testing
     luv_scale = vec2(0.0);
     ipt_scale = vec2(0.0);
-    
+
     if (GAMUT_COMPRESSION > 1.5) {
         vec3 white_XYZ = RGB_to_XYZ_local * WHITE;
         vec3 red_XYZ = RGB_to_XYZ_local * RED;
         vec3 green_XYZ = RGB_to_XYZ_local * GREEN;
         vec3 blue_XYZ = RGB_to_XYZ_local * INDIGO;
-        
+
         // Apply chromatic adaptation to XYZ values directly
         if (CHROMATIC_ADAPTATION < 2.5 && CHROMATIC_ADAPTATION >= 0.5) {
             // Use pre-computed cat_transform (Linear Bradford or CAT16)
@@ -689,7 +689,7 @@ void main()
 
         // Determine high peak for tone mapping based on source peak and target nits
         float low_peak = TARGET_NITS;
-        
+
         high_peak = max(source_peak, TARGET_NITS) / low_peak;
         YrYgYb /= low_peak;
     }
@@ -729,7 +729,7 @@ void main()
     // Convert YrYgYb to XYZ using native colorimetry
     vec3 XYZ = YrYgYb_to_XYZ(YrYgYb, colorimetry);
     vec3 XYZ_baseline = XYZ;
-    
+
     // Apply chromatic adaptation to XYZ directly (not to encoding matrix)
     if (CHROMATIC_ADAPTATION > 0.5 && COLOR_CONVERSION_BYPASS < 0.5) {
         if (CHROMATIC_ADAPTATION < 2.5) {

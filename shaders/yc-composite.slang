@@ -135,14 +135,14 @@ void main()
     float f_sc_mhz = tb.sc_freq_hz * 1.0e-6; // Convert Hz to MHz
     float bw_to_fsc_ratio = CHROMA_BANDPASS_WIDTH / (2.0 * max(f_sc_mhz, 1e-6));
     float bandpass_edge_atten_min = TARGET_DC_ATTEN_DB * bw_to_fsc_ratio * bw_to_fsc_ratio;
-    
+
     // Use the maximum of calculated minimum and user parameter
     // This ensures brightness preservation while allowing user override
     float bandpass_edge_atten_db = max(bandpass_edge_atten_min, CHROMA_EDGE_ATTEN_DB);
-    
+
     // Clamp to reasonable range
     bandpass_edge_atten_db = clamp(bandpass_edge_atten_db, 0.1, 20.0);
-    
+
     sigma_bp = sigma_tb(tb, max(CHROMA_BANDPASS_WIDTH, 1e-6), bandpass_edge_atten_db);
 
     // Fixed notch width for luma rejection, independent of chroma bandpass

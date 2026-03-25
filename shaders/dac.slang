@@ -103,14 +103,14 @@ void main()
     float gain_y = pow(10.0, SYS_GAIN_Y / 20.0);
     float gain_u = pow(10.0, SYS_GAIN_U / 20.0);
     float gain_v = pow(10.0, SYS_GAIN_V / 20.0);
-    
+
     gain = vec3(gain_y, gain_u, gain_v);
 
     // Convert IRE to voltage: bias = IRE * 10e-3
     float bias_y = SYS_BIAS_Y * 10e-3;
     float bias_u = SYS_BIAS_U * 10e-3;
     float bias_v = SYS_BIAS_V * 10e-3;
-    
+
     bias = vec3(bias_y, bias_u, bias_v);
 }
 

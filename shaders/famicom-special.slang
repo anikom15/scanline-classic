@@ -29,10 +29,10 @@
 layout(push_constant) uniform Push
 {
     vec4 OriginalSize;
-	vec4 OutputSize;
-	vec4 FrameHSize;
+    vec4 OutputSize;
+    vec4 FrameHSize;
     float OriginalFPS;
-	uint FrameCount;
+    uint FrameCount;
     float SC_FREQ_MODE;
     float SC_FREQ;
     float PIXEL_CLOCK_MODE;
@@ -50,7 +50,7 @@ layout(push_constant) uniform Push
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
-	mat4 MVP;
+    mat4 MVP;
 } global;
 
 #pragma stage vertex
@@ -240,16 +240,16 @@ void main()
     // Examples:
     //   OutputSize.x = 2728 -> [340, 2388)
     //   OutputSize.x = 3410 -> [425, 2473)
-	float output_x = vTexCoord.x * config.OutputSize.x;
-	float active_width = config.OriginalSize.x * h_scale;
-	float active_left = (config.OutputSize.x - active_width) * 0.5;
-	float active_right = active_left + active_width;
-	if (output_x < active_left || output_x >= active_right) {
-		FragColor = vec4(0.0, 0.0, 0.0, 1.0);
-		return;
-	}
+    float output_x = vTexCoord.x * config.OutputSize.x;
+    float active_width = config.OriginalSize.x * h_scale;
+    float active_left = (config.OutputSize.x - active_width) * 0.5;
+    float active_right = active_left + active_width;
+    if (output_x < active_left || output_x >= active_right) {
+        FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+        return;
+    }
 
-	vec3 rgb = texture(Source, vTexCoord).rgb;
+    vec3 rgb = texture(Source, vTexCoord).rgb;
 
     // Extract the chroma, level, and emphasis from the normalized RGB triplet
     int color = int(floor((rgb.r * 15.0) + 0.5));
@@ -258,10 +258,10 @@ void main()
 
     // Reconstruct the raw video waveform from the color, level, and emphasis values
     // Get voltage high and voltage low for the current color
-	int color_index = clamp(color, 0, 15);
-	int level_index = clamp(level, 0, 3);
-	float voltage_low = IRE_LOW_TABLE[color_index][level_index] / 100.0;
-	float voltage_high = IRE_HIGH_TABLE[color_index][level_index] / 100.0;
+    int color_index = clamp(color, 0, 15);
+    int level_index = clamp(level, 0, 3);
+    float voltage_low = IRE_LOW_TABLE[color_index][level_index] / 100.0;
+    float voltage_high = IRE_HIGH_TABLE[color_index][level_index] / 100.0;
     float voltage_low_emph = IRE_LOW_TABLE_EMPH[color_index][level_index] / 100.0;
     float voltage_high_emph = IRE_HIGH_TABLE_EMPH[color_index][level_index] / 100.0;
 
@@ -300,8 +300,8 @@ void main()
         voltage_high = voltage_high_emph;
     }
 
-	// NES color gate: high when (color phase + sample phase) wraps into first half-cycle
-	float voltage = (wave_phase < 6) ? voltage_high : voltage_low;
+    // NES color gate: high when (color phase + sample phase) wraps into first half-cycle
+    float voltage = (wave_phase < 6) ? voltage_high : voltage_low;
 
     // Shift voltage amount to match real-world contrast better
     //voltage = (voltage - 0.075) / 0.925;

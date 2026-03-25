@@ -21,7 +21,7 @@
 // -----------------------------------------------------------------
 // Input: Component voltage signal (RGB)
 // Output: Complex IQ baseband representation (R16G16_SFLOAT)
-// 
+//
 // This shader models VSB modulation in complex baseband (I/Q) form:
 // - Consumes analytic baseband (R=I, G=Q) from composite-iq.slang
 // - Applies asymmetric lowpass filtering (I: 4.2 MHz, Q: 0.75 MHz)
@@ -154,17 +154,17 @@ void main()
 
     float transition_i = USB_ROLL_OFF / USB_BANDWIDTH;
     float transition_q = LSB_ROLL_OFF / LSB_BANDWIDTH;
-    
+
     // Normalize cutoff frequencies to sample rate (cycles per sample)
     fc_i_norm = (VSB_I_CUTOFF_MHZ * 1.0e6) * tb.pixel_time_px;
     fc_q_norm = (VSB_Q_CUTOFF_MHZ * 1.0e6) * tb.pixel_time_px;
 
     // Analytical tap count design for Hamming window
     // Formula: N = HAMMING_TRANSITION_CONST / transition_width
-    // Transition band = TRANSITION_FACTOR × cutoff frequency    
+    // Transition band = TRANSITION_FACTOR × cutoff frequency
     float taps_i_calc = HAMMING_TRANSITION_CONST / max(transition_i * fc_i_norm, EPS);
     float taps_q_calc = HAMMING_TRANSITION_CONST / max(transition_q * fc_q_norm, EPS);
-    
+
     // Round to odd numbers for symmetric FIR (center + pairs)
     taps_i = int(ceil(taps_i_calc));
     if (int(mod(taps_i, 2.0)) == 0) taps_i += 1.0;
@@ -192,7 +192,7 @@ void main()
     float baseIndex = floor(UV.x);
     float baseCenter = baseIndex + 0.5;
     float Ax = UV.x - baseCenter;
-    
+
     vec2 Tex = vec2(
         baseCenter * config.OutputSize.z,
         (floor(UV.y) + 0.5) * config.OutputSize.w);
@@ -201,7 +201,7 @@ void main()
     int max_tap_i = int(taps_i);
     int max_tap_q = int(taps_q);
     int max_tap = max(max_tap_i, max_tap_q);
-    
+
     // Central sample from analytic input
     vec2 iq0 = texture(Source, Tex).rg;
 
@@ -230,7 +230,7 @@ void main()
         i_signal = coeff0_i * iq0.r;
         i_wsum = coeff0_i;
     }
-    
+
     float q_signal = 0.0;
     float q_wsum = 0.0;
 
@@ -248,16 +248,16 @@ void main()
         q_signal = coeff0_q * iq0.g;
         q_wsum = coeff0_q;
     }
-    
+
     // Convolve both channels with neighboring samples (single texture fetch per offset)
     int n_pairs = int(floor(max_tap * 0.5));
 
     for (int n = 1; n <= 44; ++n) {
         if (n > n_pairs)
             break;
-        
+
         float nf = float(n);
-        
+
         // Neighbor analytic samples
         vec2 tex_r = Tex + nf * dx;
         vec2 tex_l = Tex - nf * dx;
@@ -298,11 +298,11 @@ void main()
         q_signal += coeff_r_q * iq_r.g + coeff_l_q * iq_l.g;
         q_wsum += coeff_r_q + coeff_l_q;
     }
-    
+
     // Normalize filters to maintain unity gain
     i_signal /= max(i_wsum, EPS);
     q_signal /= max(q_wsum, EPS);
-      
+
     // Output complex IQ: (I, Q) in RG channels
     FragColor = vec4(i_signal, q_signal, 0.0, 1.0);
 }

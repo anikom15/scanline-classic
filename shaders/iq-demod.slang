@@ -155,7 +155,7 @@ void main()
     // Transition band = TRANSITION_FACTOR × cutoff frequency
     float taps_i_calc = HAMMING_TRANSITION_CONST / max(transition_i * fc_i_norm, EPS);
     float taps_q_calc = HAMMING_TRANSITION_CONST / max(transition_q * fc_q_norm, EPS);
-    
+
     // Round to odd numbers for symmetric FIR (center + pairs)
     taps_i = int(ceil(taps_i_calc));
     if (int(mod(taps_i, 2.0)) == 0) taps_i += 1.0;
@@ -210,7 +210,7 @@ void main()
     I_w = c0_i;
     Q_lp = c0_q * iq0.g;
     Q_w = c0_q;
-    
+
     // Hilbert at center is zero for odd kernel, skip
 
     int max_i = int(taps_i);
@@ -269,11 +269,11 @@ void main()
     // Normalize
     I_lp /= max(I_w, EPS);
     Q_lp /= max(Q_w, EPS);
-    
+
     // Weighted demodulation only
     // composite = I_lp + alpha * Q_lp
     // where alpha ≈ -K_VSB (vestige/full ratio, typically -0.27 for NTSC)
     float composite = I_lp + IQ_DEMOD_Q_WEIGHT * Q_lp;
-    
+
     FragColor = vec4(composite, 0.0, 0.0, 1.0);
 }

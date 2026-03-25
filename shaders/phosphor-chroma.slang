@@ -127,26 +127,26 @@ layout(set = 0, binding = 1) uniform sampler2D Source;
 void main()
 {
     vec3 Yrgb = texture(Source, vTexCoord).rgb;
-    
+
     // Early exit for full bypass
     if (PHOSPHOR_CHROMA_BYPASS >= 1.0) {
         FragColor = vec4(clamp(Yrgb, 0.0, 1.0), 1.0);
         return;
     }
-    
+
     mat3 toRGB = colorspace_rgb(COLOR_SPACE);
     vec3 W = vec3(
-		CHROMA_A_WEIGHT,
-		CHROMA_B_WEIGHT,
-		CHROMA_C_WEIGHT);
+        CHROMA_A_WEIGHT,
+        CHROMA_B_WEIGHT,
+        CHROMA_C_WEIGHT);
     vec3 RGB = Yrgb_to_RGB(toRGB, W, Yrgb);
-    
+
     if (SCALE_W > 0.0) {
         vec3 white = Yrgb_to_RGB(toRGB, W, WHITE);
         float G = 1.0 / max(max(white.r, white.g), white.b);
         RGB *= G;
     }
-    
+
     RGB = clamp(RGB, 0.0, 1.0);
     FragColor = vec4(RGB, 1.0);
 }
