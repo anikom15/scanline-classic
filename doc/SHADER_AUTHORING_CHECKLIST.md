@@ -21,6 +21,8 @@ Use this checklist for both human edits and Copilot-generated edits.
 ## Universal declaration placement
 - [ ] Universal functions/variables are genuinely shared by both vertex and fragment stages.
 - [ ] Declarations used by only one stage are moved into that stage section.
+- [ ] If moving a declaration is impractical (for example, large shared helper blocks where a subset is stage-local), add `// lint: allow-stage-local` immediately above the declaration to explicitly allow stage-local placement.
+- [ ] Use `// lint: allow-stage-local` sparingly and only for intentional exceptions.
 
 ## Formatting and style
 - [ ] K&R brace style for control-flow blocks (`if/else/for/while/switch/do`).

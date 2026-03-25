@@ -123,18 +123,6 @@ layout(std140, set = 0, binding = 0) uniform UBO
 #define DECODER_SETUP global.DECODER_SETUP
 #define USER_MONOCHROME global.USER_MONOCHROME
 
-#ifdef OPTION_DEBUG
-#define COMB_ADJUST_X global.COMB_ADJUST_X
-#define COMB_ADJUST_Y global.COMB_ADJUST_Y
-#define COMPOSITE_DEMOD_FILTER_BYPASS global.COMPOSITE_DEMOD_FILTER_BYPASS
-#define CORRELATION global.CORRELATION
-#else
-const float COMB_ADJUST_X = 0.0;
-const float COMB_ADJUST_Y = 0.0;
-const float COMPOSITE_DEMOD_FILTER_BYPASS = 0.0;
-const float CORRELATION = 0.5;
-#endif  // OPTION_DEBUG
-
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
@@ -192,6 +180,18 @@ layout(location = 3) in float c_phase;
 layout(location = 4) in mat3 toRGB;
 layout(location = 7) in CarrierPhaseConfig carrier;
 layout(set = 0, binding = 2) uniform sampler2D Source;
+
+#ifdef OPTION_DEBUG
+#define COMB_ADJUST_X global.COMB_ADJUST_X
+#define COMB_ADJUST_Y global.COMB_ADJUST_Y
+#define COMPOSITE_DEMOD_FILTER_BYPASS global.COMPOSITE_DEMOD_FILTER_BYPASS
+#define CORRELATION global.CORRELATION
+#else
+const float COMB_ADJUST_X = 0.0;
+const float COMB_ADJUST_Y = 0.0;
+const float COMPOSITE_DEMOD_FILTER_BYPASS = 0.0;
+const float CORRELATION = 0.5;
+#endif  // OPTION_DEBUG
 
 // Compute correlation coefficient between two samples
 // Simple point correlation: returns similarity in [0, 1]

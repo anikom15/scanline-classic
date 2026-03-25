@@ -98,12 +98,6 @@ layout(push_constant) uniform Push
 #define TOTAL_SUBFRAMES config.TotalSubFrames
 #define HAS_SUBFRAMES (TOTAL_SUBFRAMES > 1u)
 
-// Calculate effective double refresh state considering subframes
-bool get_effective_double_refresh(float v_scale, float is_interlaced)
-{
-    return (DOUBLE_REFRESH > 0.5);
-}
-
 layout(std140, set = 0, binding = 0) uniform UBO
 {
     mat4 MVP;
@@ -123,6 +117,12 @@ layout(location = 7) out float effective_double_refresh;
 layout(location = 8) out float subframe_field_offset;
 layout(location = 9) out float num_blanks;
 layout(location = 10) out float is_odd_blanks;
+
+// Calculate effective double refresh state considering subframes
+bool get_effective_double_refresh(float v_scale, float is_interlaced)
+{
+    return (DOUBLE_REFRESH > 0.5);
+}
 
 void main()
 {

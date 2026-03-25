@@ -35,11 +35,6 @@
 #pragma parameter BYPASS_DECIMATE_FILTER "Bypass decimation filter" 0.0 0.0 1.0 1.0
 #endif  // OPTION_DEBUG
 
-layout(std140, set = 0, binding = 0) uniform UBO
-{
-    mat4 MVP;
-} global;
-
 layout(push_constant) uniform Push
 {
     vec4 SourceSize;   // xy = size, zw = 1/size
@@ -54,6 +49,11 @@ layout(push_constant) uniform Push
 #ifdef OPTION_DEBUG
 #define BYPASS_DECIMATE_FILTER config.BYPASS_DECIMATE_FILTER
 #endif  // OPTION_DEBUG
+
+layout(std140, set = 0, binding = 0) uniform UBO
+{
+    mat4 MVP;
+} global;
 
 #pragma stage vertex
 layout(location = 0) in vec4 Position;

@@ -79,6 +79,10 @@ layout(push_constant) uniform Push
     float USER_GAMMA;
     // User sharpness (percentage 0-100 from user-common.inc)
     float USER_SHARPNESS;
+    float W_Y;
+    float NTSC_CONVERSION;
+    float NTSC_CONVERSION_WEIGHT;
+    float COLORIMETRY_PRESET;
 } config;
 
 #define V_FREQ_MODE config.V_FREQ_MODE
@@ -94,15 +98,15 @@ layout(push_constant) uniform Push
 
 #define USER_GAMMA config.USER_GAMMA
 #define USER_SHARPNESS config.USER_SHARPNESS
+#define W_Y config.W_Y
+#define NTSC_CONVERSION config.NTSC_CONVERSION
+#define NTSC_CONVERSION_WEIGHT config.NTSC_CONVERSION_WEIGHT
+#define COLORIMETRY_PRESET config.COLORIMETRY_PRESET
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
     mat4 MVP;
-    float W_Y;
     // Color conversion circuitry (RGB matrix type)
-    float NTSC_CONVERSION;
-    float NTSC_CONVERSION_WEIGHT;
-    float COLORIMETRY_PRESET;
     float R_X;
     float R_Y;
     float G_X;
@@ -123,12 +127,6 @@ layout(std140, set = 0, binding = 0) uniform UBO
 #endif  // OPTION_DEBUG
 
 } global;
-
-#define W_Y global.W_Y
-
-#define NTSC_CONVERSION global.NTSC_CONVERSION
-#define NTSC_CONVERSION_WEIGHT global.NTSC_CONVERSION_WEIGHT
-#define COLORIMETRY_PRESET global.COLORIMETRY_PRESET
 #define R_X global.R_X
 #define R_Y global.R_Y
 #define G_X global.G_X

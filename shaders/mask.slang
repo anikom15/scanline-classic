@@ -56,10 +56,6 @@ layout(push_constant) uniform Push
 
 } config;
 
-layout(std140, set = 0, binding = 0) uniform UBO {
-    mat4 MVP;
-} global;
-
 #define ASPECT config.ASPECT
 
 #ifdef OPTION_DEBUG
@@ -74,6 +70,10 @@ layout(std140, set = 0, binding = 0) uniform UBO {
 #define MASK_DEBUG_OUT_OF_RANGE config.MASK_DEBUG_OUT_OF_RANGE
 #define SLOT_VERTICAL_BIAS config.SLOT_VERTICAL_BIAS
 #endif  // OPTION_DEBUG
+
+layout(std140, set = 0, binding = 0) uniform UBO {
+    mat4 MVP;
+} global;
 
 float derive_mask_sigma_value(float tvl, float output_height)
 {
@@ -346,6 +346,7 @@ vec3 compute_mask_point_sample(float x_units, float y_units, vec2 sigma, float m
 
 // Compute peak mask value for normalization
 // Returns the maximum per-channel value the mask can produce at given diffusion
+// lint: allow-stage-local
 float compute_peak_mask_value(vec2 sigma, float mask_type)
 {
     float period_x = 6.0;
@@ -487,6 +488,7 @@ vec3 compute_mask(vec2 screen_uv, float units_x_total, float units_y_total, vec2
 // Compute peak gain as the maximum Yr+Yg+Yb value after masking.
 // This searches the mask pattern for the brightest pixel and returns
 // the gain relative to a unit grayscale input (sum = 3.0).
+// lint: allow-stage-local
 float compute_peak_mask_gain(float units_x_total, float units_y_total, vec2 pixels_per_unit, float mask_intensity, vec2 sigma, float peak_mask_value)
 {
     // Compute Nyquist thresholds based on mask type
@@ -548,6 +550,7 @@ float compute_peak_mask_gain(float units_x_total, float units_y_total, vec2 pixe
     return blended_sum / 3.0;
 }
 
+// lint: allow-stage-local
 float pack_gain_pair(float avg_gain, float peak_gain)
 {
     float avg8 = floor(clamp(avg_gain, 0.0, 1.0) * 255.0 + 0.5);
@@ -555,24 +558,7 @@ float pack_gain_pair(float avg_gain, float peak_gain)
     return (avg8 * 256.0 + peak8) / 65535.0;
 }
 
-float erf_approx(float x)
-{
-    float sign = x < 0.0 ? -1.0 : 1.0;
-    x = abs(x);
-    float t = 1.0 / (1.0 + 0.3275911 * x);
-    float y = 1.0 - (((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t) * exp(-x * x);
-    return sign * y;
-}
-
-float average_cyclic_gauss(float period, float sigma)
-{
-    float s = max(sigma, EPS);
-    float half_period = 0.5 * period;
-    float arg = half_period / (sqrt(2.0) * s);
-    float integral = sqrt(0.5 * PI) * s * erf_approx(arg);
-    return (2.0 / period) * integral;
-}
-
+// lint: allow-stage-local
 vec3 average_mask_color(vec2 pixels_per_unit, vec2 sigma, float peak_mask_value)
 {
     // Compute Nyquist thresholds based on mask type

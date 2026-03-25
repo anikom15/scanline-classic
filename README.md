@@ -128,6 +128,7 @@ Strict-mode lint checks (`--strict-structure`) include:
 - Stage flow in `.slang`: exactly 1 vertex section and 1 fragment section, ordered as universal declarations -> vertex -> fragment
 - `.inc` files must not declare shader stages (`#pragma stage vertex|fragment`)
 - Universal functions/variables in `.slang` are expected to be shared by both vertex and fragment; stage-specific declarations are flagged for relocation into their respective section
+- Intentional exceptions can be explicitly marked with `// lint: allow-stage-local` immediately above a declaration when stage-local placement is required
 
 For day-to-day authoring guidance, see `doc/SHADER_AUTHORING_CHECKLIST.md`.
 

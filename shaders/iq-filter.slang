@@ -112,12 +112,6 @@ layout(std140, set = 0, binding = 0) uniform UBO
 #define VSB_I_CUTOFF_MHZ USB_BANDWIDTH
 #define VSB_Q_CUTOFF_MHZ LSB_BANDWIDTH
 
-// Hamming windowed-sinc filter design (asymmetric per channel)
-// Stopband: ~43 dB, minimal ringing (~1.5% overshoot)
-// Analytical tap count formula: N = 3.3 / transition_width
-// Transition width = TRANSITION_FACTOR × fc_norm (normalized cutoff)
-const float HAMMING_TRANSITION_CONST = 3.3; // Hamming -43 dB stopband
-
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
@@ -127,6 +121,12 @@ layout(location = 2) out float fc_q_norm;          // Q channel cutoff (normaliz
 layout(location = 3) out float taps_i;             // I channel tap count (even)
 layout(location = 4) out float taps_q;             // Q channel tap count (even)
 layout(location = 5) out TimebaseConfig tb;
+
+// Hamming windowed-sinc filter design (asymmetric per channel)
+// Stopband: ~43 dB, minimal ringing (~1.5% overshoot)
+// Analytical tap count formula: N = 3.3 / transition_width
+// Transition width = TRANSITION_FACTOR × fc_norm (normalized cutoff)
+const float HAMMING_TRANSITION_CONST = 3.3; // Hamming -43 dB stopband
 
 void main()
 {

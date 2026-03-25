@@ -156,47 +156,7 @@ vec3 bradford_fast(vec3 color_XYZ, const BradfordParams params)
     return M_inv * vec3(adapted_RG, adapted_B);
 }
 
-// Standard Bradford transform
-//
-// color_XYZ: Input color in XYZ space
-// wref_XYZ: Reference white point in XYZ space
-//
-// Inputs should be normalized by Y before calling this function.
-vec3 bradford(vec3 color_XYZ, vec3 wref_XYZ)
-{
-    // Target white point is always D65
-    const vec3 D65_XYZ = vec3(0.95047, 1.0, 1.08883);
-    const mat3 M = mat3(
-         0.8951, -0.7502,  0.0389,
-         0.2664,  1.7135, -0.0685,
-        -0.1614,  0.0367,  1.0296);
-    const mat3 M_inv = mat3(
-         0.9869929,  0.4323053, -0.0085287,
-        -0.1470543,  0.5183603,  0.0400428,
-         0.1599627,  0.0492912,  0.9684867);
-
-    vec3 color_RGB = M * color_XYZ;
-    vec3 wref_RGB = M * wref_XYZ;
-    vec3 wout_RGB = M * D65_XYZ;
-    vec2 adapted_RG = wout_RGB.rg * (color_RGB.rg / wref_RGB.rg);
-    float p = pow(wref_RGB.b / wout_RGB.b, 0.0834);  // 1/12
-    float adapted_B = wout_RGB.b * pow(color_RGB.b / wref_RGB.b, p);
-    vec3 result = M_inv * vec3(adapted_RG, adapted_B);
-    return result;
-}
-
-// -- Gamut compression functions -- //
-
-// Simple luminance scaling to fit color space
-vec3 reduce_luminance(const vec3 color)
-{
-    float maxC = max(max(color.r, color.g), color.b);
-    if (maxC > 1.0) {
-        // Scale all channels so the maximum is 1.0
-        return color / maxC;
-    }
-    return color;
-}
+#pragma stage vertex
 
 const float THRESHOLD = 1.0 / 255.0;
 
@@ -306,28 +266,6 @@ float scale_chroma_ipt(vec3 color, vec3 ipt, mat3 toRGB)
     return 1.0;
 }
 
-// -- Uncharted 2 tone mapping functions -- //
-// Partial tone map (filmic curve)
-float uncharted2_tonemap_partial(float x)
-{
-    const float A = 0.15;
-    const float B = 0.50;
-    const float C = 0.10;
-    const float D = 0.20;
-    const float E = 0.02;
-    const float F = 0.30;
-    return ((x * (A * x + C * B) + D * E) / (x * (A * x + B) + D * F)) - E / F;
-}
-
-// Full Uncharted 2 tone mapping with exposure bias and white point normalization
-float uncharted2_tonemap( float color, float exposure_bias)
-{
-    float curr = uncharted2_tonemap_partial(color * exposure_bias);
-    float white_scale = 1.0 / uncharted2_tonemap_partial(11.2);
-    return curr * white_scale;
-}
-
-#pragma stage vertex
 layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
@@ -551,6 +489,35 @@ layout(location = 13) in Colorimetry colorimetry;
 
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 1) uniform sampler2D Source;
+
+// Simple luminance scaling to fit color space
+vec3 reduce_luminance(const vec3 color)
+{
+    float maxC = max(max(color.r, color.g), color.b);
+    if (maxC > 1.0) {
+        return color / maxC;
+    }
+    return color;
+}
+
+// -- Uncharted 2 tone mapping functions -- //
+float uncharted2_tonemap_partial(float x)
+{
+    const float A = 0.15;
+    const float B = 0.50;
+    const float C = 0.10;
+    const float D = 0.20;
+    const float E = 0.02;
+    const float F = 0.30;
+    return ((x * (A * x + C * B) + D * E) / (x * (A * x + B) + D * F)) - E / F;
+}
+
+float uncharted2_tonemap( float color, float exposure_bias)
+{
+    float curr = uncharted2_tonemap_partial(color * exposure_bias);
+    float white_scale = 1.0 / uncharted2_tonemap_partial(11.2);
+    return curr * white_scale;
+}
 
 void unpack_gain_pair(float packed, out float avg_gain, out float peak_gain)
 {

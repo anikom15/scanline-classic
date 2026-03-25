@@ -147,23 +147,6 @@ const float KEY_THRESH = 0.5;
 const float DEBUG_GLOW = 0.0;
 #endif  // OPTION_DEBUG
 
-// Map GLOW_DIFFUSION preset to base diffusion steps
-// 0 = Low (8 steps), 1 = Medium (12 steps), 2 = High (16 steps)
-int glow_diffusion_steps()
-{
-    if (GLOW_DIFFUSION < 0.5) {
-        if (USE_MIPMAPPING > 0.5)
-            return 4;
-        return 8;   // Low: performance mode
-    } else if (GLOW_DIFFUSION < 1.5) {
-        if (USE_MIPMAPPING > 0.5)
-            return 8;
-        return 12;  // Medium: balanced
-    } else {
-        return 16;  // High: quality mode
-    }
-}
-
 layout(std140, set = 0, binding = 0) uniform UBO
 {
     mat4 MVP;
@@ -266,6 +249,23 @@ layout(location = 3) in vec2 viewport_max_dist;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 1) uniform sampler2D Source;
 layout(set = 0, binding = 2) uniform sampler2D BORDER;
+
+// Map GLOW_DIFFUSION preset to base diffusion steps
+// 0 = Low (8 steps), 1 = Medium (12 steps), 2 = High (16 steps)
+int glow_diffusion_steps()
+{
+    if (GLOW_DIFFUSION < 0.5) {
+        if (USE_MIPMAPPING > 0.5)
+            return 4;
+        return 8;   // Low: performance mode
+    } else if (GLOW_DIFFUSION < 1.5) {
+        if (USE_MIPMAPPING > 0.5)
+            return 8;
+        return 12;  // Medium: balanced
+    } else {
+        return 16;  // High: quality mode
+    }
+}
 
 /**
  * Apply PQ curve to LMS tristimulus values for ICtCp conversion

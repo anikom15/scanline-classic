@@ -72,27 +72,6 @@ layout(std140, set = 0, binding = 0) uniform UBO
     mat4 MVP;
 } global;
 
-// Helper functions for gamma correction
-vec3 to_linear(vec3 c) {
-    if (GAMMA_CORRECT_BLENDING < 0.5) {
-        return c; // No gamma correction
-    } else if (GAMMA_CORRECT_BLENDING < 1.5) {
-        return c * c; // Fast: square
-    } else {
-        return sdr_linear(c); // Accurate
-    }
-}
-
-vec3 to_gamma(vec3 c) {
-    if (GAMMA_CORRECT_BLENDING < 0.5) {
-        return c; // No gamma correction
-    } else if (GAMMA_CORRECT_BLENDING < 1.5) {
-        return sqrt(c); // Fast: sqrt
-    } else {
-        return sdr_gamma(c); // Accurate
-    }
-}
-
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
@@ -140,6 +119,27 @@ layout(location = 2) in vec2 fc_norm;
 layout(location = 3) in vec2 taps;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
+
+// Helper functions for gamma correction
+vec3 to_linear(vec3 c) {
+    if (GAMMA_CORRECT_BLENDING < 0.5) {
+        return c; // No gamma correction
+    } else if (GAMMA_CORRECT_BLENDING < 1.5) {
+        return c * c; // Fast: square
+    } else {
+        return sdr_linear(c); // Accurate
+    }
+}
+
+vec3 to_gamma(vec3 c) {
+    if (GAMMA_CORRECT_BLENDING < 0.5) {
+        return c; // No gamma correction
+    } else if (GAMMA_CORRECT_BLENDING < 1.5) {
+        return sqrt(c); // Fast: sqrt
+    } else {
+        return sdr_gamma(c); // Accurate
+    }
+}
 
 void main()
 {

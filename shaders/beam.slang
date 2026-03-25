@@ -64,6 +64,16 @@ layout(push_constant) uniform Push
     float H_FREQ_MODE;
 } config;
 
+#define ASPECT config.ASPECT
+#define V_FREQ_MODE config.V_FREQ_MODE
+#define V_FREQ config.V_FREQ
+#define SC_FREQ_MODE config.SC_FREQ_MODE
+#define SC_FREQ config.SC_FREQ
+#define PIXEL_CLOCK_MODE config.PIXEL_CLOCK_MODE
+#define PIXEL_CLOCK config.PIXEL_CLOCK
+#define H_FREQ_MODE config.H_FREQ_MODE
+#define BEAM_FOCUS config.BEAM_FOCUS
+
 layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 MVP;
     float H_FREQ;
@@ -95,14 +105,6 @@ layout(std140, set = 0, binding = 0) uniform UBO {
 
 } global;
 
-#define ASPECT config.ASPECT
-#define V_FREQ_MODE config.V_FREQ_MODE
-#define V_FREQ config.V_FREQ
-#define SC_FREQ_MODE config.SC_FREQ_MODE
-#define SC_FREQ config.SC_FREQ
-#define PIXEL_CLOCK_MODE config.PIXEL_CLOCK_MODE
-#define PIXEL_CLOCK config.PIXEL_CLOCK
-#define H_FREQ_MODE config.H_FREQ_MODE
 #define H_FREQ global.H_FREQ
 #define H_BLANK_FUZZ global.H_BLANK_FUZZ
 
@@ -119,13 +121,52 @@ layout(std140, set = 0, binding = 0) uniform UBO {
 #define UNDERSCAN global.UNDERSCAN
 #define S_CORRECTION_H global.S_CORRECTION_H
 #define S_CORRECTION_V global.S_CORRECTION_V
-#define BEAM_FOCUS config.BEAM_FOCUS
 
 #ifdef OPTION_DEBUG
 #define GEOMETRY_BYPASS global.GEOMETRY_BYPASS
 #define FILTER_BYPASS global.FILTER_BYPASS
 #define DAR_SCALE global.DAR_SCALE
 #endif // OPTION_DEBUG
+
+#pragma stage vertex
+layout(location = 0) in vec4 Position;
+layout(location = 1) in vec2 TexCoord;
+layout(location = 0) out vec2 vTexCoord;
+layout(location = 1) out float maskAR;
+layout(location = 2) out FrameGeometry geom;
+
+void main()
+{
+    gl_Position = global.MVP * Position;
+    vTexCoord = TexCoord;
+
+    // Selected target aspect ratio for framing
+    maskAR = (ASPECT < 0.5) ? (4.0 / 3.0)
+        : (ASPECT < 1.5) ? (16.0 / 9.0)
+        : (ASPECT < 2.5) ? (5.0 / 4.0)
+        : (16.0 / 10.0);
+
+    geom = compute_frame_geometry(
+        config.FrameCount,
+        config.OriginalSize.xy,
+        config.OriginalFPS,
+        SC_FREQ_MODE,
+        SC_FREQ,
+        PIXEL_CLOCK,
+        PIXEL_CLOCK_MODE,
+        H_FREQ_MODE,
+        H_FREQ,
+        V_FREQ_MODE,
+        V_FREQ,
+        H_BLANK_FUZZ);
+}
+
+#pragma stage fragment
+layout(location = 0) in vec2 vTexCoord;
+layout(location = 1) in float maskAR;
+layout(location = 2) in FrameGeometry geom;
+layout(location = 0) out vec4 FragColor;
+layout(set = 0, binding = 1) uniform sampler2D Source;
 
 // ---- Local geometry helpers (subset; barrel handled later stage) ----
 // Parameterized pincushion (electrostatic/linear) using anisotropic angles (radians)
@@ -252,46 +293,6 @@ void apply_geometry_pipeline_nodistort(
     vec2 uv_full = vec2(sq.x, sq.y * dar);
     input_tex = uv_full * 0.5 + 0.5;
 }
-
-#pragma stage vertex
-layout(location = 0) in vec4 Position;
-layout(location = 1) in vec2 TexCoord;
-layout(location = 0) out vec2 vTexCoord;
-layout(location = 1) out float maskAR;
-layout(location = 2) out FrameGeometry geom;
-
-void main()
-{
-    gl_Position = global.MVP * Position;
-    vTexCoord = TexCoord;
-
-    // Selected target aspect ratio for framing
-    maskAR = (ASPECT < 0.5) ? (4.0 / 3.0)
-        : (ASPECT < 1.5) ? (16.0 / 9.0)
-        : (ASPECT < 2.5) ? (5.0 / 4.0)
-        : (16.0 / 10.0);
-
-    geom = compute_frame_geometry(
-        config.FrameCount,
-        config.OriginalSize.xy,
-        config.OriginalFPS,
-        SC_FREQ_MODE,
-        SC_FREQ,
-        PIXEL_CLOCK,
-        PIXEL_CLOCK_MODE,
-        H_FREQ_MODE,
-        H_FREQ,
-        V_FREQ_MODE,
-        V_FREQ,
-        H_BLANK_FUZZ);
-}
-
-#pragma stage fragment
-layout(location = 0) in vec2 vTexCoord;
-layout(location = 1) in float maskAR;
-layout(location = 2) in FrameGeometry geom;
-layout(location = 0) out vec4 FragColor;
-layout(set = 0, binding = 1) uniform sampler2D Source;
 
 void main()
 {

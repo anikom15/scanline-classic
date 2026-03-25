@@ -76,16 +76,6 @@ layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 MVP;
 } global;
 
-vec3 phosphor_inv_pow3(vec3 col, vec3 gamma, vec3 n)
-{
-    // Handle dark/off pixels early to avoid pow() on ~0
-    vec3 mask = step(vec3(EPS), col);
-    vec3 safe = max(col, vec3(EPS));
-    // Compute decay: y_{k+1} = (y_k^{-1/n} + gamma)^{-n}
-    vec3 y = pow(pow(safe, -1.0 / n) + gamma, -n);
-    return mask * min(y, col - EPS);  // Prevent positive feedback
-}
-
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
@@ -102,6 +92,16 @@ layout(location = 0) in vec2 vTexCoord;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 1) uniform sampler2D Source;
 layout(set = 0, binding = 2) uniform sampler2D Phosphor3Feedback;
+
+vec3 phosphor_inv_pow3(vec3 col, vec3 gamma, vec3 n)
+{
+    // Handle dark/off pixels early to avoid pow() on ~0
+    vec3 mask = step(vec3(EPS), col);
+    vec3 safe = max(col, vec3(EPS));
+    // Compute decay: y_{k+1} = (y_k^{-1/n} + gamma)^{-n}
+    vec3 y = pow(pow(safe, -1.0 / n) + gamma, -n);
+    return mask * min(y, col - EPS);  // Prevent positive feedback
+}
 
 void main()
 {

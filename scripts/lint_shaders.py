@@ -45,6 +45,7 @@ BLOCK_MEMBER_PATTERN = re.compile(
 COMMENT_BLOCK_PATTERN = re.compile(r"/\*.*?\*/", re.DOTALL)
 STAGE_PATTERN = re.compile(r"^\s*#pragma\s+stage\s+(vertex|fragment)\b")
 INCLUDE_PATTERN = re.compile(r'^\s*#include\s+"([^"]+)"')
+ALLOW_STAGE_LOCAL_DIRECTIVE = "lint: allow-stage-local"
 VARIABLE_DECL_PATTERN = re.compile(
     r"^\s*(?:const\s+)?[A-Za-z_]\w*\s+([A-Za-z_]\w*)\s*(?:\[[^\]]+\])?\s*(?:=[^;]*)?;\s*$"
 )
@@ -371,6 +372,12 @@ def check_shader_stage_flow(path: Path, lines: list[str], issues: list[LintIssue
         in_vertex = symbol.name in used_in_vertex
         in_fragment = symbol.name in used_in_fragment
         if in_vertex and in_fragment:
+            continue
+
+        directive_start = max(0, symbol.line - 3)
+        directive_end = min(len(lines), symbol.line)
+        directive_window = "\n".join(lines[directive_start:directive_end]).lower()
+        if ALLOW_STAGE_LOCAL_DIRECTIVE in directive_window:
             continue
 
         if in_vertex:

@@ -42,10 +42,6 @@
 #pragma parameter PHOS_TRAP_C "Decay escape C (order)" 1.25 0.5 2.0 0.01
 #endif  // OPTION_DEBUG
 
-layout(std140, set = 0, binding = 0) uniform UBO {
-    mat4 MVP;
-} global;
-
 layout(push_constant) uniform Push
 {
     vec4 SourceSize;
@@ -105,19 +101,9 @@ const float PHOS_TRAP_B = 1.25;
 const float PHOS_TRAP_C = 1.25;
 #endif  // OPTION_DEBUG
 
-vec3 blend(vec3 col1, vec3 col2)
-{
-    return vec3(max(col1.r, col2.r), max(col1.g, col2.g), max(col1.b, col2.b));
-}
-
-vec3 phosphor_inv_pow3(vec3 col, vec3 gamma, vec3 n)
-{
-    vec3 mask = step(vec3(EPS), col);
-    vec3 safe_col = max(col, vec3(EPS));
-    vec3 y = pow(gamma / V_FREQ + pow(1.0 / safe_col, 1.0 / n), -n);
-
-    return mask * min(y, col - EPS);
-}
+layout(std140, set = 0, binding = 0) uniform UBO {
+    mat4 MVP;
+} global;
 
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
@@ -135,6 +121,20 @@ layout(location = 0) in vec2 vTexCoord;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 1) uniform sampler2D Source;
 layout(set = 0, binding = 2) uniform sampler2D PhosphorLumaFeedback;
+
+vec3 blend(vec3 col1, vec3 col2)
+{
+    return vec3(max(col1.r, col2.r), max(col1.g, col2.g), max(col1.b, col2.b));
+}
+
+vec3 phosphor_inv_pow3(vec3 col, vec3 gamma, vec3 n)
+{
+    vec3 mask = step(vec3(EPS), col);
+    vec3 safe_col = max(col, vec3(EPS));
+    vec3 y = pow(gamma / V_FREQ + pow(1.0 / safe_col, 1.0 / n), -n);
+
+    return mask * min(y, col - EPS);
+}
 
 void main()
 {

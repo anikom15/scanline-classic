@@ -39,10 +39,6 @@
 #pragma parameter COLOR_SPACE "Output color space" 1.0 1.0 4.0 1.0
 #endif  // OPTION_DEBUG
 
-layout(std140, set = 0, binding = 0) uniform UBO {
-    mat4 MVP;
-} global;
-
 layout(push_constant) uniform Push
 {
     vec4 SourceSize;
@@ -92,21 +88,9 @@ const float SCALE_W = 0.0;
 const float COLOR_SPACE = 1.0;
 #endif  // OPTION_DEBUG
 
-vec3 Yrgb_to_RGB(mat3 toRGB, vec3 W, vec3 Yrgb)
-{
-    mat3 xyYrgb = mat3(CHROMA_A_X, CHROMA_A_Y, Yrgb.r,
-                       CHROMA_B_X, CHROMA_B_Y, Yrgb.g,
-                       CHROMA_C_X, CHROMA_C_Y, Yrgb.b);
-    mat3 XYZrgb = mat3(xyY_to_XYZ(xyYrgb[0]),
-                       xyY_to_XYZ(xyYrgb[1]),
-                       xyY_to_XYZ(xyYrgb[2]));
-    mat3 RGBrgb = mat3(toRGB * XYZrgb[0],
-                       toRGB * XYZrgb[1],
-                       toRGB * XYZrgb[2]);
-    return vec3(dot(W, vec3(RGBrgb[0].r, RGBrgb[1].r, RGBrgb[2].r)),
-                dot(W, vec3(RGBrgb[0].g, RGBrgb[1].g, RGBrgb[2].g)),
-                dot(W, vec3(RGBrgb[0].b, RGBrgb[1].b, RGBrgb[2].b)));
-}
+layout(std140, set = 0, binding = 0) uniform UBO {
+    mat4 MVP;
+} global;
 
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
@@ -123,6 +107,22 @@ void main()
 layout(location = 0) in vec2 vTexCoord;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 1) uniform sampler2D Source;
+
+vec3 Yrgb_to_RGB(mat3 toRGB, vec3 W, vec3 Yrgb)
+{
+    mat3 xyYrgb = mat3(CHROMA_A_X, CHROMA_A_Y, Yrgb.r,
+                       CHROMA_B_X, CHROMA_B_Y, Yrgb.g,
+                       CHROMA_C_X, CHROMA_C_Y, Yrgb.b);
+    mat3 XYZrgb = mat3(xyY_to_XYZ(xyYrgb[0]),
+                       xyY_to_XYZ(xyYrgb[1]),
+                       xyY_to_XYZ(xyYrgb[2]));
+    mat3 RGBrgb = mat3(toRGB * XYZrgb[0],
+                       toRGB * XYZrgb[1],
+                       toRGB * XYZrgb[2]);
+    return vec3(dot(W, vec3(RGBrgb[0].r, RGBrgb[1].r, RGBrgb[2].r)),
+                dot(W, vec3(RGBrgb[0].g, RGBrgb[1].g, RGBrgb[2].g)),
+                dot(W, vec3(RGBrgb[0].b, RGBrgb[1].b, RGBrgb[2].b)));
+}
 
 void main()
 {
