@@ -131,7 +131,8 @@ Strict-mode lint checks (`--strict-structure`) include:
 
 For day-to-day authoring guidance, see `doc/SHADER_AUTHORING_CHECKLIST.md`.
 
-Continuous integration also runs `python scripts/lint_shaders.py` via `.github/workflows/shader-lint.yml` on pushes and pull requests.
+Continuous integration runs build-path lint gating via `.github/workflows/shader-lint.yml`.
+CI executes `python build.py --lint-shaders --jobs 1` by default, and uses `python build.py --lint-shaders --strict-structure --jobs 1` for `master` pushes and pull requests targeting `master`.
 
 ## Usage
 

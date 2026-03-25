@@ -1,12 +1,14 @@
-name: Shader Lint
+name: Build Lint Gate
 
 on:
   pull_request:
   push:
 
 jobs:
-  lint-shaders:
+  build-lint-gate:
     runs-on: ubuntu-latest
+    env:
+      BUILD_ARGS: "--lint-shaders"
 
     steps:
       - name: Checkout
@@ -17,5 +19,13 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Run shader linter
-        run: python scripts/lint_shaders.py
+      - name: Select build lint mode
+        run: |
+          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/master" ]; then
+            echo "BUILD_ARGS=--lint-shaders --strict-structure" >> "$GITHUB_ENV"
+          elif [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ github.base_ref }}" = "master" ]; then
+            echo "BUILD_ARGS=--lint-shaders --strict-structure" >> "$GITHUB_ENV"
+          fi
+
+      - name: Run build lint gate
+        run: python build.py $BUILD_ARGS --jobs 1
