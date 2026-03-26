@@ -27,9 +27,7 @@
 
 #pragma include_optional "../config/options.cfg"
 
-#ifdef OPTION_DEBUG
 #pragma parameter DISPLAY_COMPONENT_HEADER " ==== Display Component Parameters ==== " 0.0 0.0 0.0 0.0
-#pragma parameter DISPLAY_COMPONENT_BYPASS "Display component bypass" 0.0 0.0 1.0 1.0
 #pragma parameter V_FREQ_MODE "Vertical frequency mode (0=Auto, 1=NTSC, 2=PAL, 3=PAL-M, 4=Custom)" 1.0 0.0 4.0 1.0
 #pragma parameter V_FREQ "Custom vertical frequency (Hz)" 59.94 1.0 240.0 0.01
 #pragma parameter SHORTEN_ODD_FIELD_TIME "Shorten odd field time (0=Off, 1=On)" 0.0 0.0 1.0 1.0
@@ -41,13 +39,16 @@
 #pragma parameter H_FREQ "Custom horizontal frequency (kHz)" 15.734 1.0 100.0 0.001
 #pragma parameter H_BLANK_FUZZ "Horizontal blanking fuzz (cycles)" 0.0 0.0 20.0 0.1
 #pragma parameter YC_MODEL "YC color model (0=YIQ,1=YPbPr,2=YUV,3=YDbDr,4=YCbCr)" 1.0 0.0 4.0 1.0
-#pragma parameter DISPLAY_COMPONENT_FILTER_BYPASS "Display component filter bypass" 0.0 0.0 1.0 1.0
 #pragma parameter DISPLAY_BANDWIDTH_Y "Display Luma (Y) bandwidth (MHz)" 5.4 0.0 75.0 0.01
 #pragma parameter DISPLAY_BANDWIDTH_U "Display Chroma (U) bandwidth (MHz)" 2.7 0.0 15.0 0.01
 #pragma parameter DISPLAY_BANDWIDTH_V "Display Chroma (V) bandwidth (MHz)" 2.7 0.0 15.0 0.01
 #pragma parameter DISPLAY_CUTOFF_ATTEN_Y "Display Y cutoff attenuation (dB)" 12.5 0.0 30.0 1.0
 #pragma parameter DISPLAY_CUTOFF_ATTEN_U "Display U cutoff attenuation (dB)" 12.5 0.0 30.0 1.0
 #pragma parameter DISPLAY_CUTOFF_ATTEN_V "Display V cutoff attenuation (dB)" 12.5 0.0 30.0 1.0
+
+#ifdef OPTION_DEBUG
+#pragma parameter DISPLAY_COMPONENT_BYPASS "Display component bypass" 0.0 0.0 1.0 1.0
+#pragma parameter DISPLAY_COMPONENT_FILTER_BYPASS "Display component filter bypass" 0.0 0.0 1.0 1.0
 #endif  // OPTION_DEBUG
 
 layout(push_constant) uniform Push
@@ -56,10 +57,7 @@ layout(push_constant) uniform Push
     vec4 OutputSize;
     vec4 FrameHSize;
     uint FrameCount;
-    // Timing parameters for timebase computation
-    float YC_MODEL; // 0=YIQ, 1=YPbPr, 2=YUV, 3=YDbDr, 4=YCbCr
-
-#ifdef OPTION_DEBUG
+    float OriginalFPS;
     float V_FREQ_MODE;
     float V_FREQ;
     float SHORTEN_ODD_FIELD_TIME;
@@ -70,20 +68,21 @@ layout(push_constant) uniform Push
     float H_FREQ_MODE;
     float H_FREQ;
     float H_BLANK_FUZZ;
-    float DISPLAY_COMPONENT_BYPASS;
-    float DISPLAY_COMPONENT_FILTER_BYPASS;
+    float YC_MODEL;
     float DISPLAY_BANDWIDTH_Y;
     float DISPLAY_BANDWIDTH_U;
     float DISPLAY_BANDWIDTH_V;
     float DISPLAY_CUTOFF_ATTEN_Y;
     float DISPLAY_CUTOFF_ATTEN_U;
     float DISPLAY_CUTOFF_ATTEN_V;
+
+#ifdef OPTION_DEBUG
+    float DISPLAY_COMPONENT_BYPASS;
+    float DISPLAY_COMPONENT_FILTER_BYPASS;
 #endif  // OPTION_DEBUG
 
 } config;
 
-#ifdef OPTION_DEBUG
-#define DISPLAY_COMPONENT_BYPASS config.DISPLAY_COMPONENT_BYPASS
 #define V_FREQ_MODE config.V_FREQ_MODE
 #define V_FREQ config.V_FREQ
 #define SHORTEN_ODD_FIELD_TIME config.SHORTEN_ODD_FIELD_TIME
@@ -95,20 +94,12 @@ layout(push_constant) uniform Push
 #define H_FREQ config.H_FREQ
 #define H_BLANK_FUZZ config.H_BLANK_FUZZ
 #define YC_MODEL config.YC_MODEL
+
+#ifdef OPTION_DEBUG
+#define DISPLAY_COMPONENT_BYPASS config.DISPLAY_COMPONENT_BYPASS
 #define DISPLAY_COMPONENT_FILTER_BYPASS config.DISPLAY_COMPONENT_FILTER_BYPASS
 #else
 const float DISPLAY_COMPONENT_BYPASS = 0.0;
-const float V_FREQ_MODE = 1.0;
-const float V_FREQ = 59.94;
-const float SHORTEN_ODD_FIELD_TIME = 0.0;
-const float SC_FREQ_MODE = 1.0;
-const float SC_FREQ = 3.579545;
-const float PIXEL_CLOCK_MODE = 1.0;
-const float PIXEL_CLOCK = 21.477272;
-const float H_FREQ_MODE = 0.0;
-const float H_FREQ = 15.734;
-const float H_BLANK_FUZZ = 0.0;
-const float YC_MODEL = 1.0;
 const float DISPLAY_COMPONENT_FILTER_BYPASS = 0.0;
 #endif  // OPTION_DEBUG
 

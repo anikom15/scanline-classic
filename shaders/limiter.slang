@@ -47,7 +47,6 @@
 #include "menus/parameters/user-common.inc"
 #include "menus/parameters/user-uncommon.inc"
 #include "menus/parameters/colorimetry.inc"
-#include "menus/parameters/output-tonemap.inc"
 #include "menus/parameters/limiter.inc"
 
 #pragma include_optional "../config/options.cfg"
