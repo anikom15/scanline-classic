@@ -148,17 +148,17 @@
 
 #pragma name SVideo
 #pragma format R16G16B16A16_SFLOAT
+
 #include "common.inc"
 #include "color.inc"
-
 #include "bandlimit.inc"
 #include "modulation.inc"
+
 #include "menus/parameters/user-video.inc"
 #include "menus/parameters/sys-timing.inc"
-
 #include "menus/parameters/svideo.inc"
-
 #include "menus/parameters/sys-encode.inc"
+
 #pragma include_optional "../config/options.cfg"
 
 #ifdef OPTION_DEBUG

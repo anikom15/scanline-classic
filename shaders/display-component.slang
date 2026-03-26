@@ -78,7 +78,6 @@ layout(push_constant) uniform Push
 
 #ifdef OPTION_DEBUG
     float DISPLAY_COMPONENT_BYPASS;
-    float DISPLAY_COMPONENT_FILTER_BYPASS;
 #endif  // OPTION_DEBUG
 
 } config;
@@ -97,16 +96,20 @@ layout(push_constant) uniform Push
 
 #ifdef OPTION_DEBUG
 #define DISPLAY_COMPONENT_BYPASS config.DISPLAY_COMPONENT_BYPASS
-#define DISPLAY_COMPONENT_FILTER_BYPASS config.DISPLAY_COMPONENT_FILTER_BYPASS
-#else
-const float DISPLAY_COMPONENT_BYPASS = 0.0;
-const float DISPLAY_COMPONENT_FILTER_BYPASS = 0.0;
 #endif  // OPTION_DEBUG
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
     mat4 MVP;
+#ifdef OPTION_DEBUG
+    float DISPLAY_COMPONENT_FILTER_BYPASS;
+#endif  // OPTION_DEBUG
+
 } global;
+
+#ifdef OPTION_DEBUG
+#define DISPLAY_COMPONENT_FILTER_BYPASS global.DISPLAY_COMPONENT_FILTER_BYPASS
+#endif  // OPTION_DEBUG
 
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
@@ -153,6 +156,7 @@ layout(set = 0, binding = 2) uniform sampler2D Source;
 
 void main()
 {
+#ifdef OPTION_DEBUG
     if (DISPLAY_COMPONENT_BYPASS > 0.5) {
         FragColor = texture(Source, vTexCoord);
         return;
@@ -165,6 +169,7 @@ void main()
         FragColor = vec4(rgb, 1.0);
         return;
     }
+#endif // OPTION_DEBUG
 
     const float FILTER_THRESHOLD = 1.0 / 255.0;
 
