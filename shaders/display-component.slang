@@ -225,6 +225,9 @@ void main()
 
     // Normalize
     vec3 outyc = accum / max(wsum, vec3(EPS));
+#ifdef OPTION_CRISPY
+    outyc.x = yc_c.x;  // Bypass Y luma filter: use unfiltered center sample
+#endif  // OPTION_CRISPY
     vec3 pixel = decode_luma_chroma_to_rgb(outyc, YC_MODEL);
     FragColor = vec4(pixel, 1.0);
 }

@@ -201,6 +201,14 @@ void main()
     vec2 iq0 = texture(Source, Tex).rg;
     vec2 dx = vec2(config.OutputSize.z, 0.0);
 
+#ifdef OPTION_CRISPY
+    {
+        float composite = iq0.r + IQ_DEMOD_Q_WEIGHT * iq0.g;
+        FragColor = vec4(composite, 0.0, 0.0, 1.0);
+        return;
+    }
+#endif  // OPTION_CRISPY
+
     // Lowpass I and Q separately (matched to modulator)
     float I_lp = 0.0, I_w = 0.0;
     float Q_lp = 0.0, Q_w = 0.0;

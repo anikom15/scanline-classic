@@ -261,6 +261,9 @@ void main()
 
     // Emphasis design parameters using timebase
 
+#ifdef OPTION_CRISPY
+    sharpness_filters = vec4(0.0);
+#else
 #ifdef OPTION_DEBUG
     if (SHARPNENER_BYPASS < 0.5) {
     float emphasis_center_hz = 3.1e6;
@@ -280,6 +283,7 @@ void main()
     sharpness_filters = vec4(emphasis_center_hz, emphasis_sigma, emphasis2_center_hz, emphasis2_sigma);
     }
 #endif  // OPTION_DEBUG
+#endif  // OPTION_CRISPY
 
 }
 
@@ -297,7 +301,9 @@ void main()
 
     // Sharpness bandpass + harmonic (modulated Gaussian) before any other processing.
     float sharpness = USER_SHARPNESS / 100.0;
-
+#ifdef OPTION_CRISPY
+    sharpness = 0.0;  // Sharpening circuit disabled under OPTION_CRISPY
+#endif  // OPTION_CRISPY
 #ifdef OPTION_DEBUG
     if (sharpness > 0.0 && SHARPNENER_BYPASS < 0.5) {
 #else

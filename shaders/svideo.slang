@@ -31,7 +31,7 @@
 // form a scalar chroma signal c(t) at the local carrier phase. The shader then
 // demodulates and low-pass filters chroma to reject 2·fSC images and recover
 // U′/V′, while luma is filtered independently with a higher bandwidth.
-
+//
 // Signal model
 // ------------
 // Let ω = 2π·fSC and φ = field_phase. For a given sample time t:
@@ -44,7 +44,7 @@
 //   - Use σY and σC to control bandwidth and roll-off independently.
 //   - The factor 2 recovers correct baseband amplitude after LPF removes
 //     double-frequency terms (cos/sin at 2·ω).
-
+//
 // Timebase and subcarrier
 // -----------------------
 // Time per pixel and carrier phase are derived via compute_timebase():
@@ -63,10 +63,10 @@
 //       Δt_odd = ceil(field/2) · odd_time_adjust · SHORTEN_ODD_FIELD_TIME
 //     Here odd_time_adjust = (OriginalSize.x / 256) · pixel_time, which approximates
 //     the half-line offset behavior at common horizontal sizes.
-
-    Demodulation and filtering
-    --------------------------
-    For each horizontal sample:
+//
+//  Demodulation and filtering
+//  --------------------------
+//  For each horizontal sample:
 //   1) Compute per-sample carrier phase using precision-safe accumulation:
 //       phase = 2π · fract(fSC · t) + field_phase
 //     where t = line · LINE_TIME + x · pixel_time.
@@ -143,9 +143,8 @@
 // - PAL:  SC_FREQ_MODE=2, V_FREQ_MODE=2 (50.00 Hz, 312.5 lines computed)
 // - Reduce dot crawl/zipper: Increase DISPLAY_CUTOFF_ATTEN_C or reduce DISPLAY_BANDWIDTH_C
 // - Sharper luma: Increase DISPLAY_BANDWIDTH_Y, balance with C to avoid color bleeding
-    - If phase jitter appears over long runs, ensure timing parameters reflect the source
-      so timebase derivation aligns well; otherwise pick NTSC/PAL mode explicitly.
-*/
+// - If phase jitter appears over long runs, ensure timing parameters reflect the source
+//   so timebase derivation aligns well; otherwise pick NTSC/PAL mode explicitly.
 
 #include "common.inc"
 #include "color.inc"
@@ -476,6 +475,10 @@ void main()
         color = vec3(y_out, yc0.g, yc0.b);
     }
 #endif  // OPTION_DEBUG
+
+#ifdef OPTION_CRISPY
+    color.x = y_out;  // Bypass Y luma filter: use unfiltered center sample
+#endif  // OPTION_CRISPY
 
     if (USER_MONOCHROME > 0.5) {
         // Monochrome modes

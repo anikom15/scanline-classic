@@ -42,7 +42,7 @@
 #ifdef OPTION_DEBUG
 #pragma parameter DEBUG_SYS_DISPLAY_RGB_BANDLIMIT_HEADER " —— Debug Sys+Display RGB Bandlimit —— " 0.0 0.0 0.0 0.0
 #pragma parameter SYS_DISPLAY_RGB_BANDLIMIT_BYPASS "Bypass System+Display RGB Bandlimit" 0.0 0.0 1.0 1.0
-#pragma parameter DISPLAY_RGB_AMP_BYPASS "Bypass Display RGB Amplifier" 0.0 0.0 1.0 1.0
+#pragma parameter SYS_DISPLAY_RGB_AMP_BYPASS "Bypass Display RGB Amplifier" 0.0 0.0 1.0 1.0
 #endif  // OPTION_DEBUG
 
 // Push constants with combined parameter sets
@@ -119,13 +119,13 @@ layout(std140, set = 0, binding = 0) uniform UBO
     float DISPLAY_CUTOFF_ATTEN_B;
 
 #ifdef OPTION_DEBUG
-    float DISPLAY_RGB_AMP_BYPASS;
+    float SYS_DISPLAY_RGB_AMP_BYPASS;
 #endif  // OPTION_DEBUG
 
 } global;
 
 #ifdef OPTION_DEBUG
-#define DISPLAY_RGB_AMP_BYPASS global.DISPLAY_RGB_AMP_BYPASS
+#define SYS_DISPLAY_RGB_AMP_BYPASS global.SYS_DISPLAY_RGB_AMP_BYPASS
 #endif  // OPTION_DEBUG
 
 #define DISPLAY_BIAS_R global.DISPLAY_BIAS_R
@@ -215,20 +215,28 @@ void main()
     vec3 color;
 
 #ifdef OPTION_DEBUG
+#ifdef OPTION_CRISPY
+    color = texture(Source, vTexCoord).rgb;  // Bypass RGB filters
+#else
     if (SYS_DISPLAY_RGB_BANDLIMIT_BYPASS < 0.5) {
         color = bandlimit_convolve_gaussian_x(vTexCoord, config.OutputSize, Source, sigma);
     } else {
-#else
-    {
-#endif  // OPTION_DEBUG
-
+        // Bypass RGB filters: use unfiltered center sample
         color = texture(Source, vTexCoord).rgb;
     }
+#endif  // OPTION_CRISPY
+#else
+#ifdef OPTION_CRISPY
+    color = texture(Source, vTexCoord).rgb;  // Bypass RGB filters
+#else
+    color = bandlimit_convolve_gaussian_x(vTexCoord, config.OutputSize, Source, sigma);
+#endif // OPTION_CRISPY
+#endif // OPTION_DEBUG
 
     // RGB amplifier
 
 #ifdef OPTION_DEBUG
-    if (DISPLAY_RGB_AMP_BYPASS < 0.5) {
+    if (SYS_DISPLAY_RGB_AMP_BYPASS < 0.5) {
         color = gain * (color + bias);
     }
 #else

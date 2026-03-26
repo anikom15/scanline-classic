@@ -139,6 +139,11 @@ layout(set = 0, binding = 2) uniform sampler2D Source;
 void main()
 {
 
+#ifdef OPTION_CRISPY
+    FragColor = texture(Source, vTexCoord);
+    return;
+#endif  // OPTION_CRISPY
+
 #ifdef OPTION_DEBUG
     if (SYS_RGB_BANDLIMIT_BYPASS > 0.5) {
         FragColor = texture(Source, vTexCoord);

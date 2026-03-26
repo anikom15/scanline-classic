@@ -177,15 +177,23 @@ void main()
     vec3 color;
 
 #ifdef OPTION_DEBUG
+#ifdef OPTION_CRISPY
+    color = texture(Source, vTexCoord).rgb;  // Bypass RGB filters: use unfiltered center sample
+#else
     if (DISPLAY_RGB_FILTER_BYPASS < 0.5) {
         color = bandlimit_convolve_gaussian_x(vTexCoord, config.OutputSize, Source, sigma);
     } else {
-#else
-    {
-#endif  // OPTION_DEBUG
-
+        // Bypass RGB filter: use unfiltered samples
         color = texture(Source, vTexCoord).rgb;
     }
+#endif  // OPTION_CRISPY
+#else
+#ifdef OPTION_CRISPY
+    color = texture(Source, vTexCoord).rgb;  // Bypass RGB filters: use unfiltered center sample
+#else
+    color = bandlimit_convolve_gaussian_x(vTexCoord, config.OutputSize, Source, sigma);
+#endif  // OPTION_CRISPY
+#endif  // OPTION_DEBUG
 
     // RGB amplifier
 

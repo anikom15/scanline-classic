@@ -494,6 +494,10 @@ void main()
         color /= max(wsum, vec3(EPS));
     }
 
+#ifdef OPTION_CRISPY
+    color.r = demod0.r;  // Bypass Y Gaussian filter: use unfiltered center luma sample
+#endif  // OPTION_CRISPY
+
     float chroma = color.g * carrier0.x + color.b * carrier0.y;
 
     if (COMB_FILTER_2D > 0.5) {

@@ -208,6 +208,11 @@ void main()
     // Central sample from analytic input
     vec2 iq0 = texture(Source, Tex).rg;
 
+#ifdef OPTION_CRISPY
+    FragColor = vec4(iq0.r, iq0.g, 0.0, 1.0);
+    return;
+#endif  // OPTION_CRISPY
+
 #ifdef OPTION_DEBUG
     if (BYPASS_IQ_MOD > 0.5) {
         FragColor = vec4(iq0.r, iq0.g, 0.0, 1.0); // pass-through analytic
