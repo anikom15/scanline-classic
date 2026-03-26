@@ -74,8 +74,6 @@ layout(push_constant) uniform Push
     float PIXEL_CLOCK_MODE;
     float PIXEL_CLOCK;
     float H_FREQ_MODE;
-    float H_FREQ;
-    float H_BLANK_FUZZ;
 
     // User video adjustments
     float USER_GAMMA;
@@ -84,7 +82,9 @@ layout(push_constant) uniform Push
     float W_Y;
     float NTSC_CONVERSION;
     float NTSC_CONVERSION_WEIGHT;
-    float COLORIMETRY_PRESET;
+    float LIMITER_COMPRESSION_POINT;
+    float LIMITER_MAX_OUTPUT;
+    float LIMITER_TYPE;
 } config;
 
 #define V_FREQ_MODE config.V_FREQ_MODE
@@ -95,15 +95,15 @@ layout(push_constant) uniform Push
 #define PIXEL_CLOCK_MODE config.PIXEL_CLOCK_MODE
 #define PIXEL_CLOCK config.PIXEL_CLOCK
 #define H_FREQ_MODE config.H_FREQ_MODE
-#define H_FREQ config.H_FREQ
-#define H_BLANK_FUZZ config.H_BLANK_FUZZ
 
 #define USER_GAMMA config.USER_GAMMA
 #define USER_SHARPNESS config.USER_SHARPNESS
 #define W_Y config.W_Y
 #define NTSC_CONVERSION config.NTSC_CONVERSION
 #define NTSC_CONVERSION_WEIGHT config.NTSC_CONVERSION_WEIGHT
-#define COLORIMETRY_PRESET config.COLORIMETRY_PRESET
+#define LIMITER_TYPE config.LIMITER_TYPE
+#define LIMITER_COMPRESSION_POINT config.LIMITER_COMPRESSION_POINT
+#define LIMITER_MAX_OUTPUT config.LIMITER_MAX_OUTPUT
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
@@ -118,9 +118,6 @@ layout(std140, set = 0, binding = 0) uniform UBO
     float W_X;
 
     // Limiter
-    float LIMITER_TYPE;
-    float LIMITER_COMPRESSION_POINT;
-    float LIMITER_MAX_OUTPUT;
 
 #ifdef OPTION_DEBUG
     float SHARPNENER_BYPASS;
@@ -128,7 +125,13 @@ layout(std140, set = 0, binding = 0) uniform UBO
     float LIMITER_DEBUG_OUT_OF_RANGE;
 #endif  // OPTION_DEBUG
 
+    float COLORIMETRY_PRESET;
+    float H_BLANK_FUZZ;
+    float H_FREQ;
 } global;
+#define H_FREQ global.H_FREQ
+#define H_BLANK_FUZZ global.H_BLANK_FUZZ
+#define COLORIMETRY_PRESET global.COLORIMETRY_PRESET
 #define R_X global.R_X
 #define R_Y global.R_Y
 #define G_X global.G_X
@@ -142,9 +145,6 @@ layout(std140, set = 0, binding = 0) uniform UBO
 #define LIMITER_BYPASS global.LIMITER_BYPASS
 #endif  // OPTION_DEBUG
 
-#define LIMITER_TYPE global.LIMITER_TYPE
-#define LIMITER_COMPRESSION_POINT global.LIMITER_COMPRESSION_POINT
-#define LIMITER_MAX_OUTPUT global.LIMITER_MAX_OUTPUT
 
 #ifdef OPTION_DEBUG
 #define LIMITER_DEBUG_OUT_OF_RANGE global.LIMITER_DEBUG_OUT_OF_RANGE

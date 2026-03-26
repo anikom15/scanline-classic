@@ -59,16 +59,16 @@ layout(push_constant) uniform Push
     float H_BLANK_FUZZ;
     float COLOR_FILTER_MODE;
     float COMB_FILTER_2D;
-    float DISPLAY_BANDWIDTH_Y;
-    float DISPLAY_BANDWIDTH_C;
-    float DISPLAY_CUTOFF_ATTEN_Y;
-    float DISPLAY_CUTOFF_ATTEN_C;
     float BW_MODE;
 
 #ifdef OPTION_DEBUG
     float BYPASS_COMPOSITE_DEMOD;
 #endif  // OPTION_DEBUG
 
+    float DECODER_SETUP;
+    float DECODER_TYPE; // Decoder type
+    float PAL_DECODER_MODE; // PAL decoder mode (0=simple, 1=delay-line, 2=adaptive)
+    float USER_MONOCHROME; // Monochrome mode (off, B&W, sepia)
 } config;
 
 #ifdef OPTION_DEBUG
@@ -91,23 +91,18 @@ const float BYPASS_COMPOSITE_DEMOD = 0.0;
 #define COLOR_FILTER_MODE config.COLOR_FILTER_MODE
 #define COMB_FILTER_2D config.COMB_FILTER_2D
 
-#define DISPLAY_BANDWIDTH_Y config.DISPLAY_BANDWIDTH_Y
-#define DISPLAY_BANDWIDTH_C config.DISPLAY_BANDWIDTH_C
-
-#define DISPLAY_CUTOFF_ATTEN_Y config.DISPLAY_CUTOFF_ATTEN_Y
-#define DISPLAY_CUTOFF_ATTEN_C config.DISPLAY_CUTOFF_ATTEN_C
 
 #define BW_MODE config.BW_MODE
+#define PAL_DECODER_MODE config.PAL_DECODER_MODE
+#define DECODER_TYPE config.DECODER_TYPE
+#define DECODER_SETUP config.DECODER_SETUP
+#define USER_MONOCHROME config.USER_MONOCHROME
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
     mat4 MVP;
     float USER_COLOR;       // Color (%)
     float USER_TINT;        // Tint (degrees)
-    float PAL_DECODER_MODE; // PAL decoder mode (0=simple, 1=delay-line, 2=adaptive)
-    float DECODER_TYPE; // Decoder type
-    float DECODER_SETUP;
-    float USER_MONOCHROME; // Monochrome mode (off, B&W, sepia)
 
 #ifdef OPTION_DEBUG
     float COMB_ADJUST_X;
@@ -116,15 +111,19 @@ layout(std140, set = 0, binding = 0) uniform UBO
     float CORRELATION;
 #endif  // OPTION_DEBUG
 
+    float DISPLAY_BANDWIDTH_C;
+    float DISPLAY_BANDWIDTH_Y;
+    float DISPLAY_CUTOFF_ATTEN_C;
+    float DISPLAY_CUTOFF_ATTEN_Y;
 } global;
 
+#define DISPLAY_BANDWIDTH_Y global.DISPLAY_BANDWIDTH_Y
+#define DISPLAY_BANDWIDTH_C global.DISPLAY_BANDWIDTH_C
+#define DISPLAY_CUTOFF_ATTEN_Y global.DISPLAY_CUTOFF_ATTEN_Y
+#define DISPLAY_CUTOFF_ATTEN_C global.DISPLAY_CUTOFF_ATTEN_C
 #define USER_COLOR global.USER_COLOR
 #define USER_TINT global.USER_TINT
-#define PAL_DECODER_MODE global.PAL_DECODER_MODE
 
-#define DECODER_TYPE global.DECODER_TYPE
-#define DECODER_SETUP global.DECODER_SETUP
-#define USER_MONOCHROME global.USER_MONOCHROME
 
 #pragma stage vertex
 layout(location = 0) in vec4 Position;

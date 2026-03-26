@@ -60,7 +60,6 @@ layout(push_constant) uniform Push
     float NOTCH_WIDTH;
     float NOTCH_ATTEN_DB;
     float BANDPASS_WIDTH;
-    float BANDPASS_ATTEN_DB;
     float COMB_FILTER_LUMA_ADAPT;
     float COMB_FILTER_CHROMA_ADAPT;
 
@@ -68,6 +67,7 @@ layout(push_constant) uniform Push
     float BYPASS_PREFILTER;
 #endif  // OPTION_DEBUG
 
+    float BW_MODE;
 } config;
 
 #ifdef OPTION_DEBUG
@@ -90,19 +90,19 @@ layout(push_constant) uniform Push
 #define NOTCH_WIDTH config.NOTCH_WIDTH
 #define NOTCH_ATTEN_DB config.NOTCH_ATTEN_DB
 
-#define BANDPASS_ATTEN_DB config.BANDPASS_ATTEN_DB
 #define BANDPASS_WIDTH config.BANDPASS_WIDTH
 
 #define COMB_FILTER_LUMA_ADAPT config.COMB_FILTER_LUMA_ADAPT
 #define COMB_FILTER_CHROMA_ADAPT config.COMB_FILTER_CHROMA_ADAPT
+#define BW_MODE config.BW_MODE
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
     mat4 MVP;
-    float BW_MODE;
+    float BANDPASS_ATTEN_DB;
 } global;
+#define BANDPASS_ATTEN_DB global.BANDPASS_ATTEN_DB
 
-#define BW_MODE global.BW_MODE
 
 #pragma stage vertex
 layout(location = 0) in vec4 Position;

@@ -67,10 +67,10 @@ layout(push_constant) uniform Push
     float USER_COLOR;
     float USER_TINT;
     float USER_MONOCHROME;
-    float DISPLAY_BANDWIDTH_Y;
-    float DISPLAY_BANDWIDTH_C;
     float DISPLAY_CUTOFF_ATTEN_Y;
-    float DISPLAY_CUTOFF_ATTEN_C;
+    float BW_MODE;
+    float DECODER_SETUP;
+    float DECODER_TYPE;
 } config;
 
 #define V_FREQ_MODE config.V_FREQ_MODE
@@ -88,10 +88,10 @@ layout(push_constant) uniform Push
 #define USER_TINT config.USER_TINT
 #define USER_MONOCHROME config.USER_MONOCHROME
 
-#define DISPLAY_BANDWIDTH_Y config.DISPLAY_BANDWIDTH_Y
-#define DISPLAY_BANDWIDTH_C config.DISPLAY_BANDWIDTH_C
 #define DISPLAY_CUTOFF_ATTEN_Y config.DISPLAY_CUTOFF_ATTEN_Y
-#define DISPLAY_CUTOFF_ATTEN_C config.DISPLAY_CUTOFF_ATTEN_C
+#define BW_MODE config.BW_MODE
+#define DECODER_SETUP config.DECODER_SETUP
+#define DECODER_TYPE config.DECODER_TYPE
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
@@ -102,19 +102,19 @@ layout(std140, set = 0, binding = 0) uniform UBO
     float SVIDEO_FILTER_BYPASS;
 #endif
 
-    float BW_MODE;
-    float DECODER_SETUP;
-    float DECODER_TYPE;
+    float DISPLAY_BANDWIDTH_C;
+    float DISPLAY_BANDWIDTH_Y;
+    float DISPLAY_CUTOFF_ATTEN_C;
 } global;
 
+#define DISPLAY_BANDWIDTH_Y global.DISPLAY_BANDWIDTH_Y
+#define DISPLAY_BANDWIDTH_C global.DISPLAY_BANDWIDTH_C
+#define DISPLAY_CUTOFF_ATTEN_C global.DISPLAY_CUTOFF_ATTEN_C
 #ifdef OPTION_DEBUG
 #define BYPASS_SVIDEO global.BYPASS_SVIDEO
 #define SVIDEO_FILTER_BYPASS global.SVIDEO_FILTER_BYPASS
 #endif  // OPTION_DEBUG
 
-#define BW_MODE global.BW_MODE
-#define DECODER_SETUP global.DECODER_SETUP
-#define DECODER_TYPE global.DECODER_TYPE
 
 #pragma stage vertex
 layout(location = 0) in vec4 Position;

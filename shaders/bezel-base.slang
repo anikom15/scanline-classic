@@ -65,10 +65,7 @@ layout(push_constant) uniform Push
     uint FrameCount;
     uint CurrentSubFrame;
     uint TotalSubFrames;
-    float ASPECT;
-    float VIEWPORT_H_POS;
     float VIEWPORT_V_POS;
-    float BEZEL_ZOOM;
     float BEZEL_GAIN;
     float BEZEL_BIAS;
     float USE_MIPMAPPING;
@@ -92,10 +89,11 @@ layout(push_constant) uniform Push
     float DEBUG_GLOW;
 #endif  // OPTION_DEBUG
 
+    float EnableHDR;
+    float MaxNits;
+    float PaperWhiteNits;
 } config;
 
-#define ASPECT config.ASPECT
-#define VIEWPORT_H_POS config.VIEWPORT_H_POS
 #define VIEWPORT_V_POS config.VIEWPORT_V_POS
 
 #ifdef OPTION_DEBUG
@@ -104,7 +102,6 @@ layout(push_constant) uniform Push
 const float BEZEL_BYPASS = 0.0;
 #endif  // OPTION_DEBUG
 
-#define BEZEL_ZOOM config.BEZEL_ZOOM
 #define BEZEL_GAIN config.BEZEL_GAIN
 #define BEZEL_BIAS config.BEZEL_BIAS
 
@@ -151,10 +148,13 @@ const float DEBUG_GLOW = 0.0;
 layout(std140, set = 0, binding = 0) uniform UBO
 {
     mat4 MVP;
-    float EnableHDR;
-    float MaxNits;
-    float PaperWhiteNits;
+    float ASPECT;
+    float BEZEL_ZOOM;
+    float VIEWPORT_H_POS;
 } global;
+#define ASPECT global.ASPECT
+#define VIEWPORT_H_POS global.VIEWPORT_H_POS
+#define BEZEL_ZOOM global.BEZEL_ZOOM
 
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
@@ -650,9 +650,9 @@ void write_output_color(vec3 final_linear, uint frame)
 
 #ifdef WCG
     // WCG requires manual HDR10 handling when HDR is enabled
-    if (global.EnableHDR > 0.5) {
+    if (config.EnableHDR > 0.5) {
         // Map linear RGB to nits using RA inverse tonemapping
-        vec3 hdr_linear = inverse_tonemap(final_linear, global.MaxNits, global.PaperWhiteNits);
+        vec3 hdr_linear = inverse_tonemap(final_linear, config.MaxNits, config.PaperWhiteNits);
 
         vec3 hdr_pq = pq(hdr_linear);
         hdr_pq = apply_dither_blue(hdr_pq, WORKING_BITS, 10, vTexCoord * config.OutputSize.xy, frame);

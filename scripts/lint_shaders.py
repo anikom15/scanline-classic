@@ -876,6 +876,118 @@ def choose_demotions_for_required_space(
     return selected
 
 
+def auto_fix_header_optional_section_order(path: Path, lines: list[str]) -> tuple[list[str], bool]:
+    """Auto-fix optional header section order after copyright block for .slang."""
+    if path.suffix.lower() != ".slang" or not lines:
+        return lines, False
+
+    version_idx = next((idx for idx, line in enumerate(lines) if VERSION_PATTERN.match(line)), None)
+    if version_idx is None:
+        return lines, False
+
+    expected_filename_line = version_idx + 2
+    separator_idx = expected_filename_line + 1
+    if expected_filename_line >= len(lines) or separator_idx >= len(lines):
+        return lines, False
+
+    copyright_idx = next((idx for idx, line in enumerate(lines) if COPYRIGHT_START_PATTERN.match(line)), None)
+    if copyright_idx is None:
+        return lines, False
+
+    section_start = copyright_idx
+    while section_start < len(lines) and lines[section_start].lstrip().startswith("//"):
+        section_start += 1
+
+    # Gather the optional directive block exactly as check_header_section_order scans.
+    idx = section_start
+    captured: list[tuple[str, str]] = []
+    while idx < len(lines):
+        line = lines[idx]
+        stripped = line.strip()
+        if not stripped:
+            idx += 1
+            continue
+
+        if PRAGMA_NAME_PATTERN.match(line):
+            captured.append(("name", line))
+        elif PRAGMA_FORMAT_PATTERN.match(line):
+            captured.append(("format", line))
+        elif INCLUDE_PATTERN.match(line):
+            captured.append(("include", line))
+        elif line.lstrip().startswith("#pragma include_optional"):
+            captured.append(("include_optional", line))
+        elif PRAGMA_PARAMETER_PATTERN.match(line):
+            captured.append(("parameter", line))
+        else:
+            break
+        idx += 1
+
+    if not captured:
+        return lines, False
+
+    order = ["name", "format", "include", "include_optional", "parameter"]
+    grouped: dict[str, list[str]] = {key: [] for key in order}
+    for kind, line in captured:
+        grouped[kind].append(line)
+
+    reordered: list[str] = []
+    for kind in order:
+        reordered.extend(grouped[kind])
+
+    original_lines = [line for _, line in captured]
+    if reordered == original_lines:
+        return lines, False
+
+    # Rewrite only the directive lines in-place; preserve spacing/comments around block.
+    new_lines = list(lines)
+    write_idx = 0
+    for probe in range(section_start, idx):
+        line = lines[probe]
+        if (
+            PRAGMA_NAME_PATTERN.match(line)
+            or PRAGMA_FORMAT_PATTERN.match(line)
+            or INCLUDE_PATTERN.match(line)
+            or line.lstrip().startswith("#pragma include_optional")
+            or PRAGMA_PARAMETER_PATTERN.match(line)
+        ):
+            new_lines[probe] = reordered[write_idx]
+            write_idx += 1
+
+    return new_lines, True
+
+
+def preprocessor_depths(lines: list[str]) -> list[int]:
+    """Return active preprocessor conditional depth for each source line."""
+    depths: list[int] = []
+    depth = 0
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("#endif"):
+            depth = max(0, depth - 1)
+
+        depths.append(depth)
+
+        if stripped.startswith("#if") or stripped.startswith("#ifdef") or stripped.startswith("#ifndef"):
+            depth += 1
+
+    return depths
+
+
+def lift_insertion_out_of_preprocessor_block(lines: list[str], insert_at: int) -> int:
+    """Shift insertion index upward to avoid writing inside #if/#ifdef blocks."""
+    if not lines:
+        return 0
+
+    idx = max(0, min(insert_at, len(lines)))
+    if idx >= len(lines):
+        return idx
+
+    depths = preprocessor_depths(lines)
+    while idx > 0 and depths[idx] > 0:
+        idx -= 1
+    return idx
+
+
 def apply_push_ubo_member_moves(
     lines: list[str],
     push_block: UniformBlock,
@@ -961,23 +1073,35 @@ def apply_push_ubo_member_moves(
 
     compact_lines = [line for idx, line in enumerate(new_lines) if idx not in remove_define_indices]
 
-    # Insert config defines before UBO definition, ideally after existing
-    # config defines.
+    # Insert config defines before UBO definition, preferring unconditional
+    # config define section and never inside an active preprocessor block.
     if add_config_defines:
         ubo_def_idx = next((i for i, line in enumerate(compact_lines) if UBO_LAYOUT_PATTERN.search(line)), len(compact_lines))
-        last_config_idx = -1
-        for i, line in enumerate(compact_lines[:ubo_def_idx]):
-            if CONFIG_DEFINE_FULL_PATTERN.match(line):
-                last_config_idx = i
-        insert_at = last_config_idx + 1 if last_config_idx >= 0 else ubo_def_idx
+        cfg_candidates = [
+            i for i, line in enumerate(compact_lines[:ubo_def_idx]) if CONFIG_DEFINE_FULL_PATTERN.match(line)
+        ]
+        depths = preprocessor_depths(compact_lines)
+        unconditional_cfg = [i for i in cfg_candidates if depths[i] == 0]
+        if unconditional_cfg:
+            insert_at = unconditional_cfg[-1] + 1
+        elif cfg_candidates:
+            insert_at = lift_insertion_out_of_preprocessor_block(compact_lines, cfg_candidates[0])
+        else:
+            insert_at = ubo_def_idx
         compact_lines = compact_lines[:insert_at] + add_config_defines + compact_lines[insert_at:]
 
-    # Insert global defines after UBO definition, ideally before existing global
-    # defines in that section.
+    # Insert global defines after UBO definition, preferring unconditional
+    # global define section and never inside an active preprocessor block.
     if add_global_defines:
-        first_global_idx = next((i for i, line in enumerate(compact_lines) if GLOBAL_DEFINE_FULL_PATTERN.match(line)), None)
-        if first_global_idx is not None:
-            insert_at = first_global_idx
+        depths = preprocessor_depths(compact_lines)
+        all_global_indices = [
+            i for i, line in enumerate(compact_lines) if GLOBAL_DEFINE_FULL_PATTERN.match(line)
+        ]
+        unconditional_global_idx = next((i for i in all_global_indices if depths[i] == 0), None)
+        if unconditional_global_idx is not None:
+            insert_at = unconditional_global_idx
+        elif all_global_indices:
+            insert_at = lift_insertion_out_of_preprocessor_block(compact_lines, all_global_indices[0])
         else:
             ubo_idx = next((i for i, line in enumerate(compact_lines) if UBO_LAYOUT_PATTERN.search(line)), None)
             if ubo_idx is None:
@@ -985,9 +1109,21 @@ def apply_push_ubo_member_moves(
             else:
                 ubo_blk = parse_uniform_block(compact_lines, ubo_idx)
                 insert_at = ubo_blk.end_line if ubo_blk is not None else (ubo_idx + 1)
+            insert_at = lift_insertion_out_of_preprocessor_block(compact_lines, insert_at)
         compact_lines = compact_lines[:insert_at] + add_global_defines + compact_lines[insert_at:]
 
-    return compact_lines, True
+    # Rewrite direct struct-member references to keep semantics aligned even
+    # when a member has no semantic #define alias.
+    rewritten_lines: list[str] = []
+    for line in compact_lines:
+        updated = line
+        for member in demote_set:
+            updated = re.sub(rf"\bconfig\.{re.escape(member)}\b", f"global.{member}", updated)
+        for member in promote_set:
+            updated = re.sub(rf"\bglobal\.{re.escape(member)}\b", f"config.{member}", updated)
+        rewritten_lines.append(updated)
+
+    return rewritten_lines, True
 
 
 def structural_autofix_push_ubo(lines: list[str]) -> tuple[list[str], bool]:
@@ -1012,8 +1148,6 @@ def structural_autofix_push_ubo(lines: list[str]) -> tuple[list[str], bool]:
     if not stages_available:
         return lines, False
 
-    cfg_define_map, glb_define_map = build_member_define_maps(lines)
-
     def _promotable_ubo_members() -> list[tuple[str, int, str, bool]]:
         out: list[tuple[str, int, str, bool]] = []
         seen: set[str] = set()
@@ -1022,8 +1156,6 @@ def structural_autofix_push_ubo(lines: list[str]) -> tuple[list[str], bool]:
                 continue
             seen.add(member.name)
             if member.conditional:
-                continue
-            if member.name not in glb_define_map:
                 continue
             usage = member_stage_usage(member.name, vertex_text, fragment_text)
             if usage == "none":
@@ -1042,8 +1174,6 @@ def structural_autofix_push_ubo(lines: list[str]) -> tuple[list[str], bool]:
                 continue
             seen.add(member.name)
             if member.conditional:
-                continue
-            if member.name not in cfg_define_map:
                 continue
             usage = member_stage_usage(member.name, vertex_text, fragment_text)
             ly = member_layout(member.type_name, member.array_count)
@@ -1076,7 +1206,9 @@ def structural_autofix_push_ubo(lines: list[str]) -> tuple[list[str], bool]:
                 changed = True
 
     else:
-        promote_candidates = _promotable_ubo_members()
+        promote_candidates = [
+            cand for cand in _promotable_ubo_members() if cand[2] == "fragment" and not cand[3]
+        ]
         demote_candidates = [
             (n, s, u, d)
             for n, s, u, d in _demotable_push_members()
@@ -1254,9 +1386,9 @@ def check_block_order_and_push_budget(path: Path, lines: list[str], issues: list
                         continue
                     seen_swap.add(member.name)
                     usage = member_stage_usage(member.name, vertex_text, fragment_text)
-                    # OPTION_DEBUG members are always lowest priority regardless
-                    # of stage usage, so only promote them after non-debug.
-                    if usage == "none":
+                    # At-capacity swaps only target true high-priority classes:
+                    # non-debug fragment-only constants.
+                    if usage != "fragment" or member.option_debug_conditional:
                         continue
                     ly = member_layout(member.type_name, member.array_count)
                     if ly is not None:
@@ -1713,6 +1845,9 @@ def lint_one_file(
     changed = False
 
     if fix_structure and strict_structure and path.suffix.lower() == ".slang":
+        lines, header_changed = auto_fix_header_optional_section_order(path, lines)
+        if header_changed:
+            changed = True
         for _ in range(3):
             lines, struct_changed = structural_autofix_push_ubo(lines)
             if not struct_changed:
@@ -1726,31 +1861,34 @@ def lint_one_file(
         line = original_line
 
         if line.rstrip(" \t") != line:
-            issues.append(LintIssue(path=path, line=idx + 1, message="Trailing whitespace"))
+            if not fix:
+                issues.append(LintIssue(path=path, line=idx + 1, message="Trailing whitespace"))
             if fix:
                 line = line.rstrip(" \t")
 
         if "\t" in line:
-            issues.append(
-                LintIssue(
-                    path=path,
-                    line=idx + 1,
-                    message="Tab character found (spaces-only style required)",
+            if not fix:
+                issues.append(
+                    LintIssue(
+                        path=path,
+                        line=idx + 1,
+                        message="Tab character found (spaces-only style required)",
+                    )
                 )
-            )
             if fix:
                 line = line.replace("\t", "    ")
 
         if line.strip() == "":
             blank_run += 1
             if blank_run > 2:
-                issues.append(
-                    LintIssue(
-                        path=path,
-                        line=idx + 1,
-                        message="More than 2 consecutive blank lines",
+                if not fix:
+                    issues.append(
+                        LintIssue(
+                            path=path,
+                            line=idx + 1,
+                            message="More than 2 consecutive blank lines",
+                        )
                     )
-                )
                 if fix:
                     continue
         else:
@@ -1774,7 +1912,8 @@ def lint_one_file(
         output_text += "\n"
 
     if not raw.endswith("\n"):
-        issues.append(LintIssue(path=path, line=max(1, len(lines)), message="Missing trailing newline at end of file"))
+        if not fix:
+            issues.append(LintIssue(path=path, line=max(1, len(lines)), message="Missing trailing newline at end of file"))
         if fix:
             if not output_text.endswith("\n"):
                 output_text += "\n"

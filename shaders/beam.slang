@@ -50,29 +50,31 @@ layout(push_constant) uniform Push
     vec4 OutputSize;     // xy = output size in pixels
     vec4 FrameHSize;
     vec4 FrameVSize;
-    uint FrameCount;
-    float OriginalFPS;
     float OriginalAspect;
-    float ASPECT;
-    float V_FREQ_MODE;
-    float V_FREQ;
-    float SC_FREQ_MODE;
-    float SC_FREQ;
     float BEAM_FOCUS;
-    float PIXEL_CLOCK_MODE;
-    float PIXEL_CLOCK;
-    float H_FREQ_MODE;
+    float CORNER_CORRECTION;      // %
+    float DEFLECTION_ANGLE; // degrees
+    float MAGNETIC_CORRECTION;    // % (0..100)
+    float TRAPEZOIDAL_CORRECTION; // %
+    float UNDERSCAN;        // %
+    float USER_H_POS;            // % (50 = center)
+    float USER_H_SIZE;            // % (50 = 1.0)
+    float USER_UNDERSCAN_TOGGLE; // toggle
+    float USER_V_POS;            // % (50 = center)
+    float USER_V_SIZE;            // % (50 = 1.0)
 } config;
 
-#define ASPECT config.ASPECT
-#define V_FREQ_MODE config.V_FREQ_MODE
-#define V_FREQ config.V_FREQ
-#define SC_FREQ_MODE config.SC_FREQ_MODE
-#define SC_FREQ config.SC_FREQ
-#define PIXEL_CLOCK_MODE config.PIXEL_CLOCK_MODE
-#define PIXEL_CLOCK config.PIXEL_CLOCK
-#define H_FREQ_MODE config.H_FREQ_MODE
 #define BEAM_FOCUS config.BEAM_FOCUS
+#define USER_H_SIZE config.USER_H_SIZE
+#define USER_V_SIZE config.USER_V_SIZE
+#define TRAPEZOIDAL_CORRECTION config.TRAPEZOIDAL_CORRECTION
+#define CORNER_CORRECTION config.CORNER_CORRECTION
+#define MAGNETIC_CORRECTION config.MAGNETIC_CORRECTION
+#define USER_H_POS config.USER_H_POS
+#define USER_V_POS config.USER_V_POS
+#define USER_UNDERSCAN_TOGGLE config.USER_UNDERSCAN_TOGGLE
+#define DEFLECTION_ANGLE config.DEFLECTION_ANGLE
+#define UNDERSCAN config.UNDERSCAN
 
 layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 MVP;
@@ -80,19 +82,9 @@ layout(std140, set = 0, binding = 0) uniform UBO {
     float H_BLANK_FUZZ;
 
     // ---- Geometry/user viewport controls ----
-    float USER_H_SIZE;            // % (50 = 1.0)
-    float USER_V_SIZE;            // % (50 = 1.0)
 
-    float TRAPEZOIDAL_CORRECTION; // %
-    float CORNER_CORRECTION;      // %
-    float MAGNETIC_CORRECTION;    // % (0..100)
-    float USER_H_POS;            // % (50 = center)
-    float USER_V_POS;            // % (50 = center)
-    float USER_UNDERSCAN_TOGGLE; // toggle
 
     // Factory/service geometry controls needed here
-    float DEFLECTION_ANGLE; // degrees
-    float UNDERSCAN;        // %
     float S_CORRECTION_H;   // %
     float S_CORRECTION_V;   // %
 
@@ -103,22 +95,30 @@ layout(std140, set = 0, binding = 0) uniform UBO {
     float DAR_SCALE;
 #endif  // OPTION_DEBUG
 
+    float ASPECT;
+    uint FrameCount;
+    float H_FREQ_MODE;
+    float OriginalFPS;
+    float PIXEL_CLOCK;
+    float PIXEL_CLOCK_MODE;
+    float SC_FREQ;
+    float SC_FREQ_MODE;
+    float V_FREQ;
+    float V_FREQ_MODE;
 } global;
 
+#define ASPECT global.ASPECT
+#define V_FREQ_MODE global.V_FREQ_MODE
+#define V_FREQ global.V_FREQ
+#define SC_FREQ_MODE global.SC_FREQ_MODE
+#define SC_FREQ global.SC_FREQ
+#define PIXEL_CLOCK_MODE global.PIXEL_CLOCK_MODE
+#define PIXEL_CLOCK global.PIXEL_CLOCK
+#define H_FREQ_MODE global.H_FREQ_MODE
 #define H_FREQ global.H_FREQ
 #define H_BLANK_FUZZ global.H_BLANK_FUZZ
 
 // Geometry macro bindings
-#define USER_H_SIZE global.USER_H_SIZE
-#define USER_V_SIZE global.USER_V_SIZE
-#define TRAPEZOIDAL_CORRECTION global.TRAPEZOIDAL_CORRECTION
-#define CORNER_CORRECTION global.CORNER_CORRECTION
-#define MAGNETIC_CORRECTION global.MAGNETIC_CORRECTION
-#define USER_H_POS global.USER_H_POS
-#define USER_V_POS global.USER_V_POS
-#define USER_UNDERSCAN_TOGGLE global.USER_UNDERSCAN_TOGGLE
-#define DEFLECTION_ANGLE global.DEFLECTION_ANGLE
-#define UNDERSCAN global.UNDERSCAN
 #define S_CORRECTION_H global.S_CORRECTION_H
 #define S_CORRECTION_V global.S_CORRECTION_V
 
@@ -147,9 +147,9 @@ void main()
         : (16.0 / 10.0);
 
     geom = compute_frame_geometry(
-        config.FrameCount,
+        global.FrameCount,
         config.OriginalSize.xy,
-        config.OriginalFPS,
+        global.OriginalFPS,
         SC_FREQ_MODE,
         SC_FREQ,
         PIXEL_CLOCK,

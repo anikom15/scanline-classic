@@ -37,7 +37,6 @@ layout(push_constant) uniform Push
     vec4 OriginalSize;
     vec4 OutputSize;
     vec4 FrameHSize;
-    uint FrameCount;
     float OriginalFPS;
     float V_FREQ_MODE;
     float V_FREQ;
@@ -57,6 +56,7 @@ layout(push_constant) uniform Push
     float SYS_BIAS_Y;
     float SYS_BIAS_U;
     float SYS_BIAS_V;
+    float ENCODER_SETUP;
 } config;
 
 #define V_FREQ_MODE config.V_FREQ_MODE
@@ -77,14 +77,14 @@ layout(push_constant) uniform Push
 #define SYS_BIAS_Y config.SYS_BIAS_Y
 #define SYS_BIAS_U config.SYS_BIAS_U
 #define SYS_BIAS_V config.SYS_BIAS_V
+#define ENCODER_SETUP config.ENCODER_SETUP
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
     mat4 MVP;
-    float ENCODER_SETUP;
+    uint FrameCount;
 } global;
 
-#define ENCODER_SETUP global.ENCODER_SETUP
 
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
@@ -100,7 +100,7 @@ void main()
     vTexCoord = TexCoord;
 
     tb = compute_timebase(
-        config.FrameCount,
+        global.FrameCount,
         vTexCoord,
         config.OriginalSize.xy,
         config.OutputSize.xy,

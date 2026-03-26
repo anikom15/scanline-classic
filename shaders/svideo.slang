@@ -146,20 +146,20 @@
 // - If phase jitter appears over long runs, ensure timing parameters reflect the source
 //   so timebase derivation aligns well; otherwise pick NTSC/PAL mode explicitly.
 
+#pragma name SVideo
+#pragma format R16G16B16A16_SFLOAT
 #include "common.inc"
 #include "color.inc"
+
 #include "bandlimit.inc"
 #include "modulation.inc"
-
 #include "menus/parameters/user-video.inc"
 #include "menus/parameters/sys-timing.inc"
+
 #include "menus/parameters/svideo.inc"
+
 #include "menus/parameters/sys-encode.inc"
-
-#pragma name SVideo
-
 #pragma include_optional "../config/options.cfg"
-#pragma format R16G16B16A16_SFLOAT
 
 #ifdef OPTION_DEBUG
 #pragma parameter DEBUG_SVIDEO_HEADER " —— Debug S-Video —— " 0.0 0.0 0.0 0.0
@@ -172,7 +172,6 @@ layout(push_constant) uniform Push
     vec4 OriginalSize;
     vec4 OutputSize;
     vec4 FrameHSize;
-    uint FrameCount;
     float OriginalFPS;
     float V_FREQ_MODE;
     float V_FREQ;
@@ -188,10 +187,11 @@ layout(push_constant) uniform Push
     float USER_TINT;
     float USER_SHARPNESS;
     float USER_MONOCHROME;
-    float DISPLAY_BANDWIDTH_Y;
-    float DISPLAY_BANDWIDTH_C;
-    float DISPLAY_CUTOFF_ATTEN_Y;
-    float DISPLAY_CUTOFF_ATTEN_C;
+    float BW_MODE;
+    float DECODER_SETUP;
+    float DECODER_TYPE;
+    float ENCODER_SETUP;
+    float PAL;
 } config;
 
 #define V_FREQ_MODE config.V_FREQ_MODE
@@ -209,38 +209,37 @@ layout(push_constant) uniform Push
 #define USER_TINT config.USER_TINT
 #define USER_SHARPNESS config.USER_SHARPNESS
 #define USER_MONOCHROME config.USER_MONOCHROME
-#define DISPLAY_BANDWIDTH_Y config.DISPLAY_BANDWIDTH_Y
-#define DISPLAY_BANDWIDTH_C config.DISPLAY_BANDWIDTH_C
-#define DISPLAY_CUTOFF_ATTEN_Y config.DISPLAY_CUTOFF_ATTEN_Y
-#define DISPLAY_CUTOFF_ATTEN_C config.DISPLAY_CUTOFF_ATTEN_C
+#define BW_MODE config.BW_MODE
+#define ENCODER_SETUP config.ENCODER_SETUP
+#define DECODER_SETUP config.DECODER_SETUP
+#define PAL config.PAL
+#define DECODER_TYPE config.DECODER_TYPE
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
     mat4 MVP;
-    float BW_MODE;
-    float ENCODER_SETUP;
-    float DECODER_SETUP;
-    float PAL;
-    float DECODER_TYPE;
 
 #ifdef OPTION_DEBUG
     float BYPASS_SVIDEO;
     float SVIDEO_FILTER_BYPASS;
 #endif  // OPTION_DEBUG
 
+    float DISPLAY_BANDWIDTH_C;
+    float DISPLAY_BANDWIDTH_Y;
+    float DISPLAY_CUTOFF_ATTEN_C;
+    float DISPLAY_CUTOFF_ATTEN_Y;
+    uint FrameCount;
 } global;
 
+#define DISPLAY_BANDWIDTH_Y global.DISPLAY_BANDWIDTH_Y
+#define DISPLAY_BANDWIDTH_C global.DISPLAY_BANDWIDTH_C
+#define DISPLAY_CUTOFF_ATTEN_Y global.DISPLAY_CUTOFF_ATTEN_Y
+#define DISPLAY_CUTOFF_ATTEN_C global.DISPLAY_CUTOFF_ATTEN_C
 #ifdef OPTION_DEBUG
 #define BYPASS_SVIDEO global.BYPASS_SVIDEO
 #define SVIDEO_FILTER_BYPASS global.SVIDEO_FILTER_BYPASS
 #endif  // OPTION_DEBUG
 
-#define BW_MODE global.BW_MODE
-
-#define ENCODER_SETUP global.ENCODER_SETUP
-#define DECODER_SETUP global.DECODER_SETUP
-#define PAL global.PAL
-#define DECODER_TYPE global.DECODER_TYPE
 
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
@@ -258,7 +257,7 @@ void main()
 
     // Precompute timebase config for fragment stage
     TimebaseConfig tb = compute_timebase(
-        config.FrameCount,
+        global.FrameCount,
         vTexCoord,
         config.OriginalSize.xy,
         config.OutputSize.xy,
