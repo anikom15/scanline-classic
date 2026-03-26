@@ -6,6 +6,7 @@ Copying and distribution of this file, with or without modification,
 are permitted in any medium without royalty provided the copyright
 notice and this notice are preserved.  This file is offered as-is,
 without any warranty.
+
 ## Overview
 
 The National Television System Committee (NTSC) standard defines analog color television transmission used primarily in North America, Japan, and parts of South America. NTSC encodes luminance (brightness) and chrominance (color) information into a single composite signal through quadrature amplitude modulation of a color subcarrier. Understanding this encoding and decoding process is essential for accurate composite video simulation.
