@@ -3,9 +3,10 @@ Generates HDR menu shaders from SDR menu shaders.
 Rules:
 - Output filename: replace "-sdr" with "-hdr".
 - For each include:
-  * Skip includes that end with -sdr or -wcg before extension.
-  * If a sibling include exists with -hdr appended before extension, use that instead.
-  * Otherwise keep the original include.
+  * Skip includes that end with -wcg before extension.
+    * If include ends with -sdr and a sibling -hdr variant exists, replace it.
+    * If include ends with -sdr and no -hdr variant exists, skip it.
+    * Otherwise keep the original include.
 """
 import concurrent.futures
 import os
@@ -23,10 +24,15 @@ def normalize_include_path(include_path: str) -> str:
     return include_path.replace('\\', '/')
 
 def get_hdr_path(include_path: Path) -> Path:
-    return include_path.with_name(include_path.stem + '-hdr' + include_path.suffix)
+    if include_path.stem.endswith('-sdr'):
+        hdr_stem = include_path.stem[:-4] + '-hdr'
+    else:
+        hdr_stem = include_path.stem + '-hdr'
+    return include_path.with_name(hdr_stem + include_path.suffix)
 
 def should_skip_include(include_path: Path) -> bool:
-    return include_path.stem.endswith('-sdr') or include_path.stem.endswith('-wcg')
+    # Skip WCG includes; we don't want them in HDR output
+    return include_path.stem.endswith('-wcg')
 
 def transform_shader(input_path: Path, output_path: Path, verbose=False):
     if verbose:
@@ -45,15 +51,22 @@ def transform_shader(input_path: Path, output_path: Path, verbose=False):
                 if verbose:
                     print(f"  Skipping include: {inc}")
                 continue  # skip this line, do not add blank
-            hdr_path = get_hdr_path(inc_path)
-            resolved_hdr = (input_dir / hdr_path).resolve()
-            if resolved_hdr.exists():
-                if verbose:
-                    print(f"  Using HDR include: {hdr_path} and original: {inc}")
-                out_lines.append(f'#include "{inc}"\n#include "{hdr_path.as_posix()}"\n')
+            
+            # Check if this is an SDR include that needs HDR replacement
+            if inc_path.stem.endswith('-sdr'):
+                hdr_path = get_hdr_path(inc_path)
+                resolved_hdr = (input_dir / hdr_path).resolve()
+                if resolved_hdr.exists():
+                    if verbose:
+                        print(f"  Replacing: {inc} -> {hdr_path.as_posix()}")
+                    out_lines.append(f'#include "{hdr_path.as_posix()}"\n')
+                else:
+                    if verbose:
+                        print(f"  Skipping SDR include (HDR not found): {inc}")
+                    continue
             else:
                 if verbose:
-                    print(f"  Keeping include: {inc} (no HDR variant found)")
+                    print(f"  Keeping include: {inc}")
                 out_lines.append(f'#include "{inc}"\n')
         else:
             out_lines.append(line)

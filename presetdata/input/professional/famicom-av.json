@@ -1,0 +1,23 @@
+{
+  "filename" : "famicom-av",
+  "type" : "professional",
+  "title" : "Famicom composite shader set",
+  "description" : "The original Famicom was RF only.  A/V was available on Twin and A/V models.",
+  "pipeline_root" : "../../pipelines",
+  "pipelines" : [
+    "sys/famicom-composite.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_root" : "../../params",
+  "parameter_sets" : [
+    "sys/sfc/base.json",
+    "sys/sfc/ntsc.json",
+    "sys/famicom/famicom-av.json",
+    "disp/ntscj.json",
+    "disp/trinitron.json",
+    "disp/tvl-400.json"
+  ],
+  "parameter_overrides" : {
+  }
+}

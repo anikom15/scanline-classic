@@ -30,7 +30,6 @@ def transform_preset(input_path: Path, output_path: Path, verbose=False):
     transformed_lines = []
     
     for line in lines:
-        # Check if this line sets MASK_DIFFUSION
         if '=' in line:
             key, value = line.split('=', 1)
             key = key.strip()

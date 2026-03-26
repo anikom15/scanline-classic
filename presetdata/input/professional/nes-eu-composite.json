@@ -1,0 +1,23 @@
+{
+  "filename" : "nes-eu",
+  "type" : "professional",
+  "title" : "NES composite shader set (PAL)",
+  "description" : "The original NES supported RF and A/V output.",
+  "pipeline_root" : "../../pipelines",
+  "pipelines" : [
+    "sys/nes-eu-composite.json",
+    "disp/crt-625.json",
+    "misc/post.json"
+  ],
+  "parameter_root" : "../../params",
+  "parameter_sets" : [
+    "sys/famicom/famicom-av.json",
+    "sys/sfc/base.json",
+    "sys/sfc/pal.json",
+    "disp/pal.json",
+    "disp/trinitron.json",
+    "disp/tvl-400.json"
+  ],
+  "parameter_overrides" : {
+  }
+}

@@ -1,0 +1,6 @@
+{
+    "parameters" : {
+        "FILTER_DPD_AMOUNT_NS" : 12.0,
+        "FILTER_DPD_CURVE" : 1.1
+    }
+}

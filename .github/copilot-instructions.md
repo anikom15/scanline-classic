@@ -8,10 +8,17 @@
 
 ## Critical workflow commands
 - Full build (recommended): `python build.py` (or `python build.py --jobs 8 -v`).
+- Optional lint-gated build: `python build.py --lint-shaders`.
+- Optional strict lint-gated build: `python build.py --lint-shaders --strict-structure`.
 - Trimmed distribution build: `python build-trim.py` (expects `out/` already generated).
 - Local install helper: `install.bat` copies `out/*` to a user-local RetroArch path.
 - Libretro merge helper: `merge.bat` runs build + trim and copies `out-trim/*` into `../slang-shaders/bezel/scanline-classic`.
 - Build script auto-prefers `.venv/Scripts/python.exe` on Windows when present.
+
+## Copilot shader authoring expectations
+- Before finalizing shader edits in `shaders/*.slang` or `shaders/*.inc`, run `python scripts/lint_shaders.py` and address reported issues for touched files when feasible.
+- Preserve shader flow and declaration conventions documented in `doc/SHADER_AUTHORING_CHECKLIST.md`.
+- For shader changes, prefer proposing edits that keep lint-compatible ordering and stage structure rather than post-hoc cleanup.
 
 ## Where to edit for common tasks
 - Edit shader behavior in `shaders/*.slang` and shared includes in `shaders/*.inc`.
@@ -35,6 +42,8 @@
 
 ## Validation expectations for AI edits
 - If touching preset generation or scripts, run at least: `python build.py`.
+- If changing shader code or shader-related scripts, prefer: `python build.py --lint-shaders`.
+- If shader structure/layout rules are relevant, prefer: `python build.py --lint-shaders --strict-structure`.
 - If touching trim logic, also run: `python build-trim.py`.
 - If touching bezel/glow shader params, verify both source and menu parameter includes stay aligned (for example `bezel-base.slang` push constants vs `output-bezel.inc` pragmas).
 - Keep edits minimal and preserve existing naming/layout conventions in shader params and JSON keys.

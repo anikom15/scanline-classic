@@ -1,0 +1,24 @@
+{
+  "filename" : "nes-rf",
+  "type" : "professional",
+  "title" : "NES RF shader set",
+  "description" : "The original NES supported RF and A/V output.",
+  "pipeline_root" : "../../pipelines",
+  "pipelines" : [
+    "sys/famicom-rf.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_root" : "../../params",
+  "parameter_sets" : [
+    "sys/famicom/famicom-av.json",
+    "sys/sfc/base.json",
+    "sys/sfc/ntsc.json",
+    "misc/rf-ntsc.json",
+    "disp/ntsc.json",
+    "disp/trinitron.json",
+    "disp/tvl-400.json"
+  ],
+  "parameter_overrides" : {
+  }
+}

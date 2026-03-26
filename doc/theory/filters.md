@@ -27,8 +27,8 @@ The scanline-classic shader suite uses optimized filter loops with early-exit lo
 | `composite-demod.slang` | 32 | 2 (n=1..32) | 64 total taps | Composite demodulation | Dual-path: Y at 3 MHz (early exit ~4 iter), C at 0.6 MHz (~28 iter) |
 | `sys-component.slang` | 16 | 2 (n=1..16) | 32 total taps | System RGB → Y/C component filter | Per-component Gaussian: Y at 3 MHz, U/V at 0.6 MHz; 14 covers worst-case; 16 for safety margin |
 | `composite-iq.slang` | 31 (odd) | 2 (n=1,3,5..31) | 31 taps (Type III FIR) | Hilbert transform (broadband) | **Broadband, not bandwidth-limited**; fixed Type III odd-length FIR with early exit, 31 good enough |
-| `iq-filter.slang` | 45 | 2 (n=1..45) | 90 total taps | IQ sinc lowpass | Asymmetric I/Q: I channel 4.2 MHz, Q channel 0.75 MHz; sinc 1/n decay requires deep tail |
-| `iq-demod.slang` | 45 | 2 (n=1..45) | 90 total taps | IQ demodulation | Matched to iq-filter.slang; sinc-based product demod; deep tail for precision |
+| `iq-filter.slang` | 44 | 2 (n=1..44) | 88 total taps | IQ sinc lowpass | Asymmetric I/Q: I channel 4.2 MHz, Q channel 0.75 MHz; sinc 1/n decay requires deep tail |
+| `iq-demod.slang` | 44 | 2 (n=1..44) | 88 total taps | IQ demodulation | Matched to iq-filter.slang; sinc-based product demod; deep tail for precision |
 
 ## Design Rationale
 
@@ -46,13 +46,13 @@ For Gaussian bandlimit filters, the loop cap is determined by the worst-case cut
 
 **Why symmetric pairs:** Each loop iteration fetches left+right samples and applies weights. This halves the loop count vs. single-tap convolution while maintaining the same tap span.
 
-### Sinc Filters (64 loops)
+### Sinc Filters (44 loops)
 
 For windowed-sinc lowpass (used in IQ modulation/demodulation):
 
 - Sinc decays as $\sim 1/n$, much slower than Gaussian
 - 0.6 MHz cutoff at ~14 px radius, but sinc tail extends significantly
-- 64 iterations = 128 total taps, ensuring:
+- 44 iterations = 88 total taps, ensuring:
   - ~40 dB stopband rejection (Hamming window)
   - Negligible Q-channel leakage into I path (VSB recovery)
   - Early exit via `FILTER_THRESHOLD = 1/255` saves iterations in practice
@@ -77,7 +77,7 @@ All loops implement early termination when filter weights fall below `FILTER_THR
 With the `sfc-rf_sfc-jr-rf.slangp` preset at 1440 px output width:
 
 - **Composite path:** 20 iterations × 2 taps = 40 taps per Y/C channel
-- **IQ path:** up to 64 iterations × 2 taps = 128 taps per I/Q channel
+- **IQ path:** up to 44 iterations × 2 taps = 88 taps per I/Q channel
 - **Early exit saves:** ~5–15 iterations typical (depending on sigma/content)
 
 Total render passes: 19 shaders (per preset). Loop optimization targets high-frequency passes: `composite-demod`, `composite-prefilter`, `sys-component`, `iq-filter`, `iq-demod`.

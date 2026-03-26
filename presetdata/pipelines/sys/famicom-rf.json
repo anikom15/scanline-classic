@@ -1,0 +1,23 @@
+{
+    "root_path" : "../../../shaders",
+    "shaders" : {
+        "menu" : "menus/menu-famicom-sdr",
+        "frame" : "frameh",
+        "special" : "famicom-special",
+        "filter" : "filter",
+        "composite-iq" : "composite-iq",
+        "iq-filter" : "iq-filter",
+        "iq-noise" : "iq-noise",
+        "iq-demod" : "iq-demod",
+        "prefilter" : "composite-prefilter",
+        "demod" : "composite-demod",
+        "disp-bandlimit" : "display-rgb-bandlimit",
+        "limiter" : "limiter"
+    },
+    "options" : {
+        "frame" : {
+            "scale_type" : ["absolute", "source"],
+            "scale" : [2728.0, 1.0]
+        }
+    }
+}

@@ -1,4 +1,4 @@
-# Comb Filter Technology in Television: A Brief History
+# Comb Filter Technology Theory
 
 Copyright (c)  2025  W. M. Martinez.
 
@@ -7,82 +7,98 @@ are permitted in any medium without royalty provided the copyright
 notice and this notice are preserved.  This file is offered as-is,
 without any warranty.
 
-## Pre-1980: Early Composite Video Separation
+## Overview
 
-Before the 1980s, most consumer televisions used simple filtering methods to separate luminance (Y) and chrominance (C) in composite video signals. The most common approach was the use of a notch filter to attenuate the chroma subcarrier frequency, paired with a band-pass filter to extract chroma. These analog filters were cost-effective but suffered from cross-color and dot-crawl artifacts, especially on high-frequency content and color transitions.
+Comb filtering is a class of luminance/chrominance (Y/C) separation methods used in composite video receivers. Unlike simple notch and band-pass approaches, comb filters exploit periodic subcarrier phase relationships between adjacent lines (and, in advanced forms, adjacent fields/frames) to improve Y/C separation while preserving high-frequency luma detail.
 
-## 1980s: Introduction of Line Comb Filters
+This document summarizes the historical evolution of comb filtering, the underlying signal principles, common artifact tradeoffs, and how these ideas map to the Scanline Classic shader pipeline.
 
-In the early 1980s, manufacturers began introducing line comb filters, particularly in higher-end sets. These filters exploited the predictable phase relationship of the color subcarrier between adjacent scanlines (180° phase shift in NTSC, 90° in PAL). By combining information from multiple lines, line comb filters improved separation of Y and C, reducing artifacts and enhancing image clarity. However, they were still limited by motion artifacts and could not fully eliminate cross-luminance and cross-color issues.
+## Historical Evolution
 
-## 1990s: Digital and Adaptive Comb Filters
+### Early Analog Era (Pre-1980)
 
-The 1990s saw the rise of digital signal processing in consumer electronics. Digital comb filters, often implemented in integrated circuits, allowed for more precise and adaptive separation of Y and C. Motion-adaptive comb filters analyzed both spatial and temporal correlations, switching between line and frame comb modes depending on scene content. This approach minimized artifacts during motion and further improved picture quality, especially in S-VHS and high-end CRT televisions.
+Most consumer receivers used a notch filter in the luma path and a band-pass filter in the chroma path. This architecture was inexpensive and robust but produced visible dot crawl, cross-color, and cross-luminance on high-detail scenes.
 
-## 2000s: 3D Comb Filters and Advanced Processing
+### Line-Comb Adoption (1980s)
 
-By the late 1990s and early 2000s, 3D (spatio-temporal) comb filters became standard in many TVs, including flat-panel displays. These filters used frame memory to compare multiple fields or frames, enabling sophisticated motion detection and adaptive filtering. The result was near-complete elimination of dot-crawl and cross-color artifacts, with image quality approaching that of true component video. Advanced comb filter technology was also integrated into video processors and upscalers, supporting legacy composite sources in modern displays.
+Higher-end televisions introduced 1H delay-line comb filters. In NTSC, the chroma subcarrier phase inverts on adjacent lines, allowing line addition/subtraction to separate Y and C more effectively than notch-only decoding. PAL implementations exploited line relationships differently due to phase alternation and delay-line averaging behavior.
 
-## Legacy and Modern Context
+### Digital and Adaptive Decoders (1990s)
 
-While comb filters are less relevant in the era of digital and component video, their development was crucial for maximizing the quality of analog composite sources. The evolution from simple analog filters to complex digital and adaptive systems reflects broader trends in television technology, balancing cost, complexity, and image fidelity over several decades.
+Digital memory and DSP enabled adaptive comb filtering. Receivers could classify image regions (static detail, motion, vertical edges) and switch between comb, notch, or blended modes to reduce motion artifacts while retaining sharpness.
 
-## Technical Overview: Comb Filter Implementations
+### Multi-Frame/3D Comb Processing (Late 1990s–2000s)
 
-### Analog Notch and Band-Pass Filters
-Early comb filter designs relied on analog circuitry. The notch filter attenuated the chroma subcarrier frequency (e.g., 3.58 MHz for NTSC), while a band-pass filter extracted chroma information. These filters were typically implemented using LC (inductor-capacitor) networks or surface acoustic wave (SAW) devices. The simplicity of this approach made it cost-effective, but it could not fully separate Y and C, resulting in visible artifacts.
+Frame-memory decoders introduced 2D/3D spatio-temporal strategies that analyze line and frame correlation simultaneously. These systems substantially reduced classic composite artifacts on stationary content and improved separation for consumer and broadcast-grade equipment.
 
-**Reference:**
-- Whitaker, Jerry C. "The Standard Handbook of Video and Television Engineering." McGraw-Hill, 2003.
+## Signal-Theory Basis
 
-### Line Comb Filters
-Line comb filters exploit the phase relationship of the color subcarrier between adjacent scanlines. In NTSC, the subcarrier phase inverts every line, allowing the filter to add or subtract signals from consecutive lines to cancel chroma or luma components. Analog implementations used delay lines (often glass or acoustic) to store one or more lines for comparison. Digital line comb filters later replaced analog delay lines with memory buffers, improving reliability and precision.
+For a line-comb decoder, adjacent-line operations can be idealized as:
 
-**Reference:**
-- Poynton, Charles. "Digital Video and HDTV: Algorithms and Interfaces." Morgan Kaufmann, 2003.
+$$
+Y \approx \frac{L_n + L_{n-1}}{2}, \qquad
+C \approx \frac{L_n - L_{n-1}}{2}
+$$
 
-### Frame (2D) and 3D Comb Filters
-Frame comb filters (2D) use information from both spatial (line) and temporal (frame) domains. By comparing pixels across multiple frames, these filters can better distinguish between stationary and moving content, reducing motion artifacts. 3D comb filters extend this approach by analyzing several fields or frames, using frame memory and motion detection algorithms to adaptively blend line and frame comb outputs. These are typically implemented in digital signal processors (DSPs) and require significant memory and computational resources.
+where $L_n$ is the current composite line and $L_{n-1}$ is a delayed line. Under ideal line-to-line chroma phase relationships, luma terms reinforce in the sum while chroma terms reinforce in the difference.
 
-**Reference:**
-- Tektronix, Inc. "NTSC and PAL Video: Comb Filter Technology." Application Note, 1998.
+Real signals deviate from the ideal due to motion, vertical color transitions, finite filter bandwidth, and transmission impairments. Practical comb filters therefore use mode switching and weighting rather than fixed subtraction alone.
 
-### Motion-Adaptive Comb Filters
-Motion-adaptive comb filters dynamically switch between line, frame, and notch filtering based on detected motion and scene content. When motion is detected, the filter reduces reliance on temporal information to avoid introducing motion artifacts. These filters are common in high-end CRTs, S-VHS decks, and modern video processors. Implementation involves real-time analysis of pixel differences and adaptive blending of filter outputs.
+## Decoder Families and Tradeoffs
 
-**Reference:**
-- Jack, Keith. "Video Demystified: A Handbook for the Digital Engineer." Newnes, 2007.
+### Notch + Band-Pass
 
-### PAL-Specific Delay Line Filters
-PAL systems use a 1H delay line to exploit the phase alternation of the chroma signal. By averaging the chroma from the current and previous lines, PAL delay line filters cancel phase errors and improve color stability. These were originally implemented with analog glass delay lines and later with digital memory.
+- Lowest implementation complexity
+- Robust under motion
+- Highest residual cross-color/cross-luma and reduced luma sharpness near subcarrier
 
-**Reference:**
-- Watkinson, John. "The Art of Digital Video." Focal Press, 2013.
+### Line Comb (1H/2H)
 
----
-Comb filter technology evolved from simple analog circuits to sophisticated digital and adaptive systems, each stage improving the separation of luminance and chrominance and reducing artifacts. For further reading, see the references above and the technical documentation in this repository.
+- Better Y/C separation on static content
+- Better luma detail retention than notch-only paths
+- Susceptible to motion artifacts and vertical transition errors
 
-## Analytical Deep Dive: Notch and Comb Filter Design in composite-mod-prefilter.slang
+### Motion-Adaptive / 2D / 3D Comb
 
-### Modulated Gaussian Notch and Bandpass Filters
-The shader `composite-mod-prefilter.slang` implements a modern, analytical approach to simulating ideal notch and bandpass filters for composite video separation. Instead of using fixed analog filter shapes, it employs modulated Gaussian functions to approximate the frequency response of a band-stop (notch) filter centered on the color subcarrier, and a bandpass filter for chroma extraction.
+- Best overall artifact suppression in mixed-content scenes
+- Requires frame memory, classification logic, and higher computational complexity
+- Can still fail on rapid motion, noisy sources, or non-standard phase behavior
 
-**Notch Filter Design:**
-- The notch filter is realized by convolving the input signal with a Gaussian envelope modulated by a cosine at the subcarrier frequency. This creates a smooth, symmetric attenuation around the chroma subcarrier, with the width and depth controlled by user parameters (`NOTCH_WIDTH`, `NOTCH_CENTER_ATTEN_DB`, `NOTCH_EDGE_ATTEN_DB`).
-- The Gaussian window ensures minimal ringing and a well-behaved impulse response, while modulation targets the chroma subcarrier precisely. This approach allows for flexible tuning and avoids the limitations of analog LC or SAW filters, which may have asymmetric or non-ideal responses.
-- The filter's parameters are exposed for real-time adjustment, enabling users to balance luma preservation against chroma suppression according to content and preference.
+## Artifacts and Practical Limits
 
-**Bandpass Filter Design:**
-- Chroma is extracted using a similar modulated Gaussian, but with a bandpass configuration. The filter passes frequencies near the subcarrier, isolating chroma while minimizing luma leakage. The width and gain are tunable, and the Gaussian shape provides a smooth roll-off.
+Even advanced comb systems exhibit characteristic limits:
 
-**References:**
-- See the implementation in `src/composite-mod-prefilter.slang` and supporting functions in `src/bandlimit.inc` and `src/modulation.inc`.
+- **Dot crawl**: residual subcarrier leakage into luma near vertical color edges
+- **Cross-color**: fine luma detail decoded as false chroma
+- **Cross-luminance**: chroma energy decoded as luma texture
+- **Motion mismatch**: temporal/line correlation failure in moving regions
+- **Vertical chroma compromise**: delay-line and averaging strategies can soften vertical color detail
 
-### Comb Filter Operation
-The comb filter in `composite-prefilter.slang` mimics the physical principle of line comb filters found in analog and digital TVs. It samples previous scanlines, applies phase correction to account for subcarrier drift, and combines signals to cancel chroma or luma components.
+These tradeoffs explain why many decoders use hybrid pipelines instead of a single fixed filter mode.
 
-- The shader reconstructs the composite signal for each tap, applies phase correction, and blends the results according to the selected filter mode (`COLOR_FILTER_MODE`).
-- This digital implementation parallels the delay-line comb filters used in real TVs, but with precise phase control and the ability to mix comb and notch outputs for optimal separation.
+## Scanline Classic Implementation Mapping
 
-### Relation to Physical Comb Filters
-While the shader's comb filter logic is inspired by physical delay-line filters, it benefits from the precision and flexibility of digital processing. Analog comb filters are limited by physical tolerances, group delay, and noise, whereas the shader can apply exact phase corrections and tap weights. The result is a highly controllable and artifact-resistant separation of Y and C, suitable for emulation and video processing.
+### Notch/Bandpass Model
+
+`shaders/composite-prefilter.slang` and shared support code in `shaders/bandlimit.inc` and `shaders/modulation.inc` implement a configurable analytical notch/bandpass stage. Modulated Gaussian kernels provide smooth attenuation around the color subcarrier while keeping user control over width and attenuation targets.
+
+### Comb Model
+
+`shaders/composite-prefilter.slang` also implements line-based comb behavior by sampling adjacent-line information, applying phase-aware correction, and combining taps according to selected decode mode (`COLOR_FILTER_MODE`). This mirrors physical delay-line concepts while retaining deterministic digital control over weights and phase handling.
+
+### Decoder Integration
+
+Comb and notch outputs are used as complementary tools in the broader composite decode path (`composite-prefilter.slang` -> `composite-demod.slang`), allowing users to tune between authenticity, artifact profile, and sharpness.
+
+## Design Perspective
+
+In historical receivers, comb quality was bounded by analog delay precision, IF shaping, and cost constraints. In shader space, those physical constraints are replaced by explicit numerical control, making it possible to preserve the characteristic artifact families of composite video while exposing the quality/performance tradeoff as user parameters.
+
+## References
+
+- ITU-R Recommendation BT.470-6: Conventional Analog Television Systems
+- SMPTE 170M: Composite Analog Video Signal — NTSC for Studio Applications
+- Poynton, Charles. *Digital Video and HD: Algorithms and Interfaces*. Morgan Kaufmann, 2012.
+- Whitaker, Jerry C. *The Standard Handbook of Video and Television Engineering*. McGraw-Hill.
+- Jack, Keith. *Video Demystified*. Newnes.
+- Tektronix application notes on NTSC/PAL composite decoding and comb-filter behavior

@@ -1,0 +1,23 @@
+{
+  "filename" : "famicom-titler",
+  "type" : "professional",
+  "title" : "Famicom Titler S-Video shader set",
+  "description" : "Titler supports S-Video output.  For RGB see C1 preset, for composite see A/V preset.",
+  "pipeline_root" : "../../pipelines",
+  "pipelines" : [
+    "sys/famicom-svideo.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_root" : "../../params",
+  "parameter_sets" : [
+    "sys/famicom/svideo.json",
+    "sys/sfc/base.json",
+    "sys/sfc/ntsc.json",
+    "disp/ntscj.json",
+    "disp/trinitron.json",
+    "disp/tvl-600.json"
+  ],
+  "parameter_overrides" : {
+  }
+}

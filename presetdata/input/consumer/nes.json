@@ -1,0 +1,25 @@
+{
+  "filename" : "nes",
+  "type" : "consumer",
+  "title" : "NES RF shader set",
+  "description" : "The original NES supported RF and A/V output, although composite cables were generally not included.",
+  "pipeline_root" : "../../pipelines",
+  "pipelines" : [
+    "sys/famicom-rf.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_root" : "../../params",
+  "parameter_sets" : [
+    "sys/sfc/base.json",
+    "sys/sfc/ntsc.json",
+    "sys/famicom/famicom-av.json",
+    "misc/rf-ntsc.json",
+    "disp/ntsc.json",
+    "disp/tv.json",
+    "disp/consumer-color-ntsc.json",
+    "disp/tvl-300.json"
+  ],
+  "parameter_overrides" : {
+  }
+}

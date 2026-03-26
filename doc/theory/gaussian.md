@@ -253,6 +253,3 @@ This is why Gaussians are preferred for video processing despite their gentle ro
 - `doc/theory/crt.md` - CRT display bandwidth characteristics
 - `doc/PARAMETERS.md` - User-facing parameter descriptions
 
----
-
-*Last updated: 2025-11-07*

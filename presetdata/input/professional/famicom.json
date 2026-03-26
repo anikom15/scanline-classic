@@ -1,0 +1,23 @@
+{
+  "filename" : "famicom",
+  "type" : "professional",
+  "title" : "Famicom RF shader set",
+  "description" : "The original Famicom was RF only",
+  "pipeline_root" : "../../pipelines",
+  "pipelines" : [
+    "sys/famicom-rf.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_root" : "../../params",
+  "parameter_sets" : [
+    "sys/sfc/base.json",
+    "sys/sfc/ntsc.json",
+    "misc/rf-ntsc.json",
+    "disp/ntscj.json",
+    "disp/trinitron.json",
+    "disp/tvl-400.json"
+  ],
+  "parameter_overrides" : {
+  }
+}

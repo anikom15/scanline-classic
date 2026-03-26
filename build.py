@@ -13,6 +13,7 @@ PRESETS_OUT = os.path.join(OUT, 'presets', 'uhd-4k-sdr')
 
 # Files to copy to OUT
 top_files = ['README.md', 'COPYING', 'NEWS']
+top_dirs = ['share', 'doc', 'config', 'shaders']
 
 def default_workers():
     count = os.cpu_count() or 4
@@ -28,25 +29,16 @@ def prepare_out_folder(verbose=False):
         print(f"Creating folder: {PRESETS_OUT}")
     os.makedirs(PRESETS_OUT, exist_ok=True)
 
-    # Copy share directory
-    share_src = os.path.join(ROOT, 'share')
-    share_dst = os.path.join(OUT, 'share')
-    if os.path.exists(share_src):
-        if verbose:
-            print(f"Copying {share_src} to {share_dst}")
-        shutil.copytree(share_src, share_dst, dirs_exist_ok=True)
-    else:
-        print(f"Warning: share directory not found at {share_src}")
-
-    # Copy doc directory
-    doc_src = os.path.join(ROOT, 'doc')
-    doc_dst = os.path.join(OUT, 'doc')
-    if os.path.exists(doc_src):
-        if verbose:
-            print(f"Copying {doc_src} to {doc_dst}")
-        shutil.copytree(doc_src, doc_dst, dirs_exist_ok=True)
-    else:
-        print(f"Warning: doc directory not found at {doc_src}")
+    # Copy top-level directories that ship with the build output.
+    for dirname in top_dirs:
+        src = os.path.join(ROOT, dirname)
+        dst = os.path.join(OUT, dirname)
+        if os.path.exists(src):
+            if verbose:
+                print(f"Copying {src} to {dst}")
+            shutil.copytree(src, dst, dirs_exist_ok=True)
+        else:
+            print(f"Warning: directory not found at {src}")
 
     # Copy top-level files
     for fname in top_files:
@@ -57,16 +49,6 @@ def prepare_out_folder(verbose=False):
             shutil.copy2(src, OUT)
         else:
             print(f"Warning: {fname} not found.")
-
-    # Copy shaders directory
-    shaders_src = os.path.join(ROOT, 'shaders')
-    shaders_dst = os.path.join(OUT, 'shaders')
-    if os.path.exists(shaders_src):
-        if verbose:
-            print(f"Copying {shaders_src} to {shaders_dst}")
-        shutil.copytree(shaders_src, shaders_dst, dirs_exist_ok=True)
-    else:
-        print(f"Warning: shaders directory not found at {shaders_src}")
 
 def get_python_executable():
     # Prefer .venv/Scripts/python.exe on Windows, .venv/bin/python on Unix
@@ -115,16 +97,46 @@ def run_presetgen(verbose=False, jobs=1):
                 print(f"Error: presetgen failed for {infile}: {exc}")
                 sys.exit(1)
 
+
+def run_shader_lint(verbose=False, strict_structure=False):
+    python_exec = get_python_executable()
+    cmd = [python_exec, os.path.join(ROOT, 'scripts', 'lint_shaders.py')]
+    if strict_structure:
+        cmd.append('--strict-structure')
+    print(f"Running: {' '.join(cmd)}")
+    try:
+        subprocess.run(cmd, check=True)
+    except Exception as exc:
+        print(f"Error: shader lint failed: {exc}")
+        sys.exit(1)
+
 def parse_args():
     parser = argparse.ArgumentParser(description='Build scanline-classic output')
     parser.add_argument('-v', '--verbose', action='store_true')
     parser.add_argument('--jobs', type=int, default=default_workers())
+    parser.add_argument(
+        '--lint-shaders',
+        action='store_true',
+        help='Run shader lint (scripts/lint_shaders.py) before build steps',
+    )
+    parser.add_argument(
+        '--strict-structure',
+        action='store_true',
+        help='Use strict shader structure checks when running --lint-shaders',
+    )
     return parser.parse_args()
 
 def main():
     args = parse_args()
     verbose = args.verbose
     jobs = max(1, args.jobs)
+
+    if args.strict_structure and not args.lint_shaders:
+        print("Error: --strict-structure requires --lint-shaders")
+        sys.exit(2)
+
+    if args.lint_shaders:
+        run_shader_lint(verbose=verbose, strict_structure=args.strict_structure)
 
     prepare_out_folder(verbose=verbose)
     run_presetgen(verbose=verbose, jobs=jobs)

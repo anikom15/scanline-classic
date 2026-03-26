@@ -1,0 +1,25 @@
+{
+  "filename" : "nes-gb",
+  "type" : "consumer",
+  "title" : "NES RF shader set (PAL-G)",
+  "description" : "The original NES supported RF and A/V output, although composite cables were generally not included.",
+  "pipeline_root" : "../../pipelines",
+  "pipelines" : [
+    "sys/nes-eu-rf.json",
+    "disp/crt-625.json",
+    "misc/post.json"
+  ],
+  "parameter_root" : "../../params",
+  "parameter_sets" : [
+    "sys/sfc/base.json",
+    "sys/sfc/pal.json",
+    "sys/famicom/famicom-av.json",
+    "misc/rf-palg.json",
+    "disp/pal.json",
+    "disp/tv.json",
+    "disp/consumer-color-pal.json",
+    "disp/tvl-300.json"
+  ],
+  "parameter_overrides" : {
+  }
+}
