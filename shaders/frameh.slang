@@ -36,6 +36,7 @@
 #pragma include_optional "../config/options.cfg"
 
 #ifdef OPTION_DEBUG
+#pragma parameter DEBUG_FRAMEH_HEADER " —— Debug Frame H —— " 0.0 0.0 0.0 0.0
 #pragma parameter FRAME_VIZ_ACTIVE "Show active content" 1.0 0.0 1.0 1.0
 #pragma parameter FRAME_VIZ_BLANKING "Show frame blanking (yellow)" 0.0 0.0 1.0 1.0
 #pragma parameter FRAME_VIZ_PADDING "Show padding (magenta)" 0.0 0.0 1.0 1.0

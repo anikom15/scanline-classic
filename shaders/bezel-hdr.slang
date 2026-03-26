@@ -31,4 +31,5 @@
 #define COLOR_SPACE_TO_XYZ BT2020_TO_XYZ
 #define XYZ_TO_COLOR_SPACE XYZ_TO_BT2020
 
+// lint: allow-unused-include
 #include "bezel-base.slang"

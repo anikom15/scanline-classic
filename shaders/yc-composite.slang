@@ -30,12 +30,12 @@
 #include "bandlimit.inc"
 
 #include "menus/parameters/sys-timing.inc"
-#include "menus/parameters/sys-encode.inc"
 #include "menus/parameters/sys-yc.inc"
 
 #pragma include_optional "../config/options.cfg"
 
 #ifdef OPTION_DEBUG
+#pragma parameter DEBUG_YC_COMPOSITE_HEADER " —— Debug YC Composite —— " 0.0 0.0 0.0 0.0
 #pragma parameter BYPASS_YC_FILTER "Bypass Y/C filter (off, on)" 0.0 0.0 1.0 1.0
 #endif
 

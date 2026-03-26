@@ -32,6 +32,7 @@
 #pragma include_optional "../config/options.cfg"
 
 #ifdef OPTION_DEBUG
+#pragma parameter DEBUG_COMPOSITE_DEMOD_HEADER " —— Debug Composite Demod —— " 0.0 0.0 0.0 0.0
 #pragma parameter BYPASS_COMPOSITE_DEMOD "Bypass composite demodulation (off, on)" 0.0 0.0 1.0 1.0
 #pragma parameter COMPOSITE_DEMOD_FILTER_BYPASS "Bypass composite demodulation filter (off, on)" 0.0 0.0 1.0 1.0
 #pragma parameter CORRELATION "Correlation" 0.5 0.0 1.0 0.01

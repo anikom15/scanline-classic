@@ -31,12 +31,12 @@
 #include "menus/parameters/sys-timing.inc"
 #include "menus/parameters/factory-geometry.inc"
 #include "menus/parameters/service-geometry.inc"
-#include "menus/parameters/user-common.inc"
 #include "menus/parameters/user-uncommon.inc"
 
 #pragma include_optional "../config/options.cfg"
 
 #ifdef OPTION_DEBUG
+#pragma parameter DEBUG_BEAM_HEADER " —— Debug Beam —— " 0.0 0.0 0.0 0.0
 #pragma parameter GEOMETRY_BYPASS "Bypass beam geometry" 0.0 0.0 1.0 1.0
 #pragma parameter FILTER_BYPASS "Bypass beam filter" 0.0 0.0 1.0 1.0
 

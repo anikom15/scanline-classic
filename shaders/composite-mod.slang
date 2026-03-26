@@ -33,6 +33,7 @@
 #pragma include_optional "../config/options.cfg"
 
 #ifdef OPTION_DEBUG
+#pragma parameter DEBUG_COMPOSITE_MOD_HEADER " —— Debug Composite Mod —— " 0.0 0.0 0.0 0.0
 #pragma parameter COMPOSITE_MOD_BYPASS "Composite Modulation Bypass" 0.0 0.0 1.0 1.0
 #endif  // OPTION_DEBUG
 

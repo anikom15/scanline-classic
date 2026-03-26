@@ -51,6 +51,7 @@
 #pragma include_optional "../config/options.cfg"
 
 #ifdef OPTION_DEBUG
+#pragma parameter DEBUG_BEZEL_HEADER " —— Debug Bezel —— " 0.0 0.0 0.0 0.0
 #pragma parameter BEZEL_BYPASS "Bypass bezel" 0.0 0.0 1.0 1.0
 #pragma parameter GLOW_BYPASS "Bypass glow" 0.0 0.0 1.0 1.0
 #pragma parameter KEY_THRESH "Bezel chroma key threshold" 0.5 0.0 1.0 0.01

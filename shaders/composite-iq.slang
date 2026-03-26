@@ -25,11 +25,10 @@
 #include "common.inc"
 #include "modulation.inc"
 
-#include "menus/parameters/sys-timing.inc"
-
 #pragma include_optional "../config/options.cfg"
 
 #ifdef OPTION_DEBUG
+#pragma parameter DEBUG_COMPOSITE_IQ_HEADER " —— Debug Composite IQ —— " 0.0 0.0 0.0 0.0
 #pragma parameter HILBERT_BYPASS "Bypass Hilbert transform (I only)" 0.0 0.0 1.0 1.0
 #endif  // OPTION_DEBUG
 

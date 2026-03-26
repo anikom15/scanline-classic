@@ -26,6 +26,7 @@
 #pragma parameter SPECIAL_INTERP_V "Apply special interpolation vertically" 1.0 0.0 1.0 1.0
 
 #ifdef OPTION_DEBUG
+#pragma parameter DEBUG_3DO_INTERP_HEADER " —— Debug 3DO Interpolation —— " 0.0 0.0 0.0 0.0
 #pragma parameter DEBUG_SHOW_CORNERS "Debug: Show corner weight positions" 0.0 0.0 1.0 1.0
 #endif  // OPTION_DEBUG
 

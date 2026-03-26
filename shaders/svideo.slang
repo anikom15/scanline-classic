@@ -163,6 +163,7 @@
 #pragma format R16G16B16A16_SFLOAT
 
 #ifdef OPTION_DEBUG
+#pragma parameter DEBUG_SVIDEO_HEADER " —— Debug S-Video —— " 0.0 0.0 0.0 0.0
 #pragma parameter BYPASS_SVIDEO "Bypass S-Video processing (0=Off, 1=On)" 0.0 0.0 1.0 1.0
 #pragma parameter SVIDEO_FILTER_BYPASS "S-Video filter bypass (use center sample)" 0.0 0.0 1.0 1.0
 #endif  // OPTION_DEBUG

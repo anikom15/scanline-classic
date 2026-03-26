@@ -28,12 +28,12 @@
 #include "tools/zebra.inc"
 
 #include "menus/parameters/mask.inc"
-#include "menus/parameters/colorimetry.inc"
 #include "menus/parameters/factory-geometry.inc"
 
 #pragma include_optional "../config/options.cfg"
 
 #ifdef OPTION_DEBUG
+#pragma parameter DEBUG_MASK_HEADER " —— Debug Mask —— " 0.0 0.0 0.0 0.0
 #pragma parameter MASK_BYPASS "Bypass CRT mask" 0.0 0.0 1.0 1.0
 #pragma parameter MASK_DEBUG_OUT_OF_RANGE "Beam-mask: Show out-of-range colors" 0.0 0.0 1.0 1.0
 #pragma parameter SLOT_VERTICAL_BIAS "Slot mask vertical bias" 0.0 0.0 1.0 0.01

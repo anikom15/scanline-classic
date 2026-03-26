@@ -29,13 +29,13 @@
 #include "texture.inc"
 #include "tools/zebra.inc"
 
-#include "menus/parameters/user-common.inc"
 #include "menus/parameters/factory-geometry.inc"
 #include "menus/parameters/output-curve.inc"
 
 #pragma include_optional "../config/options.cfg"
 
 #ifdef OPTION_DEBUG
+#pragma parameter DEBUG_CURVE_HEADER " —— Debug Curve —— " 0.0 0.0 0.0 0.0
 #pragma parameter CURVE_BYPASS "Bypass Curvature" 0 0 1.0 1.0
 #pragma parameter CURVE_FILTER "Curvature filter (0=off, 1=on)" 1.0 0.0 1.0 1.0
 #pragma parameter DEBUG_BARREL_SURROUND "Debug: Show surround outside barrel" 0.0 0.0 1.0 1.0

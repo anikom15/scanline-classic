@@ -42,6 +42,7 @@
 #pragma include_optional "../config/options.cfg"
 
 #ifdef OPTION_DEBUG
+#pragma parameter DEBUG_DISPLAY_SVIDEO_HEADER " —— Debug Display S-Video —— " 0.0 0.0 0.0 0.0
 #pragma parameter BYPASS_SVIDEO "Bypass S-Video processing" 0.0 0.0 1.0 1.0
 #pragma parameter SVIDEO_FILTER_BYPASS "S-Video filter bypass" 0.0 0.0 1.0 1.0
 #endif  // OPTION_DEBUG

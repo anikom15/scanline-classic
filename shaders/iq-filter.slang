@@ -45,6 +45,7 @@
 // Bypass & control parameters
 
 #ifdef OPTION_DEBUG
+#pragma parameter DEBUG_IQ_FILTER_HEADER " —— Debug IQ Filter —— " 0.0 0.0 0.0 0.0
 #pragma parameter BYPASS_IQ_MOD "Bypass I/Q filtering (off,on)" 0.0 0.0 1.0 1.0
 #pragma parameter BYPASS_I_FILTER "Bypass I lowpass (off,on)" 0.0 0.0 1.0 1.0
 #pragma parameter BYPASS_Q_FILTER "Bypass Q lowpass (off,on)" 0.0 0.0 1.0 1.0

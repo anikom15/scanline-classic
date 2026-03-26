@@ -27,6 +27,7 @@
 #include "menus/parameters/user-common.inc"
 
 #ifdef OPTION_DEBUG
+#pragma parameter DEBUG_COLOR_HEADER " —— Debug Color —— " 0.0 0.0 0.0 0.0
 #pragma parameter COLOR_CONVERSION_BYPASS "Bypass color correction" 0.0 0.0 1.0 1.0
 #pragma parameter DEBUG_COLOR_DELTA "Show color correction deltas" 0.0 0.0 1.0 1.0
 #pragma parameter MAKEUP_GAIN "Makeup gain (off, on)" 1.0 0.0 1.0 1.0

@@ -30,6 +30,7 @@
 #pragma include_optional "../config/options.cfg"
 
 #ifdef OPTION_DEBUG
+#pragma parameter DEBUG_FILTER_HEADER " —— Debug Filter —— " 0.0 0.0 0.0 0.0
 #pragma parameter FILTER_BANDLIMIT_BYPASS "Filter bandlimit bypass" 0.0 0.0 1.0 1.0
 #pragma parameter FILTER_DPD_BYPASS "Filter DPD bypass" 0.0 0.0 1.0 1.0
 #endif  // OPTION_DEBUG

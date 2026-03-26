@@ -31,4 +31,5 @@
 
 #pragma parameter VIEWING_ENVIRONMENT "Viewing environment (dark, dim, bright)" 1.0 0.0 2.0 1.0
 
+// lint: allow-unused-include
 #include "color-base.slang"

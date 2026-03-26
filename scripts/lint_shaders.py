@@ -8,6 +8,8 @@ focused style baseline:
 - More than 2 consecutive blank lines is forbidden.
 - Control-flow blocks use K&R opening braces: if/else/for/while/switch/do.
 - Files must end with a trailing newline.
+- Unused includes: in strict mode, direct #include directives whose exported
+  symbols are not referenced by the host file are flagged (exempt: menu shaders).
 
 Notes:
 - Function declarations and shader declaration blocks (layout/uniform/struct)
@@ -47,6 +49,9 @@ COMMENT_BLOCK_PATTERN = re.compile(r"/\*.*?\*/", re.DOTALL)
 STAGE_PATTERN = re.compile(r"^\s*#pragma\s+stage\s+(vertex|fragment)\b")
 INCLUDE_PATTERN = re.compile(r'^\s*#include\s+"([^"]+)"')
 ALLOW_STAGE_LOCAL_DIRECTIVE = "lint: allow-stage-local"
+ALLOW_UNUSED_INCLUDE_DIRECTIVE = "lint: allow-unused-include"
+PRAGMA_PARAMETER_SYMBOL_PATTERN = re.compile(r'^\s*#pragma\s+parameter\s+(\w+)\b')
+DEFINE_EXPORT_PATTERN = re.compile(r'^\s*#define\s+(\w+)\b')
 PREPROCESSOR_CHECK_PATTERN = re.compile(r"^\s*#\s*(if|ifdef|ifndef|elif)\b")
 OPTION_TOKEN_PATTERN = re.compile(r"\bOPTION_[A-Za-z0-9_]+\b")
 OPTION_DEFINE_PATTERN = re.compile(r"^\s*(?://\s*)?#\s*define\s+(OPTION_[A-Za-z0-9_]+)\b")
@@ -1022,6 +1027,87 @@ def check_header_section_order(path: Path, lines: list[str], issues: list[LintIs
         seen_state = current
 
 
+def collect_include_exports(include_path: Path) -> set[str]:
+    """Return #pragma parameter symbol names exported by an include file.
+
+    Only collects parameter identifiers declared with '#pragma parameter'.
+    General #define macros are intentionally excluded: they are often internal
+    constants used inside functions defined in the same file and are not
+    expected to appear by name in the host shader.
+    Does not recurse into transitive includes to keep the check focused.
+    Returns an empty set if the file cannot be read.
+    """
+    try:
+        raw_lines = include_path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return set()
+
+    exports: set[str] = set()
+    for line in raw_lines:
+        m = PRAGMA_PARAMETER_SYMBOL_PATTERN.match(line)
+        if m:
+            exports.add(m.group(1))
+    return exports
+
+
+def check_unused_includes(path: Path, lines: list[str], issues: list[LintIssue]) -> None:
+    """Flag direct #include directives whose exported symbols are not used in the host file.
+
+    Only runs on .slang files outside of the menus/ subdirectory. Menu shaders
+    aggregate #pragma parameter directives for RetroArch by design and are exempt.
+
+    A comment containing 'lint: allow-unused-include' on the line immediately
+    preceding the include suppresses the diagnostic for that include.
+    """
+    if path.suffix.lower() != ".slang":
+        return
+
+    # Menu shaders include parameter files purely to register #pragma parameters
+    # with RetroArch; symbol usage by name is not expected there.
+    if any(part == "menus" for part in path.parts):
+        return
+
+    cleaned = strip_comments_lines(lines)
+
+    for idx, line in enumerate(lines):
+        include_match = INCLUDE_PATTERN.match(line)
+        if not include_match:
+            continue
+
+        include_target = include_match.group(1)
+        include_path = resolve_shader_include_path(path, include_target)
+        if include_path is None:
+            continue
+
+        # Allow suppression via a directive comment on the preceding line.
+        directive_start = max(0, idx - 1)
+        directive_window = "\n".join(lines[directive_start : idx + 1]).lower()
+        if ALLOW_UNUSED_INCLUDE_DIRECTIVE in directive_window:
+            continue
+
+        exports = collect_include_exports(include_path)
+        if not exports:
+            # No extractable named symbols (e.g. pure stage-flow or struct-only
+            # includes); skip to avoid false positives.
+            continue
+
+        # Build host text from all lines except the include directive itself.
+        host_lines = cleaned[:idx] + cleaned[idx + 1:]
+        host_text = "\n".join(host_lines)
+
+        if not any(has_word(host_text, sym) for sym in exports):
+            issues.append(
+                LintIssue(
+                    path=path,
+                    line=idx + 1,
+                    message=(
+                        f"Unused include: '{include_target}' contributes no symbols "
+                        "referenced by this file"
+                    ),
+                )
+            )
+
+
 def lint_one_file(path: Path, fix: bool, strict_structure: bool) -> tuple[list[LintIssue], bool]:
     raw = path.read_text(encoding="utf-8")
     lines = raw.splitlines()
@@ -1073,6 +1159,7 @@ def lint_one_file(path: Path, fix: bool, strict_structure: bool) -> tuple[list[L
     if strict_structure:
         check_header_section_order(path, lines, issues)
         check_shader_stage_flow(path, lines, issues)
+        check_unused_includes(path, lines, issues)
 
     if strict_structure and path.suffix.lower() == ".slang":
         check_block_order_and_push_budget(path, lines, issues)
@@ -1110,7 +1197,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--strict-structure",
         action="store_true",
-        help="Enable stricter shader-structure checks (stage flow, universal declarations, push/UBO ordering/budget)",
+        help="Enable stricter shader-structure checks (stage flow, universal declarations, push/UBO ordering/budget, unused includes)",
     )
     parser.add_argument(
         "--max-errors",

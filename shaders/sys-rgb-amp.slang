@@ -35,6 +35,7 @@
 #pragma include_optional "../config/options.cfg"
 
 #ifdef OPTION_DEBUG
+#pragma parameter DEBUG_SYS_RGB_AMP_HEADER " —— Debug Sys RGB Amp —— " 0.0 0.0 0.0 0.0
 #pragma parameter SYS_RGB_AMP_BYPASS "Bypass RGB Amplifier" 0 0 1 1
 #endif  // OPTION_DEBUG
 

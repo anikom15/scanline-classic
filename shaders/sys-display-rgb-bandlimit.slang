@@ -32,7 +32,6 @@
 #include "modulation.inc"
 #include "bandlimit.inc"
 
-#include "menus/parameters/user-common.inc"
 #include "menus/parameters/user-uncommon.inc"
 #include "menus/parameters/display-rgb.inc"
 #include "menus/parameters/sys-rgb.inc"
@@ -41,6 +40,7 @@
 #pragma include_optional "../config/options.cfg"
 
 #ifdef OPTION_DEBUG
+#pragma parameter DEBUG_SYS_DISPLAY_RGB_BANDLIMIT_HEADER " —— Debug Sys+Display RGB Bandlimit —— " 0.0 0.0 0.0 0.0
 #pragma parameter SYS_DISPLAY_RGB_BANDLIMIT_BYPASS "Bypass System+Display RGB Bandlimit" 0.0 0.0 1.0 1.0
 #pragma parameter DISPLAY_RGB_AMP_BYPASS "Bypass Display RGB Amplifier" 0.0 0.0 1.0 1.0
 #endif  // OPTION_DEBUG

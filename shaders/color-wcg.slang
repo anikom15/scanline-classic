@@ -30,4 +30,5 @@
 #pragma parameter GAMUT_SELECT "Output gamut (BT.2020, DCI-P3)" 0.0 0.0 1.0 1.0
 #pragma parameter TONEMAP_TYPE "Tone map output (off, Reinhard, Neutral, Hable, ACES)" 2.0 0.0 4.0 1.0
 
+// lint: allow-unused-include
 #include "color-base.slang"

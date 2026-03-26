@@ -32,6 +32,7 @@
 #pragma include_optional "../config/options.cfg"
 
 #ifdef OPTION_DEBUG
+#pragma parameter DEBUG_COMPOSITE_PREFILTER_HEADER " —— Debug Composite Prefilter —— " 0.0 0.0 0.0 0.0
 #pragma parameter BYPASS_PREFILTER "Bypass prefilter (off, on)" 0.0 0.0 1.0 1.0
 #endif  // OPTION_DEBUG
 
