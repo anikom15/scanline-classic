@@ -39,6 +39,8 @@ PUSH_LAYOUT_PATTERN = re.compile(r"layout\s*\(\s*push_constant\s*\)\s*uniform\b"
 UBO_LAYOUT_PATTERN = re.compile(r"layout\s*\(\s*std140\b[^)]*\)\s*uniform\b")
 CONFIG_DEFINE_PATTERN = re.compile(r"^\s*#define\s+\w+\s+config\.(\w+)\b")
 GLOBAL_DEFINE_PATTERN = re.compile(r"^\s*#define\s+\w+\s+global\.(\w+)\b")
+CONFIG_DEFINE_FULL_PATTERN = re.compile(r"^\s*#define\s+(\w+)\s+config\.(\w+)\b")
+GLOBAL_DEFINE_FULL_PATTERN = re.compile(r"^\s*#define\s+(\w+)\s+global\.(\w+)\b")
 BLOCK_MEMBER_PATTERN = re.compile(
     r"^\s*(?:layout\s*\([^)]*\)\s*)?"
     r"(?P<type>[A-Za-z_]\w*)\s+"
@@ -95,6 +97,7 @@ class BlockMember:
     name: str
     array_count: int
     conditional: bool
+    option_debug_conditional: bool
 
 
 @dataclass(frozen=True)
@@ -541,6 +544,7 @@ def parse_uniform_block(lines: list[str], start_idx: int) -> UniformBlock | None
     depth = 0
     in_block = False
     preproc_depth = 0
+    preproc_option_debug_stack: list[bool] = []
     members: list[BlockMember] = []
     end_idx = idx
     instance_name = ""
@@ -548,11 +552,21 @@ def parse_uniform_block(lines: list[str], start_idx: int) -> UniformBlock | None
     for line_idx in range(idx, len(lines)):
         line = lines[line_idx]
 
-        if "#if" in line or "#ifdef" in line or "#ifndef" in line:
-            if line.strip().startswith("#if") or line.strip().startswith("#ifdef") or line.strip().startswith("#ifndef"):
-                preproc_depth += 1
-        elif line.strip().startswith("#endif"):
+        stripped_line = line.strip()
+        if stripped_line.startswith("#if") or stripped_line.startswith("#ifdef") or stripped_line.startswith("#ifndef"):
+            preproc_depth += 1
+            preproc_option_debug_stack.append("OPTION_DEBUG" in stripped_line)
+        elif stripped_line.startswith("#elif"):
+            if preproc_option_debug_stack:
+                preproc_option_debug_stack[-1] = preproc_option_debug_stack[-1] or ("OPTION_DEBUG" in stripped_line)
+        elif stripped_line.startswith("#else"):
+            # Keep the same conditional lineage: an #else branch is still part of
+            # the same preprocessor region that may be keyed by OPTION_DEBUG.
+            pass
+        elif stripped_line.startswith("#endif"):
             preproc_depth = max(0, preproc_depth - 1)
+            if preproc_option_debug_stack:
+                preproc_option_debug_stack.pop()
 
         clean = strip_inline_comments(line)
         opens = clean.count("{")
@@ -572,6 +586,7 @@ def parse_uniform_block(lines: list[str], start_idx: int) -> UniformBlock | None
                         name=member_match.group("name"),
                         array_count=int(member_match.group("count") or 1),
                         conditional=preproc_depth > 0,
+                        option_debug_conditional=any(preproc_option_debug_stack),
                     )
                 )
 
@@ -677,6 +692,425 @@ def member_stage_usage(member_name: str, vertex_text: str, fragment_text: str) -
 # occupy push block first since they run every pixel and benefit most from the
 # lower-latency push-constant path.
 _STAGE_PRIORITY: dict[str, int] = {"fragment": 0, "both": 1, "vertex": 2, "none": 3}
+
+
+def rough_complexity_score(member_name: str, fragment_text: str) -> tuple[int, str]:
+    """Estimate importance from rough fragment-stage usage complexity.
+
+    Returns (score, class_label) where class_label is a rough O-notation style
+    bucket used for diagnostics: O(n)-hot, O(1)-hot, O(1), or O(0).
+    """
+    if not fragment_text.strip():
+        return 0, "O(0)"
+
+    lines = fragment_text.splitlines()
+    hits = 0
+    loop_prox_hits = 0
+    op_hits = 0
+    call_hits = 0
+
+    loop_window = 0
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line:
+            loop_window = max(0, loop_window - 1)
+            continue
+
+        if re.search(r"\b(for|while)\b", line):
+            loop_window = 4
+        else:
+            loop_window = max(0, loop_window - 1)
+
+        if not has_word(line, member_name):
+            continue
+
+        hits += 1
+        if loop_window > 0:
+            loop_prox_hits += 1
+        if re.search(r"[*/+-]", line):
+            op_hits += 1
+        if "(" in line and ")" in line:
+            call_hits += 1
+
+    score = (hits * 3) + (loop_prox_hits * 8) + (op_hits * 2) + (call_hits * 1)
+    if loop_prox_hits > 0:
+        return score, "O(n)-hot"
+    if hits > 0 and (op_hits > 0 or call_hits > 1):
+        return score, "O(1)-hot"
+    if hits > 0:
+        return score, "O(1)"
+    return 0, "O(0)"
+
+
+def stage_base_priority(usage: str) -> int:
+    if usage == "fragment":
+        return 700
+    if usage == "both":
+        return 450
+    if usage == "vertex":
+        return 120
+    return 0
+
+
+def choose_candidates_by_priority_budget(
+    candidates: list[tuple[str, int, str, bool]],
+    budget: int,
+    fragment_text: str,
+) -> tuple[list[tuple[str, int, str, bool, str]], list[tuple[str, int, str, bool, str]]]:
+    """Choose a size-constrained candidate set by utility (rough O-analysis).
+
+    Returns (selected, deferred) with each tuple shaped as
+    (name, size, usage, option_debug_conditional, complexity_label).
+    """
+    if budget <= 0 or not candidates:
+        return [], [(*c, "O(0)") for c in candidates]
+
+    enriched: list[tuple[str, int, str, bool, int, str]] = []
+    for name, size, usage, option_debug in candidates:
+        complexity_score, complexity_label = rough_complexity_score(name, fragment_text)
+        utility = stage_base_priority(usage) + complexity_score
+        if option_debug:
+            utility -= 900
+        if utility < 0:
+            utility = 0
+        enriched.append((name, size, usage, option_debug, utility, complexity_label))
+
+    n = len(enriched)
+    dp: list[tuple[int, int, int]] = [(-1, -1, -1)] * (budget + 1)
+    dp[0] = (0, 0, 0)
+
+    picks: list[list[int]] = [[] for _ in range(budget + 1)]
+    for idx, (_, size, _, _, utility, _) in enumerate(enriched):
+        for total in range(budget, size - 1, -1):
+            prev = dp[total - size]
+            if prev[0] < 0:
+                continue
+            cand_utility = prev[0] + utility
+            cand_size = prev[1] + size
+            cand_count = prev[2] + 1
+            cur = dp[total]
+            better = (
+                cur[0] < 0
+                or cand_utility > cur[0]
+                or (cand_utility == cur[0] and cand_size > cur[1])
+                or (cand_utility == cur[0] and cand_size == cur[1] and cand_count > cur[2])
+            )
+            if better:
+                dp[total] = (cand_utility, cand_size, cand_count)
+                picks[total] = picks[total - size] + [idx]
+
+    best_total = 0
+    for total in range(1, budget + 1):
+        cur = dp[total]
+        best = dp[best_total]
+        if (
+            cur[0] > best[0]
+            or (cur[0] == best[0] and cur[1] > best[1])
+            or (cur[0] == best[0] and cur[1] == best[1] and cur[2] > best[2])
+        ):
+            best_total = total
+
+    selected_idx = set(picks[best_total])
+    selected: list[tuple[str, int, str, bool, str]] = []
+    deferred: list[tuple[str, int, str, bool, str]] = []
+    for idx, (name, size, usage, option_debug, _, complexity_label) in enumerate(enriched):
+        item = (name, size, usage, option_debug, complexity_label)
+        if idx in selected_idx:
+            selected.append(item)
+        else:
+            deferred.append(item)
+
+    selected.sort(key=lambda x: (1 if x[3] else 0, _STAGE_PRIORITY.get(x[2], 3), x[0]))
+    deferred.sort(key=lambda x: (1 if x[3] else 0, _STAGE_PRIORITY.get(x[2], 3), x[0]))
+    return selected, deferred
+
+
+def build_member_define_maps(lines: list[str]) -> tuple[dict[str, tuple[int, str]], dict[str, tuple[int, str]]]:
+    """Return define maps keyed by member name for config/global semantic defines.
+
+    Values are (line_index, macro_name).
+    """
+    config_map: dict[str, tuple[int, str]] = {}
+    global_map: dict[str, tuple[int, str]] = {}
+    for idx, line in enumerate(lines):
+        m_cfg = CONFIG_DEFINE_FULL_PATTERN.match(line)
+        if m_cfg:
+            macro, member = m_cfg.group(1), m_cfg.group(2)
+            config_map[member] = (idx, macro)
+            continue
+        m_glb = GLOBAL_DEFINE_FULL_PATTERN.match(line)
+        if m_glb:
+            macro, member = m_glb.group(1), m_glb.group(2)
+            global_map[member] = (idx, macro)
+    return config_map, global_map
+
+
+def choose_demotions_for_required_space(
+    candidates: list[tuple[str, int, str, bool]],
+    required_bytes: int,
+    fragment_text: str,
+) -> list[tuple[str, int, str, bool]]:
+    """Pick low-utility push members to demote until required space is met."""
+    if required_bytes <= 0 or not candidates:
+        return []
+
+    ranked: list[tuple[str, int, str, bool, int]] = []
+    for name, size, usage, option_debug in candidates:
+        complexity_score, _ = rough_complexity_score(name, fragment_text)
+        utility = stage_base_priority(usage) + complexity_score
+        if option_debug:
+            utility -= 900
+        ranked.append((name, size, usage, option_debug, utility))
+
+    ranked.sort(key=lambda x: (x[4], x[1], x[0]))
+    selected: list[tuple[str, int, str, bool]] = []
+    total = 0
+    for name, size, usage, option_debug, _ in ranked:
+        selected.append((name, size, usage, option_debug))
+        total += size
+        if total >= required_bytes:
+            break
+
+    if total < required_bytes:
+        return []
+    return selected
+
+
+def apply_push_ubo_member_moves(
+    lines: list[str],
+    push_block: UniformBlock,
+    ubo_block: UniformBlock,
+    promote_to_push: list[str],
+    demote_to_ubo: list[str],
+) -> tuple[list[str], bool]:
+    """Move declaration lines between push/UBO blocks and rewrite define mappings.
+
+    Only intended for member names that are declaration-backed and define-backed.
+    """
+    if not promote_to_push and not demote_to_ubo:
+        return lines, False
+
+    push_members = {member.name: member for member in push_block.members}
+    ubo_members = {member.name: member for member in ubo_block.members}
+
+    remove_indices: set[int] = set()
+    insert_before_push_close: list[str] = []
+    insert_before_ubo_close: list[str] = []
+
+    for member_name in promote_to_push:
+        member = ubo_members.get(member_name)
+        if member is None:
+            continue
+        line_idx = member.line - 1
+        if 0 <= line_idx < len(lines):
+            remove_indices.add(line_idx)
+            insert_before_push_close.append(lines[line_idx])
+
+    for member_name in demote_to_ubo:
+        member = push_members.get(member_name)
+        if member is None:
+            continue
+        line_idx = member.line - 1
+        if 0 <= line_idx < len(lines):
+            remove_indices.add(line_idx)
+            insert_before_ubo_close.append(lines[line_idx])
+
+    push_close_idx = push_block.end_line - 1
+    ubo_close_idx = ubo_block.end_line - 1
+
+    new_lines: list[str] = []
+    changed = False
+    for idx, line in enumerate(lines):
+        if idx == push_close_idx and insert_before_push_close:
+            new_lines.extend(insert_before_push_close)
+            changed = True
+        if idx == ubo_close_idx and insert_before_ubo_close:
+            new_lines.extend(insert_before_ubo_close)
+            changed = True
+        if idx in remove_indices:
+            changed = True
+            continue
+        new_lines.append(line)
+
+    if not changed:
+        return lines, False
+
+    # Rewrite semantic define routing for moved members while keeping section
+    # order intact: config.* defines must remain in the config define section
+    # and global.* defines must remain in the global define section.
+    promote_set = set(promote_to_push)
+    demote_set = set(demote_to_ubo)
+    remove_define_indices: set[int] = set()
+    add_config_defines: list[str] = []
+    add_global_defines: list[str] = []
+
+    for idx, line in enumerate(new_lines):
+        m_cfg = CONFIG_DEFINE_FULL_PATTERN.match(line)
+        if m_cfg and m_cfg.group(2) in demote_set:
+            macro, member = m_cfg.group(1), m_cfg.group(2)
+            remove_define_indices.add(idx)
+            add_global_defines.append(f"#define {macro} global.{member}")
+            continue
+
+        m_glb = GLOBAL_DEFINE_FULL_PATTERN.match(line)
+        if m_glb and m_glb.group(2) in promote_set:
+            macro, member = m_glb.group(1), m_glb.group(2)
+            remove_define_indices.add(idx)
+            add_config_defines.append(f"#define {macro} config.{member}")
+            continue
+
+    compact_lines = [line for idx, line in enumerate(new_lines) if idx not in remove_define_indices]
+
+    # Insert config defines before UBO definition, ideally after existing
+    # config defines.
+    if add_config_defines:
+        ubo_def_idx = next((i for i, line in enumerate(compact_lines) if UBO_LAYOUT_PATTERN.search(line)), len(compact_lines))
+        last_config_idx = -1
+        for i, line in enumerate(compact_lines[:ubo_def_idx]):
+            if CONFIG_DEFINE_FULL_PATTERN.match(line):
+                last_config_idx = i
+        insert_at = last_config_idx + 1 if last_config_idx >= 0 else ubo_def_idx
+        compact_lines = compact_lines[:insert_at] + add_config_defines + compact_lines[insert_at:]
+
+    # Insert global defines after UBO definition, ideally before existing global
+    # defines in that section.
+    if add_global_defines:
+        first_global_idx = next((i for i, line in enumerate(compact_lines) if GLOBAL_DEFINE_FULL_PATTERN.match(line)), None)
+        if first_global_idx is not None:
+            insert_at = first_global_idx
+        else:
+            ubo_idx = next((i for i, line in enumerate(compact_lines) if UBO_LAYOUT_PATTERN.search(line)), None)
+            if ubo_idx is None:
+                insert_at = len(compact_lines)
+            else:
+                ubo_blk = parse_uniform_block(compact_lines, ubo_idx)
+                insert_at = ubo_blk.end_line if ubo_blk is not None else (ubo_idx + 1)
+        compact_lines = compact_lines[:insert_at] + add_global_defines + compact_lines[insert_at:]
+
+    return compact_lines, True
+
+
+def structural_autofix_push_ubo(lines: list[str]) -> tuple[list[str], bool]:
+    """Autofix push/UBO placement for strict structural performance rules."""
+    push_idx = next((idx for idx, line in enumerate(lines) if PUSH_LAYOUT_PATTERN.search(line)), None)
+    ubo_idx = next((idx for idx, line in enumerate(lines) if UBO_LAYOUT_PATTERN.search(line)), None)
+    if push_idx is None or ubo_idx is None:
+        return lines, False
+
+    push_block = parse_uniform_block(lines, push_idx)
+    ubo_block = parse_uniform_block(lines, ubo_idx)
+    if not push_block or not ubo_block:
+        return lines, False
+
+    push_size_max = block_size_bytes(push_block.members, include_conditional=True)
+    if push_size_max is None:
+        return lines, False
+
+    push_limit = 128
+    vertex_text, fragment_text = extract_stage_texts(lines)
+    stages_available = bool(vertex_text or fragment_text)
+    if not stages_available:
+        return lines, False
+
+    cfg_define_map, glb_define_map = build_member_define_maps(lines)
+
+    def _promotable_ubo_members() -> list[tuple[str, int, str, bool]]:
+        out: list[tuple[str, int, str, bool]] = []
+        seen: set[str] = set()
+        for member in ubo_block.members:
+            if member.name == "MVP" or member.name in seen:
+                continue
+            seen.add(member.name)
+            if member.conditional:
+                continue
+            if member.name not in glb_define_map:
+                continue
+            usage = member_stage_usage(member.name, vertex_text, fragment_text)
+            if usage == "none":
+                continue
+            ly = member_layout(member.type_name, member.array_count)
+            if ly is None:
+                continue
+            out.append((member.name, ly[1], usage, member.option_debug_conditional))
+        return out
+
+    def _demotable_push_members() -> list[tuple[str, int, str, bool]]:
+        out: list[tuple[str, int, str, bool]] = []
+        seen: set[str] = set()
+        for member in push_block.members:
+            if member.name in seen:
+                continue
+            seen.add(member.name)
+            if member.conditional:
+                continue
+            if member.name not in cfg_define_map:
+                continue
+            usage = member_stage_usage(member.name, vertex_text, fragment_text)
+            ly = member_layout(member.type_name, member.array_count)
+            if ly is None:
+                continue
+            out.append((member.name, ly[1], usage, member.option_debug_conditional))
+        return out
+
+    changed = False
+    working_lines = lines
+
+    if push_size_max < push_limit:
+        candidates = _promotable_ubo_members()
+        selected, _ = choose_candidates_by_priority_budget(
+            candidates,
+            budget=push_limit - push_size_max,
+            fragment_text=fragment_text,
+        )
+        promote_names = [name for name, _, _, _, _ in selected]
+        if promote_names:
+            updated, did_change = apply_push_ubo_member_moves(
+                working_lines,
+                push_block,
+                ubo_block,
+                promote_to_push=promote_names,
+                demote_to_ubo=[],
+            )
+            if did_change:
+                working_lines = updated
+                changed = True
+
+    else:
+        promote_candidates = _promotable_ubo_members()
+        demote_candidates = [
+            (n, s, u, d)
+            for n, s, u, d in _demotable_push_members()
+            if d or u == "vertex"
+        ]
+        if promote_candidates and demote_candidates:
+            max_freed = sum(size for _, size, _, _ in demote_candidates)
+            selected_promotions, _ = choose_candidates_by_priority_budget(
+                [c for c in promote_candidates if c[1] <= max_freed],
+                budget=max_freed,
+                fragment_text=fragment_text,
+            )
+            promote_names = [name for name, _, _, _, _ in selected_promotions]
+            required = sum(size for _, size, _, _, _ in selected_promotions)
+            selected_demotions = choose_demotions_for_required_space(
+                demote_candidates,
+                required_bytes=required,
+                fragment_text=fragment_text,
+            )
+            demote_names = [name for name, _, _, _ in selected_demotions]
+
+            if promote_names and demote_names:
+                updated, did_change = apply_push_ubo_member_moves(
+                    working_lines,
+                    push_block,
+                    ubo_block,
+                    promote_to_push=promote_names,
+                    demote_to_ubo=demote_names,
+                )
+                if did_change:
+                    working_lines = updated
+                    changed = True
+
+    return working_lines, changed
 
 
 def check_block_order_and_push_budget(path: Path, lines: list[str], issues: list[LintIssue]) -> None:
@@ -797,45 +1231,69 @@ def check_block_order_and_push_budget(path: Path, lines: list[str], issues: list
     vertex_text, fragment_text = extract_stage_texts(lines)
     stages_available = bool(vertex_text or fragment_text)
 
-    # When push block is at capacity, check for suboptimal layout: vertex-only push
-    # members occupying space that fragment-stage UBO members could better use.
+    # When push block is at capacity, check for suboptimal layout: low-priority
+    # push members (OPTION_DEBUG first, then vertex-only) occupying space that
+    # higher-priority UBO members could better use.
     if push_size_max >= push_limit:
         if stages_available:
-            push_vertex_only: list[tuple[str, int]] = []
+            push_demote_candidates: list[tuple[str, int]] = []
             for member in push_block.members:
-                if member_stage_usage(member.name, vertex_text, fragment_text) == "vertex":
-                    ly = member_layout(member.type_name, member.array_count)
-                    if ly is not None:
-                        push_vertex_only.append((member.name, ly[1]))
+                usage = member_stage_usage(member.name, vertex_text, fragment_text)
+                demote_candidate = member.option_debug_conditional or usage == "vertex"
+                if not demote_candidate:
+                    continue
+                ly = member_layout(member.type_name, member.array_count)
+                if ly is not None:
+                    push_demote_candidates.append((member.name, ly[1]))
 
-            if push_vertex_only:
+            if push_demote_candidates:
                 seen_swap: set[str] = set()
-                ubo_frag_candidates: list[tuple[str, int, str]] = []
+                ubo_promote_candidates: list[tuple[str, int, str, bool]] = []
                 for member in ubo_block.members:
                     if member.name in seen_swap or member.name == "MVP":
                         continue
                     seen_swap.add(member.name)
                     usage = member_stage_usage(member.name, vertex_text, fragment_text)
-                    if usage in ("fragment", "both"):
-                        ly = member_layout(member.type_name, member.array_count)
-                        if ly is not None:
-                            ubo_frag_candidates.append((member.name, ly[1], usage))
+                    # OPTION_DEBUG members are always lowest priority regardless
+                    # of stage usage, so only promote them after non-debug.
+                    if usage == "none":
+                        continue
+                    ly = member_layout(member.type_name, member.array_count)
+                    if ly is not None:
+                        ubo_promote_candidates.append((member.name, ly[1], usage, member.option_debug_conditional))
 
-                if ubo_frag_candidates:
-                    freed = sum(size for _, size in push_vertex_only)
-                    promotable = [(n, s, u) for n, s, u in ubo_frag_candidates if s <= freed]
-                    if promotable:
-                        demote_list = ", ".join(f"{n}({s}B)" for n, s in push_vertex_only)
-                        promote_list = ", ".join(f"{n}({s}B/{u})" for n, s, u in promotable)
+                ubo_promote_candidates.sort(key=lambda x: (1 if x[3] else 0, _STAGE_PRIORITY.get(x[2], 3), x[0]))
+
+                if ubo_promote_candidates:
+                    freed = sum(size for _, size in push_demote_candidates)
+                    promotable = [(n, s, u, dbg) for n, s, u, dbg in ubo_promote_candidates if s <= freed]
+                    selected_promotions, deferred_promotions = choose_candidates_by_priority_budget(
+                        promotable,
+                        budget=freed,
+                        fragment_text=fragment_text,
+                    )
+                    if selected_promotions:
+                        demote_list = ", ".join(f"{n}({s}B)" for n, s in push_demote_candidates)
+                        promote_list = ", ".join(
+                            f"{n}({s}B/{u}{'/debug' if dbg else ''}/{cx})"
+                            for n, s, u, dbg, cx in selected_promotions
+                        )
+                        deferred_note = ""
+                        if deferred_promotions:
+                            deferred_names = ", ".join(n for n, *_ in deferred_promotions[:6])
+                            deferred_note = (
+                                f" Deferred due to push-byte budget after rough O analysis: {deferred_names}."
+                            )
                         issues.append(
                             LintIssue(
                                 path=path,
                                 line=push_block.start_line,
                                 message=(
                                     "Push block layout suboptimal: push block is at capacity but contains "
-                                    "vertex-only member(s) while fragment-stage UBO member(s) are present; "
-                                    f"consider demoting vertex-only push member(s) to UBO ({demote_list}) "
-                                    f"and promoting fragment UBO member(s) to push ({promote_list})"
+                                    "low-priority member(s) while higher-priority UBO member(s) are present; "
+                                    f"consider demoting push member(s) ({demote_list}) and promoting UBO member(s) "
+                                    f"({promote_list}), with OPTION_DEBUG members treated as lowest priority"
+                                    f"{deferred_note}"
                                 ),
                             )
                         )
@@ -848,7 +1306,7 @@ def check_block_order_and_push_budget(path: Path, lines: list[str], issues: list
     # Fragment-stage constants benefit most from push-block placement and are
     # listed first so the two-phase knapsack selects them preferentially.
     seen_cand: set[str] = set()
-    staged_candidates: list[tuple[str, int, str]] = []
+    staged_candidates: list[tuple[str, int, str, bool]] = []
     for member in ubo_block.members:
         if member.name == "MVP" or member.name in seen_cand:
             continue
@@ -858,35 +1316,50 @@ def check_block_order_and_push_budget(path: Path, lines: list[str], issues: list
             continue
         _, size = ly
         usage = member_stage_usage(member.name, vertex_text, fragment_text) if stages_available else "none"
-        staged_candidates.append((member.name, size, usage))
+        staged_candidates.append((member.name, size, usage, member.option_debug_conditional))
 
-    staged_candidates.sort(key=lambda x: _STAGE_PRIORITY.get(x[2], 3))
+    # OPTION_DEBUG constants are always lowest priority regardless of stage.
+    staged_candidates.sort(key=lambda x: (1 if x[3] else 0, _STAGE_PRIORITY.get(x[2], 3), x[0]))
 
-    # Two-phase knapsack: pack fragment/both items first to maximise their push
-    # presence, then fill any remaining capacity with vertex/none items.
+    # Budgeted utility selection with rough O-analysis. Fragment-heavy and
+    # higher-complexity constants are preferred; OPTION_DEBUG remains lowest.
     remaining = push_limit - push_size_max
-    frag_pool = [(n, s) for n, s, u in staged_candidates if u in ("fragment", "both")]
-    other_pool = [(n, s) for n, s, u in staged_candidates if u not in ("fragment", "both")]
-    packed_frag, selected_frag = pick_members_to_fill_gap(frag_pool, remaining)
-    packed_other, selected_other = pick_members_to_fill_gap(other_pool, remaining - packed_frag)
-
-    selected = selected_frag + selected_other
-    packed = packed_frag + packed_other
+    selected_enriched, deferred_enriched = choose_candidates_by_priority_budget(
+        staged_candidates,
+        budget=remaining,
+        fragment_text=fragment_text,
+    )
+    selected = [(n, s) for n, s, _, _, _ in selected_enriched]
+    packed = sum(s for _, s in selected)
     target = push_size_max + packed
 
-    usage_map = {n: u for n, _, u in staged_candidates}
+    usage_map = {n: u for n, _, u, _ in staged_candidates}
+    debug_map = {n: dbg for n, _, _, dbg in staged_candidates}
 
     def _fmt_candidate(name: str, size: int) -> str:
         u = usage_map.get(name, "none")
-        tag = f"/{u}" if u != "none" else ""
+        dbg = debug_map.get(name, False)
+        if dbg and u != "none":
+            tag = f"/{u}/debug"
+        elif dbg:
+            tag = "/debug"
+        elif u != "none":
+            tag = f"/{u}"
+        else:
+            tag = ""
         return f"{name}({size}B{tag})"
 
     if selected:
         move_list = ", ".join(_fmt_candidate(n, s) for n, s in selected)
+        deferred_note = ""
+        if deferred_enriched:
+            deferred_names = ", ".join(n for n, *_ in deferred_enriched[:6])
+            deferred_note = f" Deferred by rough O-priority due to limited push space: {deferred_names}."
         message = (
             "Push block underutilized: "
             f"min={push_size_min}B, max={push_size_max}B (<128B) with non-MVP UBO semantics; "
             f"move candidate(s) from UBO -> push to approach 128B (target {target}B): {move_list}"
+            f"{deferred_note}"
         )
     else:
         message = (
@@ -1227,11 +1700,24 @@ def check_unused_includes(path: Path, lines: list[str], issues: list[LintIssue])
             )
 
 
-def lint_one_file(path: Path, fix: bool, strict_structure: bool) -> tuple[list[LintIssue], bool]:
+def lint_one_file(
+    path: Path,
+    fix: bool,
+    strict_structure: bool,
+    fix_structure: bool,
+    dry_run: bool,
+) -> tuple[list[LintIssue], bool]:
     raw = path.read_text(encoding="utf-8")
     lines = raw.splitlines()
     issues: list[LintIssue] = []
     changed = False
+
+    if fix_structure and strict_structure and path.suffix.lower() == ".slang":
+        for _ in range(3):
+            lines, struct_changed = structural_autofix_push_ubo(lines)
+            if not struct_changed:
+                break
+            changed = True
 
     fixed_lines: list[str] = []
     blank_run = 0
@@ -1293,8 +1779,9 @@ def lint_one_file(path: Path, fix: bool, strict_structure: bool) -> tuple[list[L
             if not output_text.endswith("\n"):
                 output_text += "\n"
 
-    if fix and output_text != raw:
-        path.write_text(output_text, encoding="utf-8", newline="\n")
+    if (fix or fix_structure) and output_text != raw:
+        if not dry_run:
+            path.write_text(output_text, encoding="utf-8", newline="\n")
         changed = True
 
     return issues, changed
@@ -1317,6 +1804,19 @@ def parse_args() -> argparse.Namespace:
         "--strict-structure",
         action="store_true",
         help="Enable stricter shader-structure checks (stage flow, universal declarations, push/UBO ordering/budget, unused includes)",
+    )
+    parser.add_argument(
+        "--fix-structure",
+        action="store_true",
+        help=(
+            "Apply structural autofixes for push/UBO placement in strict mode "
+            "using fragment-priority + rough complexity scoring"
+        ),
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview changes for any fix mode without writing files",
     )
     parser.add_argument(
         "--max-errors",
@@ -1342,11 +1842,19 @@ def main() -> int:
 
     all_issues: list[LintIssue] = []
     changed_files = 0
+    changed_paths: list[Path] = []
     for path in files:
-        issues, changed = lint_one_file(path, fix=args.fix, strict_structure=args.strict_structure)
+        issues, changed = lint_one_file(
+            path,
+            fix=args.fix,
+            strict_structure=args.strict_structure,
+            fix_structure=args.fix_structure,
+            dry_run=args.dry_run,
+        )
         all_issues.extend(issues)
         if changed:
             changed_files += 1
+            changed_paths.append(path)
 
     for issue in all_issues[: args.max_errors]:
         rel = issue.path.relative_to(ROOT)
@@ -1356,15 +1864,33 @@ def main() -> int:
         print(f"... {len(all_issues) - args.max_errors} more issue(s) not shown")
 
     checked_count = len(files)
+    fix_mode_active = args.fix or args.fix_structure
+
+    def _print_dry_run_changed_list() -> None:
+        if not args.dry_run or not fix_mode_active or not changed_paths:
+            return
+        print("Files that would be modified:")
+        for path in changed_paths:
+            rel = path.relative_to(ROOT)
+            print(f"  - {rel}")
+
     if all_issues:
         print(f"\nLint failed: {len(all_issues)} issue(s) across {checked_count} file(s).")
-        if args.fix:
-            print(f"Autofixed {changed_files} file(s) where safe fixes were possible.")
+        if fix_mode_active:
+            if args.dry_run:
+                print(f"Dry run: {changed_files} file(s) would be autofixed.")
+                _print_dry_run_changed_list()
+            else:
+                print(f"Autofixed {changed_files} file(s) where safe fixes were possible.")
         return 1
 
     print(f"Lint passed: checked {checked_count} file(s).")
-    if args.fix:
-        print(f"Autofixed {changed_files} file(s).")
+    if fix_mode_active:
+        if args.dry_run:
+            print(f"Dry run: {changed_files} file(s) would be autofixed.")
+            _print_dry_run_changed_list()
+        else:
+            print(f"Autofixed {changed_files} file(s).")
     return 0
 
 
