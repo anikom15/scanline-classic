@@ -34,6 +34,8 @@
 #include "menus/parameters/user-common.inc"
 #include "menus/parameters/colorimetry.inc"
 
+#pragma include_optional "../config/options.cfg"
+
 layout(push_constant) uniform Push
 {
     vec4 OriginalSize;
@@ -94,6 +96,9 @@ void main()
 
     mat3 RGB_to_XYZ;
 
+#ifdef OPTION_NOCOLOR
+    RGB_to_XYZ = sRGB_TO_XYZ;
+#else
     if (COLORIMETRY_PRESET < 0.5) {
         vec3 ref_XYZ = xyY_to_XYZ(vec3(W_X, W_Y, 1.0));
         vec3 red_XYZ = xyY_to_XYZ(vec3(R_X, R_Y, 1.0));
@@ -110,6 +115,7 @@ void main()
     } else {
         RGB_to_XYZ = sRGB_TO_XYZ;
     }
+#endif  // OPTION_NOCOLOR
 
     luma_weights = vec3(RGB_to_XYZ[0][1], RGB_to_XYZ[1][1], RGB_to_XYZ[2][1]);
 }

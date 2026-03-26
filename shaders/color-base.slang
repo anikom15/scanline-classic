@@ -26,6 +26,8 @@
 #include "menus/parameters/output-color.inc"
 #include "menus/parameters/user-common.inc"
 
+#pragma include_optional "../config/options.cfg"
+
 #ifdef OPTION_DEBUG
 #pragma parameter DEBUG_COLOR_HEADER " —— Debug Color —— " 0.0 0.0 0.0 0.0
 #pragma parameter COLOR_CONVERSION_BYPASS "Bypass color correction" 0.0 0.0 1.0 1.0
@@ -309,6 +311,15 @@ void main()
 
     // Set up colorimetry
     mat3 RGB_to_XYZ_local;  // Local variable for vertex shader use only
+#ifdef OPTION_NOCOLOR
+    // Bypass all color correction, treat as Rec. 709
+    colorimetry = Colorimetry(
+        vec2(0.640, 0.330),
+        vec2(0.300, 0.600),
+        vec2(0.150, 0.060),
+        vec2(0.3127, 0.3290));
+    RGB_to_XYZ_local = sRGB_TO_XYZ;
+#else
     if (COLORIMETRY_PRESET < 0.5) {
         // Custom
         colorimetry = Colorimetry(
@@ -355,6 +366,7 @@ void main()
             vec2(0.3127, 0.3290));
         RGB_to_XYZ_local = sRGB_TO_XYZ;
     }
+#endif  // OPTION_NOCOLOR
 
     ref_XYZ = RGB_to_XYZ_local * WHITE;
     const vec3 D65_XYZ = vec3(0.95047, 1.0, 1.08883);
@@ -364,7 +376,18 @@ void main()
     max_luma_weight = max(max(luma_weights.r, luma_weights.g), luma_weights.b);
 
     // Compute chromatic adaptation transform (same for all pixels)
-    if (CHROMATIC_ADAPTATION < 0.5) {
+#ifdef OPTION_NOCAT
+    cat_transform = mat3(1.0);
+    bradford_params = BradfordParams(vec3(1.0), vec2(1.0), 1.0, 1.0);
+#else
+#ifdef OPTION_NOCOLOR
+    cat_transform = mat3(1.0);
+    bradford_params = BradfordParams(vec3(1.0), vec2(1.0), 1.0, 1.0);
+#else
+    if (CHROMATIC_ADAPTATION < 0.5
+            || (COLORIMETRY_PRESET >= 0.5 && COLORIMETRY_PRESET < 1.5)  // Rec. 601 (D65)
+            || COLORIMETRY_PRESET >= 2.5) {                             // EBU, Rec. 709 (D65)
+        // White point is D65 or adaptation disabled — no CAT needed
         cat_transform = mat3(1.0);
     } else if (CHROMATIC_ADAPTATION < 1.5) {
         cat_transform = bradford_linear(ref_XYZ, D65_XYZ);
@@ -376,7 +399,9 @@ void main()
     }
 
     // Pre-compute Bradford parameters for fast per-pixel computation
-    if (CHROMATIC_ADAPTATION >= 2.5) {
+    // Only needed for non-D65 presets: Custom (0) and NTSC-J (2)
+    if (CHROMATIC_ADAPTATION >= 2.5
+            && (COLORIMETRY_PRESET < 0.5 || (COLORIMETRY_PRESET >= 1.5 && COLORIMETRY_PRESET < 2.5))) {
         const mat3 M = mat3(
              0.8951, -0.7502,  0.0389,
              0.2664,  1.7135, -0.0685,
@@ -390,6 +415,8 @@ void main()
         bradford_params.b_out = wout_RGB.b;
         bradford_params.p = pow(wref_RGB.b / wout_RGB.b, 0.0834);
     }
+#endif  // OPTION_NOCOLOR
+#endif  // OPTION_NOCAT
 
 #ifdef SDR
     // Precompute Luv scale factors for advanced gamut compression
@@ -397,12 +424,16 @@ void main()
     luv_scale = vec2(0.0);
     ipt_scale = vec2(0.0);
 
-    if (GAMUT_COMPRESSION > 1.5) {
+    if (GAMUT_COMPRESSION > 1.5 && COLORIMETRY_PRESET < 3.5) {
         vec3 white_XYZ = RGB_to_XYZ_local * WHITE;
         vec3 red_XYZ = RGB_to_XYZ_local * RED;
         vec3 green_XYZ = RGB_to_XYZ_local * GREEN;
         vec3 blue_XYZ = RGB_to_XYZ_local * INDIGO;
 
+#ifdef OPTION_NOCAT
+#else
+#ifdef OPTION_NOCOLOR
+#else
         // Apply chromatic adaptation to XYZ values directly
         if (CHROMATIC_ADAPTATION < 2.5 && CHROMATIC_ADAPTATION >= 0.5) {
             // Use pre-computed cat_transform (Linear Bradford or CAT16)
@@ -417,6 +448,8 @@ void main()
             green_XYZ = bradford_fast(green_XYZ, bradford_params);
             blue_XYZ = bradford_fast(blue_XYZ, bradford_params);
         }
+#endif  // OPTION_NOCOLOR
+#endif  // OPTION_NOCAT
         vec3 white_out = XYZ_TO_COLOR_SPACE * white_XYZ;
         vec3 red_out = XYZ_TO_COLOR_SPACE * red_XYZ;
         vec3 green_out = XYZ_TO_COLOR_SPACE * green_XYZ;
@@ -699,8 +732,14 @@ void main()
     vec3 XYZ = YrYgYb_to_XYZ(YrYgYb, colorimetry);
     vec3 XYZ_baseline = XYZ;
 
+#ifdef OPTION_NOCAT
+#else
+#ifdef OPTION_NOCOLOR
+#else
     // Apply chromatic adaptation to XYZ directly (not to encoding matrix)
-    if (CHROMATIC_ADAPTATION > 0.5 && COLOR_CONVERSION_BYPASS < 0.5) {
+    // Only Custom (0) and NTSC-J (2) have non-D65 white points and need CAT
+    if (CHROMATIC_ADAPTATION > 0.5 && COLOR_CONVERSION_BYPASS < 0.5
+            && (COLORIMETRY_PRESET < 0.5 || (COLORIMETRY_PRESET >= 1.5 && COLORIMETRY_PRESET < 2.5))) {
         if (CHROMATIC_ADAPTATION < 2.5) {
             // Linear Bradford or CAT16 (computed in vertex shader)
             XYZ = cat_transform * XYZ;
@@ -709,6 +748,8 @@ void main()
             XYZ = bradford_fast(XYZ, bradford_params);
         }
     }
+#endif  // OPTION_NOCOLOR
+#endif  // OPTION_NOCAT
 
     mat3 toRGB = XYZ_TO_COLOR_SPACE;
 
@@ -724,7 +765,7 @@ void main()
 
 #ifdef SDR
         // Take advantage of intermediate for advanced compression
-        if (GAMUT_COMPRESSION < 1.5) {
+        if (GAMUT_COMPRESSION < 1.5 || COLORIMETRY_PRESET >= 3.5) {
             // Handle later
         } else if (GAMUT_COMPRESSION < 2.5) {
             vec3 Luv = XYZ_to_CIE_LUV(XYZ);
@@ -753,7 +794,7 @@ void main()
 
 #ifdef SDR
     // Gamut mapping
-    if (GAMUT_COMPRESSION < 0.5) {
+    if (GAMUT_COMPRESSION < 0.5 || COLORIMETRY_PRESET >= 3.5) {
         // No gamut compression
     } else if (GAMUT_COMPRESSION < 1.5) {
         RGB = reduce_luminance(RGB);

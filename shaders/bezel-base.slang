@@ -735,6 +735,10 @@ void main()
         background.a *= key_alpha;
     }
 
+#ifdef OPTION_NOGLOW
+    glow = vec3(0.0);
+    effective_glow_weight = 0.0;
+#else  // OPTION_NOGLOW
     // === GLOW_BYPASS implementation ===
     if (GLOW_BYPASS > 0.5 || background.a < EPS) {
         glow = vec3(0.0);
@@ -772,6 +776,7 @@ void main()
             glow = vec3(0.0);
         }
     }
+#endif  // OPTION_NOGLOW
 
     // === Blend glow with background ===
     // Apply bezel gain and bias first

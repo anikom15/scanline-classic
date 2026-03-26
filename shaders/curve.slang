@@ -142,9 +142,11 @@ float curve_zoom_factor()
 {
     float zoom = clamp(ZOOM, 50.0, 200.0) / 100.0; // 1.0 = 100%
 
-#ifdef OPTION_NOBEZEL_COMPENSATE_ZOOM
-    zoom *= 1.07; // Compensate for bezel cropping when zooming
-#endif  // OPTION_NOBEZEL_COMPENSATE_ZOOM
+#ifdef OPTION_NOBEZEL
+#ifdef OPTION_NOBEZEL_ZOOM
+    zoom *= OPTION_NOBEZEL_ZOOM; // Compensate for bezel cropping when zooming
+#endif  // OPTION_NOBEZEL_ZOOM
+#endif  // OPTION_NOBEZEL
 
     return zoom;
 }

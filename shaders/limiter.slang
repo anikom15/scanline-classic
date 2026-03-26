@@ -166,6 +166,8 @@ void main()
     // Prepare NTSC conversion matrix if needed
     CorrectionMatrix = mat3(1.0);
 
+#ifdef OPTION_NOCOLOR
+#else
     if (NTSC_CONVERSION > 0.5) {
         // Set up reference conversion matrix (NTSC C)
         const Colorimetry reference = Colorimetry(
@@ -236,6 +238,7 @@ void main()
         // Compute correction matrix
         CorrectionMatrix = inverse(RGB_to_XYZ) * ref_to_XYZ;
     }
+#endif  // OPTION_NOCOLOR
 
     // Compute timebase with actual vertex TexCoord (per-vertex)
     tb = compute_timebase(
