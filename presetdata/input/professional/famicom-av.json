@@ -2,7 +2,7 @@
   "filename" : "famicom-av",
   "type" : "professional",
   "title" : "Famicom composite shader set",
-  "description" : "The original Famicom was RF only.  A/V was aviailable on Twin and A/V models.",
+  "description" : "The original Famicom was RF only.  A/V was available on Twin and A/V models.",
   "pipeline_root" : "../../pipelines",
   "pipelines" : [
     "sys/famicom-composite.json",
