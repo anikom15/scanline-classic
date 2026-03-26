@@ -629,6 +629,56 @@ def pick_members_to_fill_gap(members: list[tuple[str, int]], gap: int) -> tuple[
     return best, chosen
 
 
+def extract_stage_texts(lines: list[str]) -> tuple[str, str]:
+    """Extract vertex and fragment section texts for stage-usage analysis.
+
+    Returns (vertex_text, fragment_text); both empty strings if stage markers
+    cannot be resolved to a clean single-vertex + single-fragment layout.
+    """
+    stage_markers: list[tuple[int, str]] = []
+    for idx, line in enumerate(lines):
+        stage_match = STAGE_PATTERN.match(line)
+        if stage_match:
+            stage_markers.append((idx + 1, stage_match.group(1)))
+
+    vertex_lines = [ln for ln, stage in stage_markers if stage == "vertex"]
+    fragment_lines = [ln for ln, stage in stage_markers if stage == "fragment"]
+    if len(vertex_lines) != 1 or len(fragment_lines) != 1:
+        return "", ""
+
+    vertex_line = vertex_lines[0]
+    fragment_line = fragment_lines[0]
+    if vertex_line >= fragment_line:
+        return "", ""
+
+    cleaned = strip_comments_lines(lines)
+    vertex_text = "\n".join(cleaned[vertex_line : fragment_line - 1])
+    fragment_text = "\n".join(cleaned[fragment_line:])
+    return vertex_text, fragment_text
+
+
+def member_stage_usage(member_name: str, vertex_text: str, fragment_text: str) -> str:
+    """Classify which shader stage(s) a member name appears in.
+
+    Returns 'fragment', 'vertex', 'both', or 'none'.
+    """
+    in_vertex = bool(vertex_text) and has_word(vertex_text, member_name)
+    in_fragment = bool(fragment_text) and has_word(fragment_text, member_name)
+    if in_vertex and in_fragment:
+        return "both"
+    if in_fragment:
+        return "fragment"
+    if in_vertex:
+        return "vertex"
+    return "none"
+
+
+# Stage-priority order for push-block placement: fragment-stage constants should
+# occupy push block first since they run every pixel and benefit most from the
+# lower-latency push-constant path.
+_STAGE_PRIORITY: dict[str, int] = {"fragment": 0, "both": 1, "vertex": 2, "none": 3}
+
+
 def check_block_order_and_push_budget(path: Path, lines: list[str], issues: list[LintIssue]) -> None:
     section_positions: dict[str, int] = {}
 
@@ -742,28 +792,97 @@ def check_block_order_and_push_budget(path: Path, lines: list[str], issues: list
             if member.name != "MVP":
                 ubo_non_mvp_semantics.append(member.name)
 
-    if push_size_max >= push_limit or not ubo_non_mvp_semantics:
+    # Determine stage texts so that fragment-stage constants get priority for push
+    # block space (push constants are faster; fragment runs every pixel).
+    vertex_text, fragment_text = extract_stage_texts(lines)
+    stages_available = bool(vertex_text or fragment_text)
+
+    # When push block is at capacity, check for suboptimal layout: vertex-only push
+    # members occupying space that fragment-stage UBO members could better use.
+    if push_size_max >= push_limit:
+        if stages_available:
+            push_vertex_only: list[tuple[str, int]] = []
+            for member in push_block.members:
+                if member_stage_usage(member.name, vertex_text, fragment_text) == "vertex":
+                    ly = member_layout(member.type_name, member.array_count)
+                    if ly is not None:
+                        push_vertex_only.append((member.name, ly[1]))
+
+            if push_vertex_only:
+                seen_swap: set[str] = set()
+                ubo_frag_candidates: list[tuple[str, int, str]] = []
+                for member in ubo_block.members:
+                    if member.name in seen_swap or member.name == "MVP":
+                        continue
+                    seen_swap.add(member.name)
+                    usage = member_stage_usage(member.name, vertex_text, fragment_text)
+                    if usage in ("fragment", "both"):
+                        ly = member_layout(member.type_name, member.array_count)
+                        if ly is not None:
+                            ubo_frag_candidates.append((member.name, ly[1], usage))
+
+                if ubo_frag_candidates:
+                    freed = sum(size for _, size in push_vertex_only)
+                    promotable = [(n, s, u) for n, s, u in ubo_frag_candidates if s <= freed]
+                    if promotable:
+                        demote_list = ", ".join(f"{n}({s}B)" for n, s in push_vertex_only)
+                        promote_list = ", ".join(f"{n}({s}B/{u})" for n, s, u in promotable)
+                        issues.append(
+                            LintIssue(
+                                path=path,
+                                line=push_block.start_line,
+                                message=(
+                                    "Push block layout suboptimal: push block is at capacity but contains "
+                                    "vertex-only member(s) while fragment-stage UBO member(s) are present; "
+                                    f"consider demoting vertex-only push member(s) to UBO ({demote_list}) "
+                                    f"and promoting fragment UBO member(s) to push ({promote_list})"
+                                ),
+                            )
+                        )
         return
 
-    candidate_members: list[tuple[str, int]] = []
-    seen = set()
-    for member in ubo_block.members:
-        if member.name == "MVP":
-            continue
-        if member.name in seen:
-            continue
-        seen.add(member.name)
-        layout = member_layout(member.type_name, member.array_count)
-        if layout is None:
-            continue
-        _, size = layout
-        candidate_members.append((member.name, size))
+    if not ubo_non_mvp_semantics:
+        return
 
+    # Build stage-prioritized candidate list: fragment > both > vertex > none.
+    # Fragment-stage constants benefit most from push-block placement and are
+    # listed first so the two-phase knapsack selects them preferentially.
+    seen_cand: set[str] = set()
+    staged_candidates: list[tuple[str, int, str]] = []
+    for member in ubo_block.members:
+        if member.name == "MVP" or member.name in seen_cand:
+            continue
+        seen_cand.add(member.name)
+        ly = member_layout(member.type_name, member.array_count)
+        if ly is None:
+            continue
+        _, size = ly
+        usage = member_stage_usage(member.name, vertex_text, fragment_text) if stages_available else "none"
+        staged_candidates.append((member.name, size, usage))
+
+    staged_candidates.sort(key=lambda x: _STAGE_PRIORITY.get(x[2], 3))
+
+    # Two-phase knapsack: pack fragment/both items first to maximise their push
+    # presence, then fill any remaining capacity with vertex/none items.
     remaining = push_limit - push_size_max
-    packed, selected = pick_members_to_fill_gap(candidate_members, remaining)
+    frag_pool = [(n, s) for n, s, u in staged_candidates if u in ("fragment", "both")]
+    other_pool = [(n, s) for n, s, u in staged_candidates if u not in ("fragment", "both")]
+    packed_frag, selected_frag = pick_members_to_fill_gap(frag_pool, remaining)
+    packed_other, selected_other = pick_members_to_fill_gap(other_pool, remaining - packed_frag)
+
+    selected = selected_frag + selected_other
+    packed = packed_frag + packed_other
     target = push_size_max + packed
+
+    usage_map = {n: u for n, _, u in staged_candidates}
+
+    def _fmt_candidate(name: str, size: int) -> str:
+        u = usage_map.get(name, "none")
+        tag = f"/{u}" if u != "none" else ""
+        return f"{name}({size}B{tag})"
+
     if selected:
-        move_list = ", ".join(f"{name}({size}B)" for name, size in selected)
+        move_list = ", ".join(_fmt_candidate(n, s) for n, s in selected)
         message = (
             "Push block underutilized: "
             f"min={push_size_min}B, max={push_size_max}B (<128B) with non-MVP UBO semantics; "
