@@ -54,7 +54,7 @@ This document defines a practical 30-day roadmap for expanding CI/CD in Scanline
 - Require at least 1 approval
 - Dismiss stale approvals when new commits are pushed
 - Require status checks to pass before merging:
-  - `Build Lint Gate`
+  - `Build Lint Gate / Build Lint Gate`
 - Require branches to be up to date before merging
 - Restrict who can push to matching branches (or otherwise block direct pushes)
 - Optional but recommended: apply rule to administrators

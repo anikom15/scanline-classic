@@ -9,6 +9,7 @@ permissions:
 
 jobs:
   build-lint-gate:
+    name: Build Lint Gate
     runs-on: ubuntu-latest
     env:
       BUILD_ARGS: "--lint-shaders"
