@@ -39,6 +39,26 @@ This document defines a practical 30-day roadmap for expanding CI/CD in Scanline
 - Every `master` push has downloadable artifacts.
 - No unreviewed merges to `master`.
 
+**Implementation Notes (2026-03-26)**
+- `.github/workflows/shader-lint.yml` now uploads both `out/` and `out-trim/` on successful pushes to `master`.
+- Current artifact names:
+  - `scanline-classic-out`
+  - `scanline-classic-out-trim`
+- Current retention:
+  - `retention-days: 14`
+- Practical caveat for the first exit criterion: artifacts are guaranteed for successful `master` CI runs; a failed run will not publish artifacts.
+
+**Branch Protection Checklist (GitHub Settings)**
+- Branch rule target: `master`
+- Require a pull request before merging
+- Require at least 1 approval
+- Dismiss stale approvals when new commits are pushed
+- Require status checks to pass before merging:
+  - `Build Lint Gate`
+- Require branches to be up to date before merging
+- Restrict who can push to matching branches (or otherwise block direct pushes)
+- Optional but recommended: apply rule to administrators
+
 ---
 
 ### Week 2: Nightly Full Validation
@@ -145,8 +165,8 @@ This document defines a practical 30-day roadmap for expanding CI/CD in Scanline
   - **Mitigation:** retention limits and selective artifact publishing.
 
 ## Immediate Next Actions
-1. Implement Week 1 artifact upload on `master` push.
-2. Enable branch protections with required Build Lint Gate status.
+1. Merge CI artifact workflow changes to `master` and verify both artifacts on the next successful `master` push.
+2. Enable/verify branch protections with required `Build Lint Gate` status.
 3. Scaffold nightly full-validation workflow.
 
 ## Reference Commands

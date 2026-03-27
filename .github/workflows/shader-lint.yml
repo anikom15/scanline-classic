@@ -40,3 +40,23 @@ jobs:
 
       - name: Run build lint gate
         run: python build.py $BUILD_ARGS --jobs 1
+
+      - name: Build trimmed output
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        run: python build-trim.py
+
+      - name: Upload out artifact
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        uses: actions/upload-artifact@v4
+        with:
+          name: scanline-classic-out
+          path: out/
+          retention-days: 14
+
+      - name: Upload out-trim artifact
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        uses: actions/upload-artifact@v4
+        with:
+          name: scanline-classic-out-trim
+          path: out-trim/
+          retention-days: 14
