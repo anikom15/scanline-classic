@@ -2,8 +2,8 @@
 
 ## Supported Versions
 
-Use this section to tell people about which versions of your project are
-currently being supported with security updates.
+Please use only the latest release versions of Scanline Classic for
+production. We don't have the resources to maintain older versions.
 
 | Version | Supported          |
 | ------- | ------------------ |
