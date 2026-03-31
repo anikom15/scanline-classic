@@ -19,8 +19,8 @@
 //
 // Combined System + Display RGB bandlimit
 // ------------------------------
-// Input: Voltage
-// Output: Voltage
+// Input: Real RGB voltage
+// Output: Real RGB voltage
 //
 // Consolidates two cascaded Gaussian bandlimit passes into a single pass
 // using variance addition: sigma_total = sqrt(sigma_sys^2 + sigma_disp^2)
