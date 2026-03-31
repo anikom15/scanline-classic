@@ -231,6 +231,13 @@ layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
 // Polyphase resampler using struct parameters and L/M factors
+// Triangle window function, continuous for fractional offset
+float triangle_window(float x, float half_width) {
+    float ax = abs(x);
+    return max(0.0, (half_width - ax) / half_width);
+}
+
+// Polyphase resampler with optional triangle convolution for debug bypass
 vec3 apply_polyphase_resampler(sampler2D source, vec2 tex)
 {
     // tex.x is the output pixel center in normalized coordinates (0..1)
@@ -246,16 +253,42 @@ vec3 apply_polyphase_resampler(sampler2D source, vec2 tex)
     float frac_offset = float(phase) / float(L);
 
     vec3 color = vec3(0.0);
+    float gain = 0.0;
 
+    #ifdef OPTION_DEBUG
+    if (DISPLAY_RGB_FILTER_BYPASS > 0.5) {
+        // Triangle convolution: fixed 3 taps, continuous for fractional offset
+        const int tri_taps = 3;
+        const float half_width = 1.0;
+        int tri_center = 1;
+        float gain = 0.0;
+        for (int k = 0; k < tri_taps; ++k) {
+            int tap_offset = k - tri_center;
+            float coeff = triangle_window(float(tap_offset) - frac_offset, half_width);
+            vec2 input_tex = vec2((input_index + tap_offset) * config.SourceSize.z, tex.y);
+            vec3 rgb = texture(source, input_tex).rgb;
+            color += coeff * rgb;
+            gain += coeff;
+        }
+        if (gain > 0.0)
+            color /= gain;
+        return color;
+    }
+    #endif
+
+    // Standard polyphase FIR convolution (Kaiser)
     for (int k = 0; k < n_taps; ++k) {
         int tap_offset = k - center;
-        float coeff = sinc_lowpass_kaiser(tap_offset - frac_offset, kfilt.fc_norm, kfilt.taps, kfilt.beta);
+        float w = kaiser(float(tap_offset), kfilt.taps, kfilt.beta);
+        float coeff = sinc(float(tap_offset) - frac_offset, kfilt.fc_norm) * w;
         vec2 input_tex = vec2((input_index + tap_offset) * config.SourceSize.z, tex.y);
         vec3 rgb = texture(source, input_tex).rgb;
 
         color += coeff * rgb;
+        gain += coeff;
     }
-
+    if (gain > 0.0)
+        color /= gain;
     return color;
 }
 
@@ -270,23 +303,8 @@ void main()
         baseCenter * config.OutputSize.z,
         (floor(UV.y) + 0.5) * config.OutputSize.w);
 
-    vec2 dx = vec2(config.OutputSize.z, 0.0);
-
     // Filter
-#ifdef OPTION_CRISPY
-    vec3 color = texture(Source, Tex).rgb;
-#else
-    vec3 color;
-#ifdef OPTION_DEBUG
-    if (DISPLAY_RGB_FILTER_BYPASS > 0.5) {
-        color = texture(Source, Tex).rgb;
-    } else {
-        color = apply_polyphase_resampler(Source, Tex);
-    }
-#else
-    color = apply_polyphase_resampler(Source, Tex);
-#endif  // OPTION_DEBUG
-#endif // OPTION_CRISPY
+    vec3 color = apply_polyphase_resampler(Source, Tex);
 
 #ifdef OPTION_DEBUG
     // RGB amplifier

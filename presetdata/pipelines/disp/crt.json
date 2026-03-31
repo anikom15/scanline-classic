@@ -1,6 +1,8 @@
 {
     "root_path" : "../../../shaders",
     "shaders" : {
+        "bandlimit" : "display-rgb-bandlimit-fir",
+        "limiter" : "limiter",
         "linear" : "crt-linear",
         "frame" : "framev",
         "phosphor" : "phosphor-trichrome",
@@ -9,9 +11,13 @@
         "curve" : "curve"
     },
     "options" : {
+        "bandlimit" : {
+            "scale_type" : ["absolute", "source"],
+            "scale" : [1018.0, 1.0]
+        },
         "frame": {
             "scale_type" : ["source", "absolute"],
-            "scale" : [1.0, 572.0]
+            "scale" : [1.0, 526.0]
         },
         "beam" : {
             "scale_type" : ["viewport"]

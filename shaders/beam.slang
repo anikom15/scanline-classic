@@ -39,8 +39,6 @@
 #pragma parameter DEBUG_BEAM_HEADER " —— Debug Beam —— " 0.0 0.0 0.0 0.0
 #pragma parameter GEOMETRY_BYPASS "Bypass beam geometry" 0.0 0.0 1.0 1.0
 #pragma parameter FILTER_BYPASS "Bypass beam filter" 0.0 0.0 1.0 1.0
-
-#pragma parameter DAR_SCALE "Display Aspect Ratio Scale" 1.0 0.1 5.0 0.01
 #endif  // OPTION_DEBUG
 
 layout(push_constant) uniform Push
@@ -78,22 +76,10 @@ layout(push_constant) uniform Push
 
 layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 MVP;
-    float H_FREQ;
-    float H_BLANK_FUZZ;
-
-    // ---- Geometry/user viewport controls ----
-
 
     // Factory/service geometry controls needed here
     float S_CORRECTION_H;   // %
     float S_CORRECTION_V;   // %
-
-#ifdef OPTION_DEBUG
-    // Debug-only stage bypass / diagnostics controls
-    float GEOMETRY_BYPASS;
-    float FILTER_BYPASS;
-    float DAR_SCALE;
-#endif  // OPTION_DEBUG
 
     float ASPECT;
     uint FrameCount;
@@ -105,6 +91,15 @@ layout(std140, set = 0, binding = 0) uniform UBO {
     float SC_FREQ_MODE;
     float V_FREQ;
     float V_FREQ_MODE;
+    float H_FREQ;
+    float H_BLANK_FUZZ;
+
+#ifdef OPTION_DEBUG
+    // Debug-only stage bypass / diagnostics controls
+    float GEOMETRY_BYPASS;
+    float FILTER_BYPASS;
+#endif  // OPTION_DEBUG
+
 } global;
 
 #define ASPECT global.ASPECT
@@ -125,7 +120,6 @@ layout(std140, set = 0, binding = 0) uniform UBO {
 #ifdef OPTION_DEBUG
 #define GEOMETRY_BYPASS global.GEOMETRY_BYPASS
 #define FILTER_BYPASS global.FILTER_BYPASS
-#define DAR_SCALE global.DAR_SCALE
 #endif // OPTION_DEBUG
 
 #pragma stage vertex
@@ -306,58 +300,21 @@ void main()
     float original_par = original_dar / max(original_sar, EPS);
 
     float full_dar = original_par * total_h_pixels / max(total_v_lines, 1.0);
-    float full_sar = total_h_pixels / max(total_v_lines, 1.0);
-    float full_par = full_dar / max(full_sar, EPS);
 
-    // When there's padding, adjust full aspect to account for it
-    float h_scale1 = floor(config.FrameHSize.x / total_h_pixels);
-    float v_scale1 = floor(config.FrameVSize.y / total_v_lines);
-
-    float h_scale2 = floor(config.SourceSize.x / (total_h_pixels * h_scale1));
-    float v_scale2 = floor(config.SourceSize.y / (total_v_lines * v_scale1));
-
-    float h_scale = max(h_scale1 * h_scale2, 1.0);
-    float v_scale = max(v_scale1 * v_scale2, 1.0);
-
-    // Calculate the active (non-padded) dimensions in the input texture
-    float active_width = floor(total_h_pixels) * h_scale;
-    float active_height = floor(total_v_lines) * v_scale;
-
-    float source_sar = config.SourceSize.x * config.SourceSize.w;
-    float active_sar = active_width / max(active_height, 1.0);
-    float source_dar = full_dar * source_sar / active_sar;
-
-#ifdef OPTION_DEBUG
-    source_dar *= DAR_SCALE;
-#endif  // OPTION_DEBUG
-
-    // Calculate active region bounds in texture UV space (centered)
-    float active_left = (config.SourceSize.x - active_width) * 0.5 * config.SourceSize.z;
-    float active_right = (config.SourceSize.x + active_width) * 0.5 * config.SourceSize.z;
-    float active_top = (config.SourceSize.y - active_height) * 0.5 * config.SourceSize.w;
-    float active_bottom = (config.SourceSize.y + active_height) * 0.5 * config.SourceSize.w;
-
-    // Expand vTexCoord so active region UVs map to [0,1]
-    float norm_x = (vTexCoord.x - active_left) / max(active_right - active_left, EPS);
-    float norm_y = (vTexCoord.y - active_top) / max(active_bottom - active_top, EPS);
-    vec2 active_uv = vec2(norm_x, norm_y);
+    vec2 active_uv = vTexCoord;
 
     // Fill to mask border (zoom): scale so the smaller axis fills the mask border
     vec2 uv_zoom = 2.0 * active_uv - 1.0;
-    float content_aspect = source_dar;
+    float content_aspect = full_dar;
     float target_aspect = maskAR;
     vec2 scale = vec2(1.0);
 
     if (content_aspect > target_aspect) {
         // Content is wider: scale x up (crop sides)
         scale.x = content_aspect / target_aspect;
-        // Uncomment to crop out padding fully
-        scale *= config.SourceSize.y / active_height;
     } else {
         // Content is taller: scale y up (crop top/bottom)
         scale.y = target_aspect / content_aspect;
-        // Uncomment to crop out padding fully
-        scale *= config.SourceSize.x / active_width;
     }
     uv_zoom /= scale;
     active_uv = 0.5 * (uv_zoom + 1.0);
@@ -391,10 +348,7 @@ void main()
 #endif  // OPTION_FLAT
 
     // Remap from geometry UVs to input texture UVs
-    vec2 input_uv = vec2(
-        active_left + geometry_uv.x * (active_right - active_left),
-        active_top + geometry_uv.y * (active_bottom - active_top)
-    );
+    vec2 input_uv = geometry_uv;
 
     // Bicubic resample from input texture using BEAM_FOCUS
     float focus = clamp(BEAM_FOCUS * 0.01, 0.0, 1.0);

@@ -153,7 +153,7 @@ void main()
     field = geom.field;
 
     // Calculate integer vertical scale factor
-    v_scale = max(floor(config.OutputSize.y / full_height), 1.0);
+    v_scale = max(round(config.OutputSize.y / full_height), 1.0);
 
     // Determine effective double refresh state
     effective_double_refresh = get_effective_double_refresh(v_scale, is_interlaced) ? 1.0 : 0.0;
@@ -317,16 +317,29 @@ void main()
     // Calculate scaled full video height
     float scaled_full_height = full_height_int * v_scale;
 
+
+    // Clamp output_y to OutputSize.y
+    if (output_y < 0.0 || output_y >= config.OutputSize.y) {
+        FragColor = vec4(0.0);
+        return;
+    }
+
+    // If full_pad_top is negative, ignore those coordinates
+    if (full_pad_top < 0.0 && output_y < 0.0) {
+        FragColor = vec4(0.0);
+        return;
+    }
+
     // Vertical boundaries of frame area in output space
-    float frame_top = full_pad_top;
+    float frame_top = max(full_pad_top, 0.0);
     float frame_bottom = full_pad_top + scaled_full_height;
 
     // Vertical boundaries of active region in output space
     float active_bottom = active_top_scaled + config.SourceSize.y * v_scale;
 
     bool in_source_x = (output_x >= 0.0 && output_x < config.SourceSize.x);
-    bool in_frame_y = (output_y >= frame_top && output_y < frame_bottom);
-    bool in_active_y = (output_y >= active_top_scaled && output_y < active_bottom);
+    bool in_frame_y = (output_y >= frame_top && output_y < frame_bottom && output_y < config.OutputSize.y);
+    bool in_active_y = (output_y >= active_top_scaled && output_y < active_bottom && output_y < config.OutputSize.y);
 
     bool in_frame = in_source_x && in_frame_y;
     bool in_active = in_source_x && in_active_y;
