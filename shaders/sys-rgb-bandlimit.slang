@@ -241,6 +241,7 @@ void main()
 #ifdef OPTION_CRISPY
     // Polyphase FIR convolution with ZOH ∗ triangle
     // Tap count is always 3
+    float coeff_sum = 0.0;
     for (int k = 0; k < 3; ++k) {
         int tap_offset = k - 1;
 
@@ -252,7 +253,9 @@ void main()
         vec3 rgb = texture(Source, input_tex).rgb;
 
         color += coeff * rgb;
+        coeff_sum += coeff;
     }
+    color /= max(coeff_sum, EPS);
     FragColor = vec4(color, 1.0);
     return;
 #endif  // OPTION_CRISPY

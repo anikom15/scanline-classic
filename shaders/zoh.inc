@@ -52,7 +52,7 @@ float zoh_triangle(float dt, float Tin, float T)
         (x1 - x0)
         - (term0 - term1) / (2.0f * T);
 
-    return coeff;
+    return coeff / Tin;
 }
 
 #endif // ZOH_INC
