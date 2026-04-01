@@ -282,22 +282,25 @@ void main()
 #endif  // OPTION_DEBUG
 
 #ifdef OPTION_CRISPY
-    // Linear
-    float coeff_sum = 0.0;
-    for (int k = 0; k < 3; ++k) {
-        int tap_offset = k - 1;
+    // Area average
+    const int MAX_TAPS = 16;
+
+    float Tout = Tin / Delta;
+    n_taps = min(int(1.0 + ceil(Tout / Tin)), 16);
+    center = (n_taps - 1) / 2;
+
+    for (int k = 0; k < n_taps; ++k) {
+        int tap_offset = k - center;
 
         // Continuous time offset between input sample and output sample
         float dt = (float(tap_offset) - frac_offset) * Tin;
-        float coeff = zoh_triangle(dt, Tin, 1.5 * Tin);
+        float coeff = zoh_area(dt, Tin, Tout);
 
         vec2 input_tex = vec2(((input_index + tap_offset) + 0.5) * config.SourceSize.z, Tex.y);
         vec3 rgb = texture(Source, input_tex).rgb;
 
         color += coeff * rgb;
-        coeff_sum += coeff;
     }
-    color /= max(coeff_sum, EPS);
 #else
     // Standard FIR convolution (Kaiser)
     for (int k = 0; k < n_taps; ++k) {
