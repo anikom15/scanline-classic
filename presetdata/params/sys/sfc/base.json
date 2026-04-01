@@ -1,12 +1,7 @@
 {
     "parameters" : {
         "ENCODER_SETUP" : 0.0,
-        "SYS_BANDWIDTH_R" : 5.4,
-        "SYS_BANDWIDTH_G" : 5.4,
-        "SYS_BANDWIDTH_B" : 5.4,
-        "SYS_CUTOFF_ATTEN_R" : 16.0,
-        "SYS_CUTOFF_ATTEN_G" : 16.0,
-        "SYS_CUTOFF_ATTEN_B" : 16.0,
+        "SYS_FILTER_DECIMATION" : 2.0,
 
         "SYS_BANDWIDTH_U" : 2.6,
         "SYS_BANDWIDTH_V" : 2.6,

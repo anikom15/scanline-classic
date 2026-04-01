@@ -127,7 +127,7 @@ void main()
     // Full video width (with blanking) at actual pixel clock rate
     float full_width = geom.h_pixels;
 
-    full_width_int = floor(full_width);
+    full_width_int = ceil(full_width);
 
     // Calculate integer horizontal scale factor
     h_scale = max(floor(config.OutputSize.x / full_width), 1.0);

@@ -9,6 +9,10 @@
         "frame" : {
             "scale_type" : ["source", "source"],
             "scale" : [2.0, 1.0]
+        },
+        "bandlimit" : {
+            "scale_type" : ["absolute", "source"],
+            "scale" : [2036.0, 1.0]
         }
     }
 }

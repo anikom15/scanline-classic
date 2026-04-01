@@ -17,7 +17,8 @@
 
 const float EPS = 1.19209289551e-7;
 const float PI = 3.14159265359;
-const float FILTER_THRESHOLD = 1.0 / 255.0;  // 8-bit LSB threshold for early loop exit
+const float FILTER_THRESHOLD = 1.0 / 255.0; // 8-bit LSB threshold for early loop exit
+const float FILTER_THRESHOLD_ANALOG = 0.01; // Threshold for analog-level bandlimit optimization (e.g., 0.01 = -40 dB)
 const vec3 BLACK = vec3(0.0, 0.0, 0.0);
 const vec3 WHITE = vec3(1.0, 1.0, 1.0);
 const vec3 RED = vec3(1.0, 0.0, 0.0);
@@ -30,14 +31,15 @@ const vec3 VIOLET = vec3(1.0, 0.0, 1.0);
 const float VOLTAGE_100 = 0.7143;      // Voltage at 100 IRE
 const float VOLTAGE_133 = 0.950019;    // Voltage at 133 IRE
 
-float sq(const float x)
-{
-    return x * x;
-}
-
-float cb(const float x)
-{
-    return x * x * x;
+// Greatest common divisor
+int gcd(int a, int b) {
+    // Euclidean algorithm
+    while (b != 0) {
+        int t = b;
+        b = a % b;
+        a = t;
+    }
+    return a;
 }
 
 float gaussian(float x, float sigma)
@@ -49,7 +51,7 @@ float gaussian(float x, float sigma)
     // Normal Gaussian: exp(-x^2 / (2 σ^2))
     // Use EPS to avoid division by zero for tiny σ.
     float s = max(sigma, EPS);
-    return exp(-sq(x) / (2.0 * sq(s)));
+    return exp(-(x * x) / (2.0 * s * s));
 }
 
 vec3 gaussian3(float x, vec3 sigma)
@@ -71,6 +73,72 @@ vec3 gaussian3(float x, vec3 sigma)
 
     // Use impulse where sigma <= 0, Gaussian otherwise
     return impulseVal + (vec3(1.0) - impulseMask) * gaussVal;
+}
+
+// Compute Gaussian low-pass sigma (in seconds) from cutoff spec.
+// Inputs:
+//   cutoff_freq_hz     - Desired cutoff frequency in Hz (analog domain)
+//   cutoff_atten_db    - Target attenuation at cutoff in dB (e.g., 3 dB)
+// Derivation:
+//   Time-domain Gaussian kernel: w(x) = exp(-x²/(2σ²))
+//   Frequency response magnitude:  |H(f)| = exp(-2π²σ²f²)
+//   Design constraint: |H(f_c)| = a = 10^(-A/20), where A = cutoff_atten_db
+//   Solving for σ:
+//     a = exp(-2π²σ²f_c²)
+//     ln a = -2π²σ²f_c²
+//     σ² = -ln a / (2π²f_c²)
+//     σ = sqrt(-ln a) / (√2 π f_c) = sqrt(-2 ln a) / (2π f_c)
+//   Equivalent forms:
+//     Original:   σ = sqrt(-2 ln(10^(-A/20))) / (2π f_c)
+//     Simplified: σ = sqrt((A/10) ln 10) / (2π f_c)
+//   where f_c is in normalized frequency: f_c = cutoff_freq_hz / samplerate
+float gaussian_sigma(float cutoff_freq_hz, float cutoff_atten_db)
+{
+    // Guard: require positive frequency scale and attenuation
+    if (cutoff_freq_hz <= 0.0 || cutoff_atten_db <= 0.0)
+        return 0.0;
+
+    float sigma = sqrt(0.1 * cutoff_atten_db * log(10.0)) / (2.0 * PI * cutoff_freq_hz);
+    return sigma;
+}
+
+// Compute time needed for Gaussian response to decay below threshold, given sigma in seconds.
+float gaussian_decay_time(float sigma, float threshold)
+{
+    // Guard: require positive sigma and threshold less than 1
+    if (sigma <= 0.0 && threshold >= 1.0)
+        return 0.0;
+
+    // Find t where Gaussian tail falls below threshold: exp(-t²/(2σ²)) = threshold
+    return sigma * sqrt(-2.0 * log(threshold));
+}
+
+// Error function (erf)
+//
+// The error function erf(x) is related to the integral of the Gaussian function:
+//   erf(x) = (2 / sqrt(pi)) * ∫[0,x] exp(-t^2) dt
+// It is used to compute the area under the Gaussian curve from 0 to x.
+// In signal processing, it appears in the closed-form convolution of a Gaussian with a box (ZOH) kernel.
+//
+// This implementation uses a numerical approximation (Abramowitz & Stegun 7.1.26, max error ~1.5e-7):
+float erf(float x)
+{
+    // constants
+    const float a1 = 0.254829592;
+    const float a2 = -0.284496736;
+    const float a3 = 1.421413741;
+    const float a4 = -1.453152027;
+    const float a5 = 1.061405429;
+    const float p = 0.3275911;
+
+    // Save the sign of x
+    float sign = x < 0.0 ? -1.0 : 1.0;
+    float absx = abs(x);
+
+    // Abramowitz & Stegun formula 7.1.26
+    float t = 1.0 / (1.0 + p * absx);
+    float y = 1.0 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * exp(-absx * absx);
+    return sign * y;
 }
 
 // Map normalized limited-range video signal to voltage

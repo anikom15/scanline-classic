@@ -52,7 +52,7 @@ float kaiser_i0(float x)
     float ax = abs(x);
     if (ax < 3.75) {
         // Polynomial approximation for small arguments
-        float y = sq(x / 3.75);
+        float y = pow(x / 3.75, 2.0);
         return 1.0 + y * (3.5156229 + y * (3.0899424 + y * (1.2067492
             + y * (0.2659732 + y * (0.0360768 + y * 0.0045813)))));
     } else {
@@ -79,7 +79,7 @@ float kaiser(float n, float N, float beta)
     float alpha = 2.0 * k / Ne - 1.0;
 
     // Normalized argument for I0: β√(1 - α²)
-    float arg = beta * sqrt(max(1.0 - sq(alpha), 0.0));
+    float arg = beta * sqrt(max(1.0 - (alpha * alpha), 0.0));
     return kaiser_i0(arg) / kaiser_i0(beta);
 }
 

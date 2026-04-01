@@ -267,8 +267,8 @@ void main()
     if (SHARPNENER_BYPASS < 0.5) {
     float emphasis_center_hz = 3.1e6;
     float emphasis2_center_hz = 4.3e6;
-    float emphasis_sigma = sigma_tb(tb, 0.6, 3.0);
-    float emphasis2_sigma = sigma_tb(tb, 0.4, 3.0);
+    float emphasis_sigma = gaussian_sigma(0.6e6 * tb.pixel_time_px, 3.0);
+    float emphasis2_sigma = gaussian_sigma(0.4e6 * tb.pixel_time_px, 3.0);
     sharpness_filters = vec4(emphasis_center_hz, emphasis_sigma, emphasis2_center_hz, emphasis2_sigma);
     } else {
         sharpness_filters = vec4(0.0);
@@ -277,8 +277,8 @@ void main()
     {
     float emphasis_center_hz = 3.1e6;
     float emphasis2_center_hz = 4.3e6;
-    float emphasis_sigma = sigma_tb(tb, 0.6, 3.0);
-    float emphasis2_sigma = sigma_tb(tb, 0.4, 3.0);
+    float emphasis_sigma = gaussian_sigma(0.6e6 * tb.pixel_time_px, 3.0);
+    float emphasis2_sigma = gaussian_sigma(0.4e6 * tb.pixel_time_px, 3.0);
     sharpness_filters = vec4(emphasis_center_hz, emphasis_sigma, emphasis2_center_hz, emphasis2_sigma);
     }
 #endif  // OPTION_DEBUG

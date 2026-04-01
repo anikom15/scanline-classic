@@ -21,14 +21,26 @@
 // -----------------------
 // Input: Real RGB voltage
 // Output: Real RGB voltage
+//
+// Implements a polyphase FIR resampler with a Kaiser windowed-sinc
+// prototype filter, designed from user cutoff and stopband parameters.
+// The vertex shader computes the filter parameters and polyphase
+// factors based on the input and output sizes, while the fragment
+// shader applies the filter to produce the final output color.
+//
+// When the filter is bypassed for debugging, a simple triangle
+// convolution is used instead of the FIR, which has a fixed 3-tap
+// kernel but is continuous for fractional pixel offsets. This is
+// required to prevent aliasing on the output.
 
 #pragma name DisplayRGBBandlimitFIR
 #pragma format R16G16B16A16_SFLOAT
 
 #include "common.inc"
 #include "color.inc"
-#include "window.inc"
 #include "modulation.inc"
+#include "window.inc"
+#include "zoh.inc"
 
 #include "menus/parameters/user-uncommon.inc"
 #include "menus/parameters/sys-timing.inc"
@@ -116,77 +128,65 @@ struct KaiserFilter {
     float fc_norm; // Normalized cutoff frequency (0..0.5)
     float taps; // Number of filter taps (should be odd)
     float beta; // Kaiser window beta parameter
+    float gain; // Precomputed gain factor for normalization
 };
 
 struct PolyphaseFilter {
-    float L; // Upsampling factor
-    float M; // Downsampling factor
-    float n_poly; // Number of polyphase components (ceil(taps / L))
+    float Delta;  // Resampling ratio (output / input)
+    float taps;
 };
-
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
-layout(location = 1) out KaiserFilter kfilt;
-layout(location = 4) out PolyphaseFilter pfilt;
-layout(location = 7) out vec3 gain;
-layout(location = 8) out vec3 bias;
-layout(location = 9) out TimebaseConfig tb;
+layout(location = 1) flat out float Tin;
+layout(location = 2) out flat KaiserFilter kfilt;
+layout(location = 6) out flat PolyphaseFilter pfilt;
+layout(location = 9) out flat vec3 gain;
+layout(location = 10) out flat vec3 bias;
 
-// Maximum filter transition width is limited to 1.0 MHz
-// A = 40
-// MAX_TAPS = (A - 8) / (2.285 * (2 * PI * 1.0e6 / fs_out))
-// fs_out is approximately 16 MHz
 const int MAX_TAPS = 37;
-
-// Greatest common divisor
-int gcd(int a, int b) {
-    // Euclidean algorithm
-    while (b != 0) {
-        int t = b;
-        b = a % b;
-        a = t;
-    }
-    return a;
-}
-
-// Kaiser windowed-sinc filter design (precise method only)
-// - Transition width in radians/sample
-// - Beta from attenuation
-const float KAISER_ATTEN_DB = 40.0; // Desired attenuation (dB)
+const float KAISER_ATTEN_DB = 40.0;
 
 void main()
 {
     gl_Position = global.MVP * Position;
     vTexCoord = TexCoord;
 
-    tb = compute_timebase(
-        config.FrameCount,
-        vTexCoord,
-        config.OriginalSize.xy,
-        config.SourceSize.xy,
-        config.FrameHSize.x,
+    float f_sc;
+    int standard;
+    float pixel_time;
+    float active_source_pixels;
+
+    compute_subcarrier_freq(
+        SC_FREQ_MODE, SC_FREQ,
         config.OriginalFPS,
-        SC_FREQ_MODE,
-        SC_FREQ,
-        PIXEL_CLOCK,
-        PIXEL_CLOCK_MODE,
-        H_FREQ_MODE,
-        H_FREQ,
-        V_FREQ_MODE,
-        V_FREQ,
-        H_BLANK_FUZZ,
-        SHORTEN_ODD_FIELD_TIME);
+        f_sc, standard);
+
+    float pixel_clock_hz = compute_pixel_clock(
+        PIXEL_CLOCK_MODE, PIXEL_CLOCK, f_sc
+    );
+
+    float h_freq_hz = compute_h_freq(
+        H_FREQ_MODE, standard, H_FREQ, pixel_clock_hz,
+        config.OriginalFPS);
+
+    compute_h_timing(
+        pixel_clock_hz, h_freq_hz, H_BLANK_FUZZ,
+        config.OriginalSize.x, active_source_pixels, pixel_time);
 
     // Polyphase resampler factors
-    int N_in = int(round(tb.h_pixels));
-    int N_out = int(round(config.OutputSize.x));
-    int g = gcd(N_in, N_out);
-    int L = N_out / g;
-    int M = N_in / g;
-    float fs_in = 1.0 / tb.pixel_time_px;
-    float fs_out = fs_in * float(L) / float(M); // Effective output sample rate after polyphase resampling
+    float Delta_in = config.SourceSize.x / active_source_pixels;
+    float Delta = config.OutputSize.x / config.SourceSize.x;
+
+    // This restores the proper upscaled sampling rate of source
+    float fs_original = 1.0 / pixel_time;
+    float fs_in = fs_original * Delta_in;
+    float fs_out = fs_in * Delta;
+
+    Tin = 1.0 / fs_in;
+
+    pfilt.Delta = Delta;
 
     // Kaiser window design from cutoff and stopband
     // Don't allow stopband to be less than cutoff
@@ -197,17 +197,24 @@ void main()
     kfilt.fc_norm = cutoff / fs_out;
 
     float trans_width = max(stopband - cutoff, EPS); // MHz, avoid div0
-    const float atten_db = KAISER_ATTEN_DB;
     float delta_omega = 2.0 * PI * trans_width / fs_out; // radians/sample
-    float beta_precise = kaiser_beta_from_atten(atten_db);
-    float taps_calc = min((atten_db - 8.0) / (2.285 * max(delta_omega, EPS)), MAX_TAPS);
-
+    float beta_precise = kaiser_beta_from_atten(KAISER_ATTEN_DB);
+    float taps_calc = min((KAISER_ATTEN_DB - 8.0) / (2.285 * max(delta_omega, EPS)), MAX_TAPS);
     kfilt.taps = float(int(ceil(taps_calc)) | 1); // force odd
     kfilt.beta = beta_precise;
 
-    pfilt.L = float(L);
-    pfilt.M = float(M);
-    pfilt.n_poly = kfilt.taps;
+    // Precompute gain for normalization
+    float sum = 0.0;
+    int center = int((kfilt.taps - 1.0) / 2.0);
+    for (int k = 0; k < int(kfilt.taps); ++k) {
+        int tap_offset = k - center;
+        float w = kaiser(float(tap_offset), kfilt.taps, kfilt.beta);
+        float coeff = sinc(float(tap_offset), kfilt.fc_norm) * w;
+        sum += coeff;
+    }
+    kfilt.gain = sum;
+
+    pfilt.taps = kfilt.taps;
 
     // Amplifier
     gain = vec3(
@@ -222,89 +229,88 @@ void main()
 
 #pragma stage fragment
 layout(location = 0) in vec2 vTexCoord;
-layout(location = 1) in KaiserFilter kfilt;
-layout(location = 4) in PolyphaseFilter pfilt;
-layout(location = 7) in vec3 gain;
-layout(location = 8) in vec3 bias;
-layout(location = 9) in TimebaseConfig tb;
+layout(location = 1) in flat float Tin;
+layout(location = 2) in flat KaiserFilter kfilt;
+layout(location = 6) in flat PolyphaseFilter pfilt;
+layout(location = 9) in flat vec3 gain;
+layout(location = 10) in flat vec3 bias;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
-// Polyphase resampler using struct parameters and L/M factors
-// Triangle window function, continuous for fractional offset
-float triangle_window(float x, float half_width) {
-    float ax = abs(x);
-    return max(0.0, (half_width - ax) / half_width);
-}
-
-// Polyphase resampler with optional triangle convolution for debug bypass
-vec3 apply_polyphase_resampler(sampler2D source, vec2 tex)
+void main()
 {
-    // tex.x is the output pixel center in normalized coordinates (0..1)
-    int L = int(pfilt.L);
-    int M = int(pfilt.M);
-    int n_taps = int(pfilt.n_poly);
-    int padding = int(round(config.SourceSize.x - tb.h_pixels));
+    vec2 UV = vTexCoord * config.OutputSize.xy;
+    vec2 Tex = vec2(
+        (floor(UV.x) + 0.5) * config.OutputSize.z,
+        (floor(UV.y) + 0.5) * config.OutputSize.w
+    );
 
-    int output_index = int(tex.x * config.OutputSize.x);
-    int phase = (output_index * M) % L;
-    int input_index = (output_index * M) / L + padding / 2;
+    // Filter
+    float Delta = pfilt.Delta;
+    int n_taps = int(pfilt.taps);
+
+    float output_index = Tex.x * config.OutputSize.x;
+    float phase = output_index / Delta;
+    float input_index = floor(phase);
     int center = (n_taps - 1) / 2;
-    float frac_offset = float(phase) / float(L);
+    float frac_offset = phase - floor(phase);
 
     vec3 color = vec3(0.0);
-    float gain = 0.0;
 
-    #ifdef OPTION_DEBUG
+#ifdef OPTION_DEBUG
     if (DISPLAY_RGB_FILTER_BYPASS > 0.5) {
-        // Triangle convolution: fixed 3 taps, continuous for fractional offset
-        const int tri_taps = 3;
-        const float half_width = 1.0;
-        int tri_center = 1;
-        float gain = 0.0;
-        for (int k = 0; k < tri_taps; ++k) {
-            int tap_offset = k - tri_center;
-            float coeff = triangle_window(float(tap_offset) - frac_offset, half_width);
-            vec2 input_tex = vec2((input_index + tap_offset) * config.SourceSize.z, tex.y);
-            vec3 rgb = texture(source, input_tex).rgb;
-            color += coeff * rgb;
-            gain += coeff;
-        }
-        if (gain > 0.0)
-            color /= gain;
-        return color;
-    }
-    #endif
+        // Area average
+        const int MAX_TAPS = 16;
 
-    // Standard polyphase FIR convolution (Kaiser)
+        float Tout = Tin / Delta;
+        n_taps = min(int(1.0 + ceil(Tout / Tin)), 16);
+        center = (n_taps - 1) / 2;
+
+        for (int k = 0; k < n_taps; ++k) {
+            int tap_offset = k - center;
+
+            // Continuous time offset between input sample and output sample
+            float dt = (float(tap_offset) - frac_offset) * Tin;
+            float coeff = zoh_area(dt, Tin, Tout);
+
+            vec2 input_tex = vec2(((input_index + tap_offset) + 0.5) * config.SourceSize.z, Tex.y);
+            vec3 rgb = texture(Source, input_tex).rgb;
+
+            color += coeff * rgb;
+        }
+    } else {
+#endif  // OPTION_DEBUG
+
+#ifdef OPTION_CRISPY
+    // Linear
+    for (int k = 0; k < 3; ++k) {
+        int tap_offset = k - 1;
+
+        // Continuous time offset between input sample and output sample
+        float dt = (float(tap_offset) - frac_offset) * Tin;
+        float coeff = zoh_triangle(dt, Tin, 1.5 * Tin);
+
+        vec2 input_tex = vec2(((input_index + tap_offset) + 0.5) * config.SourceSize.z, Tex.y);
+        vec3 rgb = texture(Source, input_tex).rgb;
+
+        color += coeff * rgb;
+    }
+#else
+    // Standard FIR convolution (Kaiser)
     for (int k = 0; k < n_taps; ++k) {
         int tap_offset = k - center;
         float w = kaiser(float(tap_offset), kfilt.taps, kfilt.beta);
-        float coeff = sinc(float(tap_offset) - frac_offset, kfilt.fc_norm) * w;
-        vec2 input_tex = vec2((input_index + tap_offset) * config.SourceSize.z, tex.y);
-        vec3 rgb = texture(source, input_tex).rgb;
+        float coeff = sinc(float(tap_offset - frac_offset), kfilt.fc_norm) * w;
+        vec2 input_tex = vec2(((input_index + tap_offset) + 0.5) * config.SourceSize.z, Tex.y);
+        vec3 rgb = texture(Source, input_tex).rgb;
 
-        color += coeff * rgb;
-        gain += coeff;
+        color += coeff * rgb / kfilt.gain;
     }
-    if (gain > 0.0)
-        color /= gain;
-    return color;
-}
+#endif  // OPTION_CRISPY
 
-void main()
-{
-    // Use original Tex and Ax for output pixel sample coordinate and fractional component
-    vec2 UV = vTexCoord * config.OutputSize.xy;
-    float baseCenter = floor(UV.x) + 0.5;
-    float Ax = UV.x - baseCenter;
-
-    vec2 Tex = vec2(
-        baseCenter * config.OutputSize.z,
-        (floor(UV.y) + 0.5) * config.OutputSize.w);
-
-    // Filter
-    vec3 color = apply_polyphase_resampler(Source, Tex);
+#ifdef OPTION_DEBUG
+    }  // end filter bypass
+#endif  // OPTION_DEBUG
 
 #ifdef OPTION_DEBUG
     // RGB amplifier
