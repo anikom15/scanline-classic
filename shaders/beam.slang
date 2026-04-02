@@ -333,16 +333,13 @@ void main()
     if (GEOMETRY_BYPASS > 0.5) {
         geometry_uv = active_uv;
     } else {
-        apply_geometry_pipeline(
-            active_uv,
-            maskAR,
-            geometry_uv);
-    }
-#else
+#endif  // OPTION_DEBUG
     apply_geometry_pipeline(
         active_uv,
         maskAR,
         geometry_uv);
+#ifdef OPTION_DEBUG
+    }
 #endif  // OPTION_DEBUG
 
 #endif  // OPTION_FLAT
