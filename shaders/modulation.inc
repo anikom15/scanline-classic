@@ -206,16 +206,37 @@ float compute_h_freq(
     }
 }
 
-// Compute vertical lines per field based on mode and parameters
-float compute_v_lines_per_field(
+// Compute vertical geometry and interlace-adjusted field lines.
+void compute_v_lines_per_field(
     float v_freq_mode, float h_freq_hz,
-    float core_refresh_hz, float custom_v_freq)
+    float core_refresh_hz, float custom_v_freq,
+    float original_height,
+    out float v_lines_per_field,
+    out float v_lines_per_frame,
+    out bool is_interlaced)
 {
+    float raw_v_lines_per_field;
     if (v_freq_mode < 2.5 || v_freq_mode > 3.5) {
-        return round(h_freq_hz / core_refresh_hz);
+        raw_v_lines_per_field = round(h_freq_hz / core_refresh_hz);
     } else {
-        return custom_v_freq;
+        raw_v_lines_per_field = custom_v_freq;
     }
+
+    float interlace_ratio = original_height / raw_v_lines_per_field;
+    is_interlaced = (interlace_ratio > 1.5);
+
+    v_lines_per_frame = raw_v_lines_per_field * 2.0 + 2.0;
+
+    float adjusted_v_lines_per_field = raw_v_lines_per_field;
+    if (is_interlaced) {
+        if (raw_v_lines_per_field < 262.5) {
+            adjusted_v_lines_per_field += 0.5;
+        } else if (raw_v_lines_per_field > 262.5) {
+            adjusted_v_lines_per_field -= 0.5;
+        }
+    }
+
+    v_lines_per_field = adjusted_v_lines_per_field;
 }
 
 // Detect interlacing and video standard type
@@ -399,25 +420,23 @@ FrameGeometry compute_frame_geometry(
     );
 
     // Vertical line derivation
-    geom.v_lines_per_field = compute_v_lines_per_field(
+    bool is_interlaced;
+    compute_v_lines_per_field(
         v_freq_mode, h_freq_hz,
-        core_refresh_hz, custom_v_freq
+        core_refresh_hz, custom_v_freq,
+        original_size.y,
+        geom.v_lines_per_field,
+        geom.v_lines_per_frame,
+        is_interlaced
     );
 
-    // Interlacing detection
-    bool is_interlaced, is_ntsc, is_pal;
+    // Video standard detection
+    bool detected_interlaced, is_ntsc, is_pal;
     detect_scan_mode(
         original_size.y, geom.v_lines_per_field, core_refresh_hz,
-        is_interlaced, is_ntsc, is_pal
+        detected_interlaced, is_ntsc, is_pal
     );
     geom.is_interlaced = is_interlaced ? 1.0 : 0.0;
-
-    // Calculate frame dimensions
-    geom.v_lines_per_frame = geom.v_lines_per_field * 2.0 + 2.0;
-
-    if (is_interlaced) {
-        geom.v_lines_per_field += 0.5;
-    }
 
     // Calculate horizontal pixels
     float total_cycles = pixel_clock_hz / h_freq_hz;
@@ -472,23 +491,20 @@ TimebaseConfig compute_timebase(
         core_refresh_hz);
 
     // === Vertical line and scan mode derivation ===
-    config.v_lines_per_field = compute_v_lines_per_field(
+    bool is_interlaced;
+    compute_v_lines_per_field(
         v_freq_mode, config.h_freq_hz,
-        core_refresh_hz, custom_v_freq);
+        core_refresh_hz, custom_v_freq,
+        original_size.y,
+        config.v_lines_per_field,
+        config.v_lines_per_frame,
+        is_interlaced);
 
-    bool is_interlaced, is_ntsc, is_pal;
+    bool detected_interlaced, is_ntsc, is_pal;
     detect_scan_mode(
         original_size.y, config.v_lines_per_field, core_refresh_hz,
-        is_interlaced, is_ntsc, is_pal);
+        detected_interlaced, is_ntsc, is_pal);
     config.is_interlaced = is_interlaced ? 1.0 : 0.0;
-
-    // Calculate lines per frame
-    config.v_lines_per_frame = config.v_lines_per_field * 2.0 + 2.0;
-
-    // For interlaced content, add one extra line to account for field differences
-    if (is_interlaced) {
-        config.v_lines_per_field += 0.5;
-    }
 
     // === Timing derivation ===
     float v_freq = compute_v_freq(

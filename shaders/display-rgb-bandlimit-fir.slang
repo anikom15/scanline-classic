@@ -310,8 +310,9 @@ void main()
         vec2 input_tex = vec2(((input_index + tap_offset) + 0.5) * config.SourceSize.z, Tex.y);
         vec3 rgb = texture(Source, input_tex).rgb;
 
-        color += coeff * rgb / kfilt.gain;
+        color += coeff * rgb;
     }
+    color /= kfilt.gain;
 #endif  // OPTION_CRISPY
 
 #ifdef OPTION_DEBUG

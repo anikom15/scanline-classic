@@ -17,10 +17,10 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
-// Voltage limiter (SDR output range)
-// -----------------
-// Input: Voltage
-// Output: Voltage
+// Voltage limiter and user adjustments for gamma and sharpness
+// ------------------------------------------------------------
+// Input: Real RGB voltage
+// Output: Real RGB voltage
 //
 // Clips and normalizes voltage to range defined by IRE limits.
 //
@@ -41,10 +41,7 @@
 #include "common.inc"
 #include "color.inc"
 #include "tools/zebra.inc"
-#include "modulation.inc"
 
-#include "menus/parameters/sys-timing.inc"
-#include "menus/parameters/user-common.inc"
 #include "menus/parameters/user-uncommon.inc"
 #include "menus/parameters/colorimetry.inc"
 #include "menus/parameters/limiter.inc"
@@ -59,54 +56,19 @@
 
 layout(push_constant) uniform Push
 {
-    // Timing and source geometry (added for sharpness bandpass)
-    vec4 OriginalSize;    // .xy size, .zw inv size
+    // Output size info
     vec4 OutputSize;
-    vec4 FrameHSize;
     uint FrameCount;
-    float OriginalFPS;    // Vertical frequency (Hz)
-    float V_FREQ_MODE;
-    float V_FREQ;
-    float SHORTEN_ODD_FIELD_TIME;
-    float SC_FREQ_MODE;
-    float SC_FREQ;        // Custom subcarrier frequency (MHz)
-    float PIXEL_CLOCK_MODE;
-    float PIXEL_CLOCK;
-    float H_FREQ_MODE;
 
     // User video adjustments
     float USER_GAMMA;
-    // User sharpness (percentage 0-100 from user-common.inc)
-    float USER_SHARPNESS;
     float W_Y;
     float NTSC_CONVERSION;
     float NTSC_CONVERSION_WEIGHT;
     float LIMITER_COMPRESSION_POINT;
     float LIMITER_MAX_OUTPUT;
     float LIMITER_TYPE;
-} config;
 
-#define V_FREQ_MODE config.V_FREQ_MODE
-#define V_FREQ config.V_FREQ
-#define SHORTEN_ODD_FIELD_TIME config.SHORTEN_ODD_FIELD_TIME
-#define SC_FREQ_MODE config.SC_FREQ_MODE
-#define SC_FREQ config.SC_FREQ
-#define PIXEL_CLOCK_MODE config.PIXEL_CLOCK_MODE
-#define PIXEL_CLOCK config.PIXEL_CLOCK
-#define H_FREQ_MODE config.H_FREQ_MODE
-
-#define USER_GAMMA config.USER_GAMMA
-#define USER_SHARPNESS config.USER_SHARPNESS
-#define W_Y config.W_Y
-#define NTSC_CONVERSION config.NTSC_CONVERSION
-#define NTSC_CONVERSION_WEIGHT config.NTSC_CONVERSION_WEIGHT
-#define LIMITER_TYPE config.LIMITER_TYPE
-#define LIMITER_COMPRESSION_POINT config.LIMITER_COMPRESSION_POINT
-#define LIMITER_MAX_OUTPUT config.LIMITER_MAX_OUTPUT
-
-layout(std140, set = 0, binding = 0) uniform UBO
-{
-    mat4 MVP;
     // Color conversion circuitry (RGB matrix type)
     float R_X;
     float R_Y;
@@ -115,47 +77,47 @@ layout(std140, set = 0, binding = 0) uniform UBO
     float B_X;
     float B_Y;
     float W_X;
-
-    // Limiter
+    float COLORIMETRY_PRESET;
 
 #ifdef OPTION_DEBUG
-    float SHARPNENER_BYPASS;
     float LIMITER_BYPASS;
     float LIMITER_DEBUG_OUT_OF_RANGE;
-#endif  // OPTION_DEBUG
+#endif // OPTION_DEBUG
 
-    float COLORIMETRY_PRESET;
-    float H_BLANK_FUZZ;
-    float H_FREQ;
+} config;
+
+#define USER_GAMMA config.USER_GAMMA
+#define W_Y config.W_Y
+#define NTSC_CONVERSION config.NTSC_CONVERSION
+#define NTSC_CONVERSION_WEIGHT config.NTSC_CONVERSION_WEIGHT
+#define LIMITER_TYPE config.LIMITER_TYPE
+#define LIMITER_COMPRESSION_POINT config.LIMITER_COMPRESSION_POINT
+#define LIMITER_MAX_OUTPUT config.LIMITER_MAX_OUTPUT
+
+#define COLORIMETRY_PRESET config.COLORIMETRY_PRESET
+#define R_X config.R_X
+#define R_Y config.R_Y
+#define G_X config.G_X
+#define G_Y config.G_Y
+#define B_X config.B_X
+#define B_Y config.B_Y
+#define W_X config.W_X
+
+#ifdef OPTION_DEBUG
+#define LIMITER_BYPASS config.LIMITER_BYPASS
+#define LIMITER_DEBUG_OUT_OF_RANGE config.LIMITER_DEBUG_OUT_OF_RANGE
+#endif // OPTION_DEBUG
+
+layout(std140, set = 0, binding = 0) uniform UBO
+{
+    mat4 MVP;
 } global;
-#define H_FREQ global.H_FREQ
-#define H_BLANK_FUZZ global.H_BLANK_FUZZ
-#define COLORIMETRY_PRESET global.COLORIMETRY_PRESET
-#define R_X global.R_X
-#define R_Y global.R_Y
-#define G_X global.G_X
-#define G_Y global.G_Y
-#define B_X global.B_X
-#define B_Y global.B_Y
-#define W_X global.W_X
-
-#ifdef OPTION_DEBUG
-#define SHARPNENER_BYPASS global.SHARPNENER_BYPASS
-#define LIMITER_BYPASS global.LIMITER_BYPASS
-#endif  // OPTION_DEBUG
-
-
-#ifdef OPTION_DEBUG
-#define LIMITER_DEBUG_OUT_OF_RANGE global.LIMITER_DEBUG_OUT_OF_RANGE
-#endif  // OPTION_DEBUG
 
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
-layout(location = 1) out mat3 CorrectionMatrix;
-layout(location = 4) out vec4 sharpness_filters;
-layout(location = 5) out TimebaseConfig tb;
+layout(location = 1) out flat mat3 CorrectionMatrix;
 
 void main()
 {
@@ -238,155 +200,17 @@ void main()
         CorrectionMatrix = inverse(RGB_to_XYZ) * ref_to_XYZ;
     }
 #endif  // OPTION_NOCOLOR
-
-    // Compute timebase with actual vertex TexCoord (per-vertex)
-    tb = compute_timebase(
-        config.FrameCount,
-        vTexCoord,
-        config.OriginalSize.xy,
-        config.OutputSize.xy,
-        config.FrameHSize.x,
-        config.OriginalFPS,
-        SC_FREQ_MODE,
-        SC_FREQ,
-        PIXEL_CLOCK,
-        PIXEL_CLOCK_MODE,
-        H_FREQ_MODE,
-        H_FREQ,
-        V_FREQ_MODE,
-        V_FREQ,
-        H_BLANK_FUZZ,
-        SHORTEN_ODD_FIELD_TIME);
-
-    // Emphasis design parameters using timebase
-
-#ifdef OPTION_CRISPY
-    sharpness_filters = vec4(0.0);
-#else
-#ifdef OPTION_DEBUG
-    if (SHARPNENER_BYPASS < 0.5) {
-    float emphasis_center_hz = 3.1e6;
-    float emphasis2_center_hz = 4.3e6;
-    float emphasis_sigma = gaussian_sigma(0.6e6 * tb.pixel_time_px, 3.0);
-    float emphasis2_sigma = gaussian_sigma(0.4e6 * tb.pixel_time_px, 3.0);
-    sharpness_filters = vec4(emphasis_center_hz, emphasis_sigma, emphasis2_center_hz, emphasis2_sigma);
-    } else {
-        sharpness_filters = vec4(0.0);
-    }
-#else
-    {
-    float emphasis_center_hz = 3.1e6;
-    float emphasis2_center_hz = 4.3e6;
-    float emphasis_sigma = gaussian_sigma(0.6e6 * tb.pixel_time_px, 3.0);
-    float emphasis2_sigma = gaussian_sigma(0.4e6 * tb.pixel_time_px, 3.0);
-    sharpness_filters = vec4(emphasis_center_hz, emphasis_sigma, emphasis2_center_hz, emphasis2_sigma);
-    }
-#endif  // OPTION_DEBUG
-#endif  // OPTION_CRISPY
-
 }
 
 #pragma stage fragment
 layout(location = 0) in vec2 vTexCoord;
-layout(location = 1) in mat3 CorrectionMatrix;
-layout(location = 4) in vec4 sharpness_filters;
-layout(location = 5) in TimebaseConfig tb;
+layout(location = 1) flat in mat3 CorrectionMatrix;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
 void main()
 {
     vec3 color = texture(Source, vTexCoord).rgb;
-
-    // Sharpness bandpass + harmonic (modulated Gaussian) before any other processing.
-    float sharpness = USER_SHARPNESS / 100.0;
-#ifdef OPTION_CRISPY
-    sharpness = 0.0;  // Sharpening circuit disabled under OPTION_CRISPY
-#endif  // OPTION_CRISPY
-#ifdef OPTION_DEBUG
-    if (sharpness > 0.0 && SHARPNENER_BYPASS < 0.5) {
-#else
-    if (sharpness > 0.0) {
-#endif  // OPTION_DEBUG
-
-        float emphasis_center_hz = sharpness_filters.x;
-        float emphasis_sigma = sharpness_filters.y;
-        float emphasis2_center_hz = sharpness_filters.z;
-        float emphasis2_sigma = sharpness_filters.w;
-
-        // Horizontal lattice setup
-        vec2 UV = vTexCoord * config.OutputSize.xy;
-        float line = floor(UV.y);
-        float baseIndex = floor(UV.x);
-        float baseCenter = baseIndex + 0.5;
-        float Ax = UV.x - baseCenter; // [-0.5,0.5]
-        vec2 TexCenter = vec2(
-            baseCenter * config.OutputSize.z,
-            (floor(UV.y) + 0.5) * config.OutputSize.w);
-        vec2 dx = vec2(config.OutputSize.z, 0.0);
-
-        float t0 = line / tb.h_freq_hz + baseCenter * tb.pixel_time_px;
-        float emphasis_phase0 = 2.0 * PI * emphasis_center_hz * t0;
-        float emphasis2_phase0 = 2.0 * PI * emphasis2_center_hz * t0;
-
-        float w_emphasis0 = gaussian(Ax, emphasis_sigma);
-        float w_emphasis2_0 = gaussian(Ax, emphasis2_sigma);
-
-        vec3 c0 = texture(Source, TexCenter).rgb;
-        vec3 band_color = w_emphasis0 * c0 * cos(emphasis_phase0);
-        vec3 band2_color = w_emphasis2_0 * c0 * cos(emphasis2_phase0);
-        float wsum = w_emphasis0;
-        float wsum2 = w_emphasis2_0;
-
-        for (int n = 1; n <= 10; ++n) {
-            float nf = float(n);
-            float w_emphasis_r = gaussian(nf - Ax, emphasis_sigma);
-            float w_emphasis_l = gaussian(nf + Ax, emphasis_sigma);
-            float w_emphasis2_r = gaussian(nf - Ax, emphasis2_sigma);
-            float w_emphasis2_l = gaussian(nf + Ax, emphasis2_sigma);
-            if (w_emphasis_r < FILTER_THRESHOLD && w_emphasis_l < FILTER_THRESHOLD &&
-                w_emphasis2_r < FILTER_THRESHOLD && w_emphasis2_l < FILTER_THRESHOLD)
-                break;
-
-            float offsetR = baseCenter + nf;
-            float tR = line / tb.h_freq_hz + offsetR * tb.pixel_time_px;
-            vec3 cR = texture(Source, TexCenter + nf * dx).rgb;
-            float emphasis_phaseR = 2.0 * PI * emphasis_center_hz * tR;
-            float emphasis2_phaseR = 2.0 * PI * emphasis2_center_hz * tR;
-
-            float offsetL = baseCenter - nf;
-            float tL = line / tb.h_freq_hz + offsetL * tb.pixel_time_px;
-            vec3 cL = texture(Source, TexCenter - nf * dx).rgb;
-            float emphasis_phaseL = 2.0 * PI * emphasis_center_hz * tL;
-            float emphasis2_phaseL = 2.0 * PI * emphasis2_center_hz * tL;
-
-            band_color += w_emphasis_r * cR * cos(emphasis_phaseR) + w_emphasis_l * cL * cos(emphasis_phaseL);
-            band2_color += w_emphasis2_r * cR * cos(emphasis2_phaseR) + w_emphasis2_l * cL * cos(emphasis2_phaseL);
-            wsum += w_emphasis_r + w_emphasis_l;
-            wsum2 += w_emphasis2_r + w_emphasis2_l;
-        }
-
-        band_color /= max(wsum, FILTER_THRESHOLD);
-        band2_color /= max(wsum2, FILTER_THRESHOLD);
-
-        float demod_mod = 2.0 * cos(emphasis_phase0);
-        vec3 emphasis_component = band_color * demod_mod;
-
-        float demod_mod2 = 2.0 * cos(emphasis2_phase0);
-        vec3 emphasis2_component = band2_color * demod_mod2;
-
-        // Non-linear gain mapping for stronger high sharpness
-        float primary_gain = sharpness * (1.0 + 0.6 * sharpness * sharpness);
-        float harm2_gain = mix(0.3, 0.55, sharpness * sharpness);
-
-        // Energy-based soft limiter to tame overshoots
-        float energy = dot(emphasis_component, emphasis_component);
-        float energy_limit = 1.0 / (1.0 + energy * 12.0 * primary_gain);
-
-        // Apply boosted gains
-        color += primary_gain * energy_limit * emphasis_component;
-        color += primary_gain * harm2_gain * energy_limit * emphasis2_component;
-    }
 
     // Clamp negative voltages to zero
     color = max(color, vec3(0.0));
