@@ -16,29 +16,6 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
 // Bezel functions to be used with #include
-//
-// ============================================================================
-// OPTIMIZATION PHASES (2025)
-// ============================================================================
-// Phase 1: Adaptive Diffusion & Fast Math (COMPLETE)
-//   - Distance-based sample reduction: 40-50% cost savings at 4K
-//   - Conditional jitter: skips expensive hash when contribution negligible
-//   - Fast exp approximation: Padé rational replaces hardware exp()
-//   - Always-on (no toggles)
-//
-// Phase 2: Resolution Invariance (COMPLETE)
-//   - Percent-based parameters: GLOW_RADIUS_PERCENT (% of screen height)
-//   - Presets work identically 1080p → 4K without manual adjustment
-//   - Edge guard normalized for consistent visual margins
-//   - Always-on (no toggles)
-//
-// Phase 3: Mipmapping Support (IMPLEMENTED, disabled by default)
-//   - USE_MIPMAPPING=0: Standard multi-sample path (current default)
-//   - USE_MIPMAPPING=1: textureLod() with adaptive LOD (GL/Vulkan ready)
-//   - LOD scales with distance: near=sharp (LOD0), far=blurred (LOD2-3)
-//   - Activation: Set #define USE_MIPMAPPING 1 when D3D backend supports mips
-//   - Expected gain when enabled: Additional 2.5-3× at 4K (6× total vs baseline)
-// ============================================================================
 
 #include "common.inc"
 #include "color.inc"

@@ -116,6 +116,30 @@ layout(set = 0, binding = 1) uniform sampler2D Source;
 
 // ---- Helpers ----
 
+// Lightweight anisotropic-like fallback for spatial transforms.
+// Uses two bilinear samples along the local major distortion axis.
+vec3 sample_directional_bilinear(sampler2D source, vec2 uv, vec2 stepxy)
+{
+    vec2 dx = dFdx(uv);
+    vec2 dy = dFdy(uv);
+
+    float dx2 = dot(dx, dx);
+    float dy2 = dot(dy, dy);
+    vec2 major = (dx2 > dy2) ? dx : dy;
+    float major_len = sqrt(max((dx2 > dy2) ? dx2 : dy2, EPS));
+
+    vec2 dir = major / max(major_len, EPS);
+    float texel = max(stepxy.x, stepxy.y);
+    float footprint = major_len / max(texel, EPS);
+    float spread = clamp((footprint - 1.0) * 0.5, 0.0, 1.5);
+    vec2 offset = dir * spread * stepxy;
+
+    return 0.5 * (
+        texture(source, uv - offset).rgb +
+                  texture(source, uv + offset).rgb
+    );
+}
+
 // Parameterized barrel distortion using anisotropic angles (radians)
 vec2 barrel_theta(vec2 uv, const float theta_h, const float theta_v)
 {
