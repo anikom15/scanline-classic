@@ -20,7 +20,11 @@
             "scale" : [1.0, 526.0]
         },
         "beam" : {
-            "scale_type" : ["viewport"]
+            "scale_type" : ["viewport"],
+            "filter_linear" : true
+        },
+        "curve" : {
+            "filter_linear" : true
         }
     }
 }

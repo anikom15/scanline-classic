@@ -37,7 +37,7 @@
 #ifdef OPTION_DEBUG
 #pragma parameter DEBUG_CURVE_HEADER " —— Debug Curve —— " 0.0 0.0 0.0 0.0
 #pragma parameter CURVE_BYPASS "Bypass Curvature" 0 0 1.0 1.0
-#pragma parameter CURVE_FILTER "Curvature filter (0=off, 1=on)" 1.0 0.0 1.0 1.0
+#pragma parameter CURVE_FILTER "Curvature filter (fast, accurate, dir bilinear, bilinear)" 2.0 0.0 3.0 1.0
 #pragma parameter DEBUG_BARREL_SURROUND "Debug: Show surround outside barrel" 0.0 0.0 1.0 1.0
 #pragma parameter CURVE_DEBUG_OUT_OF_RANGE "Curve: Show out-of-range colors" 0.0 0.0 1.0 1.0
 #endif  // OPTION_DEBUG
@@ -173,11 +173,20 @@ vec3 sample_curve_source(sampler2D source, vec2 tex, float B, float C)
 
 #ifdef OPTION_DEBUG
     if (CURVE_FILTER < 0.5) {
-        return texture(source, tex).rgb;
+        return sample_bicubic_fast(source, tex, config.SourceSize.zw, B, C);
     }
+    if (CURVE_FILTER < 1.5) {
+        return sample_bicubic(source, tex, config.SourceSize.zw, B, C);
+    }
+    if (CURVE_FILTER < 2.5) {
+        return sample_directional_bilinear(source, tex, config.SourceSize.zw);
+    }
+
+    // Plain bilinear reference
+    return texture(source, tex).rgb;
 #endif  // OPTION_DEBUG
 
-    return sample_bicubic(source, tex, config.SourceSize.zw, B, C);
+    return sample_directional_bilinear(source, tex, config.SourceSize.zw);
 }
 
 vec3 apply_curve_debug(vec3 color, vec2 tex)

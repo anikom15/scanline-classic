@@ -38,7 +38,7 @@
 #ifdef OPTION_DEBUG
 #pragma parameter DEBUG_BEAM_HEADER " —— Debug Beam —— " 0.0 0.0 0.0 0.0
 #pragma parameter GEOMETRY_BYPASS "Bypass beam geometry" 0.0 0.0 1.0 1.0
-#pragma parameter FILTER_BYPASS "Bypass beam filter" 0.0 0.0 1.0 1.0
+#pragma parameter BEAM_FILTER_TYPE "Beam filter type (fast, accurate, bilinear)" 0.0 0.0 2.0 1.0
 #endif  // OPTION_DEBUG
 
 layout(push_constant) uniform Push
@@ -97,7 +97,7 @@ layout(std140, set = 0, binding = 0) uniform UBO {
 #ifdef OPTION_DEBUG
     // Debug-only stage bypass / diagnostics controls
     float GEOMETRY_BYPASS;
-    float FILTER_BYPASS;
+    float BEAM_FILTER_TYPE;
 #endif  // OPTION_DEBUG
 
 } global;
@@ -119,7 +119,7 @@ layout(std140, set = 0, binding = 0) uniform UBO {
 
 #ifdef OPTION_DEBUG
 #define GEOMETRY_BYPASS global.GEOMETRY_BYPASS
-#define FILTER_BYPASS global.FILTER_BYPASS
+#define BEAM_FILTER_TYPE global.BEAM_FILTER_TYPE
 #endif // OPTION_DEBUG
 
 #pragma stage vertex
@@ -356,13 +356,17 @@ void main()
     float alpha = texture(Source, clamp01(input_uv)).a;
 
 #ifdef OPTION_DEBUG
-    if (FILTER_BYPASS < 0.5) {
+    if (BEAM_FILTER_TYPE < 0.5) {
+#endif  // OPTION_DEBUG
+
+    color = sample_bicubic_fast(Source, input_uv, config.SourceSize.zw, B, C);
+
+#ifdef OPTION_DEBUG
+    } else if (BEAM_FILTER_TYPE < 1.5) {
         color = sample_bicubic(Source, input_uv, config.SourceSize.zw, B, C);
     } else {
         color = texture(Source, input_uv).rgb;
     }
-#else
-    color = sample_bicubic(Source, input_uv, config.SourceSize.zw, B, C);
 #endif  // OPTION_DEBUG
 
     FragColor = vec4(max(color, 0.0), alpha);
