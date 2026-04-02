@@ -234,13 +234,15 @@ int glow_diffusion_steps()
 {
     if (GLOW_DIFFUSION < 0.5) {
         if (USE_MIPMAPPING > 0.5)
-            return 4;
-        return 8;   // Low: performance mode
+            return 2;
+        return 4;   // Low: performance mode
     } else if (GLOW_DIFFUSION < 1.5) {
         if (USE_MIPMAPPING > 0.5)
-            return 8;
-        return 12;  // Medium: balanced
+            return 4;
+        return 8;  // Medium: balanced
     } else {
+        if (USE_MIPMAPPING > 0.5)
+            return 8;
         return 16;  // High: quality mode
     }
 }
@@ -464,9 +466,13 @@ vec3 sample_mirror_safe(sampler2D tex, vec2 uv, float lod)
 
     float margin = EDGE_GUARD_PERCENT * 0.01;
     float edge_scale = 1.0 - 2.0 * margin;
+    // PERF: avoids per-sample pow(edge_scale, +/-1) in inner glow loops.
+    // Keep reciprocal + select form; this reduced hotspot cost measurably.
+    float inv_edge_scale = 1.0 / max(edge_scale, EPS);
+    vec2 axis_scale = mix(vec2(inv_edge_scale), vec2(edge_scale), step(vec2(0.0), s));
 
-    uv = uv * pow(vec2(edge_scale), s) + s * margin;
-    uv += vec2(0.5) * pow(vec2(edge_scale), s);
+    uv = uv * axis_scale + s * margin;
+    uv += vec2(0.5) * axis_scale;
     vec2 m = mirror01(uv);
 
     return textureLod(tex, m, lod).rgb;
@@ -511,7 +517,12 @@ vec3 calculate_glow(vec2 coord, float radius, float diffusion_steps, float radia
         // Closer samples contribute more (linear falloff)
         float diffusion_weight = 1.0 - (distance_factor - 1.0 / float(num_steps));
 
-        for (int i = 0; i < 8; i++) {
+        // PERF: split accumulation into two independent chains to reduce
+        // loop-carried dependency stalls seen on glow += sample * weight.
+        vec3 glow_a = vec3(0.0);
+        vec3 glow_b = vec3(0.0);
+
+        for (int i = 0; i < 4; i++) {
             vec2 dir = directions[i];
 
             // Calculate sample offset with distance scaling
@@ -521,11 +532,25 @@ vec3 calculate_glow(vec2 coord, float radius, float diffusion_steps, float radia
             // Sample source color
             vec3 sample_linear = sample_mirror_safe(Source, coord + offset, 0.0);
 
-            // Combine weights and accumulate
-            float weight = diffusion_weight;
-            glow += sample_linear * weight;
-            total_weight += weight;
+            glow_a += sample_linear * diffusion_weight;
         }
+
+        for (int i = 4; i < 8; i++) {
+            vec2 dir = directions[i];
+
+            // Calculate sample offset with distance scaling
+            float step_radius = radius * distance_factor;
+            vec2 offset = dir * step_radius;
+
+            // Sample source color
+            vec3 sample_linear = sample_mirror_safe(Source, coord + offset, 0.0);
+
+            glow_b += sample_linear * diffusion_weight;
+        }
+
+        glow += glow_a + glow_b;
+        // PERF: one update per step instead of per tap lowers scalar pressure.
+        total_weight += 8.0 * diffusion_weight;
     }
 
     // Normalize to maintain consistent brightness regardless of sample count
@@ -577,7 +602,11 @@ vec3 calculate_glow_mipmapped(vec2 coord, float radius, float diffusion_steps, f
         // Compute LOD for this distance step
         float step_lod = compute_manual_lod(coord, radius, distance_factor);
 
-        for (int i = 0; i < 8; i++) {
+        // PERF: same dual-accumulator strategy as non-mip path.
+        vec3 glow_a = vec3(0.0);
+        vec3 glow_b = vec3(0.0);
+
+        for (int i = 0; i < 4; i++) {
             vec2 dir = directions[i];
 
             // Calculate sample offset with distance scaling
@@ -585,12 +614,27 @@ vec3 calculate_glow_mipmapped(vec2 coord, float radius, float diffusion_steps, f
             vec2 offset = dir * step_radius;
 
             // Sample with explicit LOD
-            vec3 sample_linear = sample_mirror_safe(Source, coord + offset, step_lod).rgb;
+            vec3 sample_linear = sample_mirror_safe(Source, coord + offset, step_lod);
 
-            float weight = diffusion_weight;
-            glow += sample_linear * weight;
-            total_weight += weight;
+            glow_a += sample_linear * diffusion_weight;
         }
+
+        for (int i = 4; i < 8; i++) {
+            vec2 dir = directions[i];
+
+            // Calculate sample offset with distance scaling
+            float step_radius = radius * distance_factor;
+            vec2 offset = dir * step_radius;
+
+            // Sample with explicit LOD
+            vec3 sample_linear = sample_mirror_safe(Source, coord + offset, step_lod);
+
+            glow_b += sample_linear * diffusion_weight;
+        }
+
+        glow += glow_a + glow_b;
+        // PERF: aggregate once per step, not once per sample tap.
+        total_weight += 8.0 * diffusion_weight;
     }
 
     if (total_weight > 0.0)
@@ -672,11 +716,24 @@ void main()
     screen.rgb = screen.rgb;
     screen.a = 1.0; // Ensure opaque screen
 
-    uint frame;
+    uint frame = config.FrameCount;
+
     if (config.TotalSubFrames > 1u) {
-        frame = (config.FrameCount << 4) + (config.CurrentSubFrame << 4) / config.TotalSubFrames;
-    } else {
-        frame = config.FrameCount;
+        // PERF: avoid integer divide on common jitter phase counts.
+        // Keep these branches; they reduce NOTSEL/latency vs generic divide.
+        uint subframe4;
+        if (config.TotalSubFrames == 2u)
+            subframe4 = config.CurrentSubFrame << 3;
+        else if (config.TotalSubFrames == 4u)
+            subframe4 = config.CurrentSubFrame << 2;
+        else if (config.TotalSubFrames == 8u)
+            subframe4 = config.CurrentSubFrame << 1;
+        else if (config.TotalSubFrames == 16u)
+            subframe4 = config.CurrentSubFrame;
+        else
+            subframe4 = (config.CurrentSubFrame << 4) / config.TotalSubFrames;
+
+        frame = (config.FrameCount << 4) + subframe4;
     }
 
 #ifdef OPTION_NOBEZEL
@@ -684,33 +741,42 @@ void main()
     return;
 #endif  // OPTION_NOBEZEL
 
+#ifdef OPTION_DEBUG
     // Bypass mode: pass through screen content without bezel/glow processing
     if (BEZEL_BYPASS > 0.5) {
         write_output_color(screen.rgb, frame);
         return;
     }
+#endif  // OPTION_DEBUG
 
     vec3 glow;
     float effective_glow_weight;
 
     // Sample background/bezel texture with pixel-aligned sampling
-    vec2 uv = floor(vTexCoord * textureSize(BORDER, 0)) + 0.5; // Align to pixel centers;
-    vec2 tex = uv / textureSize(BORDER, 0);
+    vec2 border_size = vec2(textureSize(BORDER, 0));
+    vec2 uv = floor(vTexCoord * border_size) + 0.5; // Align to pixel centers;
+    vec2 tex = uv / border_size;
     vec4 background = texture(BORDER, tex);
 
-    // Use sRGB for background texture
-    vec3 background_linear = srgb_linear(background.rgb);
+#ifdef OPTION_NOGLOW
+#else
+    // PERF: keep this early to hide BORDER texture latency before alpha-key use.
+    float radius = EFFECTIVE_GLOW_RADIUS;
+    float radial_dist = length(screen_coord - clamp(screen_coord, vec2(0.0), vec2(1.0))) / max(length(viewport_max_dist), EPS);
+    float falloff = glow_falloff(radial_dist);
+    float base_glow_weight = GLOW_WEIGHT * falloff;
+    int diffusion_steps = glow_diffusion_steps();
+#endif  // OPTION_NOGLOW
 
     // Color key against green to create transparency in bezel when JPEG is used
     // Smooth chroma key: alpha is 0 for pure green, 1 for non-green, smooth in between
-    if (background.a > 1.0 - EPS) {
-        float key_thresh = KEY_THRESH; // Tolerance for keying (tweak as needed)
-        float key_soft = KEY_SOFT;     // Soft edge width for smooth transition
-        vec3 key_color = vec3(0.0, 1.0, 0.0);
-        float key_dist = distance(background.rgb, key_color);
-        float key_alpha = smoothstep(key_thresh, key_thresh + key_soft, key_dist);
-        background.a *= key_alpha;
-    }
+    float key_dist = distance(background.rgb, vec3(0.0, 1.0, 0.0));
+    float key_alpha = smoothstep(KEY_THRESH, KEY_THRESH + KEY_SOFT, key_dist);
+    float key_enable = step(1.0 - EPS, background.a);
+    background.a *= mix(1.0, key_alpha, key_enable);
+
+    // Convert after keying so the BORDER texture read has more time to retire.
+    vec3 background_linear = srgb_linear(background.rgb);
 
 #ifdef OPTION_NOGLOW
     glow = vec3(0.0);
@@ -721,17 +787,9 @@ void main()
         glow = vec3(0.0);
         effective_glow_weight = 0.0;
     } else {
-        float radius = EFFECTIVE_GLOW_RADIUS;
-
-        // === Calculate radial falloff for glow intensity ===
-        float radial_dist = length(screen_coord - clamp(screen_coord, vec2(0.0), vec2(1.0))) / length(viewport_max_dist);
-        float falloff = glow_falloff(radial_dist);
-        effective_glow_weight = GLOW_WEIGHT * falloff;
+        effective_glow_weight = base_glow_weight;
 
         if (effective_glow_weight > GLOW_MIN_WEIGHT) {
-            // Calculate glow effect with preset-based diffusion steps
-            int diffusion_steps = glow_diffusion_steps();
-
             if (USE_MIPMAPPING > 0.5) {
                 // Use mipmapped variant for reduced bandwidth and better quality at distance
                 glow = calculate_glow_mipmapped(screen_coord, radius, float(diffusion_steps), radial_dist);
