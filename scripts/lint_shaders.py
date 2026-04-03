@@ -8,6 +8,8 @@ focused style baseline:
 - More than 2 consecutive blank lines is forbidden.
 - Control-flow blocks use K&R opening braces: if/else/for/while/switch/do.
 - Files must end with a trailing newline.
+- Push blocks larger than 128 bytes are forbidden in all modes because they
+  exceed the runtime-safe limit for these shaders.
 - Unused includes: in strict mode, direct #include directives whose exported
   symbols are not referenced by the host file are flagged (exempt: menu shaders).
 
@@ -1245,7 +1247,12 @@ def structural_autofix_push_ubo(lines: list[str]) -> tuple[list[str], bool]:
     return working_lines, changed
 
 
-def check_block_order_and_push_budget(path: Path, lines: list[str], issues: list[LintIssue]) -> None:
+def check_block_order_and_push_budget(
+    path: Path,
+    lines: list[str],
+    issues: list[LintIssue],
+    strict_structure: bool,
+) -> None:
     section_positions: dict[str, int] = {}
 
     pragma_lines = [idx + 1 for idx, line in enumerate(lines) if PRAGMA_PARAMETER_PATTERN.search(line)]
@@ -1280,42 +1287,43 @@ def check_block_order_and_push_budget(path: Path, lines: list[str], issues: list
     if global_define_matches:
         section_positions["ubo_semantic_defines"] = global_define_matches[0][0]
 
-    ordered_sections = [
-        "parameter_pragmas",
-        "push_block_definition",
-        "push_block_semantic_defines",
-        "ubo_definition",
-        "ubo_semantic_defines",
-    ]
+    if strict_structure:
+        ordered_sections = [
+            "parameter_pragmas",
+            "push_block_definition",
+            "push_block_semantic_defines",
+            "ubo_definition",
+            "ubo_semantic_defines",
+        ]
 
-    prev_name: str | None = None
-    prev_line: int | None = None
-    pretty_names = {
-        "parameter_pragmas": "parameter pragmas",
-        "push_block_definition": "push block definition",
-        "push_block_semantic_defines": "push block semantic defines",
-        "ubo_definition": "UBO definition",
-        "ubo_semantic_defines": "UBO semantic defines",
-    }
+        prev_name: str | None = None
+        prev_line: int | None = None
+        pretty_names = {
+            "parameter_pragmas": "parameter pragmas",
+            "push_block_definition": "push block definition",
+            "push_block_semantic_defines": "push block semantic defines",
+            "ubo_definition": "UBO definition",
+            "ubo_semantic_defines": "UBO semantic defines",
+        }
 
-    for section in ordered_sections:
-        line_no = section_positions.get(section)
-        if line_no is None:
-            continue
-        if prev_line is not None and line_no < prev_line:
-            issues.append(
-                LintIssue(
-                    path=path,
-                    line=line_no,
-                    message=(
-                        "Section order violation: "
-                        f"'{pretty_names[section]}' must appear after '{pretty_names[prev_name]}'"
-                    ),
+        for section in ordered_sections:
+            line_no = section_positions.get(section)
+            if line_no is None:
+                continue
+            if prev_line is not None and line_no < prev_line:
+                issues.append(
+                    LintIssue(
+                        path=path,
+                        line=line_no,
+                        message=(
+                            "Section order violation: "
+                            f"'{pretty_names[section]}' must appear after '{pretty_names[prev_name]}'"
+                        ),
+                    )
                 )
-            )
-        else:
-            prev_name = section
-            prev_line = line_no
+            else:
+                prev_name = section
+                prev_line = line_no
 
     if not push_block:
         return
@@ -1349,7 +1357,7 @@ def check_block_order_and_push_budget(path: Path, lines: list[str], issues: list
         )
         return
 
-    if not ubo_block:
+    if not strict_structure or not ubo_block:
         return
 
     ubo_non_mvp_semantics = [name for _, name in global_define_matches if name != "MVP"]
@@ -1904,8 +1912,8 @@ def lint_one_file(
         check_shader_stage_flow(path, lines, issues)
         check_unused_includes(path, lines, issues)
 
-    if strict_structure and path.suffix.lower() == ".slang":
-        check_block_order_and_push_budget(path, lines, issues)
+    if path.suffix.lower() == ".slang":
+        check_block_order_and_push_budget(path, lines, issues, strict_structure=strict_structure)
 
     output_text = "\n".join(fixed_lines)
     if lines:

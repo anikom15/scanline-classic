@@ -7,12 +7,12 @@
     },
     "options" : {
         "frame" : {
-            "scale_type" : ["source", "source"],
-            "scale" : [2.0, 1.0]
+            "scale_type" : ["source"],
+            "scale" : [2.0]
         },
         "bandlimit" : {
             "scale_type" : ["absolute", "source"],
-            "scale" : [2036.0, 1.0]
+            "scale" : [2048.0, 1.0]
         }
     }
 }

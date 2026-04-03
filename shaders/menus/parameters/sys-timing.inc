@@ -11,5 +11,5 @@
 #pragma parameter V_FREQ_MODE "Vertical sync mode (auto, NTSC, PAL, H freq divisor, custom)" 0.0 0.0 4.0 1.0
 #pragma parameter V_FREQ "Custom vertical sync rate (Hz) / divisor" 59.94 0.0 600.0 0.01
 #pragma parameter H_BLANK_FUZZ "Horizontal blanking fuzz factor (%)" 82.8 0.0 100.0 0.1
-#pragma parameter FIELD_ORDER "Field order (even first, odd first)" 0.0 0.0 2.0 1.0
+#pragma parameter PHASE_ZERO "Initial phase offset (°) " 0.0 0.0 360.0 1.0
 #pragma parameter SHORTEN_ODD_FIELD_TIME "NES/SNES field time adjust (off, on)" 0.0 0.0 1.0 1.0

@@ -59,6 +59,8 @@ layout(push_constant) uniform Push
 
     // User video adjustments
     float USER_SHARPNESS;
+    float H_BLANK_FUZZ;
+    float H_FREQ;
 } config;
 
 #define V_FREQ_MODE config.V_FREQ_MODE
@@ -70,20 +72,18 @@ layout(push_constant) uniform Push
 #define PIXEL_CLOCK config.PIXEL_CLOCK
 #define H_FREQ_MODE config.H_FREQ_MODE
 #define USER_SHARPNESS config.USER_SHARPNESS
+#define H_FREQ config.H_FREQ
+#define H_BLANK_FUZZ config.H_BLANK_FUZZ
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
     mat4 MVP;
-    float H_FREQ;
-    float H_BLANK_FUZZ;
 
 #ifdef OPTION_DEBUG
     float SHARPNENER_BYPASS;
 #endif  // OPTION_DEBUG
 } global;
 
-#define H_FREQ global.H_FREQ
-#define H_BLANK_FUZZ global.H_BLANK_FUZZ
 
 #ifdef OPTION_DEBUG
 #define SHARPNENER_BYPASS global.SHARPNENER_BYPASS

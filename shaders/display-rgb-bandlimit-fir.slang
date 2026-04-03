@@ -38,10 +38,11 @@
 
 #include "common.inc"
 #include "color.inc"
-#include "modulation.inc"
+#include "contract.inc"
 #include "window.inc"
 #include "zoh.inc"
 
+#include "menus/parameters/dsp.inc"
 #include "menus/parameters/user-uncommon.inc"
 #include "menus/parameters/sys-timing.inc"
 #include "menus/parameters/display-rgb-fir.inc"
@@ -59,12 +60,9 @@ layout(push_constant) uniform Push
     vec4 OriginalSize;
     vec4 SourceSize;
     vec4 OutputSize;
-    vec4 FrameHSize;
-    uint FrameCount;
     float OriginalFPS;
     float V_FREQ_MODE;
     float V_FREQ;
-    float SHORTEN_ODD_FIELD_TIME;
     float SC_FREQ_MODE;
     float SC_FREQ;
     float PIXEL_CLOCK_MODE;
@@ -72,6 +70,8 @@ layout(push_constant) uniform Push
     float H_FREQ_MODE;
     float H_FREQ;
     float H_BLANK_FUZZ;
+    float DSP_WORKING_FS;
+    float DSP_OUTPUT_FS;
 
     float DISPLAY_CUTOFF;
     float DISPLAY_STOPBAND;
@@ -80,7 +80,6 @@ layout(push_constant) uniform Push
 
 #define V_FREQ_MODE config.V_FREQ_MODE
 #define V_FREQ config.V_FREQ
-#define SHORTEN_ODD_FIELD_TIME config.SHORTEN_ODD_FIELD_TIME
 #define SC_FREQ_MODE config.SC_FREQ_MODE
 #define SC_FREQ config.SC_FREQ
 #define PIXEL_CLOCK_MODE config.PIXEL_CLOCK_MODE
@@ -88,6 +87,8 @@ layout(push_constant) uniform Push
 #define H_FREQ_MODE config.H_FREQ_MODE
 #define H_FREQ config.H_FREQ
 #define H_BLANK_FUZZ config.H_BLANK_FUZZ
+#define DSP_WORKING_FS config.DSP_WORKING_FS
+#define DSP_OUTPUT_FS config.DSP_OUTPUT_FS
 
 #define DISPLAY_CUTOFF config.DISPLAY_CUTOFF
 #define DISPLAY_STOPBAND config.DISPLAY_STOPBAND
@@ -135,15 +136,21 @@ struct PolyphaseFilter {
     float Delta;  // Resampling ratio (output / input)
     float taps;
 };
+
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
 layout(location = 1) flat out float Tin;
-layout(location = 2) out flat KaiserFilter kfilt;
-layout(location = 6) out flat PolyphaseFilter pfilt;
-layout(location = 9) out flat vec3 gain;
-layout(location = 10) out flat vec3 bias;
+layout(location = 2) flat out KaiserFilter kfilt;
+layout(location = 6) flat out PolyphaseFilter pfilt;
+layout(location = 8) flat out vec3 gain;
+layout(location = 9) flat out vec3 bias;
+layout(location = 10) flat out float frame_height_out;
+layout(location = 11) flat out float input_data_length_out;
+layout(location = 12) flat out float data_length_out;
+layout(location = 13) flat out float input_frame_width_out;
+layout(location = 14) flat out float frame_width_out;
 
 const int MAX_TAPS = 37;
 const float KAISER_ATTEN_DB = 40.0;
@@ -153,36 +160,50 @@ void main()
     gl_Position = global.MVP * Position;
     vTexCoord = TexCoord;
 
-    float f_sc;
-    int standard;
-    float pixel_time;
-    float active_source_pixels;
-
-    compute_subcarrier_freq(
-        SC_FREQ_MODE, SC_FREQ,
+    float base_frame_width = contract_frame_width(
+        config.OriginalSize.xy,
         config.OriginalFPS,
-        f_sc, standard);
+        SC_FREQ_MODE,
+        SC_FREQ,
+        PIXEL_CLOCK_MODE,
+        PIXEL_CLOCK,
+        H_FREQ_MODE,
+        H_FREQ,
+        H_BLANK_FUZZ);
+    float frame_height = contract_frame_height(
+        config.OriginalSize.xy,
+        config.OriginalFPS,
+        V_FREQ_MODE,
+        V_FREQ,
+        SC_FREQ_MODE,
+        SC_FREQ,
+        PIXEL_CLOCK_MODE,
+        PIXEL_CLOCK,
+        H_FREQ_MODE,
+        H_FREQ);
+    float base_data_length = contract_data_length(base_frame_width, frame_height);
 
-    float pixel_clock_hz = compute_pixel_clock(
-        PIXEL_CLOCK_MODE, PIXEL_CLOCK, f_sc
-    );
+    float fs_original = contract_fs_original(
+        config.OriginalSize.xy,
+        config.OriginalFPS,
+        SC_FREQ_MODE,
+        SC_FREQ,
+        PIXEL_CLOCK_MODE,
+        PIXEL_CLOCK,
+        H_FREQ_MODE,
+        H_FREQ,
+        H_BLANK_FUZZ);
+    float fs_in = (DSP_WORKING_FS > 0.0) ? DSP_WORKING_FS * 1.0e6 : max(fs_original, EPS);
+    float fs_out = (DSP_OUTPUT_FS > 0.0) ? DSP_OUTPUT_FS * 1.0e6 : fs_in;
+    float input_data_length = max(round(base_data_length * (fs_in / max(fs_original, EPS))), 1.0);
+    float output_data_length = max(round(base_data_length * (fs_out / max(fs_original, EPS))), 1.0);
+    float Delta = output_data_length / max(input_data_length, 1.0);
 
-    float h_freq_hz = compute_h_freq(
-        H_FREQ_MODE, standard, H_FREQ, pixel_clock_hz,
-        config.OriginalFPS);
-
-    compute_h_timing(
-        pixel_clock_hz, h_freq_hz, H_BLANK_FUZZ,
-        config.OriginalSize.x, active_source_pixels, pixel_time);
-
-    // Polyphase resampler factors
-    float Delta_in = config.SourceSize.x / active_source_pixels;
-    float Delta = config.OutputSize.x / config.SourceSize.x;
-
-    // This restores the proper upscaled sampling rate of source
-    float fs_original = 1.0 / pixel_time;
-    float fs_in = fs_original * Delta_in;
-    float fs_out = fs_in * Delta;
+    frame_height_out = frame_height;
+    input_data_length_out = input_data_length;
+    data_length_out = output_data_length;
+    input_frame_width_out = ceil(input_data_length_out / max(frame_height_out, 1.0));
+    frame_width_out = ceil(data_length_out / max(frame_height_out, 1.0));
 
     Tin = 1.0 / fs_in;
 
@@ -229,31 +250,51 @@ void main()
 
 #pragma stage fragment
 layout(location = 0) in vec2 vTexCoord;
-layout(location = 1) in flat float Tin;
-layout(location = 2) in flat KaiserFilter kfilt;
-layout(location = 6) in flat PolyphaseFilter pfilt;
-layout(location = 9) in flat vec3 gain;
-layout(location = 10) in flat vec3 bias;
+layout(location = 1) flat in float Tin;
+layout(location = 2) flat in KaiserFilter kfilt;
+layout(location = 6) flat in PolyphaseFilter pfilt;
+layout(location = 8) flat in vec3 gain;
+layout(location = 9) flat in vec3 bias;
+layout(location = 10) flat in float frame_height_out;
+layout(location = 11) flat in float input_data_length_out;
+layout(location = 12) flat in float data_length_out;
+layout(location = 13) flat in float input_frame_width_out;
+layout(location = 14) flat in float frame_width_out;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
 void main()
 {
     vec2 UV = vTexCoord * config.OutputSize.xy;
-    vec2 Tex = vec2(
-        (floor(UV.x) + 0.5) * config.OutputSize.z,
-        (floor(UV.y) + 0.5) * config.OutputSize.w
-    );
+    float output_x = floor(UV.x);
+    float output_y = floor(UV.y);
+
+    float FrameHeightOut = frame_height_out;
+    float input_data_length = input_data_length_out;
+    float input_frame_width = input_frame_width_out;
+    float DataLengthOut = data_length_out;
+    float FrameWidthOut = frame_width_out;
+
+    if (output_x >= ceil(FrameWidthOut) || output_y >= ceil(FrameHeightOut)) {
+        FragColor = vec4(0.0);
+        return;
+    }
 
     // Filter
     float Delta = pfilt.Delta;
     int n_taps = int(pfilt.taps);
 
-    float output_index = Tex.x * config.OutputSize.x;
-    float phase = output_index / Delta;
+    float output_index = output_x;
+    float field_output_index = output_y * FrameWidthOut + output_index;
+    if (field_output_index >= DataLengthOut) {
+        FragColor = vec4(0.0);
+        return;
+    }
+    float phase = field_output_index / Delta;
     float input_index = floor(phase);
     int center = (n_taps - 1) / 2;
     float frac_offset = phase - floor(phase);
+    float input_data_limit = max(input_data_length - 1.0, 0.0);
 
     vec3 color = vec3(0.0);
 
@@ -273,7 +314,10 @@ void main()
             float dt = (float(tap_offset) - frac_offset) * Tin;
             float coeff = zoh_area(dt, Tin, Tout);
 
-            vec2 input_tex = vec2(((input_index + tap_offset) + 0.5) * config.SourceSize.z, Tex.y);
+            float sample_index = clamp(input_index + float(tap_offset), 0.0, input_data_limit);
+            vec2 input_tex =
+                vec2(mod(sample_index, input_frame_width) + 0.5, floor(sample_index / input_frame_width) + 0.5)
+                * config.SourceSize.zw;
             vec3 rgb = texture(Source, input_tex).rgb;
 
             color += coeff * rgb;
@@ -296,7 +340,10 @@ void main()
         float dt = (float(tap_offset) - frac_offset) * Tin;
         float coeff = zoh_area(dt, Tin, Tout);
 
-        vec2 input_tex = vec2(((input_index + tap_offset) + 0.5) * config.SourceSize.z, Tex.y);
+        float sample_index = clamp(input_index + float(tap_offset), 0.0, input_data_limit);
+        vec2 input_tex =
+            vec2(mod(sample_index, input_frame_width) + 0.5, floor(sample_index / input_frame_width) + 0.5)
+            * config.SourceSize.zw;
         vec3 rgb = texture(Source, input_tex).rgb;
 
         color += coeff * rgb;
@@ -307,7 +354,10 @@ void main()
         int tap_offset = k - center;
         float w = kaiser(float(tap_offset), kfilt.taps, kfilt.beta);
         float coeff = sinc(float(tap_offset - frac_offset), kfilt.fc_norm) * w;
-        vec2 input_tex = vec2(((input_index + tap_offset) + 0.5) * config.SourceSize.z, Tex.y);
+        float sample_index = clamp(input_index + float(tap_offset), 0.0, input_data_limit);
+        vec2 input_tex =
+            vec2(mod(sample_index, input_frame_width) + 0.5, floor(sample_index / input_frame_width) + 0.5)
+            * config.SourceSize.zw;
         vec3 rgb = texture(Source, input_tex).rgb;
 
         color += coeff * rgb;
@@ -332,5 +382,5 @@ void main()
     color.r *= 1.0 - USER_BLUE_ONLY;
     color.g *= 1.0 - USER_BLUE_ONLY;
 
-    FragColor = vec4(color, 1.0);
+    FragColor = vec4(color, frac_offset);
 }

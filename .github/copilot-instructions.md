@@ -35,6 +35,14 @@
   - `scripts/generate_hdr_presets.py` swaps `-sdr.slang` -> `-hdr.slang` and removes last-pass `scale_type` as a RetroArch HDR workaround.
 - WCG/HDR menu shaders are generated from SDR menu shaders by include rewriting (`scripts/generate_wcg_menu.py`, `scripts/generate_hdr_menu.py`).
 
+## DSP frame contract (`frameh` -> resamplers -> DSP -> resamplers -> `framev`)
+- Treat `shaders/frameh.slang` as the canonical start of the framed DSP section. It derives invariant timing/geometry values from uniforms via `shaders/contract.inc` and writes the horizontally framed raster.
+- The texture contract from `frameh` to `framev` is intentionally minimal: **RGB carries the signal**, and **alpha carries only mutable per-sample state** (currently `phase_rel_sample`). Do not reintroduce packed metadata texels.
+- Reconstruct invariant metadata (`FS_ORIGINAL`, frame width/height, full frame height, interlace state, field, initial field phase, data length) from uniforms with `contract.inc`, not from texture reads.
+- `contract_*()` helpers are **vertex-stage setup only** in this pipeline. If a fragment stage needs one of those invariant values, compute it in the vertex shader and pass it as a `flat` varying/attribute.
+- `shaders/framev.slang` consumes the `frameh` output and performs vertical centering, zero-stuffing, and scanline blanking from vertex-precomputed state; it should not depend on a metadata texture payload.
+- Downstream DSP resamplers such as `shaders/sys-rgb-bandlimit.slang` and `shaders/display-rgb-bandlimit-fir.slang` should derive `Delta`, `Delta_in`, and related timing from `contract_data_length(...)`, `FS_ORIGINAL`, `DSP_WORKING_FS`, and `DSP_OUTPUT_FS`. Use `SourceSize`/`OutputSize` only for final texture-coordinate mapping and output bounds.
+
 ## Integration and dependency boundaries
 - `external/presetgen/` is a vendored dependency used by `build.py`; keep compatibility with its schemas and CLI behavior.
 - JSON schema expectations live in `external/presetgen/*.schema.json`; invalid preset/pipeline/param JSON will break generation.
