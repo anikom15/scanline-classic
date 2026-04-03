@@ -24,11 +24,12 @@
 #pragma format R16G16B16A16_SFLOAT
 
 #include "common.inc"
+#include "contract.inc"
 #include "geometry.inc"
-#include "modulation.inc"
 #include "texture.inc"
 
 #include "menus/parameters/sys-timing.inc"
+#include "menus/parameters/dsp.inc"
 #include "menus/parameters/factory-geometry.inc"
 #include "menus/parameters/service-geometry.inc"
 #include "menus/parameters/user-uncommon.inc"
@@ -46,9 +47,8 @@ layout(push_constant) uniform Push
     vec4 SourceSize;     // xy = input size in pixels
     vec4 OriginalSize;   // xy = input size in pixels
     vec4 OutputSize;     // xy = output size in pixels
-    vec4 FrameHSize;
-    vec4 FrameVSize;
     float OriginalAspect;
+    float DSP_OUTPUT_FS;
     float BEAM_FOCUS;
     float CORNER_CORRECTION;      // %
     float DEFLECTION_ANGLE; // degrees
@@ -62,6 +62,7 @@ layout(push_constant) uniform Push
     float USER_V_SIZE;            // % (50 = 1.0)
 } config;
 
+#define DSP_OUTPUT_FS config.DSP_OUTPUT_FS
 #define BEAM_FOCUS config.BEAM_FOCUS
 #define USER_H_SIZE config.USER_H_SIZE
 #define USER_V_SIZE config.USER_V_SIZE
@@ -126,8 +127,13 @@ layout(std140, set = 0, binding = 0) uniform UBO {
 layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
-layout(location = 1) out float maskAR;
-layout(location = 2) out FrameGeometry geom;
+layout(location = 1) flat out float maskAR;
+layout(location = 2) flat out float OriginalFrameWidth;
+layout(location = 3) flat out float OriginalFrameHeight;
+layout(location = 4) flat out float OriginalFullFrameHeight;
+layout(location = 5) flat out float IsInterlaced;
+layout(location = 6) flat out float OutputFrameWidth;
+layout(location = 7) flat out float OutputFrameHeight;
 
 void main()
 {
@@ -140,25 +146,84 @@ void main()
         : (ASPECT < 2.5) ? (5.0 / 4.0)
         : (16.0 / 10.0);
 
-    geom = compute_frame_geometry(
-        global.FrameCount,
+    float fs_original = contract_fs_original(
         config.OriginalSize.xy,
         global.OriginalFPS,
         SC_FREQ_MODE,
         SC_FREQ,
-        PIXEL_CLOCK,
         PIXEL_CLOCK_MODE,
+        PIXEL_CLOCK,
         H_FREQ_MODE,
         H_FREQ,
+        H_BLANK_FUZZ);
+
+    float fs_output = (DSP_OUTPUT_FS > 0.0) ? (DSP_OUTPUT_FS * 1.0e6) : fs_original;
+
+    OriginalFrameWidth = contract_frame_width(
+        config.OriginalSize.xy,
+        global.OriginalFPS,
+        SC_FREQ_MODE,
+        SC_FREQ,
+        PIXEL_CLOCK_MODE,
+        PIXEL_CLOCK,
+        H_FREQ_MODE,
+        H_FREQ,
+        H_BLANK_FUZZ);
+
+    float FrameWidth = OriginalFrameWidth * (fs_output / max(fs_original, EPS));
+
+    OriginalFrameHeight = contract_frame_height(
+        config.OriginalSize.xy,
+        global.OriginalFPS,
         V_FREQ_MODE,
         V_FREQ,
-        H_BLANK_FUZZ);
+        SC_FREQ_MODE,
+        SC_FREQ,
+        PIXEL_CLOCK_MODE,
+        PIXEL_CLOCK,
+        H_FREQ_MODE,
+        H_FREQ);
+
+    float FrameHeight = OriginalFrameHeight;
+    float frame_scale = max(floor(config.SourceSize.y / FrameHeight), 1.0);
+
+    OutputFrameWidth = FrameWidth;
+    OutputFrameHeight = FrameHeight * frame_scale;
+
+    OriginalFullFrameHeight = contract_full_frame_height(
+        config.OriginalSize.xy,
+        global.OriginalFPS,
+        V_FREQ_MODE,
+        V_FREQ,
+        SC_FREQ_MODE,
+        SC_FREQ,
+        PIXEL_CLOCK_MODE,
+        PIXEL_CLOCK,
+        H_FREQ_MODE,
+        H_FREQ);
+
+    IsInterlaced = contract_is_interlaced(
+        config.OriginalSize.xy,
+        global.OriginalFPS,
+        V_FREQ_MODE,
+        V_FREQ,
+        SC_FREQ_MODE,
+        SC_FREQ,
+        PIXEL_CLOCK_MODE,
+        PIXEL_CLOCK,
+        H_FREQ_MODE,
+        H_FREQ);
 }
 
 #pragma stage fragment
 layout(location = 0) in vec2 vTexCoord;
-layout(location = 1) in float maskAR;
-layout(location = 2) in FrameGeometry geom;
+layout(location = 1) flat in float maskAR;
+layout(location = 2) flat in float OriginalFrameWidth;
+layout(location = 3) flat in float OriginalFrameHeight;
+layout(location = 4) flat in float OriginalFullFrameHeight;
+layout(location = 5) flat in float IsInterlaced;
+layout(location = 6) flat in float OutputFrameWidth;
+layout(location = 7) flat in float OutputFrameHeight;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 1) uniform sampler2D Source;
 
@@ -290,16 +355,17 @@ void apply_geometry_pipeline_nodistort(
 
 void main()
 {
-    // Horizontal timing from frame geometry
-    float total_h_pixels = geom.h_pixels;
-    float total_v_lines = geom.is_interlaced < 0.5 ? geom.v_lines_per_field : geom.v_lines_per_frame;
+    // Canonical full-frame dimensions from the timing contract.
+    float FrameHeight = max(
+        (IsInterlaced < 0.5) ? OriginalFrameHeight : OriginalFullFrameHeight,
+        1.0);
 
     // Aspect ratios for full video
     float original_dar = config.OriginalAspect;
     float original_sar = config.OriginalSize.x * config.OriginalSize.w;
     float original_par = original_dar / max(original_sar, EPS);
 
-    float full_dar = original_par * total_h_pixels / max(total_v_lines, 1.0);
+    float full_dar = original_par * OriginalFrameWidth / FrameHeight;
 
     vec2 active_uv = vTexCoord;
 
@@ -344,8 +410,14 @@ void main()
 
 #endif  // OPTION_FLAT
 
-    // Remap from geometry UVs to input texture UVs
-    vec2 input_uv = geometry_uv;
+    // Remap from geometry UVs to the packed source texture. Data starts at
+    // (0,0) in the source texture. Shift geometry_uv to centre, scale into
+    // the data region, then shift back to the data centre.
+    vec2 source_tex_size = max(config.SourceSize.xy, vec2(1.0));
+    vec2 stored_frame_size = min(vec2(OutputFrameWidth, OutputFrameHeight), source_tex_size);
+    vec2 frame_uv_scale = stored_frame_size / source_tex_size;
+    vec2 data_center = frame_uv_scale * 0.5;
+    vec2 input_uv = (geometry_uv - 0.5) * frame_uv_scale + data_center;
 
     // Bicubic resample from input texture using BEAM_FOCUS
     float focus = clamp(BEAM_FOCUS * 0.01, 0.0, 1.0);

@@ -124,13 +124,13 @@ layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
 layout(location = 1) flat out float Tin;
-layout(location = 2) flat out float active_source_pixels;
+layout(location = 2) flat out float InputFrameWidth;
 layout(location = 3) flat out GaussianFilter gfilt;
 layout(location = 6) flat out PolyphaseFilter pfilt;
-layout(location = 8) flat out float frame_height_out;
-layout(location = 9) flat out float input_data_length_out;
-layout(location = 10) flat out float data_length_out;
-layout(location = 11) flat out float frame_width_out;
+layout(location = 8) flat out float OutputFrameHeight;
+layout(location = 9) flat out float InputDataLength;
+layout(location = 10) flat out float OutputDataLength;
+layout(location = 11) flat out float OutputFrameWidth;
 
 const float MAX_TAPS = 71.0;
 
@@ -139,7 +139,7 @@ void main()
     gl_Position = global.MVP * Position;
     vTexCoord = TexCoord;
 
-    active_source_pixels = contract_frame_width(
+    InputFrameWidth = contract_frame_width(
         config.OriginalSize.xy,
         config.OriginalFPS,
         SC_FREQ_MODE,
@@ -150,7 +150,7 @@ void main()
         H_FREQ,
         H_BLANK_FUZZ);
 
-    float frame_height = contract_frame_height(
+    float InputFrameHeight = contract_frame_height(
         config.OriginalSize.xy,
         config.OriginalFPS,
         V_FREQ_MODE,
@@ -161,7 +161,7 @@ void main()
         PIXEL_CLOCK,
         H_FREQ_MODE,
         H_FREQ);
-    float input_data_length = contract_data_length(active_source_pixels, frame_height);
+    InputDataLength = contract_data_length(InputFrameWidth, InputFrameHeight);
 
     float fs_original = contract_fs_original(
         config.OriginalSize.xy,
@@ -176,17 +176,15 @@ void main()
 
     float fs_in = max(fs_original, EPS);
     float fs_out = (DSP_WORKING_FS > 0.0) ? DSP_WORKING_FS * 1.0e6 : fs_in;
-    float output_data_length = max(round(input_data_length * (fs_out / fs_in)), 1.0);
 
-    frame_height_out = frame_height;
-    input_data_length_out = input_data_length;
-    data_length_out = output_data_length;
-    frame_width_out = ceil(data_length_out / max(frame_height_out, 1.0));
+    OutputFrameHeight = InputFrameHeight;
+    OutputDataLength = max(round(InputDataLength * (fs_out / fs_in)), 1.0);
+    OutputFrameWidth = OutputDataLength / max(OutputFrameHeight, 1.0);
 
     Tin = 1.0 / fs_in;
 
     // Polyphase resampler ratio is data-length driven rather than texture-size driven.
-    float Delta = output_data_length / max(input_data_length, 1.0);
+    float Delta = OutputDataLength / max(InputDataLength, 1.0);
 
     pfilt.Delta = Delta;
 
@@ -219,13 +217,13 @@ void main()
 #pragma stage fragment
 layout(location = 0) in vec2 vTexCoord;
 layout(location = 1) flat in float Tin;
-layout(location = 2) flat in float active_source_pixels;
+layout(location = 2) flat in float InputFrameWidth;
 layout(location = 3) flat in GaussianFilter gfilt;
 layout(location = 6) flat in PolyphaseFilter pfilt;
-layout(location = 8) flat in float frame_height_out;
-layout(location = 9) flat in float input_data_length_out;
-layout(location = 10) flat in float data_length_out;
-layout(location = 11) flat in float frame_width_out;
+layout(location = 8) flat in float OutputFrameHeight;
+layout(location = 9) flat in float InputDataLength;
+layout(location = 10) flat in float OutputDataLength;
+layout(location = 11) flat in float OutputFrameWidth;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
@@ -236,13 +234,7 @@ void main()
     float output_x = floor(UV.x);
     float output_y = floor(UV.y);
 
-    float FrameHeightOut = frame_height_out;
-    float input_frame_width = max(active_source_pixels, 1.0);
-    float input_data_length = input_data_length_out;
-    float DataLengthOut = data_length_out;
-    float FrameWidthOut = frame_width_out;
-
-    if (output_x >= ceil(FrameWidthOut) || output_y >= ceil(FrameHeightOut)) {
+    if (output_x >= ceil(OutputFrameWidth) || output_y >= ceil(OutputFrameHeight)) {
         FragColor = vec4(0.0);
         return;
     }
@@ -252,15 +244,15 @@ void main()
     int center = (n_taps - 1) / 2;
 
     float output_index = output_x;
-    float field_output_index = output_y * FrameWidthOut + output_index;
-    if (field_output_index >= DataLengthOut) {
+    float field_output_index = output_y * OutputFrameWidth + output_index;
+    if (field_output_index >= OutputDataLength) {
         FragColor = vec4(0.0);
         return;
     }
     float resample_phase = field_output_index / Delta;
     float frac_offset = fract(resample_phase);  // Will be stored in alpha channel
     float input_index = floor(resample_phase);
-    float input_data_limit = max(input_data_length - 1.0, 0.0);
+    float input_data_limit = max(InputDataLength - 1.0, 0.0);
 
     vec3 color = vec3(0.0);
 
@@ -279,7 +271,7 @@ void main()
 
             float sample_index = clamp(input_index + float(tap_offset), 0.0, input_data_limit);
             vec2 input_tex =
-                vec2(mod(sample_index, input_frame_width) + 0.5, floor(sample_index / input_frame_width) + 0.5)
+                vec2(floor(mod(sample_index, InputFrameWidth)) + 0.5, floor(sample_index / InputFrameWidth) + 0.5)
                 * config.SourceSize.zw;
             vec3 rgb = texture(Source, input_tex).rgb;
 
@@ -304,8 +296,8 @@ void main()
 
         float sample_index = clamp(input_index + float(tap_offset), 0.0, input_data_limit);
         vec2 input_tex =
-            vec2(mod(sample_index, input_frame_width) + 0.5, floor(sample_index / input_frame_width) + 0.5)
-                * config.SourceSize.zw;
+            vec2(floor(mod(sample_index, InputFrameWidth)) + 0.5, floor(sample_index / InputFrameWidth) + 0.5)
+            * config.SourceSize.zw;
         vec3 rgb = texture(Source, input_tex).rgb;
 
         color += coeff * rgb;
@@ -329,7 +321,7 @@ void main()
 
         float sample_index = clamp(input_index + float(tap_offset), 0.0, input_data_limit);
         vec2 input_tex =
-            vec2(mod(sample_index, input_frame_width) + 0.5, floor(sample_index / input_frame_width) + 0.5)
+            vec2(floor(mod(sample_index, InputFrameWidth)) + 0.5, floor(sample_index / InputFrameWidth) + 0.5)
             * config.SourceSize.zw;
         vec3 rgb = texture(Source, input_tex).rgb;
 

@@ -126,10 +126,10 @@ layout(std140, set = 0, binding = 0) uniform UBO
 #define DISPLAY_BIAS_B global.DISPLAY_BIAS_B
 
 struct KaiserFilter {
-    float fc_norm; // Normalized cutoff frequency (0..0.5)
-    float taps; // Number of filter taps (should be odd)
-    float beta; // Kaiser window beta parameter
-    float gain; // Precomputed gain factor for normalization
+    float fc_norm;  // Normalized cutoff frequency (0..0.5)
+    float taps;     // Number of filter taps (should be odd)
+    float beta;     // Kaiser window beta parameter
+    float gain;     // Precomputed gain factor for normalization
 };
 
 struct PolyphaseFilter {
@@ -146,11 +146,11 @@ layout(location = 2) flat out KaiserFilter kfilt;
 layout(location = 6) flat out PolyphaseFilter pfilt;
 layout(location = 8) flat out vec3 gain;
 layout(location = 9) flat out vec3 bias;
-layout(location = 10) flat out float frame_height_out;
-layout(location = 11) flat out float input_data_length_out;
-layout(location = 12) flat out float data_length_out;
-layout(location = 13) flat out float input_frame_width_out;
-layout(location = 14) flat out float frame_width_out;
+layout(location = 10) flat out float OutputFrameHeight;
+layout(location = 11) flat out float InputDataLength;
+layout(location = 12) flat out float OutputDataLength;
+layout(location = 13) flat out float InputFrameWidth;
+layout(location = 14) flat out float OutputFrameWidth;
 
 const int MAX_TAPS = 37;
 const float KAISER_ATTEN_DB = 40.0;
@@ -160,7 +160,7 @@ void main()
     gl_Position = global.MVP * Position;
     vTexCoord = TexCoord;
 
-    float base_frame_width = contract_frame_width(
+    float BaseFrameWidth = contract_frame_width(
         config.OriginalSize.xy,
         config.OriginalFPS,
         SC_FREQ_MODE,
@@ -170,7 +170,7 @@ void main()
         H_FREQ_MODE,
         H_FREQ,
         H_BLANK_FUZZ);
-    float frame_height = contract_frame_height(
+    float InputFrameHeight = contract_frame_height(
         config.OriginalSize.xy,
         config.OriginalFPS,
         V_FREQ_MODE,
@@ -181,7 +181,7 @@ void main()
         PIXEL_CLOCK,
         H_FREQ_MODE,
         H_FREQ);
-    float base_data_length = contract_data_length(base_frame_width, frame_height);
+    float BaseDataLength = contract_data_length(BaseFrameWidth, InputFrameHeight);
 
     float fs_original = contract_fs_original(
         config.OriginalSize.xy,
@@ -195,17 +195,17 @@ void main()
         H_BLANK_FUZZ);
     float fs_in = (DSP_WORKING_FS > 0.0) ? DSP_WORKING_FS * 1.0e6 : max(fs_original, EPS);
     float fs_out = (DSP_OUTPUT_FS > 0.0) ? DSP_OUTPUT_FS * 1.0e6 : fs_in;
-    float input_data_length = max(round(base_data_length * (fs_in / max(fs_original, EPS))), 1.0);
-    float output_data_length = max(round(base_data_length * (fs_out / max(fs_original, EPS))), 1.0);
-    float Delta = output_data_length / max(input_data_length, 1.0);
 
-    frame_height_out = frame_height;
-    input_data_length_out = input_data_length;
-    data_length_out = output_data_length;
-    input_frame_width_out = ceil(input_data_length_out / max(frame_height_out, 1.0));
-    frame_width_out = ceil(data_length_out / max(frame_height_out, 1.0));
+    OutputFrameHeight = InputFrameHeight;
+    InputDataLength = max(round(BaseDataLength * (fs_in / max(fs_original, EPS))), 1.0);
+    OutputDataLength = max(round(BaseDataLength * (fs_out / max(fs_original, EPS))), 1.0);
+    InputFrameWidth = InputDataLength / max(OutputFrameHeight, 1.0);
+    OutputFrameWidth = OutputDataLength / max(OutputFrameHeight, 1.0);
 
     Tin = 1.0 / fs_in;
+
+    // Polyphase resampler ratio is data-length driven rather than texture-size driven.
+    float Delta = OutputDataLength / max(InputDataLength, 1.0);
 
     pfilt.Delta = Delta;
 
@@ -255,11 +255,11 @@ layout(location = 2) flat in KaiserFilter kfilt;
 layout(location = 6) flat in PolyphaseFilter pfilt;
 layout(location = 8) flat in vec3 gain;
 layout(location = 9) flat in vec3 bias;
-layout(location = 10) flat in float frame_height_out;
-layout(location = 11) flat in float input_data_length_out;
-layout(location = 12) flat in float data_length_out;
-layout(location = 13) flat in float input_frame_width_out;
-layout(location = 14) flat in float frame_width_out;
+layout(location = 10) flat in float OutputFrameHeight;
+layout(location = 11) flat in float InputDataLength;
+layout(location = 12) flat in float OutputDataLength;
+layout(location = 13) flat in float InputFrameWidth;
+layout(location = 14) flat in float OutputFrameWidth;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
@@ -269,32 +269,25 @@ void main()
     float output_x = floor(UV.x);
     float output_y = floor(UV.y);
 
-    float FrameHeightOut = frame_height_out;
-    float input_data_length = input_data_length_out;
-    float input_frame_width = input_frame_width_out;
-    float DataLengthOut = data_length_out;
-    float FrameWidthOut = frame_width_out;
-
-    if (output_x >= ceil(FrameWidthOut) || output_y >= ceil(FrameHeightOut)) {
+    if (output_x >= ceil(OutputFrameWidth) || output_y >= ceil(OutputFrameHeight)) {
         FragColor = vec4(0.0);
         return;
     }
 
-    // Filter
     float Delta = pfilt.Delta;
     int n_taps = int(pfilt.taps);
+    int center = (n_taps - 1) / 2;
 
     float output_index = output_x;
-    float field_output_index = output_y * FrameWidthOut + output_index;
-    if (field_output_index >= DataLengthOut) {
+    float field_output_index = output_y * OutputFrameWidth + output_index;
+    if (field_output_index >= OutputDataLength) {
         FragColor = vec4(0.0);
         return;
     }
     float phase = field_output_index / Delta;
+    float frac_offset = fract(phase);
     float input_index = floor(phase);
-    int center = (n_taps - 1) / 2;
-    float frac_offset = phase - floor(phase);
-    float input_data_limit = max(input_data_length - 1.0, 0.0);
+    float input_data_limit = max(InputDataLength - 1.0, 0.0);
 
     vec3 color = vec3(0.0);
 
@@ -316,7 +309,7 @@ void main()
 
             float sample_index = clamp(input_index + float(tap_offset), 0.0, input_data_limit);
             vec2 input_tex =
-                vec2(mod(sample_index, input_frame_width) + 0.5, floor(sample_index / input_frame_width) + 0.5)
+                vec2(floor(mod(sample_index, InputFrameWidth)) + 0.5, floor(sample_index / InputFrameWidth) + 0.5)
                 * config.SourceSize.zw;
             vec3 rgb = texture(Source, input_tex).rgb;
 
@@ -342,7 +335,7 @@ void main()
 
         float sample_index = clamp(input_index + float(tap_offset), 0.0, input_data_limit);
         vec2 input_tex =
-            vec2(mod(sample_index, input_frame_width) + 0.5, floor(sample_index / input_frame_width) + 0.5)
+            vec2(floor(mod(sample_index, InputFrameWidth)) + 0.5, floor(sample_index / InputFrameWidth) + 0.5)
             * config.SourceSize.zw;
         vec3 rgb = texture(Source, input_tex).rgb;
 
@@ -356,7 +349,7 @@ void main()
         float coeff = sinc(float(tap_offset - frac_offset), kfilt.fc_norm) * w;
         float sample_index = clamp(input_index + float(tap_offset), 0.0, input_data_limit);
         vec2 input_tex =
-            vec2(mod(sample_index, input_frame_width) + 0.5, floor(sample_index / input_frame_width) + 0.5)
+            vec2(floor(mod(sample_index, InputFrameWidth)) + 0.5, floor(sample_index / InputFrameWidth) + 0.5)
             * config.SourceSize.zw;
         vec3 rgb = texture(Source, input_tex).rgb;
 

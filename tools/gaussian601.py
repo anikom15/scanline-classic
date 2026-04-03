@@ -99,7 +99,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Prototype Gaussian FIR filter for scanline-classic shader")
     parser.add_argument('--samplerate', type=float, default=32.0, help='Sampling rate (MHz)')
     parser.add_argument('--cutoff', type=float, default=6.75, help='Cutoff frequency (MHz)')
-    parser.add_argument('--attenuation', type=float, default=28.0, help='Desired attenuation at cutoff (dB)')
+    parser.add_argument('--attenuation', type=float, default=12.0, help='Desired attenuation at cutoff (dB)')
     parser.add_argument('--threshold', type=float, default=0.01, help='Tail threshold for tap count')
     args = parser.parse_args()
     plot_response(args.samplerate, args.cutoff, args.attenuation, args.threshold)

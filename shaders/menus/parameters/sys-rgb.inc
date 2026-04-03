@@ -12,6 +12,6 @@
 #pragma parameter SYS_GAIN_B "Gain B (dB)" 0.0 -30.0 30.0 0.1
 
 #pragma parameter SYS_FILTER_DECIMATION "Filter decimation factor" 1.0 1.0 16.0 0.1
-#pragma parameter SYS_FILTER_ATTEN "Filter attenuation (dB)" 28.0 0.0 120.0 1.0
+#pragma parameter SYS_FILTER_ATTEN "Filter attenuation (dB)" 12.0 0.0 120.0 1.0
 
 #pragma parameter COMPENSATE_SINC_ROLLOFF "Compensate sinc rolloff (off, on)" 1.0 0.0 1.0 1.0
