@@ -125,15 +125,11 @@ void main()
     vTexCoord = TexCoord;
 
     FS_ORIGINAL = contract_fs_original(
-        config.OriginalSize.xy,
         config.OriginalFPS,
         SC_FREQ_MODE,
         SC_FREQ,
         PIXEL_CLOCK_MODE,
-        PIXEL_CLOCK,
-        H_FREQ_MODE,
-        H_FREQ,
-        H_BLANK_FUZZ);
+        PIXEL_CLOCK);
 
     ClocksPerLine = contract_clocks_per_line(
         config.OriginalFPS,
@@ -156,15 +152,13 @@ void main()
         H_BLANK_FUZZ);
 
     FrameWidth = contract_frame_width(
-        config.OriginalSize.xy,
         config.OriginalFPS,
         SC_FREQ_MODE,
         SC_FREQ,
         PIXEL_CLOCK_MODE,
         PIXEL_CLOCK,
         H_FREQ_MODE,
-        H_FREQ,
-        H_BLANK_FUZZ);
+        H_FREQ);
 
     FrameHeight = contract_frame_height(
         config.OriginalSize.xy,
@@ -216,7 +210,6 @@ void main()
         PIXEL_CLOCK,
         H_FREQ_MODE,
         H_FREQ,
-        H_BLANK_FUZZ,
         PHASE_ZERO);
 }
 

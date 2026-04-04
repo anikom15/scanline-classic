@@ -149,7 +149,6 @@ void main()
         : (16.0 / 10.0);
 
     float fs_output = contract_output_sample_rate(
-        config.OriginalSize.xy,
         global.OriginalFPS,
         SC_FREQ_MODE,
         SC_FREQ,
@@ -157,7 +156,6 @@ void main()
         PIXEL_CLOCK,
         H_FREQ_MODE,
         H_FREQ,
-        H_BLANK_FUZZ,
         DSP_WORKING_FS,
         DSP_OUTPUT_FS);
 
@@ -175,7 +173,6 @@ void main()
         H_BLANK_FUZZ);
 
     float FrameWidth = contract_output_frame_width(
-        config.OriginalSize.xy,
         global.OriginalFPS,
         SC_FREQ_MODE,
         SC_FREQ,
@@ -183,7 +180,6 @@ void main()
         PIXEL_CLOCK,
         H_FREQ_MODE,
         H_FREQ,
-        H_BLANK_FUZZ,
         DSP_WORKING_FS,
         DSP_OUTPUT_FS);
 

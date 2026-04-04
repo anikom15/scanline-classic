@@ -3,17 +3,13 @@
 #pragma parameter YC_MODEL "System color space (YPbPr, YDbDr, YCbCr)" 0.0 0.0 2.0 1.0
 
 #pragma parameter SYS_BIAS_Y "Offset Y (IRE)" 0.0 -30.0 30.0 0.1
-#pragma parameter SYS_BIAS_U "Offset U (IRE)" 0.0 -30.0 30.0 0.1
-#pragma parameter SYS_BIAS_V "Offset V (IRE)" 0.0 -30.0 30.0 0.1
+#pragma parameter SYS_BIAS_C "Offset C (IRE)" 0.0 -30.0 30.0 0.1
 
 #pragma parameter SYS_GAIN_Y "Gain Y (dB)" 0.0 -30.0 30.0 0.1
-#pragma parameter SYS_GAIN_U "Gain U (dB)" 0.0 -30.0 30.0 0.1
-#pragma parameter SYS_GAIN_V "Gain V (dB)" 0.0 -30.0 30.0 0.1
+#pragma parameter SYS_GAIN_C "Gain C (dB)" 0.0 -30.0 30.0 0.1
 
-#pragma parameter SYS_BANDWIDTH_Y "Bandwidth Y (MHz)" 5.4 3.0 150.0 0.01
-#pragma parameter SYS_BANDWIDTH_U "Bandwidth U (MHz)" 3.6 0.6 75.0 0.01
-#pragma parameter SYS_BANDWIDTH_V "Bandwidth V (MHz)" 3.6 0.6 75.0 0.01
+#pragma parameter SYS_BANDWIDTH_Y "Bandwidth Y (MHz)" 5.4 3.0 150.0 0.1
+#pragma parameter SYS_BANDWIDTH_C "Bandwidth C (MHz)" 1.3 0.6 75.0 0.1
 
-#pragma parameter SYS_CUTOFF_ATTEN_Y "Cutoff attenuation Y (dB)" 12.5 0.0 30.0 1.0
-#pragma parameter SYS_CUTOFF_ATTEN_U "Cutoff attenuation U (dB)" 20.0 0.0 30.0 1.0
-#pragma parameter SYS_CUTOFF_ATTEN_V "Cutoff attenuation V (dB)" 20.0 0.0 30.0 1.0
+#pragma parameter SYS_CUTOFF_ATTEN_Y "Cutoff attenuation Y (dB)" 0.0 0.0 30.0 1.0
+#pragma parameter SYS_CUTOFF_ATTEN_C "Cutoff attenuation C (dB)" 3.0 0.0 30.0 1.0

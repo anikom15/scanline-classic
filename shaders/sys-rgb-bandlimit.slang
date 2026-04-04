@@ -149,15 +149,13 @@ void main()
 
 
     float BaseFrameWidth = contract_frame_width(
-        config.OriginalSize.xy,
         config.OriginalFPS,
         SC_FREQ_MODE,
         SC_FREQ,
         PIXEL_CLOCK_MODE,
         PIXEL_CLOCK,
         H_FREQ_MODE,
-        H_FREQ,
-        H_BLANK_FUZZ);
+        H_FREQ);
     InputFrameWidth = BaseFrameWidth;
 
     float InputFrameHeight = contract_frame_height(
@@ -173,17 +171,12 @@ void main()
         H_FREQ);
 
     float fs_original = contract_fs_original(
-        config.OriginalSize.xy,
         config.OriginalFPS,
         SC_FREQ_MODE,
         SC_FREQ,
         PIXEL_CLOCK_MODE,
-        PIXEL_CLOCK,
-        H_FREQ_MODE,
-        H_FREQ,
-        H_BLANK_FUZZ);
+        PIXEL_CLOCK);
     float WorkingSampleRate = contract_working_sample_rate(
-        config.OriginalSize.xy,
         config.OriginalFPS,
         SC_FREQ_MODE,
         SC_FREQ,
@@ -191,7 +184,6 @@ void main()
         PIXEL_CLOCK,
         H_FREQ_MODE,
         H_FREQ,
-        H_BLANK_FUZZ,
         DSP_WORKING_FS);
 
     // Keep widths as float varyings for cross-driver safety, but the contract

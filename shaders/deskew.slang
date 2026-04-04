@@ -112,15 +112,13 @@ void main()
     vTexCoord = TexCoord;
 
     float BaseFrameWidth = contract_frame_width(
-        config.OriginalSize.xy,
         config.OriginalFPS,
         SC_FREQ_MODE,
         SC_FREQ,
         PIXEL_CLOCK_MODE,
         PIXEL_CLOCK,
         H_FREQ_MODE,
-        H_FREQ,
-        H_BLANK_FUZZ);
+        H_FREQ);
     float LineCarryClocks = contract_line_carry_clocks(
         config.OriginalSize.xy,
         config.OriginalFPS,
@@ -153,17 +151,12 @@ void main()
         H_FREQ_MODE,
         H_FREQ);
     float fs_original = contract_fs_original(
-        config.OriginalSize.xy,
         config.OriginalFPS,
         SC_FREQ_MODE,
         SC_FREQ,
         PIXEL_CLOCK_MODE,
-        PIXEL_CLOCK,
-        H_FREQ_MODE,
-        H_FREQ,
-        H_BLANK_FUZZ);
+        PIXEL_CLOCK);
     float fs_current = contract_output_sample_rate(
-        config.OriginalSize.xy,
         config.OriginalFPS,
         SC_FREQ_MODE,
         SC_FREQ,
@@ -171,13 +164,11 @@ void main()
         PIXEL_CLOCK,
         H_FREQ_MODE,
         H_FREQ,
-        H_BLANK_FUZZ,
         DSP_WORKING_FS,
         DSP_OUTPUT_FS);
 
     PresentationFrameHeight = FrameHeight;
     PresentationFrameWidth = contract_output_frame_width(
-        config.OriginalSize.xy,
         config.OriginalFPS,
         SC_FREQ_MODE,
         SC_FREQ,
@@ -185,7 +176,6 @@ void main()
         PIXEL_CLOCK,
         H_FREQ_MODE,
         H_FREQ,
-        H_BLANK_FUZZ,
         DSP_WORKING_FS,
         DSP_OUTPUT_FS);
 

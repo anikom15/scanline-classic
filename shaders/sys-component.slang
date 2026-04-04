@@ -78,11 +78,9 @@ layout(push_constant) uniform Push
 
     // Per-component analog bandlimit (MHz/dB), mapped via sigma601
     float SYS_BANDWIDTH_Y;
-    float SYS_BANDWIDTH_U;
-    float SYS_BANDWIDTH_V;
+    float SYS_BANDWIDTH_C;
     float SYS_CUTOFF_ATTEN_Y;
-    float SYS_CUTOFF_ATTEN_U;
-    float SYS_CUTOFF_ATTEN_V;
+    float SYS_CUTOFF_ATTEN_C;
 } config;
 
 // Short-hand macros
@@ -101,11 +99,9 @@ layout(push_constant) uniform Push
 #define YC_MODEL config.YC_MODEL
 
 #define SYS_BANDWIDTH_Y config.SYS_BANDWIDTH_Y
-#define SYS_BANDWIDTH_U config.SYS_BANDWIDTH_U
-#define SYS_BANDWIDTH_V config.SYS_BANDWIDTH_V
+#define SYS_BANDWIDTH_C config.SYS_BANDWIDTH_C
 #define SYS_CUTOFF_ATTEN_Y config.SYS_CUTOFF_ATTEN_Y
-#define SYS_CUTOFF_ATTEN_U config.SYS_CUTOFF_ATTEN_U
-#define SYS_CUTOFF_ATTEN_V config.SYS_CUTOFF_ATTEN_V
+#define SYS_CUTOFF_ATTEN_C config.SYS_CUTOFF_ATTEN_C
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
@@ -113,11 +109,9 @@ layout(std140, set = 0, binding = 0) uniform UBO
 
     // Post-filter gain/bias per component
     float SYS_GAIN_Y;
-    float SYS_GAIN_U;
-    float SYS_GAIN_V;
+    float SYS_GAIN_C;
     float SYS_BIAS_Y;
-    float SYS_BIAS_U;
-    float SYS_BIAS_V;
+    float SYS_BIAS_C;
 
 #ifdef OPTION_DEBUG
     // Bypasses
@@ -133,11 +127,9 @@ layout(std140, set = 0, binding = 0) uniform UBO
 #endif  // OPTION_DEBUG
 
 #define SYS_GAIN_Y global.SYS_GAIN_Y
-#define SYS_GAIN_U global.SYS_GAIN_U
-#define SYS_GAIN_V global.SYS_GAIN_V
+#define SYS_GAIN_C global.SYS_GAIN_C
 #define SYS_BIAS_Y global.SYS_BIAS_Y
-#define SYS_BIAS_U global.SYS_BIAS_U
-#define SYS_BIAS_V global.SYS_BIAS_V
+#define SYS_BIAS_C global.SYS_BIAS_C
 
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
@@ -154,7 +146,7 @@ void main()
     vTexCoord = TexCoord;
 
     // Precompute per-component sigmas (in texels) from MHz/dB specs.
-    // We reuse the vec3 return as (Y, U/Db, V/Dr).
+    // We reuse the vec3 return as (Y, C, C).
     tb = compute_timebase(
         config.FrameCount,
         vTexCoord,
@@ -173,19 +165,18 @@ void main()
         H_BLANK_FUZZ,
         SHORTEN_ODD_FIELD_TIME);
 
-    sigma.x = sigma_tb(tb, SYS_BANDWIDTH_Y, SYS_CUTOFF_ATTEN_Y);
-    sigma.y = sigma_tb(tb, SYS_BANDWIDTH_U, SYS_CUTOFF_ATTEN_U);
-    sigma.z = sigma_tb(tb, SYS_BANDWIDTH_V, SYS_CUTOFF_ATTEN_V);
+    sigma.x = gaussian_sigma(SYS_BANDWIDTH_Y, SYS_CUTOFF_ATTEN_Y);
+    sigma.y = gaussian_sigma(SYS_BANDWIDTH_C, SYS_CUTOFF_ATTEN_C);
 
     // Amplifier
     gain = vec3(
         pow(10.0, SYS_GAIN_Y / 20.0),
-        pow(10.0, SYS_GAIN_U / 20.0),
-        pow(10.0, SYS_GAIN_V / 20.0));
+        pow(10.0, SYS_GAIN_C / 20.0),
+        pow(10.0, SYS_GAIN_C / 20.0));
     bias = vec3(
         SYS_BIAS_Y * 10e-3,
-        SYS_BIAS_U * 10e-3,
-        SYS_BIAS_V * 10e-3);
+        SYS_BIAS_C * 10e-3,
+        SYS_BIAS_C * 10e-3);
 }
 
 #pragma stage fragment

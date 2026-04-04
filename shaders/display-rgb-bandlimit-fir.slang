@@ -167,15 +167,13 @@ void main()
     vTexCoord = TexCoord;
 
     float BaseFrameWidth = contract_frame_width(
-        config.OriginalSize.xy,
         config.OriginalFPS,
         SC_FREQ_MODE,
         SC_FREQ,
         PIXEL_CLOCK_MODE,
         PIXEL_CLOCK,
         H_FREQ_MODE,
-        H_FREQ,
-        H_BLANK_FUZZ);
+        H_FREQ);
     float InputFrameHeight = contract_frame_height(
         config.OriginalSize.xy,
         config.OriginalFPS,
@@ -190,15 +188,11 @@ void main()
     float BaseDataLength = contract_data_length(BaseFrameWidth, InputFrameHeight);
 
     float fs_original = contract_fs_original(
-        config.OriginalSize.xy,
         config.OriginalFPS,
         SC_FREQ_MODE,
         SC_FREQ,
         PIXEL_CLOCK_MODE,
-        PIXEL_CLOCK,
-        H_FREQ_MODE,
-        H_FREQ,
-        H_BLANK_FUZZ);
+        PIXEL_CLOCK);
     float LineCarryClocks = contract_line_carry_clocks(
         config.OriginalSize.xy,
         config.OriginalFPS,
@@ -220,7 +214,6 @@ void main()
         H_FREQ,
         H_BLANK_FUZZ);
     float WorkingSampleRate = contract_working_sample_rate(
-        config.OriginalSize.xy,
         config.OriginalFPS,
         SC_FREQ_MODE,
         SC_FREQ,
@@ -228,10 +221,8 @@ void main()
         PIXEL_CLOCK,
         H_FREQ_MODE,
         H_FREQ,
-        H_BLANK_FUZZ,
         DSP_WORKING_FS);
     float OutputSampleRate = contract_output_sample_rate(
-        config.OriginalSize.xy,
         config.OriginalFPS,
         SC_FREQ_MODE,
         SC_FREQ,
@@ -239,7 +230,6 @@ void main()
         PIXEL_CLOCK,
         H_FREQ_MODE,
         H_FREQ,
-        H_BLANK_FUZZ,
         DSP_WORKING_FS,
         DSP_OUTPUT_FS);
 
@@ -250,7 +240,6 @@ void main()
 
     OutputFrameHeight = InputFrameHeight;
     InputFrameWidth = contract_working_frame_width(
-        config.OriginalSize.xy,
         config.OriginalFPS,
         SC_FREQ_MODE,
         SC_FREQ,
@@ -258,10 +247,8 @@ void main()
         PIXEL_CLOCK,
         H_FREQ_MODE,
         H_FREQ,
-        H_BLANK_FUZZ,
         DSP_WORKING_FS);
     OutputFrameWidth = contract_output_frame_width(
-        config.OriginalSize.xy,
         config.OriginalFPS,
         SC_FREQ_MODE,
         SC_FREQ,
@@ -269,7 +256,6 @@ void main()
         PIXEL_CLOCK,
         H_FREQ_MODE,
         H_FREQ,
-        H_BLANK_FUZZ,
         DSP_WORKING_FS,
         DSP_OUTPUT_FS);
     InputDataLength = max(contract_data_length(InputFrameWidth, OutputFrameHeight), 1.0);
