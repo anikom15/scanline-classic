@@ -43,6 +43,15 @@
 - `shaders/framev.slang` consumes the `frameh` output and performs vertical centering, zero-stuffing, and scanline blanking from vertex-precomputed state; it should not depend on a metadata texture payload.
 - Downstream DSP resamplers such as `shaders/sys-rgb-bandlimit.slang` and `shaders/display-rgb-bandlimit-fir.slang` should derive `Delta`, `Delta_in`, and related timing from `contract_data_length(...)`, `FS_ORIGINAL`, `DSP_WORKING_FS`, and `DSP_OUTPUT_FS`. Use `SourceSize`/`OutputSize` only for final texture-coordinate mapping and output bounds.
 
+## Current clock-domain presentation model (2026-04)
+- Current mental model is: `frameh` -> system resampler (`sys-rgb-bandlimit`) -> DSP / time-domain processing -> output resampler (`display-rgb-bandlimit-fir`) -> optional prototype `deskew` -> presentation (`beam`, `mask`, `curve`). This is **not** a typical image-first shader stack.
+- `shaders/frameh.slang` now writes a **true clock-domain raster**: each stored line is `ClocksPerLine` samples wide, active source pixels are ZOH-held for `ClockFactor` clock samples, and blanking remains at 1-clock resolution.
+- `contract_fs_original()` now represents the stored raster's native sample rate (the pixel clock), and `contract_frame_width()` represents the stored clock-domain width. Use `contract_display_frame_width()` only when a stage needs the intended display/presentation width for aspect or geometry calculations.
+- The canonical per-line horizontal carry is `mod(ClocksPerLine, ClockFactor)` clocks. If a presentation-stage shader needs that drift, prefer `contract_line_carry_clocks(...)` and resample the carry into the current sample-rate domain instead of inferring it from texture size.
+- `shaders/deskew.slang` is currently a **prototype / diagnostic** carry-correction stage. Because it shifts an already-resampled texture, it can show interpolation / beat artifacts in some modes (for example PSX 256px mode). The physically correct long-term home for this correction is `shaders/beam.slang`.
+- `shaders/beam.slang` should treat stored clock-domain width and intended display width separately: use `contract_frame_width()` for packed signal mapping and `contract_display_frame_width()` for aspect-ratio / presentation geometry.
+- For isolation tests, add source-of-truth debug presets under `presetdata/input/debug/` with matching debug pipelines / params under `presetdata/pipelines/debug/` and `presetdata/params/debug/` rather than mutating main production presets.
+
 ## Integration and dependency boundaries
 - `external/presetgen/` is a vendored dependency used by `build.py`; keep compatibility with its schemas and CLI behavior.
 - JSON schema expectations live in `external/presetgen/*.schema.json`; invalid preset/pipeline/param JSON will break generation.

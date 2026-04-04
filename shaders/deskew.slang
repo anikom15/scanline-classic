@@ -28,8 +28,10 @@
 // `contract.inc`; the input texture is treated as storage only.
 //
 // The correction is applied once, at the last time-aware stage, by shifting
-// each row horizontally by its canonical presentation phase. Alpha is forced
-// to 1.0 to mark that canonical DSP processing is complete after this stage.
+// each row horizontally by the resampled line-carry derived from
+// `frameh.slang`. Line 0 stays anchored; lower lines accumulate the per-line
+// carry in current output-sample units. Alpha is forced to 1.0 to mark that
+// canonical DSP processing is complete after this stage.
 //
 // For best results, use linear sampling on this pass so the fractional X
 // offsets blend smoothly.
@@ -47,7 +49,7 @@
 
 #ifdef OPTION_DEBUG
 #pragma parameter DEBUG_DESKEW_HEADER " —— Debug Deskew —— " 0.0 0.0 0.0 0.0
-#pragma parameter DESKEW_BYPASS "Bypass deskew" 1.0 0.0 1.0 1.0
+#pragma parameter DESKEW_BYPASS "Bypass deskew" 0.0 0.0 1.0 1.0
 #endif  // OPTION_DEBUG
 
 layout(push_constant) uniform Push
@@ -101,6 +103,8 @@ layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
 layout(location = 1) flat out float PresentationFrameWidth;
 layout(location = 2) flat out float PresentationFrameHeight;
+layout(location = 3) flat out float CarryShiftPerLine;
+layout(location = 4) flat out float CarryCycleWidth;
 
 void main()
 {
@@ -109,6 +113,26 @@ void main()
 
     float BaseFrameWidth = contract_frame_width(
         config.OriginalSize.xy,
+        config.OriginalFPS,
+        SC_FREQ_MODE,
+        SC_FREQ,
+        PIXEL_CLOCK_MODE,
+        PIXEL_CLOCK,
+        H_FREQ_MODE,
+        H_FREQ,
+        H_BLANK_FUZZ);
+    float LineCarryClocks = contract_line_carry_clocks(
+        config.OriginalSize.xy,
+        config.OriginalFPS,
+        SC_FREQ_MODE,
+        SC_FREQ,
+        PIXEL_CLOCK_MODE,
+        PIXEL_CLOCK,
+        H_FREQ_MODE,
+        H_FREQ,
+        H_BLANK_FUZZ);
+    float ClockFactor = contract_clock_factor(
+        config.OriginalSize.x,
         config.OriginalFPS,
         SC_FREQ_MODE,
         SC_FREQ,
@@ -140,24 +164,34 @@ void main()
         H_FREQ_MODE,
         H_FREQ,
         H_BLANK_FUZZ);
-    float fs_current = max(DSP_OUTPUT_FS * 1.0e6, EPS);
+    float fs_current = (DSP_OUTPUT_FS > 0.0) ? (DSP_OUTPUT_FS * 1.0e6) : fs_original;
 
     PresentationFrameHeight = FrameHeight;
     float CurrentDataLength = max(BaseDataLength * (fs_current / max(fs_original, EPS)), 1.0);
     PresentationFrameWidth = CurrentDataLength / max(PresentationFrameHeight, 1.0);
+
+    // Resample FrameH's per-line residual clock carry into the current output
+    // sample domain so each successive line receives the correct horizontal
+    // offset while keeping line 0 anchored.
+    float sample_ratio = fs_current / max(fs_original, EPS);
+    CarryShiftPerLine = LineCarryClocks * sample_ratio;
+    CarryCycleWidth = max(ClockFactor * sample_ratio, EPS);
 }
 
 #pragma stage fragment
 layout(location = 0) in vec2 vTexCoord;
 layout(location = 1) flat in float PresentationFrameWidth;
 layout(location = 2) flat in float PresentationFrameHeight;
+layout(location = 3) flat in float CarryShiftPerLine;
+layout(location = 4) flat in float CarryCycleWidth;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
 vec3 sample_deskewed(float output_x, float output_y, float frame_width)
 {
-    float row_phase = contract_phase_rel_sample(0.0, output_y, frame_width);
-    float source_x = output_x + mix(row_phase, 0.0, DESKEW_BYPASS);
+    float accumulated_shift = output_y * CarryShiftPerLine;
+    float row_shift = (CarryCycleWidth > EPS) ? mod(accumulated_shift, CarryCycleWidth) : 0.0;
+    float source_x = output_x + mix(row_shift, 0.0, DESKEW_BYPASS);
 
     if (source_x < 0.0 || source_x >= frame_width)
         return vec3(0.0);

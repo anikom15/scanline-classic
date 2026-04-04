@@ -1,0 +1,29 @@
+{
+    "root_path" : "../../../shaders",
+    "shaders" : {
+        "deskew" : "deskew",
+        "limiter" : "limiter",
+        "linear" : "crt-linear",
+        "frame" : "framev",
+        "phosphor" : "phosphor-trichrome",
+        "beam" : "beam",
+        "mask" : "mask",
+        "curve" : "curve"
+    },
+    "options" : {
+        "deskew" : {
+            "filter_linear" : true
+        },
+        "frame" : {
+            "scale_type" : ["source", "absolute"],
+            "scale" : [1.0, 626.0]
+        },
+        "beam" : {
+            "scale_type" : ["viewport"],
+            "filter_linear" : true
+        },
+        "curve" : {
+            "filter_linear" : true
+        }
+    }
+}

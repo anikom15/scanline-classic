@@ -22,9 +22,12 @@
 // Maps active raster data into a framed field buffer stored in the
 // top-left of a 2x-sized intermediate texture.
 //
-// RGB stores the raster sample value for each framed sample, while A stores
-// `phase_rel_sample`. Timing and frame geometry are reconstructed downstream
-// from the contract API rather than a texture-carried metadata payload.
+// The output is a true clock-domain raster: each line spans `ClocksPerLine`
+// samples, active source texels are held for `ClockFactor` clock samples, and
+// blanking remains at 1-sample clock resolution. RGB stores the raster sample
+// value for each clock sample, while A stores `phase_rel_sample`. Timing and
+// frame geometry are reconstructed downstream from the contract API rather
+// than a texture-carried metadata payload.
 
 #pragma name FrameH
 #pragma format R16G16B16A16_SFLOAT
@@ -246,14 +249,23 @@ bool sample_maps_to_active_time(
     float active_source_height = (IsInterlaced > 0.5)
         ? max(floor((config.SourceSize.y - field_parity + 1.0) * 0.5), 0.0)
         : config.SourceSize.y;
-    float active_left = (FrameWidth - config.SourceSize.x) * 0.5;
-    float active_top = floor((frame_height_int - active_source_height) * 0.5);
 
     float line_index = floor(output_y);
     float clock_factor = max(ClockFactor, 1.0);
+    float active_width = config.SourceSize.x * clock_factor;
+    float active_left = (FrameWidth - active_width) * 0.5;
+    float active_top = floor((frame_height_int - active_source_height) * 0.5);
+
     float phase_step_clocks = mod(ClocksPerLine, clock_factor);
-    float phase_clocks = mod(INITIAL_FIELD_PHASE_FRAC * clock_factor + line_index * phase_step_clocks, clock_factor);
-    phase_rel_sample = phase_clocks / clock_factor;
+    float phase_clocks = mod(
+        INITIAL_FIELD_PHASE_FRAC * clock_factor + line_index * phase_step_clocks,
+        clock_factor);
+
+    // Output samples live directly in the pixel-clock domain. Active source
+    // texels are held for `ClockFactor` clocks, while blanking remains at the
+    // native 1-clock resolution.
+    float source_x = (output_x - active_left - phase_clocks) / clock_factor;
+    phase_rel_sample = fract(source_x);
 
     bool in_active_y = line_index >= active_top && line_index < active_top + active_source_height;
     if (!in_active_y) {
@@ -261,13 +273,7 @@ bool sample_maps_to_active_time(
         return false;
     }
 
-    // Treat each source texel as a 1-sample ZOH interval and each framed texel
-    // as a 1-sample aperture. When the line start lands phase_rel_sample dots
-    // to the right, the local aperture maps phase_rel_sample dots earlier in
-    // source space.
-    float source_x = output_x - active_left - phase_rel_sample;
-    bool in_active_x = (source_x + 1.0) > 0.0 && source_x < config.SourceSize.x;
-
+    bool in_active_x = source_x >= 0.0 && source_x < config.SourceSize.x;
     if (!in_active_x) {
         source_sample_pos = vec2(-1.0);
         return false;
@@ -292,13 +298,9 @@ vec3 fetch_source_sample(float source_x, float source_y)
 
 vec3 sample_active_content(vec2 source_sample_pos)
 {
-    float base_x = floor(source_sample_pos.x);
-    float frac_x = source_sample_pos.x - base_x;
-    float source_y = floor(source_sample_pos.y + 0.5);
-
-    vec3 color0 = fetch_source_sample(base_x, source_y);
-    vec3 color1 = fetch_source_sample(base_x + 1.0, source_y);
-    return mix(color0, color1, frac_x);
+    float source_x = floor(source_sample_pos.x);
+    float source_y = floor(source_sample_pos.y);
+    return fetch_source_sample(source_x, source_y);
 }
 
 void main()

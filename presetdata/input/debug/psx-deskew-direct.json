@@ -1,0 +1,24 @@
+{
+  "filename" : "psx-deskew-direct",
+  "type" : "debug",
+  "title" : "PlayStation RGB deskew debug shader set",
+  "description" : "Debug preset that routes frameh directly into deskew, bypassing intermediate RGB amp and bandlimit stages to isolate carry and deskew behavior.",
+  "pipeline_root" : "../../pipelines",
+  "pipelines" : [
+    "misc/menu.json",
+    "debug/sys-rgb-frameh-direct.json",
+    "debug/crt-rgb-sd-deskew-direct.json",
+    "misc/post.json"
+  ],
+  "parameter_root" : "../../params",
+  "parameter_sets" : [
+    "sys/psx/base.json",
+    "sys/psx/ntscj.json",
+    "disp/ntscj.json",
+    "disp/trinitron.json",
+    "disp/tvl-600.json",
+    "debug/dsp-output-fs-zero.json"
+  ],
+  "parameter_overrides" : {
+  }
+}

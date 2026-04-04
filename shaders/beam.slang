@@ -159,7 +159,9 @@ void main()
 
     float fs_output = (DSP_OUTPUT_FS > 0.0) ? (DSP_OUTPUT_FS * 1.0e6) : fs_original;
 
-    OriginalFrameWidth = contract_frame_width(
+    // Beam geometry still reasons about the intended displayed raster width,
+    // while the stored signal itself remains in the clock-domain width.
+    OriginalFrameWidth = contract_display_frame_width(
         config.OriginalSize.xy,
         global.OriginalFPS,
         SC_FREQ_MODE,
@@ -170,7 +172,18 @@ void main()
         H_FREQ,
         H_BLANK_FUZZ);
 
-    float FrameWidth = OriginalFrameWidth * (fs_output / max(fs_original, EPS));
+    float StoredFrameWidth = contract_frame_width(
+        config.OriginalSize.xy,
+        global.OriginalFPS,
+        SC_FREQ_MODE,
+        SC_FREQ,
+        PIXEL_CLOCK_MODE,
+        PIXEL_CLOCK,
+        H_FREQ_MODE,
+        H_FREQ,
+        H_BLANK_FUZZ);
+
+    float FrameWidth = StoredFrameWidth * (fs_output / max(fs_original, EPS));
 
     OriginalFrameHeight = contract_frame_height(
         config.OriginalSize.xy,

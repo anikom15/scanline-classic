@@ -282,7 +282,7 @@ void main()
 
             float sample_index = clamp(input_index + float(tap_offset), 0.0, input_data_limit);
             vec2 input_tex =
-                vec2(floor(mod(sample_index, InputFrameWidth)) + 0.5, floor(sample_index / InputFrameWidth) + 0.5)
+                vec2(mod(sample_index, InputFrameWidth) + 0.5, floor(sample_index / InputFrameWidth) + 0.5)
                 * config.SourceSize.zw;
             vec3 rgb = texture(Source, input_tex).rgb;
 
@@ -307,7 +307,7 @@ void main()
 
         float sample_index = clamp(input_index + float(tap_offset), 0.0, input_data_limit);
         vec2 input_tex =
-            vec2(floor(mod(sample_index, InputFrameWidth)) + 0.5, floor(sample_index / InputFrameWidth) + 0.5)
+            vec2(mod(sample_index, InputFrameWidth) + 0.5, floor(sample_index / InputFrameWidth) + 0.5)
             * config.SourceSize.zw;
         vec3 rgb = texture(Source, input_tex).rgb;
 
@@ -332,7 +332,7 @@ void main()
 
         float sample_index = clamp(input_index + float(tap_offset), 0.0, input_data_limit);
         vec2 input_tex =
-            vec2(floor(mod(sample_index, InputFrameWidth)) + 0.5, floor(sample_index / InputFrameWidth) + 0.5)
+            vec2(mod(sample_index, InputFrameWidth) + 0.5, floor(sample_index / InputFrameWidth) + 0.5)
             * config.SourceSize.zw;
         vec3 rgb = texture(Source, input_tex).rgb;
 
