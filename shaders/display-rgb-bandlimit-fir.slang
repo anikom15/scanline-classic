@@ -51,6 +51,7 @@
 #pragma parameter DEBUG_DISPLAY_RGB_BANDLIMIT_HEADER " —— Debug Display RGB Bandlimit —— " 0.0 0.0 0.0 0.0
 #pragma parameter DISPLAY_RGB_AMP_BYPASS "Bypass display RGB amplifier" 0.0 0.0 1.0 1.0
 #pragma parameter DISPLAY_RGB_FILTER_BYPASS "Bypass display RGB filter" 0.0 0.0 1.0 1.0
+#pragma parameter DESKEW_BYPASS "Bypass integrated deskew" 0.0 0.0 1.0 1.0
 #endif  // OPTION_DEBUG
 
 layout(push_constant) uniform Push
@@ -106,6 +107,7 @@ layout(std140, set = 0, binding = 0) uniform UBO
 #ifdef OPTION_DEBUG
     float DISPLAY_RGB_FILTER_BYPASS;
     float DISPLAY_RGB_AMP_BYPASS;
+    float DESKEW_BYPASS;
 #endif  // OPTION_DEBUG
 
 } global;
@@ -113,6 +115,9 @@ layout(std140, set = 0, binding = 0) uniform UBO
 #ifdef OPTION_DEBUG
 #define DISPLAY_RGB_FILTER_BYPASS global.DISPLAY_RGB_FILTER_BYPASS
 #define DISPLAY_RGB_AMP_BYPASS global.DISPLAY_RGB_AMP_BYPASS
+#define DESKEW_BYPASS global.DESKEW_BYPASS
+#else
+const float DESKEW_BYPASS = 0.0;
 #endif  // OPTION_DEBUG
 
 #define DISPLAY_GAIN_R global.DISPLAY_GAIN_R
@@ -149,6 +154,9 @@ layout(location = 11) flat out float InputDataLength;
 layout(location = 12) flat out float OutputDataLength;
 layout(location = 13) flat out float InputFrameWidth;
 layout(location = 14) flat out float OutputFrameWidth;
+layout(location = 15) flat out float DeskewSampleRatio;
+layout(location = 16) flat out float LineCarryClocksOut;
+layout(location = 17) flat out float ClockFactorOut;
 
 const int MAX_TAPS = 37;
 const float KAISER_ATTEN_DB = 40.0;
@@ -191,16 +199,85 @@ void main()
         H_FREQ_MODE,
         H_FREQ,
         H_BLANK_FUZZ);
-    float fs_in = (DSP_WORKING_FS > 0.0) ? (DSP_WORKING_FS * 1.0e6) : fs_original;
-    float fs_out = (DSP_OUTPUT_FS > 0.0) ? (DSP_OUTPUT_FS * 1.0e6) : fs_in;
-    fs_in = max(fs_in, EPS);
-    fs_out = max(fs_out, EPS);
+    float LineCarryClocks = contract_line_carry_clocks(
+        config.OriginalSize.xy,
+        config.OriginalFPS,
+        SC_FREQ_MODE,
+        SC_FREQ,
+        PIXEL_CLOCK_MODE,
+        PIXEL_CLOCK,
+        H_FREQ_MODE,
+        H_FREQ,
+        H_BLANK_FUZZ);
+    float ClockFactor = contract_clock_factor(
+        config.OriginalSize.x,
+        config.OriginalFPS,
+        SC_FREQ_MODE,
+        SC_FREQ,
+        PIXEL_CLOCK_MODE,
+        PIXEL_CLOCK,
+        H_FREQ_MODE,
+        H_FREQ,
+        H_BLANK_FUZZ);
+    float WorkingSampleRate = contract_working_sample_rate(
+        config.OriginalSize.xy,
+        config.OriginalFPS,
+        SC_FREQ_MODE,
+        SC_FREQ,
+        PIXEL_CLOCK_MODE,
+        PIXEL_CLOCK,
+        H_FREQ_MODE,
+        H_FREQ,
+        H_BLANK_FUZZ,
+        DSP_WORKING_FS);
+    float OutputSampleRate = contract_output_sample_rate(
+        config.OriginalSize.xy,
+        config.OriginalFPS,
+        SC_FREQ_MODE,
+        SC_FREQ,
+        PIXEL_CLOCK_MODE,
+        PIXEL_CLOCK,
+        H_FREQ_MODE,
+        H_FREQ,
+        H_BLANK_FUZZ,
+        DSP_WORKING_FS,
+        DSP_OUTPUT_FS);
+
+    // Keep widths as float varyings for cross-driver safety, but the contract
+    // guarantees they are integral-valued.
+    float fs_in = WorkingSampleRate;
+    float fs_out = OutputSampleRate;
 
     OutputFrameHeight = InputFrameHeight;
-    InputDataLength = max(BaseDataLength * (fs_in / max(fs_original, EPS)), 1.0);
-    OutputDataLength = max(BaseDataLength * (fs_out / max(fs_original, EPS)), 1.0);
-    InputFrameWidth = InputDataLength / max(OutputFrameHeight, 1.0);
-    OutputFrameWidth = OutputDataLength / max(OutputFrameHeight, 1.0);
+    InputFrameWidth = contract_working_frame_width(
+        config.OriginalSize.xy,
+        config.OriginalFPS,
+        SC_FREQ_MODE,
+        SC_FREQ,
+        PIXEL_CLOCK_MODE,
+        PIXEL_CLOCK,
+        H_FREQ_MODE,
+        H_FREQ,
+        H_BLANK_FUZZ,
+        DSP_WORKING_FS);
+    OutputFrameWidth = contract_output_frame_width(
+        config.OriginalSize.xy,
+        config.OriginalFPS,
+        SC_FREQ_MODE,
+        SC_FREQ,
+        PIXEL_CLOCK_MODE,
+        PIXEL_CLOCK,
+        H_FREQ_MODE,
+        H_FREQ,
+        H_BLANK_FUZZ,
+        DSP_WORKING_FS,
+        DSP_OUTPUT_FS);
+    InputDataLength = max(contract_data_length(InputFrameWidth, OutputFrameHeight), 1.0);
+    OutputDataLength = max(contract_data_length(OutputFrameWidth, OutputFrameHeight), 1.0);
+
+    DeskewSampleRatio = fs_out / max(fs_original, EPS);
+    LineCarryClocksOut = LineCarryClocks;
+    ClockFactorOut = ClockFactor;
 
     Tin = 1.0 / fs_in;
 
@@ -260,18 +337,34 @@ layout(location = 11) flat in float InputDataLength;
 layout(location = 12) flat in float OutputDataLength;
 layout(location = 13) flat in float InputFrameWidth;
 layout(location = 14) flat in float OutputFrameWidth;
+layout(location = 15) flat in float DeskewSampleRatio;
+layout(location = 16) flat in float LineCarryClocksOut;
+layout(location = 17) flat in float ClockFactorOut;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
+float compute_row_shift_output_samples(int output_y_i)
+{
+    int carry_clocks = int(LineCarryClocksOut);
+    int clock_factor = int(ClockFactorOut);
+    int row_carry_clocks = (clock_factor > 0)
+        ? (output_y_i * carry_clocks) % clock_factor
+        : 0;
+
+    return mix(float(row_carry_clocks) * DeskewSampleRatio, 0.0, DESKEW_BYPASS);
+}
+
 vec3 fetch_input_sample(float sample_index, float input_frame_width, float input_data_limit)
 {
-    float clamped_index = clamp(sample_index, 0.0, input_data_limit);
-    float input_row = floor(clamped_index / max(input_frame_width, 1.0));
-    float sample_in_row = clamped_index - input_row * input_frame_width;
-    sample_in_row = clamp(sample_in_row, 0.0, max(input_frame_width - 1.0, 0.0));
-
-    int texel_x = int(floor(sample_in_row));
-    int texel_y = int(input_row);
+    // `input_frame_width` is passed as float for portability, but it is
+    // integral-valued by contract, so the row/column decomposition can be
+    // performed exactly in integer arithmetic here.
+    int input_frame_width_i = max(int(input_frame_width + 0.5), 1);
+    int input_data_limit_i = max(int(input_data_limit + 0.5), 0);
+    int clamped_index_i = clamp(int(floor(clamp(sample_index, 0.0, input_data_limit))),
+        0, input_data_limit_i);
+    int texel_y = clamped_index_i / input_frame_width_i;
+    int texel_x = clamped_index_i - texel_y * input_frame_width_i;
 
     texel_x = clamp(texel_x, 0, max(int(config.SourceSize.x) - 1, 0));
     texel_y = clamp(texel_y, 0, max(int(config.SourceSize.y) - 1, 0));
@@ -287,7 +380,7 @@ void main()
     float output_x = float(output_x_i);
     float output_y = float(output_y_i);
 
-    if (output_x >= ceil(OutputFrameWidth) || output_y >= ceil(OutputFrameHeight)) {
+    if (output_x >= OutputFrameWidth || output_y >= OutputFrameHeight) {
         FragColor = vec4(0.0);
         return;
     }
@@ -297,24 +390,21 @@ void main()
     int n_taps = int(pfilt.taps);
     int center = (n_taps - 1) / 2;
 
-    int output_width_whole_int = int(floor(OutputFrameWidth));
-    float output_width_frac = OutputFrameWidth - float(output_width_whole_int);
-    float field_output_index = float(output_y_i * output_width_whole_int)
-        + (float(output_y_i) * output_width_frac + float(output_x_i));
-    if (field_output_index >= OutputDataLength) {
+    float row_shift_output = compute_row_shift_output_samples(output_y_i);
+    float deskewed_output_x = output_x + row_shift_output;
+
+    float field_output_index = output_y * OutputFrameWidth + deskewed_output_x;
+    if (field_output_index < 0.0 || field_output_index >= OutputDataLength) {
         FragColor = vec4(0.0);
         return;
     }
 
-    float samples_per_row = OutputFrameWidth * invDelta;
-    int samples_per_row_whole_int = int(floor(samples_per_row));
-    float samples_per_row_frac = samples_per_row - float(samples_per_row_whole_int);
-    float phase_low = float(output_y_i) * samples_per_row_frac + float(output_x_i) * invDelta;
-    float phase_carry = floor(phase_low);
-    int input_index_int = output_y_i * samples_per_row_whole_int + int(phase_carry);
-    float frac_offset = phase_low - phase_carry;
+    float input_sample_pos = field_output_index * invDelta;
+    float input_pos_floor = floor(input_sample_pos);
+    int input_index_int = int(input_pos_floor);
+    float frac_offset = input_sample_pos - input_pos_floor;
     float input_data_limit = max(InputDataLength - 1.0, 0.0);
-    float phase_rel_sample = contract_phase_rel_sample(output_x, output_y, OutputFrameWidth);
+    // float phase_rel_sample = contract_phase_rel_sample(deskewed_output_x, output_y, OutputFrameWidth);
 
     vec3 color = vec3(0.0);
 
@@ -393,5 +483,5 @@ void main()
     color.r *= 1.0 - USER_BLUE_ONLY;
     color.g *= 1.0 - USER_BLUE_ONLY;
 
-    FragColor = vec4(color, phase_rel_sample);
+    FragColor = vec4(color, 1.0);  // Alpha channel indicates no further time-based DSP
 }

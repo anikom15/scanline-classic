@@ -17,6 +17,8 @@
 
 // Contract-oriented timing getters.
 // Public API rule: each getter is independent and can be called directly.
+// `contract_*` helpers must not call other `contract_*` helpers; derive from
+// first principles or `modulation.inc` only.
 // `contract_field()` intentionally returns the unbounded frame count as float.
 
 #include "modulation.inc"
@@ -84,28 +86,6 @@ float contract_clock_factor(
     return max(1.0, round(total_cycles * fuzz_frac / max(original_width, 1.0)));
 }
 
-float contract_fs_original(
-    vec2 original_size,
-    float original_fps,
-    float sc_freq_mode,
-    float sc_freq_custom_mhz,
-    float pixel_clock_mode,
-    float pixel_clock_mhz,
-    float h_freq_mode,
-    float h_freq_custom_khz,
-    float h_blank_fuzz)
-{
-    // In the clock-domain pipeline, `frameh.slang` emits one stored sample per
-    // pixel clock. The native framed-signal sample rate is therefore the pixel
-    // clock itself.
-    return max(contract_pixel_clock(
-        pixel_clock_mode,
-        pixel_clock_mhz,
-        sc_freq_mode,
-        sc_freq_custom_mhz,
-        original_fps), EPS);
-}
-
 float contract_frame_width(
     vec2 original_size,
     float original_fps,
@@ -117,15 +97,201 @@ float contract_frame_width(
     float h_freq_custom_khz,
     float h_blank_fuzz)
 {
+    float sc_freq_hz;
+    int standard;
+    compute_subcarrier_freq(sc_freq_mode, sc_freq_custom_mhz, original_fps, sc_freq_hz, standard);
+
+    float pixel_clock_hz = compute_pixel_clock(pixel_clock_mode, pixel_clock_mhz, sc_freq_hz);
+    float h_freq_hz = compute_h_freq(h_freq_mode, standard, h_freq_custom_khz, pixel_clock_hz, original_fps);
+    float total_cycles = pixel_clock_hz / max(h_freq_hz, EPS);
+
     // The stored raster width now matches the true line length in clocks.
-    return max(contract_clocks_per_line(
-        original_fps,
-        sc_freq_mode,
-        sc_freq_custom_mhz,
-        pixel_clock_mode,
-        pixel_clock_mhz,
-        h_freq_mode,
-        h_freq_custom_khz), 1.0);
+    return max(1.0, round(total_cycles));
+}
+
+float contract_fs_original(
+    vec2 original_size,
+    float original_fps,
+    float sc_freq_mode,
+    float sc_freq_custom_mhz,
+    float pixel_clock_mode,
+    float pixel_clock_mhz,
+    float h_freq_mode,
+    float h_freq_custom_khz,
+    float h_blank_fuzz)
+{
+    float sc_freq_hz;
+    int standard;
+    compute_subcarrier_freq(sc_freq_mode, sc_freq_custom_mhz, original_fps, sc_freq_hz, standard);
+
+    // In the clock-domain pipeline, `frameh.slang` emits one stored sample per
+    // pixel clock. The native framed-signal sample rate is therefore the pixel
+    // clock itself.
+    return max(compute_pixel_clock(pixel_clock_mode, pixel_clock_mhz, sc_freq_hz), EPS);
+}
+
+float contract_snap_sample_rate(
+    float requested_sample_rate,
+    float fs_original,
+    float base_frame_width)
+{
+    // Public contract: any stage that stores a 1D framed signal into a 2D
+    // texture must keep the per-row stored width integral. Keep these values as
+    // float across stage boundaries for portability, but treat them as
+    // integral-valued and convert to int locally when exact integer arithmetic
+    // is needed inside a shader stage.
+    float safe_fs_original = max(fs_original, EPS);
+    float safe_base_frame_width = max(base_frame_width, 1.0);
+    float requested_safe = max(requested_sample_rate, EPS);
+    float snapped_frame_width = max(1.0,
+        round(safe_base_frame_width * requested_safe / safe_fs_original));
+
+    return safe_fs_original * snapped_frame_width / safe_base_frame_width;
+}
+
+float contract_frame_width_at_sample_rate(
+    float base_frame_width,
+    float sample_rate,
+    float fs_original)
+{
+    float safe_fs_original = max(fs_original, EPS);
+    float safe_base_frame_width = max(base_frame_width, 1.0);
+
+    return max(1.0,
+        round(safe_base_frame_width * max(sample_rate, EPS) / safe_fs_original));
+}
+
+float contract_working_sample_rate(
+    vec2 original_size,
+    float original_fps,
+    float sc_freq_mode,
+    float sc_freq_custom_mhz,
+    float pixel_clock_mode,
+    float pixel_clock_mhz,
+    float h_freq_mode,
+    float h_freq_custom_khz,
+    float h_blank_fuzz,
+    float dsp_working_fs)
+{
+    float sc_freq_hz;
+    int standard;
+    compute_subcarrier_freq(sc_freq_mode, sc_freq_custom_mhz, original_fps, sc_freq_hz, standard);
+
+    float fs_original = max(compute_pixel_clock(pixel_clock_mode, pixel_clock_mhz, sc_freq_hz), EPS);
+    float h_freq_hz = compute_h_freq(h_freq_mode, standard, h_freq_custom_khz, fs_original, original_fps);
+    float total_cycles = fs_original / max(h_freq_hz, EPS);
+    float base_frame_width = max(1.0, round(total_cycles));
+    float requested_sample_rate = (dsp_working_fs > 0.0)
+        ? (dsp_working_fs * 1.0e6)
+        : fs_original;
+    float requested_safe = max(requested_sample_rate, EPS);
+    float snapped_frame_width = max(1.0,
+        round(base_frame_width * requested_safe / fs_original));
+
+    return fs_original * snapped_frame_width / base_frame_width;
+}
+
+float contract_output_sample_rate(
+    vec2 original_size,
+    float original_fps,
+    float sc_freq_mode,
+    float sc_freq_custom_mhz,
+    float pixel_clock_mode,
+    float pixel_clock_mhz,
+    float h_freq_mode,
+    float h_freq_custom_khz,
+    float h_blank_fuzz,
+    float dsp_working_fs,
+    float dsp_output_fs)
+{
+    float sc_freq_hz;
+    int standard;
+    compute_subcarrier_freq(sc_freq_mode, sc_freq_custom_mhz, original_fps, sc_freq_hz, standard);
+
+    float fs_original = max(compute_pixel_clock(pixel_clock_mode, pixel_clock_mhz, sc_freq_hz), EPS);
+    float h_freq_hz = compute_h_freq(h_freq_mode, standard, h_freq_custom_khz, fs_original, original_fps);
+    float total_cycles = fs_original / max(h_freq_hz, EPS);
+    float base_frame_width = max(1.0, round(total_cycles));
+
+    float working_requested = (dsp_working_fs > 0.0)
+        ? (dsp_working_fs * 1.0e6)
+        : fs_original;
+    float working_width = max(1.0,
+        round(base_frame_width * max(working_requested, EPS) / fs_original));
+    float working_sample_rate = fs_original * working_width / base_frame_width;
+
+    float output_requested = (dsp_output_fs > 0.0)
+        ? (dsp_output_fs * 1.0e6)
+        : working_sample_rate;
+    float output_width = max(1.0,
+        round(base_frame_width * max(output_requested, EPS) / fs_original));
+
+    return fs_original * output_width / base_frame_width;
+}
+
+float contract_working_frame_width(
+    vec2 original_size,
+    float original_fps,
+    float sc_freq_mode,
+    float sc_freq_custom_mhz,
+    float pixel_clock_mode,
+    float pixel_clock_mhz,
+    float h_freq_mode,
+    float h_freq_custom_khz,
+    float h_blank_fuzz,
+    float dsp_working_fs)
+{
+    float sc_freq_hz;
+    int standard;
+    compute_subcarrier_freq(sc_freq_mode, sc_freq_custom_mhz, original_fps, sc_freq_hz, standard);
+
+    float fs_original = max(compute_pixel_clock(pixel_clock_mode, pixel_clock_mhz, sc_freq_hz), EPS);
+    float h_freq_hz = compute_h_freq(h_freq_mode, standard, h_freq_custom_khz, fs_original, original_fps);
+    float total_cycles = fs_original / max(h_freq_hz, EPS);
+    float base_frame_width = max(1.0, round(total_cycles));
+    float requested_sample_rate = (dsp_working_fs > 0.0)
+        ? (dsp_working_fs * 1.0e6)
+        : fs_original;
+
+    return max(1.0,
+        round(base_frame_width * max(requested_sample_rate, EPS) / fs_original));
+}
+
+float contract_output_frame_width(
+    vec2 original_size,
+    float original_fps,
+    float sc_freq_mode,
+    float sc_freq_custom_mhz,
+    float pixel_clock_mode,
+    float pixel_clock_mhz,
+    float h_freq_mode,
+    float h_freq_custom_khz,
+    float h_blank_fuzz,
+    float dsp_working_fs,
+    float dsp_output_fs)
+{
+    float sc_freq_hz;
+    int standard;
+    compute_subcarrier_freq(sc_freq_mode, sc_freq_custom_mhz, original_fps, sc_freq_hz, standard);
+
+    float fs_original = max(compute_pixel_clock(pixel_clock_mode, pixel_clock_mhz, sc_freq_hz), EPS);
+    float h_freq_hz = compute_h_freq(h_freq_mode, standard, h_freq_custom_khz, fs_original, original_fps);
+    float total_cycles = fs_original / max(h_freq_hz, EPS);
+    float base_frame_width = max(1.0, round(total_cycles));
+
+    float working_requested = (dsp_working_fs > 0.0)
+        ? (dsp_working_fs * 1.0e6)
+        : fs_original;
+    float working_width = max(1.0,
+        round(base_frame_width * max(working_requested, EPS) / fs_original));
+    float working_sample_rate = fs_original * working_width / base_frame_width;
+
+    float output_requested = (dsp_output_fs > 0.0)
+        ? (dsp_output_fs * 1.0e6)
+        : working_sample_rate;
+
+    return max(1.0,
+        round(base_frame_width * max(output_requested, EPS) / fs_original));
 }
 
 float contract_display_frame_width(
@@ -141,24 +307,16 @@ float contract_display_frame_width(
 {
     // Presentation-space width for stages that reason about the intended
     // displayed raster geometry rather than the stored clock-domain texture.
-    float clocks_per_line = contract_clocks_per_line(
-        original_fps,
-        sc_freq_mode,
-        sc_freq_custom_mhz,
-        pixel_clock_mode,
-        pixel_clock_mhz,
-        h_freq_mode,
-        h_freq_custom_khz);
-    float clock_factor = contract_clock_factor(
-        original_size.x,
-        original_fps,
-        sc_freq_mode,
-        sc_freq_custom_mhz,
-        pixel_clock_mode,
-        pixel_clock_mhz,
-        h_freq_mode,
-        h_freq_custom_khz,
-        h_blank_fuzz);
+    float sc_freq_hz;
+    int standard;
+    compute_subcarrier_freq(sc_freq_mode, sc_freq_custom_mhz, original_fps, sc_freq_hz, standard);
+
+    float pixel_clock_hz = compute_pixel_clock(pixel_clock_mode, pixel_clock_mhz, sc_freq_hz);
+    float h_freq_hz = compute_h_freq(h_freq_mode, standard, h_freq_custom_khz, pixel_clock_hz, original_fps);
+    float total_cycles = pixel_clock_hz / max(h_freq_hz, EPS);
+    float clocks_per_line = max(1.0, round(total_cycles));
+    float fuzz_frac = h_blank_fuzz / 100.0;
+    float clock_factor = max(1.0, round(total_cycles * fuzz_frac / max(original_size.x, 1.0)));
 
     return clocks_per_line / max(clock_factor, 1.0);
 }
@@ -174,24 +332,16 @@ float contract_line_carry_clocks(
     float h_freq_custom_khz,
     float h_blank_fuzz)
 {
-    float clocks_per_line = contract_clocks_per_line(
-        original_fps,
-        sc_freq_mode,
-        sc_freq_custom_mhz,
-        pixel_clock_mode,
-        pixel_clock_mhz,
-        h_freq_mode,
-        h_freq_custom_khz);
-    float clock_factor = contract_clock_factor(
-        original_size.x,
-        original_fps,
-        sc_freq_mode,
-        sc_freq_custom_mhz,
-        pixel_clock_mode,
-        pixel_clock_mhz,
-        h_freq_mode,
-        h_freq_custom_khz,
-        h_blank_fuzz);
+    float sc_freq_hz;
+    int standard;
+    compute_subcarrier_freq(sc_freq_mode, sc_freq_custom_mhz, original_fps, sc_freq_hz, standard);
+
+    float pixel_clock_hz = compute_pixel_clock(pixel_clock_mode, pixel_clock_mhz, sc_freq_hz);
+    float h_freq_hz = compute_h_freq(h_freq_mode, standard, h_freq_custom_khz, pixel_clock_hz, original_fps);
+    float total_cycles = pixel_clock_hz / max(h_freq_hz, EPS);
+    float clocks_per_line = max(1.0, round(total_cycles));
+    float fuzz_frac = h_blank_fuzz / 100.0;
+    float clock_factor = max(1.0, round(total_cycles * fuzz_frac / max(original_size.x, 1.0)));
 
     return mod(clocks_per_line, max(clock_factor, 1.0));
 }
@@ -342,7 +492,7 @@ float contract_initial_field_phase_frac(
 
     float t_field = v_lines_per_field / h_freq_hz;
     float fs_original = 1.0 / pixel_time;
-    float field = contract_field(frame_count);
+    float field = float(frame_count);
 
     return fract(phase_zero / 360.0 + fract(field * t_field * fs_original));
 }

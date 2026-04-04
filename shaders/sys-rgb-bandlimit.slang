@@ -148,7 +148,7 @@ void main()
     );
 
 
-    InputFrameWidth = contract_frame_width(
+    float BaseFrameWidth = contract_frame_width(
         config.OriginalSize.xy,
         config.OriginalFPS,
         SC_FREQ_MODE,
@@ -158,6 +158,7 @@ void main()
         H_FREQ_MODE,
         H_FREQ,
         H_BLANK_FUZZ);
+    InputFrameWidth = BaseFrameWidth;
 
     float InputFrameHeight = contract_frame_height(
         config.OriginalSize.xy,
@@ -170,7 +171,6 @@ void main()
         PIXEL_CLOCK,
         H_FREQ_MODE,
         H_FREQ);
-    InputDataLength = max(contract_data_length(InputFrameWidth, InputFrameHeight), 1.0);
 
     float fs_original = contract_fs_original(
         config.OriginalSize.xy,
@@ -182,14 +182,30 @@ void main()
         H_FREQ_MODE,
         H_FREQ,
         H_BLANK_FUZZ);
+    float WorkingSampleRate = contract_working_sample_rate(
+        config.OriginalSize.xy,
+        config.OriginalFPS,
+        SC_FREQ_MODE,
+        SC_FREQ,
+        PIXEL_CLOCK_MODE,
+        PIXEL_CLOCK,
+        H_FREQ_MODE,
+        H_FREQ,
+        H_BLANK_FUZZ,
+        DSP_WORKING_FS);
 
-    float fs_in = max(fs_original, EPS);
-    float fs_out = (DSP_WORKING_FS > 0.0) ? (DSP_WORKING_FS * 1.0e6) : fs_in;
-    fs_out = max(fs_out, EPS);
+    // Keep widths as float varyings for cross-driver safety, but the contract
+    // guarantees they are integral-valued.
+    float fs_in = fs_original;
+    float fs_out = WorkingSampleRate;
 
     OutputFrameHeight = InputFrameHeight;
-    OutputDataLength = max(InputDataLength * (fs_out / fs_in), 1.0);
-    OutputFrameWidth = OutputDataLength / max(OutputFrameHeight, 1.0);
+    OutputFrameWidth = contract_frame_width_at_sample_rate(
+        BaseFrameWidth,
+        fs_out,
+        fs_original);
+    InputDataLength = max(contract_data_length(InputFrameWidth, OutputFrameHeight), 1.0);
+    OutputDataLength = max(contract_data_length(OutputFrameWidth, OutputFrameHeight), 1.0);
 
     Tin = 1.0 / fs_in;
 
@@ -239,13 +255,15 @@ layout(set = 0, binding = 2) uniform sampler2D Source;
 
 vec3 fetch_input_sample(float sample_index, float input_frame_width, float input_data_limit)
 {
-    float clamped_index = clamp(sample_index, 0.0, input_data_limit);
-    float input_row = floor(clamped_index / max(input_frame_width, 1.0));
-    float sample_in_row = clamped_index - input_row * input_frame_width;
-    sample_in_row = clamp(sample_in_row, 0.0, max(input_frame_width - 1.0, 0.0));
-
-    int texel_x = int(floor(sample_in_row));
-    int texel_y = int(input_row);
+    // `input_frame_width` is passed as float for portability, but it is
+    // integral-valued by contract, so the row/column decomposition can be
+    // performed exactly in integer arithmetic here.
+    int input_frame_width_i = max(int(input_frame_width + 0.5), 1);
+    int input_data_limit_i = max(int(input_data_limit + 0.5), 0);
+    int clamped_index_i = clamp(int(floor(clamp(sample_index, 0.0, input_data_limit))),
+        0, input_data_limit_i);
+    int texel_y = clamped_index_i / input_frame_width_i;
+    int texel_x = clamped_index_i - texel_y * input_frame_width_i;
 
     texel_x = clamp(texel_x, 0, max(int(config.SourceSize.x) - 1, 0));
     texel_y = clamp(texel_y, 0, max(int(config.SourceSize.y) - 1, 0));
@@ -262,7 +280,7 @@ void main()
     float output_x = float(output_x_i);
     float output_y = float(output_y_i);
 
-    if (output_x >= ceil(OutputFrameWidth) || output_y >= ceil(OutputFrameHeight)) {
+    if (output_x >= OutputFrameWidth || output_y >= OutputFrameHeight) {
         FragColor = vec4(0.0);
         return;
     }
@@ -272,22 +290,16 @@ void main()
     int n_taps = int(pfilt.taps);
     int center = (n_taps - 1) / 2;
 
-    int output_width_whole_int = int(floor(OutputFrameWidth));
-    float output_width_frac = OutputFrameWidth - float(output_width_whole_int);
-    float field_output_index = float(output_y_i * output_width_whole_int)
-        + (float(output_y_i) * output_width_frac + float(output_x_i));
+    float field_output_index = output_y * OutputFrameWidth + output_x;
     if (field_output_index >= OutputDataLength) {
         FragColor = vec4(0.0);
         return;
     }
 
-    float samples_per_row = OutputFrameWidth * invDelta;
-    int samples_per_row_whole_int = int(floor(samples_per_row));
-    float samples_per_row_frac = samples_per_row - float(samples_per_row_whole_int);
-    float phase_low = float(output_y_i) * samples_per_row_frac + float(output_x_i) * invDelta;
-    float phase_carry = floor(phase_low);
-    int input_index_int = output_y_i * samples_per_row_whole_int + int(phase_carry);
-    float frac_offset = phase_low - phase_carry;
+    float input_sample_pos = field_output_index * invDelta;
+    float input_pos_floor = floor(input_sample_pos);
+    int input_index_int = int(input_pos_floor);
+    float frac_offset = input_sample_pos - input_pos_floor;
     float input_data_limit = max(InputDataLength - 1.0, 0.0);
 
     float phase_rel_sample = contract_phase_rel_sample(output_x, output_y, OutputFrameWidth);

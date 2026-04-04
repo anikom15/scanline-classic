@@ -22,19 +22,16 @@
 // Input: Real RGB voltage
 // Output: Real RGB voltage with presentation deskew applied
 //
-// This stage compensates the visible row-to-row skew introduced when a
-// canonical 1D time signal is presented in a 2D raster with a fractional
-// frame width. Timing and sample geometry are reconstructed from
-// `contract.inc`; the input texture is treated as storage only.
+// This stage compensates the visible row-to-row skew introduced when
+// the canonical source signal contains a fractional number of display
+// pixels per line, where the clock factor is equal to the ratio of
+// pixel clock cycles to display pixels per line.
 //
 // The correction is applied once, at the last time-aware stage, by shifting
 // each row horizontally by the resampled line-carry derived from
 // `frameh.slang`. Line 0 stays anchored; lower lines accumulate the per-line
 // carry in current output-sample units. Alpha is forced to 1.0 to mark that
 // canonical DSP processing is complete after this stage.
-//
-// For best results, use linear sampling on this pass so the fractional X
-// offsets blend smoothly.
 
 #pragma name Deskew
 #pragma format R16G16B16A16_SFLOAT
@@ -155,8 +152,6 @@ void main()
         PIXEL_CLOCK,
         H_FREQ_MODE,
         H_FREQ);
-    float BaseDataLength = contract_data_length(BaseFrameWidth, FrameHeight);
-
     float fs_original = contract_fs_original(
         config.OriginalSize.xy,
         config.OriginalFPS,
@@ -167,17 +162,36 @@ void main()
         H_FREQ_MODE,
         H_FREQ,
         H_BLANK_FUZZ);
-    float fs_current = (DSP_OUTPUT_FS > 0.0) ? (DSP_OUTPUT_FS * 1.0e6)
-        : (DSP_WORKING_FS > 0.0) ? (DSP_WORKING_FS * 1.0e6)
-        : fs_original;
+    float fs_current = contract_output_sample_rate(
+        config.OriginalSize.xy,
+        config.OriginalFPS,
+        SC_FREQ_MODE,
+        SC_FREQ,
+        PIXEL_CLOCK_MODE,
+        PIXEL_CLOCK,
+        H_FREQ_MODE,
+        H_FREQ,
+        H_BLANK_FUZZ,
+        DSP_WORKING_FS,
+        DSP_OUTPUT_FS);
 
     PresentationFrameHeight = FrameHeight;
-    float CurrentDataLength = max(BaseDataLength * (fs_current / max(fs_original, EPS)), 1.0);
-    PresentationFrameWidth = CurrentDataLength / max(PresentationFrameHeight, 1.0);
+    PresentationFrameWidth = contract_output_frame_width(
+        config.OriginalSize.xy,
+        config.OriginalFPS,
+        SC_FREQ_MODE,
+        SC_FREQ,
+        PIXEL_CLOCK_MODE,
+        PIXEL_CLOCK,
+        H_FREQ_MODE,
+        H_FREQ,
+        H_BLANK_FUZZ,
+        DSP_WORKING_FS,
+        DSP_OUTPUT_FS);
 
-    // Pass the integer-valued carry and cycle to the fragment stage so the
-    // modular reduction can be performed in exact integer arithmetic.  Only the
-    // final scaling into the current sample domain uses floating-point.
+    // Pass the integer-valued carry and cycle to the fragment stage as floats
+    // for cross-driver safety; the fragment shader converts locally to int for
+    // exact modular arithmetic.
     SampleRatio = fs_current / max(fs_original, EPS);
     LineCarryClocksOut = LineCarryClocks;
     ClockFactorOut = ClockFactor;
