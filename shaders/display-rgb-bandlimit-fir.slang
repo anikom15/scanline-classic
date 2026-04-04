@@ -263,6 +263,18 @@ layout(location = 14) flat in float OutputFrameWidth;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
+vec3 fetch_input_sample(float sample_index, float input_frame_width, float input_data_limit)
+{
+    float clamped_index = clamp(sample_index, 0.0, input_data_limit);
+    int texel_x = int(floor(mod(clamped_index, input_frame_width)));
+    int texel_y = int(floor(clamped_index / input_frame_width));
+
+    texel_x = clamp(texel_x, 0, max(int(config.SourceSize.x) - 1, 0));
+    texel_y = clamp(texel_y, 0, max(int(config.SourceSize.y) - 1, 0));
+
+    return texelFetch(Source, ivec2(texel_x, texel_y), 0).rgb;
+}
+
 void main()
 {
     vec2 UV = vTexCoord * config.OutputSize.xy;
@@ -309,10 +321,7 @@ void main()
             float coeff = zoh_area(dt, Tin, Tout);
 
             float sample_index = clamp(input_index + float(tap_offset), 0.0, input_data_limit);
-            vec2 input_tex =
-                vec2(mod(sample_index, InputFrameWidth) + 0.5, floor(sample_index / InputFrameWidth) + 0.5)
-                * config.SourceSize.zw;
-            vec3 rgb = texture(Source, input_tex).rgb;
+            vec3 rgb = fetch_input_sample(sample_index, InputFrameWidth, input_data_limit);
 
             color += coeff * rgb;
         }
@@ -335,10 +344,7 @@ void main()
         float coeff = zoh_area(dt, Tin, Tout);
 
         float sample_index = clamp(input_index + float(tap_offset), 0.0, input_data_limit);
-        vec2 input_tex =
-            vec2(mod(sample_index, InputFrameWidth) + 0.5, floor(sample_index / InputFrameWidth) + 0.5)
-            * config.SourceSize.zw;
-        vec3 rgb = texture(Source, input_tex).rgb;
+        vec3 rgb = fetch_input_sample(sample_index, InputFrameWidth, input_data_limit);
 
         color += coeff * rgb;
     }
@@ -349,10 +355,7 @@ void main()
         float w = kaiser(float(tap_offset), kfilt.taps, kfilt.beta);
         float coeff = sinc(float(tap_offset - frac_offset), kfilt.fc_norm) * w;
         float sample_index = clamp(input_index + float(tap_offset), 0.0, input_data_limit);
-        vec2 input_tex =
-            vec2(mod(sample_index, InputFrameWidth) + 0.5, floor(sample_index / InputFrameWidth) + 0.5)
-            * config.SourceSize.zw;
-        vec3 rgb = texture(Source, input_tex).rgb;
+        vec3 rgb = fetch_input_sample(sample_index, InputFrameWidth, input_data_limit);
 
         color += coeff * rgb;
     }

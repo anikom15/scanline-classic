@@ -105,8 +105,9 @@ layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
 layout(location = 1) flat out float PresentationFrameWidth;
 layout(location = 2) flat out float PresentationFrameHeight;
-layout(location = 3) flat out float CarryShiftPerLine;
-layout(location = 4) flat out float CarryCycleWidth;
+layout(location = 3) flat out float LineCarryClocksOut;
+layout(location = 4) flat out float ClockFactorOut;
+layout(location = 5) flat out float SampleRatio;
 
 void main()
 {
@@ -174,27 +175,37 @@ void main()
     float CurrentDataLength = max(BaseDataLength * (fs_current / max(fs_original, EPS)), 1.0);
     PresentationFrameWidth = CurrentDataLength / max(PresentationFrameHeight, 1.0);
 
-    // Resample FrameH's per-line residual clock carry into the current output
-    // sample domain so each successive line receives the correct horizontal
-    // offset while keeping line 0 anchored.
-    float sample_ratio = fs_current / max(fs_original, EPS);
-    CarryShiftPerLine = LineCarryClocks * sample_ratio;
-    CarryCycleWidth = max(ClockFactor * sample_ratio, EPS);
+    // Pass the integer-valued carry and cycle to the fragment stage so the
+    // modular reduction can be performed in exact integer arithmetic.  Only the
+    // final scaling into the current sample domain uses floating-point.
+    SampleRatio = fs_current / max(fs_original, EPS);
+    LineCarryClocksOut = LineCarryClocks;
+    ClockFactorOut = ClockFactor;
 }
 
 #pragma stage fragment
 layout(location = 0) in vec2 vTexCoord;
 layout(location = 1) flat in float PresentationFrameWidth;
 layout(location = 2) flat in float PresentationFrameHeight;
-layout(location = 3) flat in float CarryShiftPerLine;
-layout(location = 4) flat in float CarryCycleWidth;
+layout(location = 3) flat in float LineCarryClocksOut;
+layout(location = 4) flat in float ClockFactorOut;
+layout(location = 5) flat in float SampleRatio;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
 vec3 sample_deskewed(float output_x, float output_y, float frame_width)
 {
-    float accumulated_shift = output_y * CarryShiftPerLine;
-    float row_shift = (CarryCycleWidth > EPS) ? mod(accumulated_shift, CarryCycleWidth) : 0.0;
+    // Compute the wrapped carry in integer arithmetic to avoid float32
+    // precision loss.  At high line numbers (e.g. y=130 for PSX 256px NTSC)
+    // the floating-point mod(y * carry * sr, cycle * sr) can land on the wrong
+    // side of a cycle boundary, producing a full-cycle error.  Working in
+    // integer clocks first keeps the reduction exact.
+    int carry_clocks = int(LineCarryClocksOut);
+    int clock_factor = int(ClockFactorOut);
+    int row_carry_clocks = (clock_factor > 0)
+        ? (int(output_y) * carry_clocks) % clock_factor
+        : 0;
+    float row_shift = float(row_carry_clocks) * SampleRatio;
     float source_x = output_x + mix(row_shift, 0.0, DESKEW_BYPASS);
 
     if (source_x < 0.0 || source_x >= frame_width)
