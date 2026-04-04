@@ -7,8 +7,8 @@
     },
     "options" : {
         "frame" : {
-            "scale_type" : ["source"],
-            "scale" : [2.0]
+            "scale_type" : ["absolute"],
+            "scale" : [4096.0]
         },
         "bandlimit" : {
             "scale_type" : ["absolute", "source"],

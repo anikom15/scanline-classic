@@ -66,6 +66,8 @@ layout(push_constant) uniform Push
     float DOUBLE_REFRESH;
     float SCANLINE_BLANK_WEIGHT;
     float PHASE_ZERO;
+    float FIELD_ODD;
+
 
 #ifdef OPTION_DEBUG
     float FRAME_VIZ_ACTIVE;
@@ -93,6 +95,7 @@ layout(push_constant) uniform Push
 #define H_FREQ config.H_FREQ
 #define H_BLANK_FUZZ config.H_BLANK_FUZZ
 #define PHASE_ZERO config.PHASE_ZERO
+#define FIELD_ODD config.FIELD_ODD
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
@@ -110,6 +113,8 @@ layout(location = 4) flat out float INITIAL_FIELD_PHASE_FRAC;
 layout(location = 5) flat out float FullFrameHeight;
 layout(location = 6) flat out float IsInterlaced;
 layout(location = 7) flat out float Field;
+layout(location = 8) flat out float ClocksPerLine;
+layout(location = 9) flat out float ClockFactor;
 
 void main()
 {
@@ -118,6 +123,26 @@ void main()
 
     FS_ORIGINAL = contract_fs_original(
         config.OriginalSize.xy,
+        config.OriginalFPS,
+        SC_FREQ_MODE,
+        SC_FREQ,
+        PIXEL_CLOCK_MODE,
+        PIXEL_CLOCK,
+        H_FREQ_MODE,
+        H_FREQ,
+        H_BLANK_FUZZ);
+
+    ClocksPerLine = contract_clocks_per_line(
+        config.OriginalFPS,
+        SC_FREQ_MODE,
+        SC_FREQ,
+        PIXEL_CLOCK_MODE,
+        PIXEL_CLOCK,
+        H_FREQ_MODE,
+        H_FREQ);
+
+    ClockFactor = contract_clock_factor(
+        config.OriginalSize.x,
         config.OriginalFPS,
         SC_FREQ_MODE,
         SC_FREQ,
@@ -198,49 +223,82 @@ layout(location = 1) flat in float FrameWidth;
 layout(location = 2) flat in float FrameHeight;
 layout(location = 3) flat in float FS_ORIGINAL;
 layout(location = 4) flat in float INITIAL_FIELD_PHASE_FRAC;
-layout(location = 5) flat in float FullFrameHeight;
 layout(location = 6) flat in float IsInterlaced;
 layout(location = 7) flat in float Field;
+layout(location = 8) flat in float ClocksPerLine;
+layout(location = 9) flat in float ClockFactor;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
-bool sample_maps_to_active_time(float output_x, float output_y, out float source_sample_index)
+float current_field_parity()
 {
-    float frame_width_int = ceil(FrameWidth);
+    return (IsInterlaced > 0.5) ? mod(Field + FIELD_ODD, 2.0) : 0.0;
+}
+
+bool sample_maps_to_active_time(
+    float output_x,
+    float output_y,
+    out vec2 source_sample_pos,
+    out float phase_rel_sample)
+{
     float frame_height_int = ceil(FrameHeight);
-    float active_left = floor((frame_width_int - config.SourceSize.x) * 0.5);
-    float active_top = floor((frame_height_int - config.SourceSize.y) * 0.5);
+    float field_parity = current_field_parity();
+    float active_source_height = (IsInterlaced > 0.5)
+        ? max(floor((config.SourceSize.y - field_parity + 1.0) * 0.5), 0.0)
+        : config.SourceSize.y;
+    float active_left = (FrameWidth - config.SourceSize.x) * 0.5;
+    float active_top = floor((frame_height_int - active_source_height) * 0.5);
 
     float line_index = floor(output_y);
-    float field_output_index = line_index * FrameWidth + output_x;
-    float input_index = floor(field_output_index);
+    float clock_factor = max(ClockFactor, 1.0);
+    float phase_step_clocks = mod(ClocksPerLine, clock_factor);
+    float phase_clocks = mod(INITIAL_FIELD_PHASE_FRAC * clock_factor + line_index * phase_step_clocks, clock_factor);
+    phase_rel_sample = phase_clocks / clock_factor;
 
-    float line_active_start = floor(line_index * FrameWidth + active_left);
-    float line_active_end = line_active_start + config.SourceSize.x;
-
-    bool in_active_y = line_index >= active_top && line_index < active_top + config.SourceSize.y;
-    bool in_active_x = input_index >= line_active_start && input_index < line_active_end;
-
-    if (!(in_active_x && in_active_y)) {
-        source_sample_index = -1.0;
+    bool in_active_y = line_index >= active_top && line_index < active_top + active_source_height;
+    if (!in_active_y) {
+        source_sample_pos = vec2(-1.0);
         return false;
     }
 
-    float active_x = input_index - line_active_start;
+    // Treat each source texel as a 1-sample ZOH interval and each framed texel
+    // as a 1-sample aperture. When the line start lands phase_rel_sample dots
+    // to the right, the local aperture maps phase_rel_sample dots earlier in
+    // source space.
+    float source_x = output_x - active_left - phase_rel_sample;
+    bool in_active_x = (source_x + 1.0) > 0.0 && source_x < config.SourceSize.x;
+
+    if (!in_active_x) {
+        source_sample_pos = vec2(-1.0);
+        return false;
+    }
+
     float active_y = line_index - active_top;
-    source_sample_index = active_y * config.SourceSize.x + active_x;
+    float source_y = (IsInterlaced > 0.5) ? (active_y * 2.0 + field_parity) : active_y;
+    source_sample_pos = vec2(source_x, source_y);
     return true;
 }
 
-vec3 sample_active_content(float source_sample_index)
+vec3 fetch_source_sample(float source_x, float source_y)
 {
-    float input_data_limit = max(config.SourceSize.x * config.SourceSize.y - 1.0, 0.0);
-    float sample_index = clamp(source_sample_index, 0.0, input_data_limit);
+    if (source_x < 0.0 || source_x >= config.SourceSize.x ||
+        source_y < 0.0 || source_y >= config.SourceSize.y) {
+        return vec3(0.0);
+    }
 
-    vec2 texel =
-        vec2(mod(sample_index, config.SourceSize.x) + 0.5, floor(sample_index / config.SourceSize.x) + 0.5)
-        * config.SourceSize.zw;
+    vec2 texel = vec2(source_x + 0.5, source_y + 0.5) * config.SourceSize.zw;
     return texture(Source, texel).rgb;
+}
+
+vec3 sample_active_content(vec2 source_sample_pos)
+{
+    float base_x = floor(source_sample_pos.x);
+    float frac_x = source_sample_pos.x - base_x;
+    float source_y = floor(source_sample_pos.y + 0.5);
+
+    vec3 color0 = fetch_source_sample(base_x, source_y);
+    vec3 color1 = fetch_source_sample(base_x + 1.0, source_y);
+    return mix(color0, color1, frac_x);
 }
 
 void main()
@@ -267,12 +325,11 @@ void main()
         return;
     }
 
-    float source_sample_index;
-    bool in_active = sample_maps_to_active_time(output_x, output_y, source_sample_index);
+    vec2 source_sample_pos;
+    float PhaseRelSample;
+    bool in_active = sample_maps_to_active_time(output_x, output_y, source_sample_pos, PhaseRelSample);
 
-    vec3 color = in_active ? sample_active_content(source_sample_index) : vec3(0.0);
-    float field_output_index = output_y * FrameWidth + output_x;
-    float PhaseRelSample = fract(field_output_index);
+    vec3 color = in_active ? sample_active_content(source_sample_pos) : vec3(0.0);
 
 #ifdef OPTION_DEBUG
     if (!in_active && in_frame && FRAME_VIZ_BLANKING > 0.5) {

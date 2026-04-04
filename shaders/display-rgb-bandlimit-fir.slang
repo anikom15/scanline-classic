@@ -28,10 +28,8 @@
 // factors based on the input and output sizes, while the fragment
 // shader applies the filter to produce the final output color.
 //
-// When the filter is bypassed for debugging, a simple triangle
-// convolution is used instead of the FIR, which has a fixed 3-tap
-// kernel but is continuous for fractional pixel offsets. This is
-// required to prevent aliasing on the output.
+// When the filter is bypassed for debugging, area average convolution
+// is used.
 
 #pragma name DisplayRGBBandlimitFIR
 #pragma format R16G16B16A16_SFLOAT
@@ -193,12 +191,12 @@ void main()
         H_FREQ_MODE,
         H_FREQ,
         H_BLANK_FUZZ);
-    float fs_in = (DSP_WORKING_FS > 0.0) ? DSP_WORKING_FS * 1.0e6 : max(fs_original, EPS);
-    float fs_out = (DSP_OUTPUT_FS > 0.0) ? DSP_OUTPUT_FS * 1.0e6 : fs_in;
+    float fs_in = max(DSP_WORKING_FS * 1.0e6, EPS);
+    float fs_out = max(DSP_OUTPUT_FS * 1.0e6, EPS);
 
     OutputFrameHeight = InputFrameHeight;
-    InputDataLength = max(round(BaseDataLength * (fs_in / max(fs_original, EPS))), 1.0);
-    OutputDataLength = max(round(BaseDataLength * (fs_out / max(fs_original, EPS))), 1.0);
+    InputDataLength = max(BaseDataLength * (fs_in / max(fs_original, EPS)), 1.0);
+    OutputDataLength = max(BaseDataLength * (fs_out / max(fs_original, EPS)), 1.0);
     InputFrameWidth = InputDataLength / max(OutputFrameHeight, 1.0);
     OutputFrameWidth = OutputDataLength / max(OutputFrameHeight, 1.0);
 
@@ -288,6 +286,7 @@ void main()
     float frac_offset = fract(phase);
     float input_index = floor(phase);
     float input_data_limit = max(InputDataLength - 1.0, 0.0);
+    float phase_rel_sample = contract_phase_rel_sample(output_x, output_y, OutputFrameWidth);
 
     vec3 color = vec3(0.0);
 
@@ -375,5 +374,5 @@ void main()
     color.r *= 1.0 - USER_BLUE_ONLY;
     color.g *= 1.0 - USER_BLUE_ONLY;
 
-    FragColor = vec4(color, frac_offset);
+    FragColor = vec4(color, phase_rel_sample);
 }

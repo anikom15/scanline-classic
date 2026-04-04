@@ -7,7 +7,7 @@
   "pipelines" : [
     "misc/menu.json",
     "sys/rgb.json",
-    "disp/crt.json",
+    "disp/crt-rgb-sd.json",
     "misc/post.json"
   ],
   "parameter_root" : "../../params",

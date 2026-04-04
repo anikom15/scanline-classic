@@ -139,6 +139,15 @@ void main()
     gl_Position = global.MVP * Position;
     vTexCoord = TexCoord;
 
+    float PixelClock = contract_pixel_clock(
+        PIXEL_CLOCK_MODE,
+        PIXEL_CLOCK,
+        SC_FREQ_MODE,
+        SC_FREQ,
+        config.OriginalFPS
+    );
+
+
     InputFrameWidth = contract_frame_width(
         config.OriginalSize.xy,
         config.OriginalFPS,
@@ -161,7 +170,7 @@ void main()
         PIXEL_CLOCK,
         H_FREQ_MODE,
         H_FREQ);
-    InputDataLength = contract_data_length(InputFrameWidth, InputFrameHeight);
+    InputDataLength = max(contract_data_length(InputFrameWidth, InputFrameHeight), 1.0);
 
     float fs_original = contract_fs_original(
         config.OriginalSize.xy,
@@ -175,10 +184,10 @@ void main()
         H_BLANK_FUZZ);
 
     float fs_in = max(fs_original, EPS);
-    float fs_out = (DSP_WORKING_FS > 0.0) ? DSP_WORKING_FS * 1.0e6 : fs_in;
+    float fs_out = max(DSP_WORKING_FS * 1.0e6, EPS);
 
     OutputFrameHeight = InputFrameHeight;
-    OutputDataLength = max(round(InputDataLength * (fs_out / fs_in)), 1.0);
+    OutputDataLength = max(InputDataLength * (fs_out / fs_in), 1.0);
     OutputFrameWidth = OutputDataLength / max(OutputFrameHeight, 1.0);
 
     Tin = 1.0 / fs_in;
@@ -189,7 +198,7 @@ void main()
     pfilt.Delta = Delta;
 
     // Gaussian filter design
-    float cutoff_freq = 0.5 * fs_in / SYS_FILTER_DECIMATION;
+    float cutoff_freq = 0.5 * PixelClock / SYS_FILTER_DECIMATION;
 
     // Compensate for sinc(x) rolloff by adjusting attenuation
     // gain = 20.0 * log10(abs(sinc(0.5))) ≈ -3.92 dB at Nyquist (x=0.5)
@@ -250,9 +259,11 @@ void main()
         return;
     }
     float resample_phase = field_output_index / Delta;
-    float frac_offset = fract(resample_phase);  // Will be stored in alpha channel
+    float frac_offset = fract(resample_phase);
     float input_index = floor(resample_phase);
     float input_data_limit = max(InputDataLength - 1.0, 0.0);
+
+    float phase_rel_sample = contract_phase_rel_sample(output_x, output_y, OutputFrameWidth);
 
     vec3 color = vec3(0.0);
 
@@ -277,7 +288,7 @@ void main()
 
             color += coeff * rgb;
         }
-        FragColor = vec4(color, frac_offset);
+        FragColor = vec4(color, phase_rel_sample);
         return;
     }
 #endif  // OPTION_DEBUG
@@ -302,7 +313,7 @@ void main()
 
         color += coeff * rgb;
     }
-    FragColor = vec4(color, frac_offset);
+    FragColor = vec4(color, phase_rel_sample);
     return;
 #endif  // OPTION_CRISPY
 
@@ -329,5 +340,5 @@ void main()
     }
     color /= gfilt.gain;
 
-    FragColor = vec4(color, frac_offset);
+    FragColor = vec4(color, phase_rel_sample);
 }
