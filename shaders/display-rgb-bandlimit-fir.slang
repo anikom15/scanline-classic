@@ -191,8 +191,10 @@ void main()
         H_FREQ_MODE,
         H_FREQ,
         H_BLANK_FUZZ);
-    float fs_in = max(DSP_WORKING_FS * 1.0e6, EPS);
-    float fs_out = max(DSP_OUTPUT_FS * 1.0e6, EPS);
+    float fs_in = (DSP_WORKING_FS > 0.0) ? (DSP_WORKING_FS * 1.0e6) : fs_original;
+    float fs_out = (DSP_OUTPUT_FS > 0.0) ? (DSP_OUTPUT_FS * 1.0e6) : fs_in;
+    fs_in = max(fs_in, EPS);
+    fs_out = max(fs_out, EPS);
 
     OutputFrameHeight = InputFrameHeight;
     InputDataLength = max(BaseDataLength * (fs_in / max(fs_original, EPS)), 1.0);

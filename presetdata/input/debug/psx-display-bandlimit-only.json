@@ -1,0 +1,24 @@
+{
+  "filename" : "psx-display-bandlimit-only",
+  "type" : "debug",
+  "title" : "PlayStation RGB display-bandlimit-only debug shader set",
+  "description" : "Debug preset that removes `sys-rgb-bandlimit` but keeps `display-rgb-bandlimit-fir` so carry / interpolation artifacts can be isolated to the display resampler path.",
+  "pipeline_root" : "../../pipelines",
+  "pipelines" : [
+    "misc/menu.json",
+    "debug/sys-rgb-no-bandlimit.json",
+    "disp/crt-rgb-sd.json",
+    "misc/post.json"
+  ],
+  "parameter_root" : "../../params",
+  "parameter_sets" : [
+    "sys/psx/base.json",
+    "sys/psx/ntscj.json",
+    "disp/ntscj.json",
+    "disp/trinitron.json",
+    "disp/tvl-600.json",
+    "debug/dsp-working-fs-zero-only.json"
+  ],
+  "parameter_overrides" : {
+  }
+}

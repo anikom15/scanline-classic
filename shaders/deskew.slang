@@ -67,6 +67,7 @@ layout(push_constant) uniform Push
     float H_FREQ_MODE;
     float H_FREQ;
     float H_BLANK_FUZZ;
+    float DSP_WORKING_FS;
     float DSP_OUTPUT_FS;
 } config;
 
@@ -79,6 +80,7 @@ layout(push_constant) uniform Push
 #define H_FREQ_MODE config.H_FREQ_MODE
 #define H_FREQ config.H_FREQ
 #define H_BLANK_FUZZ config.H_BLANK_FUZZ
+#define DSP_WORKING_FS config.DSP_WORKING_FS
 #define DSP_OUTPUT_FS config.DSP_OUTPUT_FS
 
 layout(std140, set = 0, binding = 0) uniform UBO
@@ -164,7 +166,9 @@ void main()
         H_FREQ_MODE,
         H_FREQ,
         H_BLANK_FUZZ);
-    float fs_current = (DSP_OUTPUT_FS > 0.0) ? (DSP_OUTPUT_FS * 1.0e6) : fs_original;
+    float fs_current = (DSP_OUTPUT_FS > 0.0) ? (DSP_OUTPUT_FS * 1.0e6)
+        : (DSP_WORKING_FS > 0.0) ? (DSP_WORKING_FS * 1.0e6)
+        : fs_original;
 
     PresentationFrameHeight = FrameHeight;
     float CurrentDataLength = max(BaseDataLength * (fs_current / max(fs_original, EPS)), 1.0);

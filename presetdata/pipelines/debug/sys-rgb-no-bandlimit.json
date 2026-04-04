@@ -1,0 +1,13 @@
+{
+    "root_path" : "../../../shaders",
+    "shaders" : {
+        "frame" : "frameh",
+        "amp" : "sys-rgb-amp"
+    },
+    "options" : {
+        "frame" : {
+            "scale_type" : ["absolute", "absolute"],
+            "scale" : [4096.0, 1024.0]
+        }
+    }
+}

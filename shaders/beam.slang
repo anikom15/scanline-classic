@@ -48,6 +48,7 @@ layout(push_constant) uniform Push
     vec4 OriginalSize;   // xy = input size in pixels
     vec4 OutputSize;     // xy = output size in pixels
     float OriginalAspect;
+    float DSP_WORKING_FS;
     float DSP_OUTPUT_FS;
     float BEAM_FOCUS;
     float CORNER_CORRECTION;      // %
@@ -62,6 +63,7 @@ layout(push_constant) uniform Push
     float USER_V_SIZE;            // % (50 = 1.0)
 } config;
 
+#define DSP_WORKING_FS config.DSP_WORKING_FS
 #define DSP_OUTPUT_FS config.DSP_OUTPUT_FS
 #define BEAM_FOCUS config.BEAM_FOCUS
 #define USER_H_SIZE config.USER_H_SIZE
@@ -157,7 +159,9 @@ void main()
         H_FREQ,
         H_BLANK_FUZZ);
 
-    float fs_output = (DSP_OUTPUT_FS > 0.0) ? (DSP_OUTPUT_FS * 1.0e6) : fs_original;
+    float fs_output = (DSP_OUTPUT_FS > 0.0) ? (DSP_OUTPUT_FS * 1.0e6)
+        : (DSP_WORKING_FS > 0.0) ? (DSP_WORKING_FS * 1.0e6)
+        : fs_original;
 
     // Beam geometry still reasons about the intended displayed raster width,
     // while the stored signal itself remains in the clock-domain width.
