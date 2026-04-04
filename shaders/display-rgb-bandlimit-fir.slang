@@ -266,8 +266,12 @@ layout(set = 0, binding = 2) uniform sampler2D Source;
 vec3 fetch_input_sample(float sample_index, float input_frame_width, float input_data_limit)
 {
     float clamped_index = clamp(sample_index, 0.0, input_data_limit);
-    int texel_x = int(floor(mod(clamped_index, input_frame_width)));
-    int texel_y = int(floor(clamped_index / input_frame_width));
+    float input_row = floor(clamped_index / max(input_frame_width, 1.0));
+    float sample_in_row = clamped_index - input_row * input_frame_width;
+    sample_in_row = clamp(sample_in_row, 0.0, max(input_frame_width - 1.0, 0.0));
+
+    int texel_x = int(floor(sample_in_row));
+    int texel_y = int(input_row);
 
     texel_x = clamp(texel_x, 0, max(int(config.SourceSize.x) - 1, 0));
     texel_y = clamp(texel_y, 0, max(int(config.SourceSize.y) - 1, 0));
@@ -278,8 +282,10 @@ vec3 fetch_input_sample(float sample_index, float input_frame_width, float input
 void main()
 {
     vec2 UV = vTexCoord * config.OutputSize.xy;
-    float output_x = floor(UV.x);
-    float output_y = floor(UV.y);
+    int output_x_i = int(floor(UV.x));
+    int output_y_i = int(floor(UV.y));
+    float output_x = float(output_x_i);
+    float output_y = float(output_y_i);
 
     if (output_x >= ceil(OutputFrameWidth) || output_y >= ceil(OutputFrameHeight)) {
         FragColor = vec4(0.0);
@@ -287,18 +293,26 @@ void main()
     }
 
     float Delta = pfilt.Delta;
+    float invDelta = 1.0 / max(Delta, EPS);
     int n_taps = int(pfilt.taps);
     int center = (n_taps - 1) / 2;
 
-    float output_index = output_x;
-    float field_output_index = output_y * OutputFrameWidth + output_index;
+    int output_width_whole_int = int(floor(OutputFrameWidth));
+    float output_width_frac = OutputFrameWidth - float(output_width_whole_int);
+    float field_output_index = float(output_y_i * output_width_whole_int)
+        + (float(output_y_i) * output_width_frac + float(output_x_i));
     if (field_output_index >= OutputDataLength) {
         FragColor = vec4(0.0);
         return;
     }
-    float phase = field_output_index / Delta;
-    float frac_offset = fract(phase);
-    float input_index = floor(phase);
+
+    float samples_per_row = OutputFrameWidth * invDelta;
+    int samples_per_row_whole_int = int(floor(samples_per_row));
+    float samples_per_row_frac = samples_per_row - float(samples_per_row_whole_int);
+    float phase_low = float(output_y_i) * samples_per_row_frac + float(output_x_i) * invDelta;
+    float phase_carry = floor(phase_low);
+    int input_index_int = output_y_i * samples_per_row_whole_int + int(phase_carry);
+    float frac_offset = phase_low - phase_carry;
     float input_data_limit = max(InputDataLength - 1.0, 0.0);
     float phase_rel_sample = contract_phase_rel_sample(output_x, output_y, OutputFrameWidth);
 
@@ -320,7 +334,7 @@ void main()
             float dt = (float(tap_offset) - frac_offset) * Tin;
             float coeff = zoh_area(dt, Tin, Tout);
 
-            float sample_index = clamp(input_index + float(tap_offset), 0.0, input_data_limit);
+            float sample_index = clamp(float(input_index_int + tap_offset), 0.0, input_data_limit);
             vec3 rgb = fetch_input_sample(sample_index, InputFrameWidth, input_data_limit);
 
             color += coeff * rgb;
@@ -343,7 +357,7 @@ void main()
         float dt = (float(tap_offset) - frac_offset) * Tin;
         float coeff = zoh_area(dt, Tin, Tout);
 
-        float sample_index = clamp(input_index + float(tap_offset), 0.0, input_data_limit);
+        float sample_index = clamp(float(input_index_int + tap_offset), 0.0, input_data_limit);
         vec3 rgb = fetch_input_sample(sample_index, InputFrameWidth, input_data_limit);
 
         color += coeff * rgb;
@@ -354,7 +368,7 @@ void main()
         int tap_offset = k - center;
         float w = kaiser(float(tap_offset), kfilt.taps, kfilt.beta);
         float coeff = sinc(float(tap_offset - frac_offset), kfilt.fc_norm) * w;
-        float sample_index = clamp(input_index + float(tap_offset), 0.0, input_data_limit);
+        float sample_index = clamp(float(input_index_int + tap_offset), 0.0, input_data_limit);
         vec3 rgb = fetch_input_sample(sample_index, InputFrameWidth, input_data_limit);
 
         color += coeff * rgb;
