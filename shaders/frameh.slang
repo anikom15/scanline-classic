@@ -251,14 +251,19 @@ bool sample_maps_to_active_time(
         : config.SourceSize.y;
 
     float line_index = floor(output_y);
-    float clock_factor = max(ClockFactor, 1.0);
+    int line_index_int = int(line_index);
+    int clock_factor_int = max(int(floor(ClockFactor + 0.5)), 1);
+    float clock_factor = float(clock_factor_int);
     float active_width = config.SourceSize.x * clock_factor;
     float active_left = (FrameWidth - active_width) * 0.5;
     float active_top = floor((frame_height_int - active_source_height) * 0.5);
 
-    float phase_step_clocks = mod(ClocksPerLine, clock_factor);
+    // Keep the wrapped line-carry in integer clock space so the phase does not
+    // drift across wrap boundaries when line_index grows.
+    int phase_step_clocks_int = int(floor(ClocksPerLine + 0.5)) % clock_factor_int;
+    int row_phase_clocks_int = (line_index_int * phase_step_clocks_int) % clock_factor_int;
     float phase_clocks = mod(
-        INITIAL_FIELD_PHASE_FRAC * clock_factor + line_index * phase_step_clocks,
+        INITIAL_FIELD_PHASE_FRAC * clock_factor + float(row_phase_clocks_int),
         clock_factor);
 
     // Output samples live directly in the pixel-clock domain. Active source
