@@ -40,8 +40,9 @@
 
 #include "common.inc"
 #include "color.inc"
-#include "modulation.inc"
+#include "contract.inc"
 
+#include "menus/parameters/dsp.inc"
 #include "menus/parameters/sys-component.inc"
 #include "menus/parameters/sys-timing.inc"
 
@@ -56,15 +57,12 @@
 layout(push_constant) uniform Push
 {
     vec4 OriginalSize;
+    vec4 SourceSize;
     vec4 OutputSize;
-    vec4 FrameHSize;
     uint FrameCount;
     float OriginalFPS;
-
-    // Timing parameters for timebase computation
     float V_FREQ_MODE;
     float V_FREQ;
-    float SHORTEN_ODD_FIELD_TIME;
     float SC_FREQ_MODE;
     float SC_FREQ;
     float PIXEL_CLOCK_MODE;
@@ -76,18 +74,18 @@ layout(push_constant) uniform Push
     // Color model selection
     float YC_MODEL;
 
-    // Per-component analog bandlimit (MHz/dB), mapped via sigma601
+    // Per-component analog bandlimit (MHz/dB).
     float SYS_BANDWIDTH_Y;
     float SYS_BANDWIDTH_C;
     float SYS_CUTOFF_ATTEN_Y;
     float SYS_CUTOFF_ATTEN_C;
+    float DSP_WORKING_FS;
 } config;
 
 // Short-hand macros
 
 #define V_FREQ_MODE config.V_FREQ_MODE
 #define V_FREQ config.V_FREQ
-#define SHORTEN_ODD_FIELD_TIME config.SHORTEN_ODD_FIELD_TIME
 #define SC_FREQ_MODE config.SC_FREQ_MODE
 #define SC_FREQ config.SC_FREQ
 #define PIXEL_CLOCK_MODE config.PIXEL_CLOCK_MODE
@@ -102,6 +100,7 @@ layout(push_constant) uniform Push
 #define SYS_BANDWIDTH_C config.SYS_BANDWIDTH_C
 #define SYS_CUTOFF_ATTEN_Y config.SYS_CUTOFF_ATTEN_Y
 #define SYS_CUTOFF_ATTEN_C config.SYS_CUTOFF_ATTEN_C
+#define DSP_WORKING_FS config.DSP_WORKING_FS
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
@@ -137,38 +136,73 @@ layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
 layout(location = 1) out vec3 gain;
 layout(location = 2) out vec3 bias;
-layout(location = 3) out vec3 sigma;
-layout(location = 4) out TimebaseConfig tb;
+layout(location = 3) flat out vec3 sigma;
+layout(location = 4) flat out vec3 kernelGain;
+layout(location = 5) flat out float Tin;
+layout(location = 6) flat out float FrameWidth;
+layout(location = 7) flat out float FrameHeight;
+layout(location = 8) flat out float DataLength;
+layout(location = 9) flat out float Taps;
+
+const float MAX_TAPS = 71.0;
 
 void main()
 {
     gl_Position = global.MVP * Position;
     vTexCoord = TexCoord;
 
-    // Precompute per-component sigmas (in texels) from MHz/dB specs.
-    // We reuse the vec3 return as (Y, C, C).
-    tb = compute_timebase(
-        config.FrameCount,
-        vTexCoord,
-        config.OriginalSize.xy,
-        config.OutputSize.xy,
-        config.FrameHSize.x,
+    float fs_current = contract_working_sample_rate(
         config.OriginalFPS,
         SC_FREQ_MODE,
         SC_FREQ,
-        PIXEL_CLOCK,
         PIXEL_CLOCK_MODE,
+        PIXEL_CLOCK,
         H_FREQ_MODE,
         H_FREQ,
+        DSP_WORKING_FS);
+
+    FrameWidth = contract_working_frame_width(
+        config.OriginalFPS,
+        SC_FREQ_MODE,
+        SC_FREQ,
+        PIXEL_CLOCK_MODE,
+        PIXEL_CLOCK,
+        H_FREQ_MODE,
+        H_FREQ,
+        DSP_WORKING_FS);
+    FrameHeight = contract_frame_height(
+        config.OriginalSize.xy,
+        config.OriginalFPS,
         V_FREQ_MODE,
         V_FREQ,
-        H_BLANK_FUZZ,
-        SHORTEN_ODD_FIELD_TIME);
+        SC_FREQ_MODE,
+        SC_FREQ,
+        PIXEL_CLOCK_MODE,
+        PIXEL_CLOCK,
+        H_FREQ_MODE,
+        H_FREQ);
+    DataLength = max(contract_data_length(FrameWidth, FrameHeight), 1.0);
+    Tin = 1.0 / max(fs_current, EPS);
 
-    sigma.x = gaussian_sigma(SYS_BANDWIDTH_Y, SYS_CUTOFF_ATTEN_Y);
-    sigma.y = gaussian_sigma(SYS_BANDWIDTH_C, SYS_CUTOFF_ATTEN_C);
+    sigma = vec3(
+        gaussian_sigma(SYS_BANDWIDTH_Y * 1.0e6, SYS_CUTOFF_ATTEN_Y),
+        gaussian_sigma(SYS_BANDWIDTH_C * 1.0e6, SYS_CUTOFF_ATTEN_C),
+        gaussian_sigma(SYS_BANDWIDTH_C * 1.0e6, SYS_CUTOFF_ATTEN_C));
 
-    // Amplifier
+    float sigma_max = max(sigma.x, max(sigma.y, sigma.z));
+    float t_support = gaussian_decay_time(sigma_max, FILTER_THRESHOLD_ANALOG);
+    Taps = max(1.0, min(2.0 * ceil(t_support * fs_current) + 1.0, MAX_TAPS));
+
+    kernelGain = vec3(0.0);
+    for (int k = 0; k < int(Taps); ++k) {
+        float dt = (float(k) - (Taps - 1.0) / 2.0) * Tin;
+        kernelGain += vec3(
+            gaussian(dt, sigma.x),
+            gaussian(dt, sigma.y),
+            gaussian(dt, sigma.z));
+    }
+    kernelGain = max(kernelGain, vec3(EPS));
+
     gain = vec3(
         pow(10.0, SYS_GAIN_Y / 20.0),
         pow(10.0, SYS_GAIN_C / 20.0),
@@ -184,91 +218,79 @@ void main()
 layout(location = 0) in vec2 vTexCoord;
 layout(location = 1) in vec3 gain;
 layout(location = 2) in vec3 bias;
-layout(location = 3) in vec3 sigma;
-layout(location = 4) in TimebaseConfig tb;
+layout(location = 3) flat in vec3 sigma;
+layout(location = 4) flat in vec3 kernelGain;
+layout(location = 5) flat in float Tin;
+layout(location = 6) flat in float FrameWidth;
+layout(location = 7) flat in float FrameHeight;
+layout(location = 8) flat in float DataLength;
+layout(location = 9) flat in float Taps;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
+vec4 fetch_input_sample(float sample_index, float frame_width, float input_data_limit)
+{
+    int frame_width_i = max(int(frame_width + 0.5), 1);
+    int input_data_limit_i = max(int(input_data_limit + 0.5), 0);
+    int clamped_index_i = clamp(int(floor(clamp(sample_index, 0.0, input_data_limit))),
+        0, input_data_limit_i);
+    int texel_y = clamped_index_i / frame_width_i;
+    int texel_x = clamped_index_i - texel_y * frame_width_i;
+
+    texel_x = clamp(texel_x, 0, max(int(config.SourceSize.x) - 1, 0));
+    texel_y = clamp(texel_y, 0, max(int(config.SourceSize.y) - 1, 0));
+
+    return texelFetch(Source, ivec2(texel_x, texel_y), 0);
+}
+
 void main()
 {
-    // Full stage bypass: pass through RGB
-
 #ifdef OPTION_DEBUG
     if (SYS_COMPONENT_BYPASS >= 1.0) {
-        FragColor = vec4(texture(Source, vTexCoord).rgb, 1.0);
+        FragColor = texture(Source, vTexCoord);
         return;
     }
 
-    // Filter bypass: convert once and apply SYS_GAIN/BIAS only
     if (SYS_COMPONENT_FILTER_BYPASS >= 1.0) {
-        vec3 yc = rgb_to_luma_chroma(texture(Source, vTexCoord).rgb, YC_MODEL);
-        yc = gain * (yc + bias);
-        FragColor = vec4(yc, 1.0);
+        vec4 source_sample = texture(Source, vTexCoord);
+        vec3 yc = rgb_to_luma_chroma(source_sample.rgb, YC_MODEL);
+        FragColor = vec4(gain * (yc + bias), source_sample.a);
         return;
     }
 #endif  // OPTION_DEBUG
 
-    // Horizontal coordinate handling using nearest pixel center (no vertical shift)
-    vec2 UV  = vTexCoord * config.OutputSize.xy;
-    float baseIndex = floor(UV.x + 0.5);       // round to nearest integer pixel index
-    float baseCenter = baseIndex + 0.5;        // pixel center in pixel units
-    float Ax = UV.x - baseCenter;              // offset from center in [-0.5, 0.5]
-    vec2 Tex = vec2(baseCenter * config.OutputSize.z,
-                    (floor(UV.y) + 0.5) * config.OutputSize.w);
-    vec2 dx  = vec2(config.OutputSize.z, 0.0); // one texel to the right
+    vec2 UV = vTexCoord * config.OutputSize.xy;
+    float output_x = floor(UV.x);
+    float output_y = floor(UV.y);
 
-    // Accumulators and weights for Y, U/Db, V/Dr
-    vec3 accum = vec3(0.0);
-    vec3 wsum  = vec3(0.0);
-
-    // Center sample
-    vec3 rgb0 = texture(Source, Tex).rgb;
-    vec3 yc_c = rgb_to_luma_chroma(rgb0, YC_MODEL);
-
-    float wy = gaussian(Ax, sigma.x);
-    float wu = gaussian(Ax, sigma.y);
-    float wv = gaussian(Ax, sigma.z);
-
-    accum += vec3(wy * yc_c.x, wu * yc_c.y, wv * yc_c.z);
-    wsum  += vec3(wy, wu, wv);
-
-    // Symmetric lobes with early exit
-    for (int n = 1; n <= 16; ++n) {
-        float nf = float(n);
-        // Symmetric distances: right = n - Ax, left = n + Ax
-        float wy_r = gaussian(nf - Ax, sigma.x);
-        float wy_l = gaussian(nf + Ax, sigma.x);
-        float wu_r = gaussian(nf - Ax, sigma.y);
-        float wu_l = gaussian(nf + Ax, sigma.y);
-        float wv_r = gaussian(nf - Ax, sigma.z);
-        float wv_l = gaussian(nf + Ax, sigma.z);
-
-        // Early out if all components negligible on both sides
-        if (wy_r < FILTER_THRESHOLD && wy_l < FILTER_THRESHOLD &&
-            wu_r < FILTER_THRESHOLD && wu_l < FILTER_THRESHOLD &&
-            wv_r < FILTER_THRESHOLD && wv_l < FILTER_THRESHOLD)
-            break;
-
-        vec3 rgbr = texture(Source, Tex + nf * dx).rgb;
-        vec3 rgbl = texture(Source, Tex - nf * dx).rgb;
-
-        vec3 yc_r = rgb_to_luma_chroma(rgbr, YC_MODEL);
-        vec3 yc_l = rgb_to_luma_chroma(rgbl, YC_MODEL);
-
-        // Accumulate right and left for each component
-        accum.x += wy_r * yc_r.x + wy_l * yc_l.x;
-        accum.y += wu_r * yc_r.y + wu_l * yc_l.y;
-        accum.z += wv_r * yc_r.z + wv_l * yc_l.z;
-
-        wsum.x  += wy_r + wy_l;
-        wsum.y  += wu_r + wu_l;
-        wsum.z  += wv_r + wv_l;
+    if (output_x >= FrameWidth || output_y >= FrameHeight) {
+        FragColor = vec4(0.0);
+        return;
     }
 
-    // Normalize and apply per-component SYS_GAIN/SYS_BIAS
-    vec3 outyc = accum / max(wsum, vec3(EPS));
-    outyc = gain * (outyc + bias);
+    float output_index = output_y * FrameWidth + output_x;
+    if (output_index >= DataLength) {
+        FragColor = vec4(0.0);
+        return;
+    }
 
-    // Emit in the selected luma-chroma space
-    FragColor = vec4(outyc, 1.0);
+    vec4 center_sample = fetch_input_sample(output_index, FrameWidth, DataLength - 1.0);
+    vec3 accum = vec3(0.0);
+    int center = (int(Taps) - 1) / 2;
+
+    for (int k = 0; k < int(Taps); ++k) {
+        int tap_offset = k - center;
+        float dt = float(tap_offset) * Tin;
+        vec3 coeff = vec3(
+            gaussian(dt, sigma.x),
+            gaussian(dt, sigma.y),
+            gaussian(dt, sigma.z));
+        vec3 yc = rgb_to_luma_chroma(
+            fetch_input_sample(output_index + float(tap_offset), FrameWidth, DataLength - 1.0).rgb,
+            YC_MODEL);
+        accum += coeff * yc;
+    }
+
+    vec3 outyc = accum / kernelGain;
+    FragColor = vec4(gain * (outyc + bias), center_sample.a);
 }

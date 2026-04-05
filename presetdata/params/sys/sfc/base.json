@@ -1,7 +1,6 @@
 {
     "parameters" : {
         "ENCODER_SETUP" : 0.0,
-        "SYS_FILTER_DECIMATION" : 2.0,
 
         "SYS_BANDWIDTH_U" : 2.6,
         "SYS_BANDWIDTH_V" : 2.6,

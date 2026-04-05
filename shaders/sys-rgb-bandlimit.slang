@@ -22,9 +22,8 @@
 // Input: Real RGB voltage
 // Output: Real RGB voltage
 //
-// Implements a polyphase FIR resampler with a Gaussian kernel
-// convoluted with a ZOH kernel to reframe the input data as a real RGB
-// signal from a DAC.
+// Implements a polyphase FIR resampler with a direct Gaussian kernel
+// over the canonical 1D framed signal emitted by `frameh.slang`.
 //
 // The vertex shader computes the filter parameters and polyphase
 // factors based on the input and output sizes and timing, while the
@@ -36,7 +35,6 @@
 #include "common.inc"
 #include "color.inc"
 #include "contract.inc"
-#include "zoh.inc"
 
 #include "menus/parameters/dsp.inc"
 #include "menus/parameters/sys-timing.inc"
@@ -206,30 +204,31 @@ void main()
 
     pfilt.Delta = Delta;
 
-    // Gaussian filter design
+    // Direct Gaussian filter design in the working sample domain.
     float cutoff_freq = 0.5 * PixelClock / SYS_FILTER_DECIMATION;
 
-    // Compensate for sinc(x) rolloff by adjusting attenuation
-    // gain = 20.0 * log10(abs(sinc(0.5))) ≈ -3.92 dB at Nyquist (x=0.5)
-    const float zoh_gain = -3.92;
+    // Compensate for the intrinsic ZOH sinc(x) rolloff of the framed source.
+    // The held-source interval is 1 / PixelClock, so the magnitude at
+    // `cutoff_freq` is |sin(pi * f / PixelClock) / (pi * f / PixelClock)|.
+    float zoh_ratio = clamp(cutoff_freq / max(PixelClock, EPS), 0.0, 0.5);
+    float zoh_mag = (zoh_ratio < EPS)
+        ? 1.0
+        : abs(sin(PI * zoh_ratio) / (PI * zoh_ratio));
+    float zoh_gain = 20.0 * log(max(zoh_mag, EPS)) / log(10.0);
     float cutoff_atten = SYS_FILTER_ATTEN + zoh_gain * COMPENSATE_SINC_ROLLOFF;
 
     gfilt.sigma = gaussian_sigma(cutoff_freq, cutoff_atten);
     gfilt.t_limit = gaussian_decay_time(gfilt.sigma, FILTER_THRESHOLD_ANALOG);
 
-    float t_support = gfilt.t_limit + Tin / 2.0;
+    pfilt.taps = min(2.0 * ceil(gfilt.t_limit * fs_out) + 1.0, MAX_TAPS);
 
-    pfilt.taps = min(2.0 * ceil(t_support * fs_out) + 1.0, MAX_TAPS);
-
-    // Compute gain for normalization
+    // Compute gain for normalization.
     float gain = 0.0;
     for (int k = 0; k < int(pfilt.taps); ++k) {
         float t = (float(k) - (pfilt.taps - 1.0) / 2.0) * Tin;
-        float a = t / (sqrt(2.0) * gfilt.sigma);
-        float b = (t - Tin) / (sqrt(2.0) * gfilt.sigma);
-        gain += gfilt.sigma * sqrt(PI / 2.0) * (erf(a) - erf(b));
+        gain += gaussian(t, gfilt.sigma);
     }
-    gfilt.gain = gain;
+    gfilt.gain = max(gain, EPS);
 }
 
 #pragma stage fragment
@@ -300,60 +299,25 @@ void main()
 
 #ifdef OPTION_DEBUG
     if (SYS_RGB_BANDLIMIT_BYPASS > 0.5) {
-        float Tout = Tin / Delta;
-        n_taps = min(int(1.0 + ceil(Tout / Tin)), 16);
-        center = (n_taps - 1) / 2;
-
-        for (int k = 0; k < n_taps; ++k) {
-            int tap_offset = k - center;
-
-            // Continuous time offset between input sample and output sample
-            float dt = (float(tap_offset) - frac_offset) * Tin;
-            float coeff = zoh_area(dt, Tin, Tout);
-
-            float sample_index = clamp(float(input_index_int + tap_offset), 0.0, input_data_limit);
-            vec3 rgb = fetch_input_sample(sample_index, InputFrameWidth, input_data_limit);
-
-            color += coeff * rgb;
-        }
-        FragColor = vec4(color, phase_rel_sample);
+        float sample_index = clamp(floor(input_sample_pos + 0.5), 0.0, input_data_limit);
+        vec3 rgb = fetch_input_sample(sample_index, InputFrameWidth, input_data_limit);
+        FragColor = vec4(rgb, phase_rel_sample);
         return;
     }
 #endif  // OPTION_DEBUG
 
 #ifdef OPTION_CRISPY
-    float Tout = Tin / Delta;
-    n_taps = min(int(1.0 + ceil(Tout / Tin)), 16);
-    center = (n_taps - 1) / 2;
-
-    for (int k = 0; k < n_taps; ++k) {
-        int tap_offset = k - center;
-
-        // Continuous time offset between input sample and output sample
-        float dt = (float(tap_offset) - frac_offset) * Tin;
-        float coeff = zoh_area(dt, Tin, Tout);
-
-        float sample_index = clamp(float(input_index_int + tap_offset), 0.0, input_data_limit);
-        vec3 rgb = fetch_input_sample(sample_index, InputFrameWidth, input_data_limit);
-
-        color += coeff * rgb;
-    }
-    FragColor = vec4(color, phase_rel_sample);
+    float sample_index = clamp(floor(input_sample_pos + 0.5), 0.0, input_data_limit);
+    vec3 rgb = fetch_input_sample(sample_index, InputFrameWidth, input_data_limit);
+    FragColor = vec4(rgb, phase_rel_sample);
     return;
 #endif  // OPTION_CRISPY
 
-    // Standard polyphase FIR convolution
+    // Standard polyphase FIR convolution with a direct Gaussian kernel.
     for (int k = 0; k < n_taps; ++k) {
         int tap_offset = k - center;
-
-        // Continuous time offset between input sample and output sample
         float dt = (float(tap_offset) - frac_offset) * Tin;
-
-        // ZOH ∗ Gaussian coefficient (closed form)
-        float a = dt / (sqrt(2.0) * gfilt.sigma);
-        float b = (dt - Tin) / (sqrt(2.0) * gfilt.sigma);
-
-        float coeff = gfilt.sigma * sqrt(PI / 2.0) * (erf(a) - erf(b));
+        float coeff = gaussian(dt, gfilt.sigma);
 
         float sample_index = clamp(float(input_index_int + tap_offset), 0.0, input_data_limit);
         vec3 rgb = fetch_input_sample(sample_index, InputFrameWidth, input_data_limit);

@@ -28,8 +28,8 @@
 // factors based on the input and output sizes, while the fragment
 // shader applies the filter to produce the final output color.
 //
-// When the filter is bypassed for debugging, area average convolution
-// is used.
+// When the filter is bypassed for debugging or crispy mode, nearest-sample
+// Dirac evaluation is used.
 
 #pragma name DisplayRGBBandlimitFIR
 #pragma format R16G16B16A16_SFLOAT
@@ -38,7 +38,6 @@
 #include "color.inc"
 #include "contract.inc"
 #include "window.inc"
-#include "zoh.inc"
 
 #include "menus/parameters/dsp.inc"
 #include "menus/parameters/user-uncommon.inc"
@@ -144,7 +143,6 @@ struct PolyphaseFilter {
 layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
-layout(location = 1) flat out float Tin;
 layout(location = 2) flat out KaiserFilter kfilt;
 layout(location = 6) flat out PolyphaseFilter pfilt;
 layout(location = 8) flat out vec3 gain;
@@ -185,8 +183,6 @@ void main()
         PIXEL_CLOCK,
         H_FREQ_MODE,
         H_FREQ);
-    float BaseDataLength = contract_data_length(BaseFrameWidth, InputFrameHeight);
-
     float fs_original = contract_fs_original(
         config.OriginalFPS,
         SC_FREQ_MODE,
@@ -235,7 +231,6 @@ void main()
 
     // Keep widths as float varyings for cross-driver safety, but the contract
     // guarantees they are integral-valued.
-    float fs_in = WorkingSampleRate;
     float fs_out = OutputSampleRate;
 
     OutputFrameHeight = InputFrameHeight;
@@ -264,8 +259,6 @@ void main()
     DeskewSampleRatio = fs_out / max(fs_original, EPS);
     LineCarryClocksOut = LineCarryClocks;
     ClockFactorOut = ClockFactor;
-
-    Tin = 1.0 / fs_in;
 
     // Polyphase resampler ratio is data-length driven rather than texture-size driven.
     float Delta = OutputDataLength / max(InputDataLength, 1.0);
@@ -313,7 +306,6 @@ void main()
 
 #pragma stage fragment
 layout(location = 0) in vec2 vTexCoord;
-layout(location = 1) flat in float Tin;
 layout(location = 2) flat in KaiserFilter kfilt;
 layout(location = 6) flat in PolyphaseFilter pfilt;
 layout(location = 8) flat in vec3 gain;
@@ -396,48 +388,14 @@ void main()
 
 #ifdef OPTION_DEBUG
     if (DISPLAY_RGB_FILTER_BYPASS > 0.5) {
-        // Area average
-        const int MAX_TAPS = 16;
-
-        float Tout = Tin / Delta;
-        n_taps = min(int(1.0 + ceil(Tout / Tin)), 16);
-        center = (n_taps - 1) / 2;
-
-        for (int k = 0; k < n_taps; ++k) {
-            int tap_offset = k - center;
-
-            // Continuous time offset between input sample and output sample
-            float dt = (float(tap_offset) - frac_offset) * Tin;
-            float coeff = zoh_area(dt, Tin, Tout);
-
-            float sample_index = clamp(float(input_index_int + tap_offset), 0.0, input_data_limit);
-            vec3 rgb = fetch_input_sample(sample_index, InputFrameWidth, input_data_limit);
-
-            color += coeff * rgb;
-        }
+        float sample_index = clamp(floor(input_sample_pos + 0.5), 0.0, input_data_limit);
+        color = fetch_input_sample(sample_index, InputFrameWidth, input_data_limit);
     } else {
 #endif  // OPTION_DEBUG
 
 #ifdef OPTION_CRISPY
-    // Area average
-    const int MAX_TAPS = 16;
-
-    float Tout = Tin / Delta;
-    n_taps = min(int(1.0 + ceil(Tout / Tin)), 16);
-    center = (n_taps - 1) / 2;
-
-    for (int k = 0; k < n_taps; ++k) {
-        int tap_offset = k - center;
-
-        // Continuous time offset between input sample and output sample
-        float dt = (float(tap_offset) - frac_offset) * Tin;
-        float coeff = zoh_area(dt, Tin, Tout);
-
-        float sample_index = clamp(float(input_index_int + tap_offset), 0.0, input_data_limit);
-        vec3 rgb = fetch_input_sample(sample_index, InputFrameWidth, input_data_limit);
-
-        color += coeff * rgb;
-    }
+    float sample_index = clamp(floor(input_sample_pos + 0.5), 0.0, input_data_limit);
+    color = fetch_input_sample(sample_index, InputFrameWidth, input_data_limit);
 #else
     // Standard FIR convolution (Kaiser)
     for (int k = 0; k < n_taps; ++k) {
