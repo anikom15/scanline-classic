@@ -32,6 +32,7 @@
 #include "parameters/service-geometry.inc"
 #include "parameters/scanraster.inc"
 #include "parameters/display-rgb-fir.inc"
+#include "parameters/display-rgb-amp.inc"
 #include "parameters/factory-geometry.inc"
 #include "parameters/mask.inc"
 #include "parameters/colorimetry.inc"
@@ -39,5 +40,6 @@
 #include "parameters/limiter.inc"
 #include "parameters/sys-timing.inc"
 #include "parameters/sys-rgb.inc"
+#include "parameters/dsp.inc"
 
 #include "menu-base.slang"

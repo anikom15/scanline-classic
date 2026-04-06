@@ -138,7 +138,6 @@ layout(location = 1) out vec3 gain;
 layout(location = 2) out vec3 bias;
 layout(location = 3) flat out vec3 sigma;
 layout(location = 4) flat out vec3 kernelGain;
-layout(location = 5) flat out float Tin;
 layout(location = 6) flat out float FrameWidth;
 layout(location = 7) flat out float FrameHeight;
 layout(location = 8) flat out float DataLength;
@@ -182,20 +181,23 @@ void main()
         H_FREQ_MODE,
         H_FREQ);
     DataLength = max(contract_data_length(FrameWidth, FrameHeight), 1.0);
-    Tin = 1.0 / max(fs_current, EPS);
 
-    sigma = vec3(
+    // Normalize the analog Gaussian design into working-sample units before
+    // evaluating the discrete kernel on the current DSP sample grid.
+    vec3 sigma_seconds = vec3(
         gaussian_sigma(SYS_BANDWIDTH_Y * 1.0e6, SYS_CUTOFF_ATTEN_Y),
         gaussian_sigma(SYS_BANDWIDTH_C * 1.0e6, SYS_CUTOFF_ATTEN_C),
         gaussian_sigma(SYS_BANDWIDTH_C * 1.0e6, SYS_CUTOFF_ATTEN_C));
 
-    float sigma_max = max(sigma.x, max(sigma.y, sigma.z));
-    float t_support = gaussian_decay_time(sigma_max, FILTER_THRESHOLD_ANALOG);
-    Taps = max(1.0, min(2.0 * ceil(t_support * fs_current) + 1.0, MAX_TAPS));
+    float sigma_max_seconds = max(sigma_seconds.x, max(sigma_seconds.y, sigma_seconds.z));
+    float t_support_seconds = gaussian_decay_time(sigma_max_seconds, FILTER_THRESHOLD_ANALOG);
+
+    sigma = sigma_seconds * fs_current;
+    Taps = max(1.0, min(2.0 * ceil(t_support_seconds * fs_current) + 1.0, MAX_TAPS));
 
     kernelGain = vec3(0.0);
     for (int k = 0; k < int(Taps); ++k) {
-        float dt = (float(k) - (Taps - 1.0) / 2.0) * Tin;
+        float dt = float(k) - (Taps - 1.0) / 2.0;
         kernelGain += vec3(
             gaussian(dt, sigma.x),
             gaussian(dt, sigma.y),
@@ -220,7 +222,6 @@ layout(location = 1) in vec3 gain;
 layout(location = 2) in vec3 bias;
 layout(location = 3) flat in vec3 sigma;
 layout(location = 4) flat in vec3 kernelGain;
-layout(location = 5) flat in float Tin;
 layout(location = 6) flat in float FrameWidth;
 layout(location = 7) flat in float FrameHeight;
 layout(location = 8) flat in float DataLength;
@@ -280,7 +281,7 @@ void main()
 
     for (int k = 0; k < int(Taps); ++k) {
         int tap_offset = k - center;
-        float dt = float(tap_offset) * Tin;
+        float dt = float(tap_offset);
         vec3 coeff = vec3(
             gaussian(dt, sigma.x),
             gaussian(dt, sigma.y),

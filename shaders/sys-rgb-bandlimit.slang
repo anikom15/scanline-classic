@@ -107,8 +107,8 @@ layout(std140, set = 0, binding = 0) uniform UBO
 } global;
 
 struct GaussianFilter {
-    float sigma;    // sigma in seconds
-    float t_limit;  // time for filter response to decay below threshold
+    float sigma;    // sigma in working-sample units
+    float t_limit;  // support radius in working-sample units
     float gain;     // Precomputed gain factor for normalization
 };
 
@@ -121,7 +121,6 @@ struct PolyphaseFilter {
 layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
-layout(location = 1) flat out float Tin;
 layout(location = 2) flat out float InputFrameWidth;
 layout(location = 3) flat out GaussianFilter gfilt;
 layout(location = 6) flat out PolyphaseFilter pfilt;
@@ -186,7 +185,6 @@ void main()
 
     // Keep widths as float varyings for cross-driver safety, but the contract
     // guarantees they are integral-valued.
-    float fs_in = fs_original;
     float fs_out = WorkingSampleRate;
 
     OutputFrameHeight = InputFrameHeight;
@@ -197,19 +195,17 @@ void main()
     InputDataLength = max(contract_data_length(InputFrameWidth, OutputFrameHeight), 1.0);
     OutputDataLength = max(contract_data_length(OutputFrameWidth, OutputFrameHeight), 1.0);
 
-    Tin = 1.0 / fs_in;
+    // The upstream framed signal is already ZOH-held. Normalize the analog
+    // Gaussian design into pixel clocks, while still compensating for
+    // the source ZOH sinc rolloff in the target frequency response.
 
     // Polyphase resampler ratio is data-length driven rather than texture-size driven.
     float Delta = OutputDataLength / max(InputDataLength, 1.0);
 
     pfilt.Delta = Delta;
 
-    // Direct Gaussian filter design in the working sample domain.
     float cutoff_freq = 0.5 * PixelClock / SYS_FILTER_DECIMATION;
 
-    // Compensate for the intrinsic ZOH sinc(x) rolloff of the framed source.
-    // The held-source interval is 1 / PixelClock, so the magnitude at
-    // `cutoff_freq` is |sin(pi * f / PixelClock) / (pi * f / PixelClock)|.
     float zoh_ratio = clamp(cutoff_freq / max(PixelClock, EPS), 0.0, 0.5);
     float zoh_mag = (zoh_ratio < EPS)
         ? 1.0
@@ -217,15 +213,18 @@ void main()
     float zoh_gain = 20.0 * log(max(zoh_mag, EPS)) / log(10.0);
     float cutoff_atten = SYS_FILTER_ATTEN + zoh_gain * COMPENSATE_SINC_ROLLOFF;
 
-    gfilt.sigma = gaussian_sigma(cutoff_freq, cutoff_atten);
-    gfilt.t_limit = gaussian_decay_time(gfilt.sigma, FILTER_THRESHOLD_ANALOG);
+    float sigma_seconds = gaussian_sigma(cutoff_freq, cutoff_atten);
+    float t_limit_seconds = gaussian_decay_time(sigma_seconds, FILTER_THRESHOLD_ANALOG);
 
-    pfilt.taps = min(2.0 * ceil(gfilt.t_limit * fs_out) + 1.0, MAX_TAPS);
+    gfilt.sigma = sigma_seconds * fs_original;
+    gfilt.t_limit = t_limit_seconds * fs_original;
 
-    // Compute gain for normalization.
+    pfilt.taps = min(2.0 * ceil(gfilt.t_limit) + 1.0, MAX_TAPS);
+
+    // Compute gain for normalization
     float gain = 0.0;
     for (int k = 0; k < int(pfilt.taps); ++k) {
-        float t = (float(k) - (pfilt.taps - 1.0) / 2.0) * Tin;
+        float t = float(k) - (pfilt.taps - 1.0) / 2.0;
         gain += gaussian(t, gfilt.sigma);
     }
     gfilt.gain = max(gain, EPS);
@@ -233,7 +232,6 @@ void main()
 
 #pragma stage fragment
 layout(location = 0) in vec2 vTexCoord;
-layout(location = 1) flat in float Tin;
 layout(location = 2) flat in float InputFrameWidth;
 layout(location = 3) flat in GaussianFilter gfilt;
 layout(location = 6) flat in PolyphaseFilter pfilt;
@@ -316,7 +314,7 @@ void main()
     // Standard polyphase FIR convolution with a direct Gaussian kernel.
     for (int k = 0; k < n_taps; ++k) {
         int tap_offset = k - center;
-        float dt = (float(tap_offset) - frac_offset) * Tin;
+        float dt = float(tap_offset) - frac_offset;
         float coeff = gaussian(dt, gfilt.sigma);
 
         float sample_index = clamp(float(input_index_int + tap_offset), 0.0, input_data_limit);

@@ -1,4 +1,4 @@
-#pragma parameter DISPLAY_RGB_HEADER " —— Service: RGB Amplifier —— " 0.0 0.0 0.0 0.0
+#pragma parameter DISPLAY_RGB_AMP_HEADER " —— Service: RGB Amplifier —— " 0.0 0.0 0.0 0.0
 
 #pragma parameter DISPLAY_BIAS_R "Bias R (IRE)" 0.0 -30.0 30.0 0.5
 #pragma parameter DISPLAY_BIAS_G "Bias G (IRE)" 0.0 -30.0 30.0 0.5
