@@ -28,8 +28,8 @@
 // factors based on the input and output sizes, while the fragment
 // shader applies the filter to produce the final output color.
 //
-// When the filter is bypassed for debugging or crispy mode, nearest-sample
-// Dirac evaluation is used.
+// When the filter is bypassed for debugging, nearest-sample Dirac evaluation
+// is used. Under crispy mode, a ZOH area-average resample path is used.
 
 #pragma name DisplayRGBBandlimitFIR
 #pragma format R16G16B16A16_SFLOAT
@@ -38,10 +38,12 @@
 #include "color.inc"
 #include "contract.inc"
 #include "window.inc"
+#include "zoh.inc"
 
 #include "menus/parameters/dsp.inc"
 #include "menus/parameters/user-uncommon.inc"
 #include "menus/parameters/sys-timing.inc"
+#include "menus/parameters/display-rgb-amp.inc"
 #include "menus/parameters/display-rgb-fir.inc"
 
 #pragma include_optional "../config/options.cfg"
@@ -394,8 +396,18 @@ void main()
 #endif  // OPTION_DEBUG
 
 #ifdef OPTION_CRISPY
-    float sample_index = clamp(floor(input_sample_pos + 0.5), 0.0, input_data_limit);
-    color = fetch_input_sample(sample_index, InputFrameWidth, input_data_limit);
+    float Tout = max(invDelta, EPS);
+    float zoh_sum = 0.0;
+    int zoh_taps = max(int(ceil(Tout)) + 1, 1);
+    for (int k = 0; k < zoh_taps; ++k) {
+        float coeff = zoh_area(float(k) - frac_offset, 1.0, Tout);
+        float sample_index = clamp(float(input_index_int + k), 0.0, input_data_limit);
+        vec3 rgb = fetch_input_sample(sample_index, InputFrameWidth, input_data_limit);
+
+        color += coeff * rgb;
+        zoh_sum += coeff;
+    }
+    color /= max(zoh_sum, EPS);
 #else
     // Standard FIR convolution (Kaiser)
     for (int k = 0; k < n_taps; ++k) {
