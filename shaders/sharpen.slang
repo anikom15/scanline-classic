@@ -256,8 +256,8 @@ void main()
     float dB_primary = (s < 0.5) ? mix(-6.0, 3.0, t_low) : mix(3.0, 8.0, t_high);
     float dB_secondary = (s < 0.5) ? mix(-2.0, 3.0, t_low) : mix(3.0, 5.0, t_high);
 
-    float total_primary_gain = pow(10.0, dB_primary / 20.0);
-    float total_secondary_gain = pow(10.0, dB_secondary / 20.0);
+    float total_primary_gain = db_to_linear(dB_primary);
+    float total_secondary_gain = db_to_linear(dB_secondary);
 
     // Convert desired total gain to additive bandpass injection gain.
     float bp_primary_gain = total_primary_gain - 1.0;

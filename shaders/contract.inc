@@ -20,6 +20,10 @@
 // `contract_*` helpers must not call other `contract_*` helpers; derive from
 // first principles or `modulation.inc` only.
 // `contract_field()` intentionally returns the unbounded frame count as float.
+// A preset may explicitly disable the color subcarrier; in that case the
+// underlying timing helpers return `sc_freq_hz == 0.0`, and callers must either
+// tolerate that directly or clamp only to a minimum safe value when a positive
+// frequency is mathematically required.
 
 #include "modulation.inc"
 
@@ -265,6 +269,65 @@ float contract_initial_field_phase_frac(
     return fract(phase_zero / 360.0 + fract(field * v_lines_per_field * pixel_clock_hz / max(h_freq_hz, EPS)));
 }
 
+// Returns the starting sample-phase offset for the current field, but advances
+// it partway through the frame when multiple subframes are being rendered.
+// Like the rest of the contract API, this derives timing directly from the
+// modulation helpers rather than chaining through other `contract_*` getters.
+float contract_subframe_aware_initial_field_phase_frac(
+    uint frame_count,
+    uint current_subframe,
+    uint total_subframes,
+    vec2 original_size,
+    float original_fps,
+    float v_freq_mode,
+    float custom_v_freq,
+    float sc_freq_mode,
+    float sc_freq_custom_mhz,
+    float pixel_clock_mode,
+    float pixel_clock_mhz,
+    float h_freq_mode,
+    float h_freq_custom_khz,
+    float phase_zero)
+{
+    float sc_freq_hz;
+    int standard;
+    compute_subcarrier_freq(sc_freq_mode, sc_freq_custom_mhz, original_fps, sc_freq_hz, standard);
+
+    float pixel_clock_hz = compute_pixel_clock(pixel_clock_mode, pixel_clock_mhz, sc_freq_hz);
+    float h_freq_hz = compute_h_freq(h_freq_mode, standard, h_freq_custom_khz, pixel_clock_hz, original_fps);
+
+    float v_lines_per_field;
+    float v_lines_per_frame;
+    bool is_interlaced;
+    compute_v_lines_per_field(
+        v_freq_mode,
+        h_freq_hz,
+        original_fps,
+        custom_v_freq,
+        original_size.y,
+        v_lines_per_field,
+        v_lines_per_frame,
+        is_interlaced);
+
+    uint subframe4 = 0u;
+    if (total_subframes > 1u) {
+        if (total_subframes == 2u)
+            subframe4 = current_subframe << 3;
+        else if (total_subframes == 4u)
+            subframe4 = current_subframe << 2;
+        else if (total_subframes == 8u)
+            subframe4 = current_subframe << 1;
+        else if (total_subframes == 16u)
+            subframe4 = current_subframe;
+        else
+            subframe4 = (current_subframe << 4) / max(total_subframes, 1u);
+    }
+
+    float effective_field = float(frame_count) + float(min(subframe4, 15u)) * (1.0 / 16.0);
+    return fract(phase_zero / 360.0
+        + fract(effective_field * v_lines_per_field * pixel_clock_hz / max(h_freq_hz, EPS)));
+}
+
 // Returns 1.0 for interlaced timings and 0.0 otherwise.
 float contract_is_interlaced(
     vec2 original_size,
@@ -405,6 +468,9 @@ float contract_phase_rel_sample(float sample_x, float sample_y, float frame_widt
 }
 
 // Returns the pixel clock in Hz for the selected timing configuration.
+// If the pixel clock is defined as a multiple of a disabled subcarrier, the
+// modulation helpers return the smallest safe positive fallback rather than
+// silently substituting a standard NTSC/PAL carrier.
 float contract_pixel_clock(
     float pixel_clock_mode,
     float pixel_clock_mhz,

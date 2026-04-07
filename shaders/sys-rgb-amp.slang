@@ -56,8 +56,6 @@ layout(push_constant) uniform Push
 
 #ifdef OPTION_DEBUG
 #define SYS_RGB_AMP_BYPASS config.SYS_RGB_AMP_BYPASS
-#else
-const float SYS_RGB_AMP_BYPASS = 0;
 #endif  // OPTION_DEBUG
 
 #define SYS_BIAS_R config.SYS_BIAS_R
@@ -86,9 +84,9 @@ void main()
    vTexCoord = TexCoord;
 
    gain = vec3(
-       pow(10.0, SYS_GAIN_R / 20.0),
-       pow(10.0, SYS_GAIN_G / 20.0),
-       pow(10.0, SYS_GAIN_B / 20.0));
+       db_to_linear(SYS_GAIN_R),
+       db_to_linear(SYS_GAIN_G),
+       db_to_linear(SYS_GAIN_B));
 
    bias = vec3(
        SYS_BIAS_R * 10e-3,

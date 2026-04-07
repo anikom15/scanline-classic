@@ -38,6 +38,7 @@
 #include "parameters/colorimetry.inc"
 #include "parameters/phosphor.inc"
 #include "parameters/limiter.inc"
+#include "parameters/noise-rgb.inc"
 #include "parameters/sys-timing.inc"
 #include "parameters/sys-rgb.inc"
 #include "parameters/dsp.inc"

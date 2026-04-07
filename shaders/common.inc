@@ -17,8 +17,33 @@
 
 const float EPS = 1.19209289551e-7;
 const float PI = 3.14159265359;
+const float LN10 = 2.30258509299;
 const float FILTER_THRESHOLD = 1.0 / 255.0; // 8-bit LSB threshold for early loop exit
 const float FILTER_THRESHOLD_ANALOG = 0.01; // Threshold for analog-level bandlimit optimization (e.g., 0.01 = -40 dB)
+
+// Decibel conversion helpers.
+// Use amplitude conversions for voltages, gains, and signal magnitudes.
+// Use power conversions for squared-energy style controls such as noise power.
+float db_to_linear(float db)
+{
+    return exp(db * (LN10 / 20.0));
+}
+
+float linear_to_db(float linear)
+{
+    return 20.0 * log(max(linear, EPS)) / LN10;
+}
+
+float db_to_linear_power(float db)
+{
+    return exp(db * (LN10 / 10.0));
+}
+
+float power_to_db(float power)
+{
+    return 10.0 * log(max(power, EPS)) / LN10;
+}
+
 const vec3 BLACK = vec3(0.0, 0.0, 0.0);
 const vec3 WHITE = vec3(1.0, 1.0, 1.0);
 const vec3 RED = vec3(1.0, 0.0, 0.0);
@@ -294,6 +319,27 @@ vec2 box_muller(vec2 u)
     float r = sqrt(-2.0 * log(u.x));
     float th = 6.28318530718 * u.y; // 2π
     return vec2(r * cos(th), r * sin(th));
+}
+
+// Gaussian noise seeded by integer pixel and frame.
+// Returns three approximately independent N(0, 1) samples.
+vec3 gaussian_noise3(uvec2 coord, uint frame, uint salt)
+{
+    uint s0 = hash_u32(frame ^ salt ^ 0x9E3779B9u);
+    uint s1 = hash_u32(frame ^ salt ^ 0x85EBCA6Bu);
+
+    vec2 u0 = vec2(
+        hash_float(uvec2(coord.x ^ s0, coord.y ^ 0xA511E9B3u)),
+        hash_float(uvec2(coord.x ^ 0x63D83595u, coord.y ^ s0))
+    );
+    vec2 u1 = vec2(
+        hash_float(uvec2(coord.x ^ s1, coord.y ^ 0xC2B2AE35u)),
+        hash_float(uvec2(coord.x ^ 0x27D4EB2Fu, coord.y ^ s1))
+    );
+
+    vec2 g0 = box_muller(u0);
+    vec2 g1 = box_muller(u1);
+    return vec3(g0.x, g0.y, g1.x);
 }
 
 // Triangular PDF dither noise in [-0.5, 0.5], seeded by integer pixel and frame.

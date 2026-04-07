@@ -249,10 +249,11 @@ void main()
     float dx_phase_offset_px = 0.0;
     float system_phase_shift = 0.0;
 
-    // Compute phase offset correction for delay-line (constant per system)
-    if (DECODER_TYPE > 0.5 && use_delay_line) {
+    // Compute phase offset correction for delay-line (constant per system).
+    // A disabled subcarrier intentionally leaves the offset at zero.
+    if (DECODER_TYPE > 0.5 && use_delay_line && abs(phase_inc_px) > EPS) {
         // Calculate intrinsic system phase shift per line (independent of user hue)
-            float cycles_per_line = carrier.sc_freq_hz / carrier.h_freq_hz;
+        float cycles_per_line = carrier.sc_freq_hz / carrier.h_freq_hz;
         float frac_cycles = fract(cycles_per_line);
         system_phase_shift = 2.0 * PI * frac_cycles;
         if (system_phase_shift > PI) {

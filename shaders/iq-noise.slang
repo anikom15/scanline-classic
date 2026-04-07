@@ -29,6 +29,7 @@
 
 #include "common.inc"
 #include "window.inc"
+#include "subframe.inc"
 
 #include "menus/parameters/rf.inc"
 
@@ -106,16 +107,14 @@ void main()
 #endif  // OPTION_DEBUG
 
     // Base AWGN amplitude (linear)
-    float awgn_amp = exp(NOISE_AWGN_DB * 0.1151292546); // ln(10)/20
+    float awgn_amp = db_to_linear(NOISE_AWGN_DB);
 
     // Coordinate hashing
     ivec2 icoord = ivec2(floor(vTexCoord * config.OutputSize.xy));
-    uint frame;
-    if (config.TotalSubFrames > 1u) {
-        frame = (config.FrameCount << 4) + (config.CurrentSubFrame << 4) / config.TotalSubFrames;
-    } else {
-        frame = config.FrameCount;
-    }
+    uint frame = temporal_frame_index(
+        config.FrameCount,
+        config.CurrentSubFrame,
+        config.TotalSubFrames);
     vec2 u1 = vec2(hash_float(uvec2(icoord.x ^ frame, icoord.y)), hash_float(uvec2(icoord.x + 13u ^ frame, icoord.y + 7u)));
     vec2 gauss = box_muller(u1);
 
@@ -136,7 +135,7 @@ void main()
         noise_adv = (noise_fast * 0.5 + (gL + gR) * 0.25); // mild smoothing
 
         // Ghost (single delayed replica)
-        float ghost_amp = exp(NOISE_GHOST1_DB * 0.1151292546); // linear
+        float ghost_amp = db_to_linear(NOISE_GHOST1_DB);
         if (ghost_amp > 0.0 && NOISE_GHOST1_PIX > 0.5) {
             float delay_px = NOISE_GHOST1_PIX;
             vec2 ghost_coord = vTexCoord - vec2(delay_px * config.OutputSize.z, 0.0);
@@ -148,7 +147,7 @@ void main()
         float impulse_prob = NOISE_IMPULSE_RATE * 1e-6; // ppm to probability
         float hImpulse = hash_float(uvec2(icoord.x * 57u ^ frame, icoord.y * 131u));
         if (hImpulse > 1.0 - impulse_prob) {
-            float impulse_amp = exp(NOISE_IMPULSE_DB * 0.1151292546);
+            float impulse_amp = db_to_linear(NOISE_IMPULSE_DB);
             float signv = (hash_float(uvec2(icoord.x * 911u, icoord.y * 353u)) < 0.5) ? -1.0 : 1.0;
             iq += vec2(signv * impulse_amp, signv * impulse_amp * 0.7); // slightly less on Q
         }

@@ -2,7 +2,7 @@
 
 #pragma parameter TIMING_HEADER " —— System: Timing —— " 0.0 0.0 0.0 0.0
 
-#pragma parameter SC_FREQ_MODE "Subcarrier frequency mode (auto, NTSC, PAL, PAL-M, custom)" 0.0 0.0 4.0 1.0
+#pragma parameter SC_FREQ_MODE "Subcarrier frequency mode (auto, NTSC, PAL, PAL-M, custom, off)" 0.0 0.0 5.0 1.0
 #pragma parameter SC_FREQ "Custom subcarrier frequency (MHz)" 3.579545 0.0 10.0 0.01
 #pragma parameter PIXEL_CLOCK_MODE "Pixel clock mode (fixed, multiple of subcarrier)" 0.0 0.0 1.0 1.0
 #pragma parameter PIXEL_CLOCK "Pixel clock frequency (MHz) / multiplier" 13.5 0.0 500.0 0.01

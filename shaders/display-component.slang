@@ -256,9 +256,9 @@ void main()
     cfilt = design_kaiser_filter(DISPLAY_CUTOFF_C, DISPLAY_STOPBAND_C, OutputSampleRate);
 
     gain = vec3(
-        pow(10.0, DISPLAY_GAIN_Y / 20.0),
-        pow(10.0, DISPLAY_GAIN_C / 20.0),
-        pow(10.0, DISPLAY_GAIN_C / 20.0));
+        db_to_linear(DISPLAY_GAIN_Y),
+        db_to_linear(DISPLAY_GAIN_C),
+        db_to_linear(DISPLAY_GAIN_C));
     bias = vec3(
         DISPLAY_BIAS_Y * 10e-3,
         DISPLAY_BIAS_C * 10e-3,
@@ -325,9 +325,9 @@ void main()
     vec4 center_sample = fetch_input_sample(nearest_sample_index, InputFrameWidth, input_data_limit);
 
     vec3 rgb_gain = vec3(
-        pow(10.0, DISPLAY_GAIN_R / 20.0),
-        pow(10.0, DISPLAY_GAIN_G / 20.0),
-        pow(10.0, DISPLAY_GAIN_B / 20.0));
+        db_to_linear(DISPLAY_GAIN_R),
+        db_to_linear(DISPLAY_GAIN_G),
+        db_to_linear(DISPLAY_GAIN_B));
     vec3 rgb_bias = vec3(
         DISPLAY_BIAS_R * 10e-3,
         DISPLAY_BIAS_G * 10e-3,

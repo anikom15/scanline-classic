@@ -210,7 +210,7 @@ void main()
     float zoh_mag = (zoh_ratio < EPS)
         ? 1.0
         : abs(sin(PI * zoh_ratio) / (PI * zoh_ratio));
-    float zoh_gain = 20.0 * log(max(zoh_mag, EPS)) / log(10.0);
+    float zoh_gain = linear_to_db(zoh_mag);
     float cutoff_atten = SYS_FILTER_ATTEN + zoh_gain * COMPENSATE_SINC_ROLLOFF;
 
     float sigma_seconds = gaussian_sigma(cutoff_freq, cutoff_atten);

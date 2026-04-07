@@ -206,9 +206,9 @@ void main()
     kernelGain = max(kernelGain, vec3(EPS));
 
     gain = vec3(
-        pow(10.0, SYS_GAIN_Y / 20.0),
-        pow(10.0, SYS_GAIN_C / 20.0),
-        pow(10.0, SYS_GAIN_C / 20.0));
+        db_to_linear(SYS_GAIN_Y),
+        db_to_linear(SYS_GAIN_C),
+        db_to_linear(SYS_GAIN_C));
     bias = vec3(
         SYS_BIAS_Y * 10e-3,
         SYS_BIAS_C * 10e-3,

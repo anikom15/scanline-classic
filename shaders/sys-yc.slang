@@ -119,9 +119,9 @@ void main()
 
     // Amplifier gains and biases
     gain = vec3(
-        pow(10.0, SYS_GAIN_Y / 20.0),
-        pow(10.0, SYS_GAIN_U / 20.0),
-        pow(10.0, SYS_GAIN_V / 20.0));
+        db_to_linear(SYS_GAIN_Y),
+        db_to_linear(SYS_GAIN_U),
+        db_to_linear(SYS_GAIN_V));
     bias = vec3(
         SYS_BIAS_Y * 10e-3,
         SYS_BIAS_U * 10e-3,

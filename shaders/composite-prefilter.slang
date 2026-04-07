@@ -270,17 +270,21 @@ void main()
             system_phase_shift -= 2.0 * PI;
         }
 
-        // Correct for system phase shift to achieve ideal 180° alignment
+        // Correct for system phase shift to achieve ideal 180° alignment.
+        // A disabled subcarrier keeps the horizontal phase correction at zero.
         float sc_phase_inc_per_px = 2.0 * PI * carrier.sc_freq_hz * carrier.pixel_time_px;
         float target_phase = PI;
         float phase_correction_needed = target_phase - system_phase_shift;
+        float dx_phase_offset_px = 0.0;
 
-        // Horizontal offset in pixels to achieve target phase
-        float dx_phase_offset_px = phase_correction_needed / sc_phase_inc_per_px;
+        if (abs(sc_phase_inc_per_px) > EPS) {
+            // Horizontal offset in pixels to achieve target phase
+            dx_phase_offset_px = phase_correction_needed / sc_phase_inc_per_px;
 
-        // Reduce to one subcarrier period to avoid excessive offsets
-        float period_px = 2.0 * PI / sc_phase_inc_per_px;
-        dx_phase_offset_px -= round(dx_phase_offset_px / period_px) * period_px;
+            // Reduce to one subcarrier period to avoid excessive offsets
+            float period_px = 2.0 * PI / sc_phase_inc_per_px;
+            dx_phase_offset_px -= round(dx_phase_offset_px / period_px) * period_px;
+        }
 
         vec2 dxy = vec2(-dx_phase_offset_px * config.OutputSize.z, -config.OutputSize.w);
 

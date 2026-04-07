@@ -31,6 +31,7 @@
 
 #include "common.inc"
 #include "digital.inc"
+#include "subframe.inc"
 
 #include "menus/parameters/digital-component.inc"
 #include "menus/parameters/sys-encode.inc"
@@ -102,10 +103,10 @@ void main()
     gl_Position = global.MVP * Position;
     vTexCoord = TexCoord;
 
-    // Convert dB to linear gain: gain = 10^(dB/20)
-    float gain_y = pow(10.0, SYS_GAIN_Y / 20.0);
-    float gain_u = pow(10.0, SYS_GAIN_U / 20.0);
-    float gain_v = pow(10.0, SYS_GAIN_V / 20.0);
+    // Convert dB gain controls into linear amplitudes.
+    float gain_y = db_to_linear(SYS_GAIN_Y);
+    float gain_u = db_to_linear(SYS_GAIN_U);
+    float gain_v = db_to_linear(SYS_GAIN_V);
 
     gain = vec3(gain_y, gain_u, gain_v);
 
@@ -145,12 +146,10 @@ void main()
         // Apply dithering before quantization
         if (DITHER > 0.5) {
             vec2 screen_coord = vTexCoord.xy * config.OutputSize.xy;
-            uint frame;
-            if (config.TotalSubFrames > 1u) {
-                frame = (config.FrameCount << 4) + (config.CurrentSubFrame << 4) / config.TotalSubFrames;
-            } else {
-                frame = config.FrameCount;
-            }
+            uint frame = temporal_frame_index(
+                config.FrameCount,
+                config.CurrentSubFrame,
+                config.TotalSubFrames);
             ycbcr = apply_dither(ycbcr, working_bits, bits, screen_coord, frame);
         }
 
@@ -181,12 +180,10 @@ void main()
     // Apply dithering before quantization
     if (DITHER > 0.5) {
         vec2 screen_coord = vTexCoord.xy * config.OutputSize.xy;
-        uint frame;
-        if (config.TotalSubFrames > 1u) {
-            frame = (config.FrameCount << 4) + (config.CurrentSubFrame << 4) / config.TotalSubFrames;
-        } else {
-            frame = config.FrameCount;
-        }
+        uint frame = temporal_frame_index(
+            config.FrameCount,
+            config.CurrentSubFrame,
+            config.TotalSubFrames);
         y = apply_dither(y, working_bits, bits, screen_coord, frame);
         c = apply_dither(c, working_bits, bits, screen_coord + vec2(0.5, 0.5), frame);
     }

@@ -20,6 +20,7 @@
 #include "common.inc"
 #include "color.inc"
 #include "digital.inc"
+#include "subframe.inc"
 #include "texture.inc"
 
 #include "menus/parameters/factory-geometry.inc"
@@ -716,25 +717,10 @@ void main()
     screen.rgb = screen.rgb;
     screen.a = 1.0; // Ensure opaque screen
 
-    uint frame = config.FrameCount;
-
-    if (config.TotalSubFrames > 1u) {
-        // PERF: avoid integer divide on common jitter phase counts.
-        // Keep these branches; they reduce NOTSEL/latency vs generic divide.
-        uint subframe4;
-        if (config.TotalSubFrames == 2u)
-            subframe4 = config.CurrentSubFrame << 3;
-        else if (config.TotalSubFrames == 4u)
-            subframe4 = config.CurrentSubFrame << 2;
-        else if (config.TotalSubFrames == 8u)
-            subframe4 = config.CurrentSubFrame << 1;
-        else if (config.TotalSubFrames == 16u)
-            subframe4 = config.CurrentSubFrame;
-        else
-            subframe4 = (config.CurrentSubFrame << 4) / config.TotalSubFrames;
-
-        frame = (config.FrameCount << 4) + subframe4;
-    }
+    uint frame = temporal_frame_index(
+        config.FrameCount,
+        config.CurrentSubFrame,
+        config.TotalSubFrames);
 
 #ifdef OPTION_NOBEZEL
     write_output_color(screen.rgb, frame);
@@ -801,7 +787,7 @@ void main()
             // Combined glow color processing: compression + temperature shift
             // Apply selected dither in perceptual space before converting back to RGB.
             float noise = tpdf_blue_noise(screen_coord * config.OutputSize.xy, frame);
-            float noise_power = pow(10.0, GLOW_DITHER / 10.0);
+            float noise_power = db_to_linear_power(GLOW_DITHER);
 
             glow = process_glow_color(glow, GLOW_COMPRESSION, GLOW_TEMPERATURE, noise, noise_power);
 
@@ -815,7 +801,7 @@ void main()
 
     // === Blend glow with background ===
     // Apply bezel gain and bias first
-    float bezel_gain = pow(10.0, BEZEL_GAIN / 20.0);
+    float bezel_gain = db_to_linear(BEZEL_GAIN);
     float bezel_bias = BEZEL_BIAS / 100.0;
     vec3 background_adjusted = (background_linear + bezel_bias) * bezel_gain;
 

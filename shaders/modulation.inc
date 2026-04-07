@@ -134,8 +134,8 @@ float compute_carrier_phase_discrete(
 // Helper functions for modular compute_timebase
 // ============================================================================
 
-// Compute subcarrier frequency and identify video standard
-// Returns standard: 0=NTSC, 1=PAL, 2=PAL-M, 3=custom
+// Compute subcarrier frequency and identify video standard.
+// Returns standard: 0=NTSC, 1=PAL, 2=PAL-M, 3=custom, 4=off.
 void compute_subcarrier_freq(
     float sc_freq_mode, float sc_freq_custom_mhz,
     float core_refresh_hz,
@@ -159,21 +159,27 @@ void compute_subcarrier_freq(
     } else if (sc_freq_mode < 3.5) {
         sc_freq_hz = PAL_M_FSC;
         standard = 2;
-    } else {
-        sc_freq_hz = sc_freq_custom_mhz * 1.0e6;
+    } else if (sc_freq_mode < 4.5) {
+        sc_freq_hz = max(sc_freq_custom_mhz, 0.0) * 1.0e6;
         standard = 3;
+    } else {
+        sc_freq_hz = 0.0;
+        standard = 4;
     }
 }
 
-// Compute pixel clock frequency from mode and parameters
+// Compute pixel clock frequency from mode and parameters.
+// If the pixel clock is defined as a multiple of a disabled subcarrier, return
+// the smallest safe positive value so downstream timing code fails explicitly
+// rather than silently substituting an NTSC/PAL carrier.
 float compute_pixel_clock(
     float pixel_clock_mode, float pixel_clock_mhz,
     float sc_freq_hz)
 {
     if (pixel_clock_mode < 0.5) {
-        return pixel_clock_mhz * 1.0e6;
+        return max(pixel_clock_mhz * 1.0e6, EPS);
     } else {
-        return sc_freq_hz * pixel_clock_mhz;
+        return max(max(sc_freq_hz, EPS) * pixel_clock_mhz, EPS);
     }
 }
 
@@ -279,12 +285,14 @@ void compute_h_timing(
     float original_width,
     out float total_pixels, out float pixel_time)
 {
-    float total_cycles = pixel_clock_hz / h_freq_hz;
+    float safe_pixel_clock_hz = max(pixel_clock_hz, EPS);
+    float safe_h_freq_hz = max(h_freq_hz, EPS);
+    float total_cycles = safe_pixel_clock_hz / safe_h_freq_hz;
     float fuzz_frac = h_blank_fuzz / 100.0;
-    float clock_factor = max(1.0, round(total_cycles * fuzz_frac / original_width));
+    float clock_factor = max(1.0, round(total_cycles * fuzz_frac / max(original_width, 1.0)));
     total_pixels = total_cycles / clock_factor;
     // Simplify: pixel_time = 1.0 / (h_freq_hz * total_pixels) = clock_factor / pixel_clock_hz
-    pixel_time = clock_factor / pixel_clock_hz;
+    pixel_time = clock_factor / safe_pixel_clock_hz;
 }
 
 // Compute output scaling factors for both horizontal and vertical dimensions

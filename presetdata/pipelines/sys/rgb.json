@@ -3,7 +3,8 @@
     "shaders" : {
         "frame" : "frameh",
         "amp" : "sys-rgb-amp",
-        "bandlimit" : "sys-rgb-bandlimit"
+        "bandlimit" : "sys-rgb-bandlimit",
+        "noise" : "noise-rgb"
     },
     "options" : {
         "frame" : {
