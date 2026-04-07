@@ -221,8 +221,19 @@ void main()
 layout(location = 0) in vec2 vTexCoord;
 layout(location = 1) flat in NoiseRGBState vNoiseState;
 layout(location = 0) out vec4 FragColor;
-layout(set = 0, binding = 1) uniform sampler2D Source;
+layout(set = 0, binding = 1) uniform sampler2D Source;  // Mip 11
 layout(set = 0, binding = 2) uniform sampler2D SysRGBBandlimit;
+layout(set = 0, binding = 3) uniform sampler2D MagDeltaV;
+layout(set = 0, binding = 4) uniform sampler2D Mip1;
+layout(set = 0, binding = 5) uniform sampler2D Mip2;
+layout(set = 0, binding = 6) uniform sampler2D Mip3;
+layout(set = 0, binding = 7) uniform sampler2D Mip4;
+layout(set = 0, binding = 8) uniform sampler2D Mip5;
+layout(set = 0, binding = 9) uniform sampler2D Mip6;
+layout(set = 0, binding = 10) uniform sampler2D Mip7;
+layout(set = 0, binding = 11) uniform sampler2D Mip8;
+layout(set = 0, binding = 12) uniform sampler2D Mip9;
+layout(set = 0, binding = 13) uniform sampler2D Mip10;
 
 struct NoiseGradeSettings {
     float awgn_db;
@@ -235,11 +246,12 @@ struct NoiseGradeSettings {
 };
 
 // Resolve the selected noise grade into one coherent parameter bundle.
-// AWGN remains the dB-valued noise budget, while the legacy `*_DB` crosstalk
-// fields are now interpreted as nonnegative linear weights for compatibility.
-// `Custom` preserves the menu sliders, while the graded presets override them
-// with curated values that roughly track professional, consumer, and degraded
-// analog RGB paths.
+// AWGN remains the dB-valued total noise budget, while the other `*_DB` fields
+// are interpreted as dB-valued shares relative to AWGN: 0 dB means that the
+// corresponding systematic term contributes at the same level as AWGN when its
+// local shape term is 1. `Custom` preserves the menu sliders, while the graded
+// presets override them with curated values that roughly track professional,
+// consumer, and degraded analog RGB paths.
 NoiseGradeSettings resolve_noise_grade_settings()
 {
     if (RGB_NOISE_PRESET < 0.5) {
@@ -253,15 +265,19 @@ NoiseGradeSettings resolve_noise_grade_settings()
             RGB_NOISE_JITTER_UI);
     }
 
+    // Professional: AWGN (external) dominated, low systematic error
+    // Consumer: roughly even balance between AWGN and systematic error
+    // Degraded: Systematic error (failures) dominate
+
     if (RGB_NOISE_PRESET < 1.5) {
-        return NoiseGradeSettings(-50.0, 0.30, 0.30, 0.20, 3.0, 0.20, 3.0);
+        return NoiseGradeSettings(-50.0, -10.0, -10.0, -12.0, 3.0, -12.0, 3.0);
     }
 
     if (RGB_NOISE_PRESET < 2.5) {
-        return NoiseGradeSettings(-40.0, 0.75, 0.75, 0.60, 5.0, 0.60, 6.0);
+        return NoiseGradeSettings(-40.0, -6.0, -6.0, -8.0, 5.0, -8.0, 6.0);
     }
 
-    return NoiseGradeSettings(-30.0, 1.25, 1.25, 1.0, 7.0, 1.0, 12.00);
+    return NoiseGradeSettings(-30.0, -2.0, -2.0, -4.0, 7.0, -4.0, 12.00);
 }
 
 // dB/linear conversions use the shared helpers from `common.inc`.
@@ -350,24 +366,20 @@ vec3 sample_mag_delta_v_lod(float sample_index, float lod, NoiseRGBState state)
     return textureLod(Source, mag_delta_uv, max(lod, 0.0)).rgb;
 }
 
-// AWGN sets the overall noise budget. The other controls act as nonnegative
-// linear weights that distribute that budget across three per-channel sets:
+// AWGN sets the total RMS random noise budget. The other controls are dB-valued
+// systematic shares relative to AWGN that modulate deterministic MagDeltaV /
+// clock / YC shapes:
 //   set 1 (red):   Clock + RG + AWGN
 //   set 2 (green): RG + BG + AWGN
 //   set 3 (blue):  BG + YC + AWGN
-float clamp_noise_weight(float weight)
-{
-    return clamp(weight, 0.0, 3.0);
-}
-
-float compute_noise_set_weight(float awgn_weight, float weight_a, float weight_b)
-{
-    return max(awgn_weight + weight_a + weight_b, awgn_weight);
-}
-
 float compute_noise_budget_sigma(float awgn_db)
 {
     return db_to_linear(awgn_db);
+}
+
+float compute_systematic_share(float share_db)
+{
+    return db_to_linear(share_db);
 }
 
 // Estimate the ideal mean sample count N implied by the AWGN noise budget,
@@ -471,14 +483,10 @@ void main()
     vec4 right_sample = sample_signal_linear(jittered_index + 1.0, vNoiseState);
 
     float awgn_sigma = compute_noise_budget_sigma(grade.awgn_db);
-    float rg_weight = clamp_noise_weight(grade.rg_xtalk_db);
-    float bg_weight = clamp_noise_weight(grade.bg_xtalk_db);
-    float clock_weight = clamp_noise_weight(grade.clock_db);
-    float yc_weight = clamp_noise_weight(grade.ycrosstalk_db);
-
-    float set1_weight = compute_noise_set_weight(1.0, rg_weight, clock_weight);
-    float set2_weight = compute_noise_set_weight(1.0, rg_weight, bg_weight);
-    float set3_weight = compute_noise_set_weight(1.0, bg_weight, yc_weight);
+    float rg_share = compute_systematic_share(grade.rg_xtalk_db);
+    float bg_share = compute_systematic_share(grade.bg_xtalk_db);
+    float clock_share = compute_systematic_share(grade.clock_db);
+    float yc_share = compute_systematic_share(grade.ycrosstalk_db);
 
     float mag_delta_v_lod = compute_mag_delta_v_lod(
         compute_mag_delta_v_ideal_sample_count(vNoiseState.fs_current, grade.awgn_db));
@@ -491,22 +499,22 @@ void main()
         grade.clock_harmonics,
         vNoiseState);
     vec3 yc_shape = compute_y_subcarrier_crosstalk_shape(jittered_index, jittered_sample.rgb, vNoiseState);
-    vec3 noise_sets = gaussian_noise3(uvec2(uint(output_x_i), uint(output_y_i)), frame, 0xD3ADB33Fu);
+
+    float red_rg_share = rg_share * mag_delta_v.g;
+    float red_clock_share = clock_share * clock_shape.r;
+    float green_rg_share = rg_share * mag_delta_v.r;
+    float green_bg_share = bg_share * mag_delta_v.b;
+    float blue_bg_share = bg_share * mag_delta_v.g;
+    float blue_yc_share = yc_share * yc_shape.b;
+
+    uvec2 noise_seed = uvec2(uint(output_x_i), uint(output_y_i));
+    vec3 awgn_noise = gaussian_noise3(noise_seed, frame, 0xD3ADB33Fu);
 
     vec3 color = jittered_sample.rgb;
-    color += vec3(
-        noise_sets.r * awgn_sigma * (
-            sqrt(1.0 / max(set1_weight, EPS))
-            + sqrt(rg_weight / max(set1_weight, EPS)) * mag_delta_v.g
-            + sqrt(clock_weight / max(set1_weight, EPS)) * clock_shape.r),
-        noise_sets.g * awgn_sigma * (
-            sqrt(1.0 / max(set2_weight, EPS))
-            + sqrt(rg_weight / max(set2_weight, EPS)) * mag_delta_v.r
-            + sqrt(bg_weight / max(set2_weight, EPS)) * mag_delta_v.b),
-        noise_sets.b * awgn_sigma * (
-            sqrt(1.0 / max(set3_weight, EPS))
-            + sqrt(bg_weight / max(set3_weight, EPS)) * mag_delta_v.g
-            + sqrt(yc_weight / max(set3_weight, EPS)) * yc_shape.b));
+    color += awgn_sigma * vec3(
+        awgn_noise.r + red_rg_share + red_clock_share,
+        awgn_noise.g + green_rg_share + green_bg_share,
+        awgn_noise.b + blue_bg_share + blue_yc_share);
 
     FragColor = vec4(color, jittered_sample.a);
 }
