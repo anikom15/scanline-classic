@@ -105,10 +105,12 @@ void main()
 {
     vec3 color = texture(Source, vTexCoord).rgb;
 
+#ifdef OPTION_DEBUG
     if (SYS_RGB_AMP_BYPASS >= 0.5) {
         FragColor = vec4(color, 1.0);
         return;
     }
+#endif  // OPTION_DEBUG
 
     color = gain * (color + bias);
     FragColor = vec4(color, 1.0);

@@ -4,6 +4,7 @@
         "frame" : "frameh",
         "amp" : "sys-rgb-amp",
         "bandlimit" : "sys-rgb-bandlimit",
+        "deltav" : "send-mag-delta-v",
         "noise" : "noise-rgb"
     },
     "options" : {
@@ -14,6 +15,10 @@
         "bandlimit" : {
             "scale_type" : ["absolute", "source"],
             "scale" : [2048.0, 1.0]
+        },
+        "noise" : {
+            "mipmap_input" : true,
+            "filter_linear" : true
         }
     }
 }

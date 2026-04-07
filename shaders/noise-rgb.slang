@@ -29,7 +29,7 @@
 //
 // Covered effects:
 //  - broadband AWGN
-//  - nearest-neighbor RG/BG crosstalk aligned to the wiring order
+//  - MagDeltaV-driven RG/BG capacitive crosstalk aligned to the wiring order
 //  - pixel-clock feedthrough with odd-harmonic square-wave drive
 //  - luminance/subcarrier contamination when a color subcarrier is present
 //  - sample jitter / phase noise
@@ -50,6 +50,8 @@
 #ifdef OPTION_DEBUG
 #pragma parameter DEBUG_RGB_NOISE_HEADER " —— Debug RGB Noise —— " 0.0 0.0 0.0 0.0
 #pragma parameter RGB_NOISE_BYPASS "Bypass RGB noise" 0.0 0.0 1.0 1.0
+#pragma parameter RGB_NOISE_VIEW_MAG_DELTAV "View MagDeltaV" 0.0 0.0 1.0 1.0
+#pragma parameter RGB_NOISE_MAG_DELTAV_MIP_LOD "MagDeltaV mip LOD" 0.0 0.0 12.0 1.0
 #endif  // OPTION_DEBUG
 
 layout(push_constant) uniform Push
@@ -110,6 +112,8 @@ layout(std140, set = 0, binding = 0) uniform UBO
 
 #ifdef OPTION_DEBUG
     float RGB_NOISE_BYPASS;
+    float RGB_NOISE_VIEW_MAG_DELTAV;
+    float RGB_NOISE_MAG_DELTAV_MIP_LOD;
 #endif  // OPTION_DEBUG
 } global;
 
@@ -119,6 +123,8 @@ layout(std140, set = 0, binding = 0) uniform UBO
 
 #ifdef OPTION_DEBUG
 #define RGB_NOISE_BYPASS global.RGB_NOISE_BYPASS
+#define RGB_NOISE_VIEW_MAG_DELTAV global.RGB_NOISE_VIEW_MAG_DELTAV
+#define RGB_NOISE_MAG_DELTAV_MIP_LOD global.RGB_NOISE_MAG_DELTAV_MIP_LOD
 #endif  // OPTION_DEBUG
 
 struct NoiseRGBState {
@@ -215,7 +221,8 @@ void main()
 layout(location = 0) in vec2 vTexCoord;
 layout(location = 1) flat in NoiseRGBState vNoiseState;
 layout(location = 0) out vec4 FragColor;
-layout(set = 0, binding = 2) uniform sampler2D Source;
+layout(set = 0, binding = 1) uniform sampler2D Source;
+layout(set = 0, binding = 2) uniform sampler2D SysRGBBandlimit;
 
 struct NoiseGradeSettings {
     float awgn_db;
@@ -228,6 +235,8 @@ struct NoiseGradeSettings {
 };
 
 // Resolve the selected noise grade into one coherent parameter bundle.
+// AWGN remains the dB-valued noise budget, while the legacy `*_DB` crosstalk
+// fields are now interpreted as nonnegative linear weights for compatibility.
 // `Custom` preserves the menu sliders, while the graded presets override them
 // with curated values that roughly track professional, consumer, and degraded
 // analog RGB paths.
@@ -245,14 +254,14 @@ NoiseGradeSettings resolve_noise_grade_settings()
     }
 
     if (RGB_NOISE_PRESET < 1.5) {
-        return NoiseGradeSettings(-50.0, -50.0, -50.0, -50.0, 3.0, -50.0, 3.0);
+        return NoiseGradeSettings(-50.0, 0.30, 0.30, 0.20, 3.0, 0.20, 3.0);
     }
 
     if (RGB_NOISE_PRESET < 2.5) {
-        return NoiseGradeSettings(-40.0, -40.0, -40.0, -40.0, 5.0, -40.0, 6.0);
+        return NoiseGradeSettings(-40.0, 0.75, 0.75, 0.60, 5.0, 0.60, 6.0);
     }
 
-    return NoiseGradeSettings(-30.0, -30.0, -30.0, -30.0, 7.0, -30.0, 12.00);
+    return NoiseGradeSettings(-30.0, 1.25, 1.25, 1.0, 7.0, 1.0, 12.00);
 }
 
 // dB/linear conversions use the shared helpers from `common.inc`.
@@ -272,7 +281,7 @@ vec4 fetch_signal_sample(float sample_index, NoiseRGBState state)
     texel_x = clamp(texel_x, 0, max(int(config.SourceSize.x) - 1, 0));
     texel_y = clamp(texel_y, 0, max(int(config.SourceSize.y) - 1, 0));
 
-    return texelFetch(Source, ivec2(texel_x, texel_y), 0);
+    return texelFetch(SysRGBBandlimit, ivec2(texel_x, texel_y), 0);
 }
 
 // Sample between adjacent DSP samples with a simple linear blend. This is
@@ -324,22 +333,59 @@ float compute_jitter_samples(float sample_index, int output_y_i, uint frame, flo
     return line_jitter + 0.5 * fine_jitter;
 }
 
-// Model nearest-neighbor coupling for the physical bundle order
-// Pixel Clock -> Red -> Green -> Blue -> YC. Red is therefore pulled mainly
-// toward green, blue is pulled mainly toward green, and the center green trace
-// sees a weaker bidirectional average of both neighbors.
-vec3 apply_wired_crosstalk(vec3 color, float rg_xtalk_db, float bg_xtalk_db)
+vec2 mag_delta_v_uv_from_index(float sample_index, NoiseRGBState state)
 {
-    float rg_amp = db_to_linear(rg_xtalk_db);
-    float bg_amp = db_to_linear(bg_xtalk_db);
+    float data_limit = max(state.data_length - 1.0, 0.0);
+    float clamped_index = clamp(sample_index, 0.0, data_limit);
+    float sample_y = floor(clamped_index / max(state.frame_width, 1.0));
+    float sample_x = clamped_index - sample_y * state.frame_width;
+    vec2 mag_delta_size = max(vec2(textureSize(Source, 0)), vec2(1.0));
 
-    vec3 coupled = color;
-    coupled.r += rg_amp * (color.g - color.r);
-    coupled.g += 0.35 * rg_amp * (color.r - color.g);
-    coupled.g += 0.35 * bg_amp * (color.b - color.g);
-    coupled.b += bg_amp * (color.g - color.b);
+    return (vec2(sample_x, sample_y) + vec2(0.5)) / mag_delta_size;
+}
 
-    return coupled;
+vec3 sample_mag_delta_v_lod(float sample_index, float lod, NoiseRGBState state)
+{
+    vec2 mag_delta_uv = mag_delta_v_uv_from_index(sample_index, state);
+    return textureLod(Source, mag_delta_uv, max(lod, 0.0)).rgb;
+}
+
+// AWGN sets the overall noise budget. The other controls act as nonnegative
+// linear weights that distribute that budget across three per-channel sets:
+//   set 1 (red):   Clock + RG + AWGN
+//   set 2 (green): RG + BG + AWGN
+//   set 3 (blue):  BG + YC + AWGN
+float clamp_noise_weight(float weight)
+{
+    return clamp(weight, 0.0, 3.0);
+}
+
+float compute_noise_set_weight(float awgn_weight, float weight_a, float weight_b)
+{
+    return max(awgn_weight + weight_a + weight_b, awgn_weight);
+}
+
+float compute_noise_budget_sigma(float awgn_db)
+{
+    return db_to_linear(awgn_db);
+}
+
+// Estimate the ideal mean sample count N implied by the AWGN noise budget,
+// then quantize it to the coarsest available MagDeltaV mip block that still
+// covers at least that many source texels.
+float compute_mag_delta_v_ideal_sample_count(float fs_current, float awgn_db)
+{
+    float f_min = 0.5 * fs_current * exp2(awgn_db / 6.0);
+    return fs_current / max(f_min, EPS);
+}
+
+float compute_mag_delta_v_lod(float ideal_sample_count)
+{
+    vec2 mag_delta_size = max(vec2(textureSize(Source, 0)), vec2(1.0));
+    float max_lod = floor(log2(max(max(mag_delta_size.x, mag_delta_size.y), 1.0)));
+    float lod = ceil(0.5 * log2(max(ideal_sample_count, 1.0)));
+
+    return clamp(lod, 0.0, max_lod);
 }
 
 // Inject pixel-clock feedthrough using the local horizontal edge energy and a
@@ -347,19 +393,14 @@ vec3 apply_wired_crosstalk(vec3 color, float rg_xtalk_db, float bg_xtalk_db)
 // conductor sits closest to red in the assumed bundle, so red receives the
 // strongest pickup, green a weaker adjacent imprint, and blue only a faint
 // residual.
-vec3 compute_clock_crosstalk(
+vec3 compute_clock_crosstalk_shape(
     float sample_index,
     vec3 center,
     vec3 left,
     vec3 right,
-    float clock_db,
     float clock_harmonics,
     NoiseRGBState state)
 {
-    float clock_amp = db_to_linear(clock_db);
-    if (clock_amp <= EPS)
-        return vec3(0.0);
-
     float clock_cycles = fract(state.initial_phase_frac + sample_index * state.fs_original / max(state.fs_current, EPS));
     float drive = square_wave_drive(clock_cycles, clock_harmonics);
     vec3 edge = 0.5 * (left + right) - center;
@@ -368,17 +409,16 @@ vec3 compute_clock_crosstalk(
         0.30 * edge.r + 0.45 * edge.g,
         0.10 * edge.g + 0.05 * edge.b);
 
-    return drive * clock_amp * wired_edge;
+    return clamp(abs(drive * wired_edge), vec3(0.0), vec3(1.0));
 }
 
 // Model luma-to-chroma leakage tied to the color subcarrier phase. With the
 // YC line assumed to sit on the far side of blue in the bundle, blue receives
 // the strongest phase-colored contamination, green a smaller correlated ripple,
 // and red only a trace amount.
-vec3 compute_y_subcarrier_crosstalk(float sample_index, vec3 color, float ycrosstalk_db, NoiseRGBState state)
+vec3 compute_y_subcarrier_crosstalk_shape(float sample_index, vec3 color, NoiseRGBState state)
 {
-    float sc_amp = db_to_linear(ycrosstalk_db);
-    if (sc_amp <= EPS || state.sc_freq_hz <= EPS)
+    if (state.sc_freq_hz <= EPS)
         return vec3(0.0);
 
     float carrier_cycles = fract(PHASE_ZERO / 360.0 + sample_index * state.sc_freq_hz / max(state.fs_current, EPS));
@@ -386,7 +426,7 @@ vec3 compute_y_subcarrier_crosstalk(float sample_index, vec3 color, float ycross
     float carrier_q = cos(2.0 * PI * carrier_cycles);
     float y = dot(color, vec3(0.299, 0.587, 0.114));
 
-    return sc_amp * y * vec3(0.10 * carrier_i, -0.20 * carrier_q, 0.85 * carrier_q + 0.15 * carrier_i);
+    return clamp(abs(y * vec3(0.10 * carrier_i, -0.20 * carrier_q, 0.85 * carrier_q + 0.15 * carrier_i)), vec3(0.0), vec3(1.0));
 }
 
 void main()
@@ -410,6 +450,12 @@ void main()
         FragColor = center_sample;
         return;
     }
+
+    if (RGB_NOISE_VIEW_MAG_DELTAV > 0.5) {
+        vec3 debug_mag_delta_v = sample_mag_delta_v_lod(sample_index, RGB_NOISE_MAG_DELTAV_MIP_LOD, vNoiseState);
+        FragColor = vec4(clamp(debug_mag_delta_v, 0.0, 1.0), 1.0);
+        return;
+    }
 #endif  // OPTION_DEBUG
 
     NoiseGradeSettings grade = resolve_noise_grade_settings();
@@ -424,19 +470,43 @@ void main()
     vec4 left_sample = sample_signal_linear(jittered_index - 1.0, vNoiseState);
     vec4 right_sample = sample_signal_linear(jittered_index + 1.0, vNoiseState);
 
-    vec3 color = jittered_sample.rgb;
-    color += compute_clock_crosstalk(
+    float awgn_sigma = compute_noise_budget_sigma(grade.awgn_db);
+    float rg_weight = clamp_noise_weight(grade.rg_xtalk_db);
+    float bg_weight = clamp_noise_weight(grade.bg_xtalk_db);
+    float clock_weight = clamp_noise_weight(grade.clock_db);
+    float yc_weight = clamp_noise_weight(grade.ycrosstalk_db);
+
+    float set1_weight = compute_noise_set_weight(1.0, rg_weight, clock_weight);
+    float set2_weight = compute_noise_set_weight(1.0, rg_weight, bg_weight);
+    float set3_weight = compute_noise_set_weight(1.0, bg_weight, yc_weight);
+
+    float mag_delta_v_lod = compute_mag_delta_v_lod(
+        compute_mag_delta_v_ideal_sample_count(vNoiseState.fs_current, grade.awgn_db));
+    vec3 mag_delta_v = clamp(sample_mag_delta_v_lod(jittered_index, mag_delta_v_lod, vNoiseState), vec3(0.0), vec3(1.0));
+    vec3 clock_shape = compute_clock_crosstalk_shape(
         jittered_index,
-        color,
+        jittered_sample.rgb,
         left_sample.rgb,
         right_sample.rgb,
-        grade.clock_db,
         grade.clock_harmonics,
         vNoiseState);
-    color += compute_y_subcarrier_crosstalk(jittered_index, color, grade.ycrosstalk_db, vNoiseState);
-    color = apply_wired_crosstalk(color, grade.rg_xtalk_db, grade.bg_xtalk_db);
-    color += gaussian_noise3(uvec2(uint(output_x_i), uint(output_y_i)), frame, 0xD3ADB33Fu)
-        * db_to_linear(grade.awgn_db);
+    vec3 yc_shape = compute_y_subcarrier_crosstalk_shape(jittered_index, jittered_sample.rgb, vNoiseState);
+    vec3 noise_sets = gaussian_noise3(uvec2(uint(output_x_i), uint(output_y_i)), frame, 0xD3ADB33Fu);
+
+    vec3 color = jittered_sample.rgb;
+    color += vec3(
+        noise_sets.r * awgn_sigma * (
+            sqrt(1.0 / max(set1_weight, EPS))
+            + sqrt(rg_weight / max(set1_weight, EPS)) * mag_delta_v.g
+            + sqrt(clock_weight / max(set1_weight, EPS)) * clock_shape.r),
+        noise_sets.g * awgn_sigma * (
+            sqrt(1.0 / max(set2_weight, EPS))
+            + sqrt(rg_weight / max(set2_weight, EPS)) * mag_delta_v.r
+            + sqrt(bg_weight / max(set2_weight, EPS)) * mag_delta_v.b),
+        noise_sets.b * awgn_sigma * (
+            sqrt(1.0 / max(set3_weight, EPS))
+            + sqrt(bg_weight / max(set3_weight, EPS)) * mag_delta_v.g
+            + sqrt(yc_weight / max(set3_weight, EPS)) * yc_shape.b));
 
     FragColor = vec4(color, jittered_sample.a);
 }
