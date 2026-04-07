@@ -25,9 +25,10 @@
 // The output is a true clock-domain raster: each line spans `ClocksPerLine`
 // samples, active source texels are held for `ClockFactor` clock samples, and
 // blanking remains at 1-sample clock resolution. RGB stores the raster sample
-// value for each clock sample, while A stores `phase_rel_sample`. Timing and
-// frame geometry are reconstructed downstream from the contract API rather
-// than a texture-carried metadata payload.
+// value for each clock sample, while A stores `phase_rel_sample`. The packed
+// data grid stays anchored to geometry / line carry; any field-dependent
+// timebase phase is reconstructed downstream from the contract API rather than
+// baked into the storage placement or a texture-carried metadata payload.
 
 #pragma name FrameH
 #pragma format R16G16B16A16_SFLOAT
@@ -55,8 +56,6 @@ layout(push_constant) uniform Push
     vec4 OutputSize;
     uint FrameCount;
     float OriginalFPS;
-    uint CurrentSubFrame;
-    uint TotalSubFrames;
     float V_FREQ_MODE;
     float V_FREQ;
     float SC_FREQ_MODE;
@@ -66,7 +65,7 @@ layout(push_constant) uniform Push
     float H_FREQ_MODE;
     float H_FREQ;
     float H_BLANK_FUZZ;
-    float DOUBLE_REFRESH;
+    float SHORTEN_ODD_FIELD_TIME;
     float SCANLINE_BLANK_WEIGHT;
     float PHASE_ZERO;
     float FIELD_ODD;
@@ -97,6 +96,7 @@ layout(push_constant) uniform Push
 #define H_FREQ_MODE config.H_FREQ_MODE
 #define H_FREQ config.H_FREQ
 #define H_BLANK_FUZZ config.H_BLANK_FUZZ
+#define SHORTEN_ODD_FIELD_TIME config.SHORTEN_ODD_FIELD_TIME
 #define PHASE_ZERO config.PHASE_ZERO
 #define FIELD_ODD config.FIELD_ODD
 
@@ -112,7 +112,7 @@ layout(location = 0) out vec2 vTexCoord;
 layout(location = 1) flat out float FrameWidth;
 layout(location = 2) flat out float FrameHeight;
 layout(location = 3) flat out float FS_ORIGINAL;
-layout(location = 4) flat out float INITIAL_FIELD_PHASE_FRAC;
+layout(location = 4) flat out float InitalFieldPhaseFrac;
 layout(location = 5) flat out float FullFrameHeight;
 layout(location = 6) flat out float IsInterlaced;
 layout(location = 7) flat out float Field;
@@ -198,7 +198,7 @@ void main()
 
     Field = contract_field(FieldCount);
 
-    INITIAL_FIELD_PHASE_FRAC = contract_initial_field_phase_frac(
+    InitalFieldPhaseFrac = contract_initial_field_phase_frac(
         FieldCount,
         config.OriginalSize.xy,
         config.OriginalFPS,
@@ -210,6 +210,8 @@ void main()
         PIXEL_CLOCK,
         H_FREQ_MODE,
         H_FREQ,
+        H_BLANK_FUZZ,
+        SHORTEN_ODD_FIELD_TIME,
         PHASE_ZERO);
 }
 
@@ -218,7 +220,7 @@ layout(location = 0) in vec2 vTexCoord;
 layout(location = 1) flat in float FrameWidth;
 layout(location = 2) flat in float FrameHeight;
 layout(location = 3) flat in float FS_ORIGINAL;
-layout(location = 4) flat in float INITIAL_FIELD_PHASE_FRAC;
+layout(location = 4) flat in float InitalFieldPhaseFrac;
 layout(location = 6) flat in float IsInterlaced;
 layout(location = 7) flat in float Field;
 layout(location = 8) flat in float ClocksPerLine;
@@ -251,13 +253,13 @@ bool sample_maps_to_active_time(
     float active_left = (FrameWidth - active_width) * 0.5;
     float active_top = floor((frame_height_int - active_source_height) * 0.5);
 
-    // Keep the wrapped line-carry in integer clock space so the phase does not
-    // drift across wrap boundaries when line_index grows.
+    // Keep the wrapped line-carry in integer clock space so the storage grid
+    // stays field-stable and does not drift across wrap boundaries when
+    // `line_index` grows. Field/timebase phase is reconstructed downstream via
+    // the contract helpers and is intentionally not baked into `source_x`.
     int phase_step_clocks_int = int(floor(ClocksPerLine + 0.5)) % clock_factor_int;
     int row_phase_clocks_int = (line_index_int * phase_step_clocks_int) % clock_factor_int;
-    float phase_clocks = mod(
-        INITIAL_FIELD_PHASE_FRAC * clock_factor + float(row_phase_clocks_int),
-        clock_factor);
+    float phase_clocks = float(row_phase_clocks_int);
 
     // Output samples live directly in the pixel-clock domain. Active source
     // texels are held for `ClockFactor` clocks, while blanking remains at the

@@ -57,7 +57,7 @@
 layout(push_constant) uniform Push
 {
     vec4 OriginalSize;
-    vec4 SourceSize;
+    vec4 SysRGBBandlimitSize;
     vec4 OutputSize;
     uint FrameCount;
     float OriginalFPS;
@@ -108,7 +108,7 @@ layout(std140, set = 0, binding = 0) uniform UBO
     mat4 MVP;
     float PHASE_ZERO;
     float RGB_NOISE_PRESET;
-    float RGB_NOISE_CLOCK_HARMONICS;
+    float SHORTEN_ODD_FIELD_TIME;
 
 #ifdef OPTION_DEBUG
     float RGB_NOISE_BYPASS;
@@ -119,7 +119,7 @@ layout(std140, set = 0, binding = 0) uniform UBO
 
 #define PHASE_ZERO global.PHASE_ZERO
 #define RGB_NOISE_PRESET global.RGB_NOISE_PRESET
-#define RGB_NOISE_CLOCK_HARMONICS global.RGB_NOISE_CLOCK_HARMONICS
+#define SHORTEN_ODD_FIELD_TIME global.SHORTEN_ODD_FIELD_TIME
 
 #ifdef OPTION_DEBUG
 #define RGB_NOISE_BYPASS global.RGB_NOISE_BYPASS
@@ -133,7 +133,8 @@ struct NoiseRGBState {
     float data_length;
     float fs_current;
     float fs_original;
-    float initial_phase_frac;
+    float initial_field_phase_frac;
+    float initial_subcarrier_phase_frac;
     float sc_freq_hz;
 };
 
@@ -190,10 +191,8 @@ NoiseRGBState compute_noise_state()
         SC_FREQ,
         PIXEL_CLOCK_MODE,
         PIXEL_CLOCK);
-    state.initial_phase_frac = contract_subframe_aware_initial_field_phase_frac(
+    state.initial_field_phase_frac = contract_initial_field_phase_frac(
         config.FrameCount,
-        CURRENT_SUBFRAME,
-        TOTAL_SUBFRAMES,
         config.OriginalSize.xy,
         config.OriginalFPS,
         V_FREQ_MODE,
@@ -204,6 +203,23 @@ NoiseRGBState compute_noise_state()
         PIXEL_CLOCK,
         H_FREQ_MODE,
         H_FREQ,
+        H_BLANK_FUZZ,
+        SHORTEN_ODD_FIELD_TIME,
+        PHASE_ZERO);
+    state.initial_subcarrier_phase_frac = contract_initial_subcarrier_phase_frac(
+        config.FrameCount,
+        config.OriginalSize.xy,
+        config.OriginalFPS,
+        V_FREQ_MODE,
+        V_FREQ,
+        SC_FREQ_MODE,
+        SC_FREQ,
+        PIXEL_CLOCK_MODE,
+        PIXEL_CLOCK,
+        H_FREQ_MODE,
+        H_FREQ,
+        H_BLANK_FUZZ,
+        SHORTEN_ODD_FIELD_TIME,
         PHASE_ZERO);
     state.sc_freq_hz = max(sc_freq_hz, 0.0);
 
@@ -221,9 +237,9 @@ void main()
 layout(location = 0) in vec2 vTexCoord;
 layout(location = 1) flat in NoiseRGBState vNoiseState;
 layout(location = 0) out vec4 FragColor;
-layout(set = 0, binding = 1) uniform sampler2D Source;  // Mip 11
+layout(set = 0, binding = 1) uniform sampler2D Source;  // Mip 11 (1-pixel terminal mip)
 layout(set = 0, binding = 2) uniform sampler2D SysRGBBandlimit;
-layout(set = 0, binding = 3) uniform sampler2D MagDeltaV;
+layout(set = 0, binding = 3) uniform sampler2D MagDeltaV;  // Mip 0
 layout(set = 0, binding = 4) uniform sampler2D Mip1;
 layout(set = 0, binding = 5) uniform sampler2D Mip2;
 layout(set = 0, binding = 6) uniform sampler2D Mip3;
@@ -240,7 +256,6 @@ struct NoiseGradeSettings {
     float rg_xtalk_db;
     float bg_xtalk_db;
     float clock_db;
-    float clock_harmonics;
     float ycrosstalk_db;
     float jitter_ui;
 };
@@ -260,24 +275,23 @@ NoiseGradeSettings resolve_noise_grade_settings()
             RGB_NOISE_RG_XTALK_DB,
             RGB_NOISE_BG_XTALK_DB,
             RGB_NOISE_CLOCK_DB,
-            RGB_NOISE_CLOCK_HARMONICS,
             RGB_NOISE_YCROSSTALK_DB,
             RGB_NOISE_JITTER_UI);
     }
 
     // Professional: AWGN (external) dominated, low systematic error
-    // Consumer: roughly even balance between AWGN and systematic error
+    // Consumer: perceptual balance between AWGN and systematic error
     // Degraded: Systematic error (failures) dominate
 
     if (RGB_NOISE_PRESET < 1.5) {
-        return NoiseGradeSettings(-50.0, -10.0, -10.0, -12.0, 3.0, -12.0, 3.0);
+        return NoiseGradeSettings(-50.0, 20.0, 20.0, 30.0, 0.0, 2.0);
     }
 
     if (RGB_NOISE_PRESET < 2.5) {
-        return NoiseGradeSettings(-40.0, -6.0, -6.0, -8.0, 5.0, -8.0, 6.0);
+        return NoiseGradeSettings(-40.0, 30.0, 30.0, 40.0, 5.0, 6.0);
     }
 
-    return NoiseGradeSettings(-30.0, -2.0, -2.0, -4.0, 7.0, -4.0, 12.00);
+    return NoiseGradeSettings(-30.0, 40.0, 40.0, 50.0, 10.0, 30.0);
 }
 
 // dB/linear conversions use the shared helpers from `common.inc`.
@@ -294,8 +308,8 @@ vec4 fetch_signal_sample(float sample_index, NoiseRGBState state)
     int texel_y = clamped_index_i / frame_width_i;
     int texel_x = clamped_index_i - texel_y * frame_width_i;
 
-    texel_x = clamp(texel_x, 0, max(int(config.SourceSize.x) - 1, 0));
-    texel_y = clamp(texel_y, 0, max(int(config.SourceSize.y) - 1, 0));
+    texel_x = clamp(texel_x, 0, max(int(config.SysRGBBandlimitSize.x) - 1, 0));
+    texel_y = clamp(texel_y, 0, max(int(config.SysRGBBandlimitSize.y) - 1, 0));
 
     return texelFetch(SysRGBBandlimit, ivec2(texel_x, texel_y), 0);
 }
@@ -315,20 +329,82 @@ vec4 sample_signal_linear(float sample_index, NoiseRGBState state)
     return mix(s0, s1, frac);
 }
 
-// Build a band-limited square-wave drive from odd harmonics. This approximates
-// digital clock feedthrough while letting the user choose how "sharp" the
-// coupled pixel-clock contamination should appear.
-float square_wave_drive(float cycles, float max_harmonic)
+// Reconstruct a carrier's fractional cycle at an arbitrary packed-sample index.
+// Split the index into row/column components so the wrapped phase is formed from
+// smaller terms; this preserves field-to-field offsets even when the total
+// sample index grows large.
+float reconstruct_carrier_cycles(
+    float sample_index,
+    float base_phase_cycles,
+    float carrier_hz,
+    NoiseRGBState state)
 {
+    float fs_safe = max(state.fs_current, EPS);
+    float frame_width = max(state.frame_width, 1.0);
+    float sample_y = floor(sample_index / frame_width);
+    float sample_x = sample_index - sample_y * frame_width;
+    float cycles_per_sample = carrier_hz / fs_safe;
+    float cycles_per_line = frame_width * cycles_per_sample;
+
+    return fract(base_phase_cycles + fract(sample_y * cycles_per_line) + sample_x * cycles_per_sample);
+}
+
+// Build a sample-rate-limited odd-harmonic clock drive from a cosine-aligned
+// carrier. The working sample rate decides how many odd harmonics fit under
+// Nyquist, capped at 9, and each included harmonic contributes equal crosstalk
+// energy.
+float equal_energy_odd_harmonic_drive(float fundamental_cycles, float fundamental_hz, float fs_current)
+{
+    float nyquist_hz = 0.5 * fs_current;
     float drive = 0.0;
+    int harmonic_count = 0;
+
     for (int h = 1; h <= 9; h += 2) {
-        if (float(h) > max_harmonic + 0.5)
+        if (float(h) * fundamental_hz > nyquist_hz + EPS)
             break;
 
-        drive += sin(2.0 * PI * float(h) * cycles) / float(h);
+        drive += cos(2.0 * PI * float(h) * fundamental_cycles);
+        harmonic_count += 1;
     }
 
-    return clamp(drive * (4.0 / PI), -1.0, 1.0);
+    if (harmonic_count == 0)
+        return 0.0;
+
+    return clamp(drive / sqrt(float(harmonic_count)), -1.0, 1.0);
+}
+
+// Treat subcarrier crosstalk as a CW tone estimate built from as many
+// harmonics as fit under the working-rate Nyquist limit, capped at 9. The
+// phase origin comes from the dedicated contract subcarrier helper, which is
+// framecount-based and independent from any subframe notion. Each included
+// tone contributes equal energy.
+float equal_energy_subcarrier_drive(float sample_index, NoiseRGBState state)
+{
+    if (state.sc_freq_hz <= EPS)
+        return 0.0;
+
+    float nyquist_hz = 0.5 * state.fs_current;
+    int max_harmonic = min(9, int(floor((nyquist_hz + EPS) / max(state.sc_freq_hz, EPS))));
+    float base_cycles = reconstruct_carrier_cycles(
+        sample_index,
+        state.initial_subcarrier_phase_frac,
+        state.sc_freq_hz,
+        state);
+    float drive = 0.0;
+    int tone_count = 0;
+
+    for (int n = 1; n <= 9; n++) {
+        if (n > max_harmonic)
+            break;
+
+        drive += cos(2.0 * PI * float(n) * base_cycles);
+        tone_count += 1;
+    }
+
+    if (tone_count == 0)
+        return 0.0;
+
+    return clamp(drive / sqrt(float(tone_count)), -1.0, 1.0);
 }
 
 // Express timing jitter directly in sample-space units. A slower Gaussian,
@@ -355,15 +431,50 @@ vec2 mag_delta_v_uv_from_index(float sample_index, NoiseRGBState state)
     float clamped_index = clamp(sample_index, 0.0, data_limit);
     float sample_y = floor(clamped_index / max(state.frame_width, 1.0));
     float sample_x = clamped_index - sample_y * state.frame_width;
-    vec2 mag_delta_size = max(vec2(textureSize(Source, 0)), vec2(1.0));
+    vec2 mag_delta_size = max(vec2(textureSize(MagDeltaV, 0)), vec2(1.0));
 
     return (vec2(sample_x, sample_y) + vec2(0.5)) / mag_delta_size;
+}
+
+vec3 sample_mag_delta_v_level(vec2 mag_delta_uv, int lod_i)
+{
+    if (lod_i <= 0)
+        return texture(MagDeltaV, mag_delta_uv).rgb;
+    if (lod_i == 1)
+        return texture(Mip1, mag_delta_uv).rgb;
+    if (lod_i == 2)
+        return texture(Mip2, mag_delta_uv).rgb;
+    if (lod_i == 3)
+        return texture(Mip3, mag_delta_uv).rgb;
+    if (lod_i == 4)
+        return texture(Mip4, mag_delta_uv).rgb;
+    if (lod_i == 5)
+        return texture(Mip5, mag_delta_uv).rgb;
+    if (lod_i == 6)
+        return texture(Mip6, mag_delta_uv).rgb;
+    if (lod_i == 7)
+        return texture(Mip7, mag_delta_uv).rgb;
+    if (lod_i == 8)
+        return texture(Mip8, mag_delta_uv).rgb;
+    if (lod_i == 9)
+        return texture(Mip9, mag_delta_uv).rgb;
+    if (lod_i == 10)
+        return texture(Mip10, mag_delta_uv).rgb;
+
+    return texture(Source, mag_delta_uv).rgb;
 }
 
 vec3 sample_mag_delta_v_lod(float sample_index, float lod, NoiseRGBState state)
 {
     vec2 mag_delta_uv = mag_delta_v_uv_from_index(sample_index, state);
-    return textureLod(Source, mag_delta_uv, max(lod, 0.0)).rgb;
+    float lod_clamped = clamp(lod, 0.0, 11.0);
+    int lod0_i = int(floor(lod_clamped));
+    int lod1_i = min(lod0_i + 1, 11);
+    float lod_frac = lod_clamped - float(lod0_i);
+
+    vec3 sample0 = sample_mag_delta_v_level(mag_delta_uv, lod0_i);
+    vec3 sample1 = sample_mag_delta_v_level(mag_delta_uv, lod1_i);
+    return mix(sample0, sample1, lod_frac);
 }
 
 // AWGN sets the total RMS random noise budget. The other controls are dB-valued
@@ -393,52 +504,40 @@ float compute_mag_delta_v_ideal_sample_count(float fs_current, float awgn_db)
 
 float compute_mag_delta_v_lod(float ideal_sample_count)
 {
-    vec2 mag_delta_size = max(vec2(textureSize(Source, 0)), vec2(1.0));
+    vec2 mag_delta_size = max(vec2(textureSize(MagDeltaV, 0)), vec2(1.0));
     float max_lod = floor(log2(max(max(mag_delta_size.x, mag_delta_size.y), 1.0)));
     float lod = ceil(0.5 * log2(max(ideal_sample_count, 1.0)));
 
     return clamp(lod, 0.0, max_lod);
 }
 
-// Inject pixel-clock feedthrough using the local horizontal edge energy and a
-// square-wave phase drive locked to the reconstructed sample clock. The clock
-// conductor sits closest to red in the assumed bundle, so red receives the
-// strongest pickup, green a weaker adjacent imprint, and blue only a faint
-// residual.
+// Inject pixel-clock feedthrough using the local red-channel edge energy and a
+// sample-rate-limited odd-harmonic drive locked to the reconstructed sample
+// clock. Clock crosstalk is restricted to red only.
 vec3 compute_clock_crosstalk_shape(
     float sample_index,
     vec3 center,
     vec3 left,
     vec3 right,
-    float clock_harmonics,
     NoiseRGBState state)
 {
-    float clock_cycles = fract(state.initial_phase_frac + sample_index * state.fs_original / max(state.fs_current, EPS));
-    float drive = square_wave_drive(clock_cycles, clock_harmonics);
-    vec3 edge = 0.5 * (left + right) - center;
-    vec3 wired_edge = vec3(
-        edge.r + 0.35 * edge.g,
-        0.30 * edge.r + 0.45 * edge.g,
-        0.10 * edge.g + 0.05 * edge.b);
+    float clock_cycles = reconstruct_carrier_cycles(
+        sample_index,
+        state.initial_field_phase_frac,
+        state.fs_original,
+        state);
+    float drive = equal_energy_odd_harmonic_drive(clock_cycles, state.fs_original, state.fs_current);
+    float red_edge = abs(0.5 * (left.r + right.r) - center.r);
 
-    return clamp(abs(drive * wired_edge), vec3(0.0), vec3(1.0));
+    return vec3(clamp(abs(drive) * red_edge, 0.0, 1.0), 0.0, 0.0);
 }
 
-// Model luma-to-chroma leakage tied to the color subcarrier phase. With the
-// YC line assumed to sit on the far side of blue in the bundle, blue receives
-// the strongest phase-colored contamination, green a smaller correlated ripple,
-// and red only a trace amount.
-vec3 compute_y_subcarrier_crosstalk_shape(float sample_index, vec3 color, NoiseRGBState state)
+// Treat subcarrier crosstalk as a blue-only CW bleed tied to the subcarrier
+// phase itself rather than an explicit Y/C reconstruction.
+vec3 compute_subcarrier_crosstalk_shape(float sample_index, NoiseRGBState state)
 {
-    if (state.sc_freq_hz <= EPS)
-        return vec3(0.0);
-
-    float carrier_cycles = fract(PHASE_ZERO / 360.0 + sample_index * state.sc_freq_hz / max(state.fs_current, EPS));
-    float carrier_i = sin(2.0 * PI * carrier_cycles);
-    float carrier_q = cos(2.0 * PI * carrier_cycles);
-    float y = dot(color, vec3(0.299, 0.587, 0.114));
-
-    return clamp(abs(y * vec3(0.10 * carrier_i, -0.20 * carrier_q, 0.85 * carrier_q + 0.15 * carrier_i)), vec3(0.0), vec3(1.0));
+    float blue_tone = abs(equal_energy_subcarrier_drive(sample_index, state));
+    return vec3(0.0, 0.0, clamp(blue_tone, 0.0, 1.0));
 }
 
 void main()
@@ -496,9 +595,8 @@ void main()
         jittered_sample.rgb,
         left_sample.rgb,
         right_sample.rgb,
-        grade.clock_harmonics,
         vNoiseState);
-    vec3 yc_shape = compute_y_subcarrier_crosstalk_shape(jittered_index, jittered_sample.rgb, vNoiseState);
+    vec3 yc_shape = compute_subcarrier_crosstalk_shape(jittered_index, vNoiseState);
 
     float red_rg_share = rg_share * mag_delta_v.g;
     float red_clock_share = clock_share * clock_shape.r;

@@ -20,6 +20,10 @@
 // `contract_*` helpers must not call other `contract_*` helpers; derive from
 // first principles or `modulation.inc` only.
 // `contract_field()` intentionally returns the unbounded frame count as float.
+// The `contract_initial_*_phase_frac()` helpers describe the field-dependent
+// timebase / carrier phase for downstream reconstruction only; they must not be
+// used to shift the packed storage grid in `frameh.slang`, which should remain
+// anchored to geometry and integer line carry.
 // A preset may explicitly disable the color subcarrier; in that case the
 // underlying timing helpers return `sc_freq_hz == 0.0`, and callers must either
 // tolerate that directly or clamp only to a minimum safe value when a positive
@@ -230,7 +234,10 @@ float contract_full_frame_height(
     return is_interlaced ? v_lines_per_frame : v_lines_per_field;
 }
 
-// Returns the starting sample-phase offset for the current field.
+// Returns the starting pixel-clock/sample-time phase offset for the current
+// field, including any odd-field timing adjustment used by the legacy
+// modulation path. This is a timebase reference for downstream reconstruction,
+// not a command to move the packed data grid in `frameh.slang`.
 float contract_initial_field_phase_frac(
     uint frame_count,
     vec2 original_size,
@@ -243,6 +250,8 @@ float contract_initial_field_phase_frac(
     float pixel_clock_mhz,
     float h_freq_mode,
     float h_freq_custom_khz,
+    float h_blank_fuzz,
+    float shorten_odd_field_time,
     float phase_zero)
 {
     float sc_freq_hz;
@@ -265,18 +274,50 @@ float contract_initial_field_phase_frac(
         v_lines_per_frame,
         is_interlaced);
 
+    bool detected_interlaced;
+    bool is_ntsc;
+    bool is_pal;
+    detect_scan_mode(
+        original_size.y,
+        v_lines_per_field,
+        original_fps,
+        detected_interlaced,
+        is_ntsc,
+        is_pal);
+
+    float total_pixels;
+    float pixel_time;
+    compute_h_timing(
+        pixel_clock_hz,
+        h_freq_hz,
+        h_blank_fuzz,
+        original_size.x,
+        total_pixels,
+        pixel_time);
+
     float field = float(frame_count);
-    return fract(phase_zero / 360.0 + fract(field * v_lines_per_field * pixel_clock_hz / max(h_freq_hz, EPS)));
+    float cycles_per_field = v_lines_per_field * pixel_clock_hz / max(h_freq_hz, EPS);
+    float odd_field_adjust = compute_odd_field_time_adjustment(
+        field,
+        shorten_odd_field_time,
+        pixel_time,
+        original_size.x,
+        is_ntsc,
+        is_interlaced);
+    float odd_cycles = odd_field_adjust * pixel_clock_hz;
+
+    return fract(phase_zero / 360.0
+        + fract(field * fract(cycles_per_field))
+        + fract(odd_cycles));
 }
 
-// Returns the starting sample-phase offset for the current field, but advances
-// it partway through the frame when multiple subframes are being rendered.
-// Like the rest of the contract API, this derives timing directly from the
-// modulation helpers rather than chaining through other `contract_*` getters.
-float contract_subframe_aware_initial_field_phase_frac(
+// Returns the starting color-subcarrier phase offset for the current field.
+// This mirrors the legacy modulation path, including odd-field timing
+// adjustment and its 12-step phase stabilization. Like the field-phase helper
+// above, this value is for downstream carrier reconstruction rather than
+// storage-grid placement.
+float contract_initial_subcarrier_phase_frac(
     uint frame_count,
-    uint current_subframe,
-    uint total_subframes,
     vec2 original_size,
     float original_fps,
     float v_freq_mode,
@@ -287,6 +328,8 @@ float contract_subframe_aware_initial_field_phase_frac(
     float pixel_clock_mhz,
     float h_freq_mode,
     float h_freq_custom_khz,
+    float h_blank_fuzz,
+    float shorten_odd_field_time,
     float phase_zero)
 {
     float sc_freq_hz;
@@ -309,23 +352,42 @@ float contract_subframe_aware_initial_field_phase_frac(
         v_lines_per_frame,
         is_interlaced);
 
-    uint subframe4 = 0u;
-    if (total_subframes > 1u) {
-        if (total_subframes == 2u)
-            subframe4 = current_subframe << 3;
-        else if (total_subframes == 4u)
-            subframe4 = current_subframe << 2;
-        else if (total_subframes == 8u)
-            subframe4 = current_subframe << 1;
-        else if (total_subframes == 16u)
-            subframe4 = current_subframe;
-        else
-            subframe4 = (current_subframe << 4) / max(total_subframes, 1u);
-    }
+    bool detected_interlaced;
+    bool is_ntsc;
+    bool is_pal;
+    detect_scan_mode(
+        original_size.y,
+        v_lines_per_field,
+        original_fps,
+        detected_interlaced,
+        is_ntsc,
+        is_pal);
 
-    float effective_field = float(frame_count) + float(min(subframe4, 15u)) * (1.0 / 16.0);
-    return fract(phase_zero / 360.0
-        + fract(effective_field * v_lines_per_field * pixel_clock_hz / max(h_freq_hz, EPS)));
+    float total_pixels;
+    float pixel_time;
+    compute_h_timing(
+        pixel_clock_hz,
+        h_freq_hz,
+        h_blank_fuzz,
+        original_size.x,
+        total_pixels,
+        pixel_time);
+
+    float field = float(frame_count);
+    float cycles_per_field = v_lines_per_field * sc_freq_hz / max(h_freq_hz, EPS);
+    float odd_field_adjust = compute_odd_field_time_adjustment(
+        field,
+        shorten_odd_field_time,
+        pixel_time,
+        original_size.x,
+        is_ntsc,
+        is_interlaced);
+    float odd_cycles = odd_field_adjust * sc_freq_hz;
+
+    float cycles_per_field_q = floor(fract(cycles_per_field) * 12.0 + 0.5) / 12.0;
+    float odd_cycles_q = floor(fract(odd_cycles) * 12.0 + 0.5) / 12.0;
+
+    return fract(phase_zero / 360.0 + fract(field * cycles_per_field_q + odd_cycles_q));
 }
 
 // Returns 1.0 for interlaced timings and 0.0 otherwise.
@@ -461,7 +523,9 @@ float contract_output_sample_rate(
     return fs_original * output_width / base_frame_width;
 }
 
-// Returns the fractional sample phase for a packed 2D position.
+// Returns the local fractional sample position for a packed 2D grid location.
+// This is purely a storage-grid coordinate and intentionally excludes any
+// field/subcarrier timebase phase.
 float contract_phase_rel_sample(float sample_x, float sample_y, float frame_width)
 {
     return fract(sample_y * frame_width + sample_x);
