@@ -30,8 +30,8 @@
 // Covered effects:
 //  - broadband AWGN
 //  - MagDeltaV-driven RG/BG capacitive crosstalk aligned to the wiring order
-//  - pixel-clock feedthrough with odd-harmonic square-wave drive
-//  - luminance/subcarrier contamination when a color subcarrier is present
+//  - H-rate ground-bounce striping / vertical-line crosstalk
+//  - color-carrier contamination when a subcarrier is present
 //  - sample jitter / phase noise
 
 #pragma name NoiseRGB
@@ -108,6 +108,7 @@ layout(std140, set = 0, binding = 0) uniform UBO
     mat4 MVP;
     float PHASE_ZERO;
     float RGB_NOISE_PRESET;
+    float RGB_NOISE_CLOCK_HARMONIC;
     float SHORTEN_ODD_FIELD_TIME;
 
 #ifdef OPTION_DEBUG
@@ -120,6 +121,7 @@ layout(std140, set = 0, binding = 0) uniform UBO
 #define PHASE_ZERO global.PHASE_ZERO
 #define RGB_NOISE_PRESET global.RGB_NOISE_PRESET
 #define SHORTEN_ODD_FIELD_TIME global.SHORTEN_ODD_FIELD_TIME
+#define RGB_NOISE_CLOCK_HARMONIC global.RGB_NOISE_CLOCK_HARMONIC
 
 #ifdef OPTION_DEBUG
 #define RGB_NOISE_BYPASS global.RGB_NOISE_BYPASS
@@ -133,6 +135,7 @@ struct NoiseRGBState {
     float data_length;
     float fs_current;
     float fs_original;
+    float h_freq_hz;
     float initial_field_phase_frac;
     float initial_subcarrier_phase_frac;
     float sc_freq_hz;
@@ -191,6 +194,12 @@ NoiseRGBState compute_noise_state()
         SC_FREQ,
         PIXEL_CLOCK_MODE,
         PIXEL_CLOCK);
+    state.h_freq_hz = compute_h_freq(
+        H_FREQ_MODE,
+        standard,
+        H_FREQ,
+        state.fs_original,
+        config.OriginalFPS);
     state.initial_field_phase_frac = contract_initial_field_phase_frac(
         config.FrameCount,
         config.OriginalSize.xy,
@@ -284,14 +293,14 @@ NoiseGradeSettings resolve_noise_grade_settings()
     // Degraded: Systematic error (failures) dominate
 
     if (RGB_NOISE_PRESET < 1.5) {
-        return NoiseGradeSettings(-50.0, 20.0, 20.0, 30.0, 0.0, 2.0);
+        return NoiseGradeSettings(-60.0, 20.0, 20.0, -3.0, 0.0, 2.0);
     }
 
     if (RGB_NOISE_PRESET < 2.5) {
-        return NoiseGradeSettings(-40.0, 30.0, 30.0, 40.0, 5.0, 6.0);
+        return NoiseGradeSettings(-50.0, 30.0, 30.0, 3.0, 10.0, 6.0);
     }
 
-    return NoiseGradeSettings(-30.0, 40.0, 40.0, 50.0, 10.0, 30.0);
+    return NoiseGradeSettings(-40.0, 40.0, 40.0, 6.0, 20.0, 20.0);
 }
 
 // dB/linear conversions use the shared helpers from `common.inc`.
@@ -349,62 +358,127 @@ float reconstruct_carrier_cycles(
     return fract(base_phase_cycles + fract(sample_y * cycles_per_line) + sample_x * cycles_per_sample);
 }
 
-// Build a sample-rate-limited odd-harmonic clock drive from a cosine-aligned
-// carrier. The working sample rate decides how many odd harmonics fit under
-// Nyquist, capped at 9, and each included harmonic contributes equal crosstalk
-// energy.
-float equal_energy_odd_harmonic_drive(float fundamental_cycles, float fundamental_hz, float fs_current)
+// Reconstruct a carrier phase that hard-resets at each line start so the tone
+// stays H-sync aligned and lands at a fixed horizontal position every line.
+float reconstruct_line_locked_cycles(
+    float sample_index,
+    float carrier_hz,
+    NoiseRGBState state)
 {
-    float nyquist_hz = 0.5 * fs_current;
-    float drive = 0.0;
-    int harmonic_count = 0;
+    float fs_safe = max(state.fs_current, EPS);
+    float frame_width = max(state.frame_width, 1.0);
+    float sample_y = floor(sample_index / frame_width);
+    float sample_x = sample_index - sample_y * frame_width;
 
-    for (int h = 1; h <= 9; h += 2) {
-        if (float(h) * fundamental_hz > nyquist_hz + EPS)
-            break;
+    return fract(sample_x * carrier_hz / fs_safe);
+}
 
-        drive += cos(2.0 * PI * float(h) * fundamental_cycles);
-        harmonic_count += 1;
-    }
+// Evaluate a finite cosine harmonic stack in closed form. Wrapping the phase
+// to one cycle keeps the trigonometric arguments small, while the near-singular
+// fallback handles the Dirichlet-kernel limit when the denominator collapses.
+float sum_cosine_harmonics(float phase_cycles, int harmonic_count)
+{
+    if (harmonic_count <= 0)
+        return 0.0;
+
+    float theta = 2.0 * PI * fract(phase_cycles);
+    float half_theta = 0.5 * theta;
+    float denom = sin(half_theta);
+
+    if (abs(denom) <= 16.0 * EPS)
+        return float(harmonic_count);
+
+    return sin(float(harmonic_count) * half_theta)
+        * cos(0.5 * float(harmonic_count + 1) * theta) / denom;
+}
+
+// Closed-form odd-harmonic cosine stack used by the line-locked ground-bounce
+// comb. The limit branch covers phase positions where every odd harmonic has
+// the same sign (theta near integer multiples of pi).
+float sum_cosine_odd_harmonics(float phase_cycles, int odd_harmonic_count)
+{
+    if (odd_harmonic_count <= 0)
+        return 0.0;
+
+    float theta = 2.0 * PI * fract(phase_cycles);
+    float denom = sin(theta);
+
+    if (abs(denom) <= 16.0 * EPS)
+        return float(odd_harmonic_count) * cos(theta);
+
+    return 0.5 * sin(2.0 * float(odd_harmonic_count) * theta) / denom;
+}
+
+// Evaluate an odd-harmonic range in closed form by differencing two prefix
+// sums. This lets the ground-bounce comb start above the lowest H harmonics
+// without falling back to an explicit loop.
+float sum_cosine_odd_harmonics_range(
+    float phase_cycles,
+    int first_odd_harmonic,
+    int odd_harmonic_count)
+{
+    if (odd_harmonic_count <= 0)
+        return 0.0;
+
+    int first_odd_index = max((first_odd_harmonic - 1) / 2, 0);
+    return sum_cosine_odd_harmonics(phase_cycles, first_odd_index + odd_harmonic_count)
+        - sum_cosine_odd_harmonics(phase_cycles, first_odd_index);
+}
+
+// Closed-form "saggy saw" / integrated-saw appearance kernel over one cycle:
+//   f(x) = PI * x / 2 - x * x / 4,  for 0 <= x <= 2 PI.
+// Normalize it to [0, 1] so it can drive a positive crosstalk injection.
+float saggy_saw_wave(float phase_cycles)
+{
+    float x = 2.0 * PI * fract(phase_cycles);
+    float sag = 0.5 * PI * x - 0.25 * x * x;
+
+    return clamp(sag / max(0.25 * PI * PI, EPS), 0.0, 1.0);
+}
+
+// Treat ground bounce as a fixed H-sync-aligned tone comb, but use the
+// integrated-harmonic "saggy saw" closed form for the visual envelope.
+// The 9H fundamental stays line-locked and the effect is suppressed if the
+// requested tone would exceed the pixel-clock limit.
+float equal_energy_odd_harmonic_drive_hsync_locked(
+    float fundamental_cycles,
+    float fundamental_hz,
+    float pixel_clock_hz)
+{
+    if (fundamental_hz <= EPS || pixel_clock_hz <= EPS)
+        return 0.0;
+
+    int max_harmonic = int(floor((pixel_clock_hz + EPS) / fundamental_hz));
+    if (max_harmonic <= 0)
+        return 0.0;
+
+    return saggy_saw_wave(fundamental_cycles);
+}
+
+// Treat subcarrier crosstalk as a CW tone estimate built from all harmonics
+// that fit under the working-rate Nyquist limit. The phase origin comes from
+// the dedicated contract subcarrier helper, which is framecount-based and
+// independent from any subframe notion. Each included tone contributes equal
+// energy, and the closed-form sum avoids an explicit harmonic cap.
+float equal_energy_subcarrier_drive(float sample_index, NoiseRGBState state)
+{
+    if (state.sc_freq_hz <= EPS || state.fs_current <= EPS)
+        return 0.0;
+
+    float nyquist_hz = 0.5 * state.fs_current;
+    int harmonic_count = max(int(floor((nyquist_hz + EPS) / state.sc_freq_hz)), 0);
 
     if (harmonic_count == 0)
         return 0.0;
 
-    return clamp(drive / sqrt(float(harmonic_count)), -1.0, 1.0);
-}
-
-// Treat subcarrier crosstalk as a CW tone estimate built from as many
-// harmonics as fit under the working-rate Nyquist limit, capped at 9. The
-// phase origin comes from the dedicated contract subcarrier helper, which is
-// framecount-based and independent from any subframe notion. Each included
-// tone contributes equal energy.
-float equal_energy_subcarrier_drive(float sample_index, NoiseRGBState state)
-{
-    if (state.sc_freq_hz <= EPS)
-        return 0.0;
-
-    float nyquist_hz = 0.5 * state.fs_current;
-    int max_harmonic = min(9, int(floor((nyquist_hz + EPS) / max(state.sc_freq_hz, EPS))));
     float base_cycles = reconstruct_carrier_cycles(
         sample_index,
         state.initial_subcarrier_phase_frac,
         state.sc_freq_hz,
         state);
-    float drive = 0.0;
-    int tone_count = 0;
+    float drive = sum_cosine_harmonics(base_cycles, harmonic_count);
 
-    for (int n = 1; n <= 9; n++) {
-        if (n > max_harmonic)
-            break;
-
-        drive += cos(2.0 * PI * float(n) * base_cycles);
-        tone_count += 1;
-    }
-
-    if (tone_count == 0)
-        return 0.0;
-
-    return clamp(drive / sqrt(float(tone_count)), -1.0, 1.0);
+    return clamp(drive / sqrt(float(harmonic_count)), -1.0, 1.0);
 }
 
 // Express timing jitter directly in sample-space units. A slower Gaussian,
@@ -477,67 +551,197 @@ vec3 sample_mag_delta_v_lod(float sample_index, float lod, NoiseRGBState state)
     return mix(sample0, sample1, lod_frac);
 }
 
-// AWGN sets the total RMS random noise budget. The other controls are dB-valued
-// systematic shares relative to AWGN that modulate deterministic MagDeltaV /
-// clock / YC shapes:
-//   set 1 (red):   Clock + RG + AWGN
-//   set 2 (green): RG + BG + AWGN
-//   set 3 (blue):  BG + YC + AWGN
-float compute_noise_budget_sigma(float awgn_db)
+ivec2 mag_delta_v_level_size(int lod_i)
 {
-    return db_to_linear(awgn_db);
+    if (lod_i <= 0)
+        return max(textureSize(MagDeltaV, 0), ivec2(1));
+    if (lod_i == 1)
+        return max(textureSize(Mip1, 0), ivec2(1));
+    if (lod_i == 2)
+        return max(textureSize(Mip2, 0), ivec2(1));
+    if (lod_i == 3)
+        return max(textureSize(Mip3, 0), ivec2(1));
+    if (lod_i == 4)
+        return max(textureSize(Mip4, 0), ivec2(1));
+    if (lod_i == 5)
+        return max(textureSize(Mip5, 0), ivec2(1));
+    if (lod_i == 6)
+        return max(textureSize(Mip6, 0), ivec2(1));
+    if (lod_i == 7)
+        return max(textureSize(Mip7, 0), ivec2(1));
+    if (lod_i == 8)
+        return max(textureSize(Mip8, 0), ivec2(1));
+    if (lod_i == 9)
+        return max(textureSize(Mip9, 0), ivec2(1));
+    if (lod_i == 10)
+        return max(textureSize(Mip10, 0), ivec2(1));
+
+    return max(textureSize(Source, 0), ivec2(1));
 }
 
-float compute_systematic_share(float share_db)
+vec3 fetch_mag_delta_v_level_texel(int lod_i, ivec2 texel_coord)
 {
-    return db_to_linear(share_db);
+    ivec2 level_size = mag_delta_v_level_size(lod_i);
+    ivec2 clamped_coord = clamp(texel_coord, ivec2(0), max(level_size - ivec2(1), ivec2(0)));
+
+    if (lod_i <= 0)
+        return texelFetch(MagDeltaV, clamped_coord, 0).rgb;
+    if (lod_i == 1)
+        return texelFetch(Mip1, clamped_coord, 0).rgb;
+    if (lod_i == 2)
+        return texelFetch(Mip2, clamped_coord, 0).rgb;
+    if (lod_i == 3)
+        return texelFetch(Mip3, clamped_coord, 0).rgb;
+    if (lod_i == 4)
+        return texelFetch(Mip4, clamped_coord, 0).rgb;
+    if (lod_i == 5)
+        return texelFetch(Mip5, clamped_coord, 0).rgb;
+    if (lod_i == 6)
+        return texelFetch(Mip6, clamped_coord, 0).rgb;
+    if (lod_i == 7)
+        return texelFetch(Mip7, clamped_coord, 0).rgb;
+    if (lod_i == 8)
+        return texelFetch(Mip8, clamped_coord, 0).rgb;
+    if (lod_i == 9)
+        return texelFetch(Mip9, clamped_coord, 0).rgb;
+    if (lod_i == 10)
+        return texelFetch(Mip10, clamped_coord, 0).rgb;
+
+    return texelFetch(Source, clamped_coord, 0).rgb;
 }
 
-// Estimate the ideal mean sample count N implied by the AWGN noise budget,
-// then quantize it to the coarsest available MagDeltaV mip block that still
-// covers at least that many source texels.
-float compute_mag_delta_v_ideal_sample_count(float fs_current, float awgn_db)
+float compute_mag_delta_v_level_frame_width(int lod_i, NoiseRGBState state)
 {
-    float f_min = 0.5 * fs_current * exp2(awgn_db / 6.0);
-    return fs_current / max(f_min, EPS);
+    float base_storage_width = max(config.SysRGBBandlimitSize.x, 1.0);
+    float level_storage_width = float(mag_delta_v_level_size(lod_i).x);
+
+    return max(1.0,
+        round(state.frame_width * max(level_storage_width / base_storage_width, 0.0)));
 }
 
-float compute_mag_delta_v_lod(float ideal_sample_count)
+float compute_mag_delta_v_block_span(int lod_i, NoiseRGBState state)
 {
-    vec2 mag_delta_size = max(vec2(textureSize(MagDeltaV, 0)), vec2(1.0));
-    float max_lod = floor(log2(max(max(mag_delta_size.x, mag_delta_size.y), 1.0)));
-    float lod = ceil(0.5 * log2(max(ideal_sample_count, 1.0)));
+    float level_frame_width = compute_mag_delta_v_level_frame_width(lod_i, state);
+    float level_data_length = max(contract_data_length(level_frame_width, state.frame_height), 1.0);
 
-    return clamp(lod, 0.0, max_lod);
+    return max(state.data_length / level_data_length, 1.0);
 }
 
-// Inject pixel-clock feedthrough using the local red-channel edge energy and a
-// sample-rate-limited odd-harmonic drive locked to the reconstructed sample
-// clock. Clock crosstalk is restricted to red only.
-vec3 compute_clock_crosstalk_shape(
+vec3 sample_mag_delta_v_sliding_average_level(
     float sample_index,
-    vec3 center,
-    vec3 left,
-    vec3 right,
+    float window_sample_count,
+    int lod_i,
     NoiseRGBState state)
 {
-    float clock_cycles = reconstruct_carrier_cycles(
-        sample_index,
-        state.initial_field_phase_frac,
-        state.fs_original,
-        state);
-    float drive = equal_energy_odd_harmonic_drive(clock_cycles, state.fs_original, state.fs_current);
-    float red_edge = abs(0.5 * (left.r + right.r) - center.r);
+    float level_frame_width = compute_mag_delta_v_level_frame_width(lod_i, state);
+    float level_data_length = max(contract_data_length(level_frame_width, state.frame_height), 1.0);
+    float block_span = max(state.data_length / level_data_length, 1.0);
 
-    return vec3(clamp(abs(drive) * red_edge, 0.0, 1.0), 0.0, 0.0);
+    float window_center = clamp(sample_index + 0.5, 0.0, state.data_length);
+    float window_start = max(window_center - 0.5 * window_sample_count, 0.0);
+    float window_end = min(window_center + 0.5 * window_sample_count, state.data_length);
+    float total_weight = max(window_end - window_start, EPS);
+
+    int level_frame_width_i = max(int(level_frame_width + 0.5), 1);
+    int last_level_index_i = max(int(level_data_length + 0.5) - 1, 0);
+    int first_block_i = clamp(int(floor(window_start / block_span)), 0, last_level_index_i);
+    int last_block_i = clamp(int(floor(max(window_end - EPS, 0.0) / block_span)), 0, last_level_index_i);
+    vec3 weighted_sum = vec3(0.0);
+
+    for (int tap = 0; tap < 4; tap++) {
+        int block_i = first_block_i + tap;
+        if (block_i > last_block_i)
+            break;
+
+        float block_start = float(block_i) * block_span;
+        float block_end = min(block_start + block_span, state.data_length);
+        float overlap = max(0.0, min(window_end, block_end) - max(window_start, block_start));
+
+        if (overlap <= 0.0)
+            continue;
+
+        int texel_y = block_i / level_frame_width_i;
+        int texel_x = block_i - texel_y * level_frame_width_i;
+        weighted_sum += overlap * fetch_mag_delta_v_level_texel(lod_i, ivec2(texel_x, texel_y));
+    }
+
+    return weighted_sum / total_weight;
 }
 
-// Treat subcarrier crosstalk as a blue-only CW bleed tied to the subcarrier
-// phase itself rather than an explicit Y/C reconstruction.
+// Estimate the mean |ΔV| over the exact ideal support `N` by sliding a window
+// across the packed 1D signal. The decimated MagDeltaV chain provides aligned
+// power-of-two block averages; evaluate the nearest scales below and above the
+// ideal support and blend them according to where `N` falls between their true
+// block spans.
+vec3 sample_mag_delta_v_sliding_average(float sample_index, float ideal_sample_count, NoiseRGBState state)
+{
+    float window_sample_count = max(ideal_sample_count, 1.0);
+    float lod_f = clamp(log2(window_sample_count), 0.0, 11.0);
+    int lod0_i = int(floor(lod_f));
+    int lod1_i = min(lod0_i + 1, 11);
+    vec3 avg0 = sample_mag_delta_v_sliding_average_level(
+        sample_index,
+        window_sample_count,
+        lod0_i,
+        state);
+
+    if (lod1_i == lod0_i)
+        return avg0;
+
+    float span0 = compute_mag_delta_v_block_span(lod0_i, state);
+    float span1 = compute_mag_delta_v_block_span(lod1_i, state);
+    float blend = clamp((window_sample_count - span0) / max(span1 - span0, EPS), 0.0, 1.0);
+    vec3 avg1 = sample_mag_delta_v_sliding_average_level(
+        sample_index,
+        window_sample_count,
+        lod1_i,
+        state);
+
+    return mix(avg0, avg1, blend);
+}
+
+// Estimate the ideal mean sample count N implied by the AWGN noise budget.
+// For amplitude-domain noise, RMS falls as 1/sqrt(N), so every 6 dB reduction
+// in the target noise floor doubles the physically correct averaging support.
+float compute_mag_delta_v_ideal_sample_count(float fs_current, float awgn_db)
+{
+    return exp2(1.0 - awgn_db / 6.0);
+}
+
+// Model ground bounce as an H-sync-aligned fixed-frequency injection: the
+// phase restarts each line, the fundamental is selected as a harmonic of H,
+// and only odd harmonics of that tone are included up to the pixel-clock
+// limit.
+vec3 compute_ground_bounce_shape(
+    float sample_index,
+    vec3 center,
+    NoiseRGBState state)
+{
+    float ground_bounce_harmonic = max(round(RGB_NOISE_CLOCK_HARMONIC), 1.0);
+    float fundamental_hz = ground_bounce_harmonic * state.h_freq_hz;
+    float fundamental_cycles = reconstruct_line_locked_cycles(
+        sample_index,
+        fundamental_hz,
+        state);
+    float drive = equal_energy_odd_harmonic_drive_hsync_locked(
+        fundamental_cycles,
+        fundamental_hz,
+        state.fs_original);
+    float luma_level = clamp(
+        dot(max(center, vec3(0.0)), vec3(0.299, 0.587, 0.114)) / max(VOLTAGE_100, EPS),
+        0.0,
+        1.0);
+    float stripe = clamp(abs(drive) * luma_level, 0.0, 1.0);
+
+    return vec3(stripe);
+}
+
+// Treat subcarrier crosstalk as a CW bleed with blue dominant, green at half
+// strength, and red at quarter strength.
 vec3 compute_subcarrier_crosstalk_shape(float sample_index, NoiseRGBState state)
 {
-    float blue_tone = abs(equal_energy_subcarrier_drive(sample_index, state));
-    return vec3(0.0, 0.0, clamp(blue_tone, 0.0, 1.0));
+    float carrier_tone = abs(equal_energy_subcarrier_drive(sample_index, state));
+    return clamp(carrier_tone * vec3(0.25, 0.5, 1.0), vec3(0.0), vec3(1.0));
 }
 
 void main()
@@ -578,31 +782,35 @@ void main()
     float jittered_index = sample_index + jitter_samples;
 
     vec4 jittered_sample = sample_signal_linear(jittered_index, vNoiseState);
-    vec4 left_sample = sample_signal_linear(jittered_index - 1.0, vNoiseState);
-    vec4 right_sample = sample_signal_linear(jittered_index + 1.0, vNoiseState);
 
-    float awgn_sigma = compute_noise_budget_sigma(grade.awgn_db);
-    float rg_share = compute_systematic_share(grade.rg_xtalk_db);
-    float bg_share = compute_systematic_share(grade.bg_xtalk_db);
-    float clock_share = compute_systematic_share(grade.clock_db);
-    float yc_share = compute_systematic_share(grade.ycrosstalk_db);
+    float awgn_sigma = db_to_linear(grade.awgn_db);
+    float rg_share = db_to_linear(grade.rg_xtalk_db);
+    float bg_share = db_to_linear(grade.bg_xtalk_db);
+    float ground_bounce_share = db_to_linear(grade.clock_db);
+    float yc_share = db_to_linear(grade.ycrosstalk_db);
 
-    float mag_delta_v_lod = compute_mag_delta_v_lod(
-        compute_mag_delta_v_ideal_sample_count(vNoiseState.fs_current, grade.awgn_db));
-    vec3 mag_delta_v = clamp(sample_mag_delta_v_lod(jittered_index, mag_delta_v_lod, vNoiseState), vec3(0.0), vec3(1.0));
-    vec3 clock_shape = compute_clock_crosstalk_shape(
+    float mag_delta_v_ideal_sample_count = compute_mag_delta_v_ideal_sample_count(
+        vNoiseState.fs_current,
+        grade.awgn_db);
+    vec3 mag_delta_v = clamp(sample_mag_delta_v_sliding_average(
+        jittered_index,
+        mag_delta_v_ideal_sample_count,
+        vNoiseState), vec3(0.0), vec3(1.0));
+    vec3 ground_bounce_shape = compute_ground_bounce_shape(
         jittered_index,
         jittered_sample.rgb,
-        left_sample.rgb,
-        right_sample.rgb,
         vNoiseState);
     vec3 yc_shape = compute_subcarrier_crosstalk_shape(jittered_index, vNoiseState);
 
     float red_rg_share = rg_share * mag_delta_v.g;
-    float red_clock_share = clock_share * clock_shape.r;
+    float red_ground_bounce_share = ground_bounce_share * ground_bounce_shape.r;
+    float red_yc_share = yc_share * yc_shape.r;
     float green_rg_share = rg_share * mag_delta_v.r;
     float green_bg_share = bg_share * mag_delta_v.b;
+    float green_ground_bounce_share = ground_bounce_share * ground_bounce_shape.g;
+    float green_yc_share = yc_share * yc_shape.g;
     float blue_bg_share = bg_share * mag_delta_v.g;
+    float blue_ground_bounce_share = ground_bounce_share * ground_bounce_shape.b;
     float blue_yc_share = yc_share * yc_shape.b;
 
     uvec2 noise_seed = uvec2(uint(output_x_i), uint(output_y_i));
@@ -610,9 +818,9 @@ void main()
 
     vec3 color = jittered_sample.rgb;
     color += awgn_sigma * vec3(
-        awgn_noise.r + red_rg_share + red_clock_share,
-        awgn_noise.g + green_rg_share + green_bg_share,
-        awgn_noise.b + blue_bg_share + blue_yc_share);
+        awgn_noise.r + red_rg_share + red_ground_bounce_share + red_yc_share,
+        awgn_noise.g + green_rg_share + green_bg_share + green_ground_bounce_share + green_yc_share,
+        awgn_noise.b + blue_bg_share + blue_ground_bounce_share + blue_yc_share);
 
     FragColor = vec4(color, jittered_sample.a);
 }
