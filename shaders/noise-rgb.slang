@@ -136,7 +136,6 @@ struct NoiseRGBState {
     float fs_current;
     float fs_original;
     float h_freq_hz;
-    float initial_field_phase_frac;
     float initial_subcarrier_phase_frac;
     float sc_freq_hz;
 };
@@ -200,21 +199,6 @@ NoiseRGBState compute_noise_state()
         H_FREQ,
         state.fs_original,
         config.OriginalFPS);
-    state.initial_field_phase_frac = contract_initial_field_phase_frac(
-        config.FrameCount,
-        config.OriginalSize.xy,
-        config.OriginalFPS,
-        V_FREQ_MODE,
-        V_FREQ,
-        SC_FREQ_MODE,
-        SC_FREQ,
-        PIXEL_CLOCK_MODE,
-        PIXEL_CLOCK,
-        H_FREQ_MODE,
-        H_FREQ,
-        H_BLANK_FUZZ,
-        SHORTEN_ODD_FIELD_TIME,
-        PHASE_ZERO);
     state.initial_subcarrier_phase_frac = contract_initial_subcarrier_phase_frac(
         config.FrameCount,
         config.OriginalSize.xy,
@@ -293,14 +277,14 @@ NoiseGradeSettings resolve_noise_grade_settings()
     // Degraded: Systematic error (failures) dominate
 
     if (RGB_NOISE_PRESET < 1.5) {
-        return NoiseGradeSettings(-60.0, 20.0, 20.0, -3.0, 0.0, 2.0);
+        return NoiseGradeSettings(-60.0, 20.0, 20.0, 0.0, 0.0, 2.0);
     }
 
     if (RGB_NOISE_PRESET < 2.5) {
-        return NoiseGradeSettings(-50.0, 30.0, 30.0, 3.0, 10.0, 6.0);
+        return NoiseGradeSettings(-50.0, 30.0, 30.0, 6.0, 10.0, 6.0);
     }
 
-    return NoiseGradeSettings(-40.0, 40.0, 40.0, 6.0, 20.0, 20.0);
+    return NoiseGradeSettings(-40.0, 40.0, 40.0, 12.0, 20.0, 20.0);
 }
 
 // dB/linear conversions use the shared helpers from `common.inc`.
@@ -358,8 +342,9 @@ float reconstruct_carrier_cycles(
     return fract(base_phase_cycles + fract(sample_y * cycles_per_line) + sample_x * cycles_per_sample);
 }
 
-// Reconstruct a carrier phase that hard-resets at each line start so the tone
-// stays H-sync aligned and lands at a fixed horizontal position every line.
+// Reconstruct a carrier phase that restarts at each line start. Ground-bounce
+// striping is intentionally H-sync locked, so the same horizontal position is
+// revisited on every line rather than inheriting a field-to-field phase drift.
 float reconstruct_line_locked_cycles(
     float sample_index,
     float carrier_hz,
@@ -392,39 +377,6 @@ float sum_cosine_harmonics(float phase_cycles, int harmonic_count)
         * cos(0.5 * float(harmonic_count + 1) * theta) / denom;
 }
 
-// Closed-form odd-harmonic cosine stack used by the line-locked ground-bounce
-// comb. The limit branch covers phase positions where every odd harmonic has
-// the same sign (theta near integer multiples of pi).
-float sum_cosine_odd_harmonics(float phase_cycles, int odd_harmonic_count)
-{
-    if (odd_harmonic_count <= 0)
-        return 0.0;
-
-    float theta = 2.0 * PI * fract(phase_cycles);
-    float denom = sin(theta);
-
-    if (abs(denom) <= 16.0 * EPS)
-        return float(odd_harmonic_count) * cos(theta);
-
-    return 0.5 * sin(2.0 * float(odd_harmonic_count) * theta) / denom;
-}
-
-// Evaluate an odd-harmonic range in closed form by differencing two prefix
-// sums. This lets the ground-bounce comb start above the lowest H harmonics
-// without falling back to an explicit loop.
-float sum_cosine_odd_harmonics_range(
-    float phase_cycles,
-    int first_odd_harmonic,
-    int odd_harmonic_count)
-{
-    if (odd_harmonic_count <= 0)
-        return 0.0;
-
-    int first_odd_index = max((first_odd_harmonic - 1) / 2, 0);
-    return sum_cosine_odd_harmonics(phase_cycles, first_odd_index + odd_harmonic_count)
-        - sum_cosine_odd_harmonics(phase_cycles, first_odd_index);
-}
-
 // Closed-form "saggy saw" / integrated-saw appearance kernel over one cycle:
 //   f(x) = PI * x / 2 - x * x / 4,  for 0 <= x <= 2 PI.
 // Normalize it to [0, 1] so it can drive a positive crosstalk injection.
@@ -436,10 +388,11 @@ float saggy_saw_wave(float phase_cycles)
     return clamp(sag / max(0.25 * PI * PI, EPS), 0.0, 1.0);
 }
 
-// Treat ground bounce as a fixed H-sync-aligned tone comb, but use the
-// integrated-harmonic "saggy saw" closed form for the visual envelope.
-// The 9H fundamental stays line-locked and the effect is suppressed if the
-// requested tone would exceed the pixel-clock limit.
+// Treat ground bounce as an H-sync-aligned stripe generator. The user chooses
+// the stripe spacing as a multiple of H, and this helper suppresses the effect
+// if that requested tone would exceed the available pixel-clock bandwidth. The
+// visible profile is the positive integrated-saw envelope rather than a literal
+// alternating cosine waveform.
 float equal_energy_odd_harmonic_drive_hsync_locked(
     float fundamental_cycles,
     float fundamental_hz,
@@ -499,6 +452,9 @@ float compute_jitter_samples(float sample_index, int output_y_i, uint frame, flo
     return line_jitter + 0.5 * fine_jitter;
 }
 
+// Map a packed-sample index back into the MagDeltaV mip chain's UV space so
+// every lookup stays aligned with the same 1D contract coordinates as the
+// working RGB signal.
 vec2 mag_delta_v_uv_from_index(float sample_index, NoiseRGBState state)
 {
     float data_limit = max(state.data_length - 1.0, 0.0);
@@ -510,6 +466,8 @@ vec2 mag_delta_v_uv_from_index(float sample_index, NoiseRGBState state)
     return (vec2(sample_x, sample_y) + vec2(0.5)) / mag_delta_size;
 }
 
+// Read one aligned MagDeltaV level by explicit binding so the shader can walk
+// the manual mip chain without relying on implicit LOD selection.
 vec3 sample_mag_delta_v_level(vec2 mag_delta_uv, int lod_i)
 {
     if (lod_i <= 0)
@@ -538,6 +496,8 @@ vec3 sample_mag_delta_v_level(vec2 mag_delta_uv, int lod_i)
     return texture(Source, mag_delta_uv).rgb;
 }
 
+// Sample the MagDeltaV chain at a fractional explicit LOD by blending the two
+// neighboring manual levels.
 vec3 sample_mag_delta_v_lod(float sample_index, float lod, NoiseRGBState state)
 {
     vec2 mag_delta_uv = mag_delta_v_uv_from_index(sample_index, state);
@@ -551,6 +511,8 @@ vec3 sample_mag_delta_v_lod(float sample_index, float lod, NoiseRGBState state)
     return mix(sample0, sample1, lod_frac);
 }
 
+// Return the storage size for one explicit MagDeltaV level, including the
+// terminal 1x1 `Source` level used as the last step in the chain.
 ivec2 mag_delta_v_level_size(int lod_i)
 {
     if (lod_i <= 0)
@@ -579,6 +541,8 @@ ivec2 mag_delta_v_level_size(int lod_i)
     return max(textureSize(Source, 0), ivec2(1));
 }
 
+// Fetch one texel from a chosen MagDeltaV level with clamped integer
+// coordinates so the sliding-window average can stay in exact block space.
 vec3 fetch_mag_delta_v_level_texel(int lod_i, ivec2 texel_coord)
 {
     ivec2 level_size = mag_delta_v_level_size(lod_i);
@@ -610,6 +574,8 @@ vec3 fetch_mag_delta_v_level_texel(int lod_i, ivec2 texel_coord)
     return texelFetch(Source, clamped_coord, 0).rgb;
 }
 
+// Recover the active packed-signal width for a decimated MagDeltaV level by
+// scaling the base working width against that level's storage texture width.
 float compute_mag_delta_v_level_frame_width(int lod_i, NoiseRGBState state)
 {
     float base_storage_width = max(config.SysRGBBandlimitSize.x, 1.0);
@@ -619,6 +585,8 @@ float compute_mag_delta_v_level_frame_width(int lod_i, NoiseRGBState state)
         round(state.frame_width * max(level_storage_width / base_storage_width, 0.0)));
 }
 
+// Convert one texel at a chosen MagDeltaV level into the equivalent number of
+// original working-rate samples represented by that decimated block.
 float compute_mag_delta_v_block_span(int lod_i, NoiseRGBState state)
 {
     float level_frame_width = compute_mag_delta_v_level_frame_width(lod_i, state);
@@ -703,15 +671,15 @@ vec3 sample_mag_delta_v_sliding_average(float sample_index, float ideal_sample_c
 // Estimate the ideal mean sample count N implied by the AWGN noise budget.
 // For amplitude-domain noise, RMS falls as 1/sqrt(N), so every 6 dB reduction
 // in the target noise floor doubles the physically correct averaging support.
-float compute_mag_delta_v_ideal_sample_count(float fs_current, float awgn_db)
+// This estimate depends on the requested noise floor, not on `fs_current`.
+float compute_mag_delta_v_ideal_sample_count(float awgn_db)
 {
     return exp2(1.0 - awgn_db / 6.0);
 }
 
-// Model ground bounce as an H-sync-aligned fixed-frequency injection: the
-// phase restarts each line, the fundamental is selected as a harmonic of H,
-// and only odd harmonics of that tone are included up to the pixel-clock
-// limit.
+// Model ground bounce as a line-locked vertical stripe artifact. The phase is
+// intentionally reset at each H line so the interference stays anchored to a
+// fixed horizontal position while its strength still follows local luma.
 vec3 compute_ground_bounce_shape(
     float sample_index,
     vec3 center,
@@ -728,7 +696,7 @@ vec3 compute_ground_bounce_shape(
         fundamental_hz,
         state.fs_original);
     float luma_level = clamp(
-        dot(max(center, vec3(0.0)), vec3(0.299, 0.587, 0.114)) / max(VOLTAGE_100, EPS),
+        dot(max(center, vec3(0.0)), vec3(0.299, 0.587, 0.114)),
         0.0,
         1.0);
     float stripe = clamp(abs(drive) * luma_level, 0.0, 1.0);
@@ -790,7 +758,6 @@ void main()
     float yc_share = db_to_linear(grade.ycrosstalk_db);
 
     float mag_delta_v_ideal_sample_count = compute_mag_delta_v_ideal_sample_count(
-        vNoiseState.fs_current,
         grade.awgn_db);
     vec3 mag_delta_v = clamp(sample_mag_delta_v_sliding_average(
         jittered_index,
