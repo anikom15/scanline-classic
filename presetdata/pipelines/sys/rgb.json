@@ -30,79 +30,68 @@
         "mip1" : {
             "scale_type" : ["source", "source"],
             "scale" : [0.5, 1.0],
-            "filter_linear" : true,
             "alias" : "Mip1",
-            "float_framebuffer" : true
+            "filter_linear" : true
         },
         "mip2" : {
             "scale_type" : ["source", "source"],
             "scale" : [0.5, 1.0],
-            "filter_linear" : true,
             "alias" : "Mip2",
-            "float_framebuffer" : true
+            "filter_linear" : true
         },
         "mip3" : {
             "scale_type" : ["source", "source"],
             "scale" : [0.5, 1.0],
-            "filter_linear" : true,
             "alias" : "Mip3",
-            "float_framebuffer" : true
+            "filter_linear" : true
         },
         "mip4" : {
             "scale_type" : ["source", "source"],
             "scale" : [0.5, 1.0],
-            "filter_linear" : true,
             "alias" : "Mip4",
-            "float_framebuffer" : true
+            "filter_linear" : true
         },
         "mip5" : {
             "scale_type" : ["source", "source"],
             "scale" : [0.5, 1.0],
-            "filter_linear" : true,
             "alias" : "Mip5",
-            "float_framebuffer" : true
+            "filter_linear" : true
         },
         "mip6" : {
             "scale_type" : ["source", "source"],
             "scale" : [0.5, 1.0],
-            "filter_linear" : true,
             "alias" : "Mip6",
-            "float_framebuffer" : true
+            "filter_linear" : true
         },
         "mip7" : {
             "scale_type" : ["source", "source"],
             "scale" : [0.5, 1.0],
-            "filter_linear" : true,
             "alias" : "Mip7",
-            "float_framebuffer" : true
+            "filter_linear" : true
         },
         "mip8" : {
             "scale_type" : ["source", "source"],
             "scale" : [0.5, 1.0],
-            "filter_linear" : true,
             "alias" : "Mip8",
-            "float_framebuffer" : true
+            "filter_linear" : true
         },
         "mip9" : {
             "scale_type" : ["source", "source"],
             "scale" : [0.5, 1.0],
-            "filter_linear" : true,
             "alias" : "Mip9",
-            "float_framebuffer" : true
+            "filter_linear" : true
         },
         "mip10" : {
             "scale_type" : ["source", "source"],
             "scale" : [0.5, 1.0],
-            "filter_linear" : true,
             "alias" : "Mip10",
-            "float_framebuffer" : true
+            "filter_linear" : true
         },
         "mip11" : {
             "scale_type" : ["source", "source"],
             "scale" : [0.5, 1.0],
-            "filter_linear" : true,
             "alias" : "Mip11",
-            "float_framebuffer" : true
+            "filter_linear" : true
         },
         "noise" : {
             "filter_linear" : true,

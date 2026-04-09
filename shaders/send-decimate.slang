@@ -17,8 +17,8 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
-// Signal decimation utility
-// -------------------------
+// Signal decimation utility (analog shift)
+// ----------------------------------------
 // Input:  Packed 1D DSP signal in RGB
 // Output: Linearly decimated packed 1D DSP signal in RGB
 //
@@ -27,6 +27,9 @@
 // the contract-defined top-left raster and performs horizontal-only linear
 // decimation in the canonical 1D sample domain. This preserves continuity when
 // the decimated pair straddles a stored row boundary.
+//
+// The pass can simulate analog causality by phase shifting according to mip
+// level if `ANALOG_DECIMATE` is enabled.
 
 #pragma name SendDecimate
 #pragma format R16G16B16A16_SFLOAT
@@ -55,6 +58,7 @@ layout(push_constant) uniform Push
     float H_FREQ_MODE;
     float H_FREQ;
     float DSP_WORKING_FS;
+    float ANALOG_DECIMATE;
 } config;
 
 #define V_FREQ_MODE config.V_FREQ_MODE
@@ -66,6 +70,7 @@ layout(push_constant) uniform Push
 #define H_FREQ_MODE config.H_FREQ_MODE
 #define H_FREQ config.H_FREQ
 #define DSP_WORKING_FS config.DSP_WORKING_FS
+#define ANALOG_DECIMATE config.ANALOG_DECIMATE
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
@@ -73,6 +78,7 @@ layout(std140, set = 0, binding = 0) uniform UBO
 } global;
 
 struct SendDecimateState {
+    float mip_level;
     float frame_height;
     float input_frame_width;
     float output_frame_width;
@@ -115,6 +121,7 @@ SendDecimateState compute_send_decimate_state()
     float base_storage_width = max(config.SysRGBBandlimitSize.x, 1.0);
     float input_storage_scale = config.SourceSize.x / base_storage_width;
     float output_storage_scale = config.OutputSize.x / base_storage_width;
+    state.mip_level = -log2(output_storage_scale);
 
     // Use the contract-derived working frame width as the source of truth for
     // the active 1D data area, and scale it by each mip stage's storage ratio
@@ -180,7 +187,8 @@ void main()
         return;
     }
 
-    float input_sample_pos = (field_output_index + 0.5)
+    // Shift input to the left for analog decimation
+    float input_sample_pos = (field_output_index + 0.5 - ANALOG_DECIMATE / vSendDecimateState.mip_level)
         * vSendDecimateState.horizontal_ratio - 0.5;
     float input_data_limit = max(vSendDecimateState.input_data_length - 1.0, 0.0);
     float input_pos_floor = floor(input_sample_pos);
