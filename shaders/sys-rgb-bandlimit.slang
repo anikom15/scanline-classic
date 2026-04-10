@@ -69,6 +69,7 @@ layout(push_constant) uniform Push
     float COMPENSATE_SINC_ROLLOFF;
     float DSP_WORKING_FS;
     float DSP_OUTPUT_FS;
+    float SYS_FILTER_TYPE;
 
 #ifdef OPTION_DEBUG
     float SYS_RGB_BANDLIMIT_BYPASS;
@@ -100,6 +101,7 @@ const float SYS_RGB_BANDLIMIT_BYPASS = 0.0;
 #define COMPENSATE_SINC_ROLLOFF config.COMPENSATE_SINC_ROLLOFF
 #define DSP_WORKING_FS config.DSP_WORKING_FS
 #define DSP_OUTPUT_FS config.DSP_OUTPUT_FS
+#define SYS_FILTER_TYPE config.SYS_FILTER_TYPE
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
@@ -213,21 +215,50 @@ void main()
     float zoh_gain = linear_to_db(zoh_mag);
     float cutoff_atten = SYS_FILTER_ATTEN + zoh_gain * COMPENSATE_SINC_ROLLOFF;
 
-    float sigma_seconds = gaussian_sigma(cutoff_freq, cutoff_atten);
-    float t_limit_seconds = gaussian_decay_time(sigma_seconds, FILTER_THRESHOLD_ANALOG);
+    // Filter design
+    if (SYS_FILTER_TYPE < 0.5) {
+        // Gaussian filter design
+        float sigma_seconds = gaussian_sigma(cutoff_freq, cutoff_atten);
+        float t_limit_seconds = gaussian_decay_time(sigma_seconds, FILTER_THRESHOLD_ANALOG);
 
-    gfilt.sigma = sigma_seconds * fs_original;
-    gfilt.t_limit = t_limit_seconds * fs_original;
+        gfilt.sigma = sigma_seconds * fs_original;
+        gfilt.t_limit = t_limit_seconds * fs_original;
 
-    pfilt.taps = min(2.0 * ceil(gfilt.t_limit) + 1.0, MAX_TAPS);
+        pfilt.taps = min(2.0 * ceil(gfilt.t_limit) + 1.0, MAX_TAPS);
 
-    // Compute gain for normalization
-    float gain = 0.0;
-    for (int k = 0; k < int(pfilt.taps); ++k) {
-        float t = float(k) - (pfilt.taps - 1.0) / 2.0;
-        gain += gaussian(t, gfilt.sigma);
+        // Compute gain for normalization
+        float gain = 0.0;
+        for (int k = 0; k < int(pfilt.taps); ++k) {
+            float t = float(k) - (pfilt.taps - 1.0) / 2.0;
+            gain += gaussian(t, gfilt.sigma);
+        }
+        gfilt.gain = max(gain, EPS);
+    } else {
+        // First-order Butterworth filter design
+        // Determine -3 dB frequency of Gaussian design
+        // Set as the cutoff frequency for the Butterworth design to match the -3 dB point
+        float sigma_seconds = gaussian_sigma(cutoff_freq, cutoff_atten);
+        float butterworth_cutoff_freq = sqrt(log(2)) / (2.0 * PI * sigma_seconds);
+        float K = tan(PI * butterworth_cutoff_freq / fs_original);
+        float alpha = (1.0 - K) / (1.0 + K);
+
+        gfilt.sigma = alpha; // Reuse sigma field for alpha
+        pfilt.taps = min(ceil(log(FILTER_THRESHOLD_ANALOG) / log(alpha)), MAX_TAPS);
+
+        // Calculate the centroid of the impulse response for phase compensation
+        float num = 0.0;
+        float denom = 0.0;
+
+        for (int k = 0; k < int(pfilt.taps); ++k) {
+            float h = (1.0 - alpha) * pow(alpha, float(k));
+            num += float(k) * h;
+            denom += h;
+        }
+
+        float centroid_offset = num / max(denom, EPS);
+
+        gfilt.t_limit = centroid_offset;  // Reuse t_limit field for centroid-based phase compensation
     }
-    gfilt.gain = max(gain, EPS);
 }
 
 #pragma stage fragment
@@ -311,18 +342,39 @@ void main()
     return;
 #endif  // OPTION_CRISPY
 
-    // Standard polyphase FIR convolution with a direct Gaussian kernel.
-    for (int k = 0; k < n_taps; ++k) {
-        int tap_offset = k - center;
-        float dt = float(tap_offset) - frac_offset;
-        float coeff = gaussian(dt, gfilt.sigma);
+    if (SYS_FILTER_TYPE > 0.5) {
+        // First-order Butterworth truncated IIR implementation
+        float gain = 0.0;
+        int centroid_offset = int(gfilt.t_limit + 0.5);  // Round centroid to nearest integer tap index
 
-        float sample_index = clamp(float(input_index_int + tap_offset), 0.0, input_data_limit);
-        vec3 rgb = fetch_input_sample(sample_index, InputFrameWidth, input_data_limit);
+        input_index_int -= centroid_offset - (n_taps - 1) / 2;  // Phase compensation by shifting the center tap by the centroid
+        for (int k = 0; k < n_taps; ++k) {
+            int tap_offset = n_taps - 1 - k;  // Reverse order for causal IIR
+            float alpha = gfilt.sigma;  // Reuse sigma field for alpha
+            float dt = float(tap_offset) + frac_offset;
+            float coeff = (1.0 - alpha) * pow(alpha, dt);
 
-        color += coeff * rgb;
+            float sample_index = clamp(float(input_index_int - tap_offset), 0.0, input_data_limit);
+            vec3 rgb = fetch_input_sample(sample_index, InputFrameWidth, input_data_limit);
+
+            color += coeff * rgb;
+            gain += coeff;
+        }
+        color /= max(gain, EPS);
+    } else {
+        // Standard polyphase FIR convolution with a direct Gaussian kernel.
+        for (int k = 0; k < n_taps; ++k) {
+            int tap_offset = k - center;
+            float dt = float(tap_offset) - frac_offset;
+            float coeff = gaussian(dt, gfilt.sigma);
+
+            float sample_index = clamp(float(input_index_int + tap_offset), 0.0, input_data_limit);
+            vec3 rgb = fetch_input_sample(sample_index, InputFrameWidth, input_data_limit);
+
+            color += coeff * rgb;
+        }
+        color /= gfilt.gain;
     }
-    color /= gfilt.gain;
 
     FragColor = vec4(color, phase_rel_sample);
 }
