@@ -31,7 +31,7 @@
 #include "parameters/output-bezel.inc"
 #include "parameters/service-geometry.inc"
 #include "parameters/scanraster.inc"
-#include "parameters/display-rgb-fir.inc"
+#include "parameters/display-rgb-filter.inc"
 #include "parameters/display-rgb-amp.inc"
 #include "parameters/factory-geometry.inc"
 #include "parameters/mask.inc"

@@ -76,8 +76,9 @@ layout(push_constant) uniform Push
     float DISPLAY_CUTOFF_Y;
     float DISPLAY_CUTOFF_C;
     float DISPLAY_STOPBAND_Y;
-    float DISPLAY_STOPBAND_C;
     float USER_BLUE_ONLY;
+
+    float BW_MODE;
 } config;
 
 #define V_FREQ_MODE config.V_FREQ_MODE
@@ -95,12 +96,15 @@ layout(push_constant) uniform Push
 #define DISPLAY_CUTOFF_Y config.DISPLAY_CUTOFF_Y
 #define DISPLAY_CUTOFF_C config.DISPLAY_CUTOFF_C
 #define DISPLAY_STOPBAND_Y config.DISPLAY_STOPBAND_Y
-#define DISPLAY_STOPBAND_C config.DISPLAY_STOPBAND_C
 #define USER_BLUE_ONLY config.USER_BLUE_ONLY
+
+#define BW_MODE config.BW_MODE
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
     mat4 MVP;
+    float DISPLAY_STOPBAND_C;
+
     float DISPLAY_GAIN_Y;
     float DISPLAY_GAIN_C;
     float DISPLAY_BIAS_Y;
@@ -123,6 +127,8 @@ layout(std140, set = 0, binding = 0) uniform UBO
 #define DISPLAY_COMPONENT_FILTER_BYPASS global.DISPLAY_COMPONENT_FILTER_BYPASS
 #define DISPLAY_COMPONENT_BYPASS global.DISPLAY_COMPONENT_BYPASS
 #endif  // OPTION_DEBUG
+
+#define DISPLAY_STOPBAND_C global.DISPLAY_STOPBAND_C
 
 #define DISPLAY_GAIN_Y global.DISPLAY_GAIN_Y
 #define DISPLAY_GAIN_C global.DISPLAY_GAIN_C
@@ -391,6 +397,29 @@ void main()
 #endif  // OPTION_CRISPY
 
     vec3 ypbpr = gain * (filtered_ypbpr + bias);
+
+    if (BW_MODE < 0.5) {
+        // YPbPr (full color)
+    } else if (BW_MODE < 1.5) {
+        // Y only
+        ypbpr.gb = vec2(0.0);
+    } else if (BW_MODE < 2.5) {
+        // Pb only
+        ypbpr.rb = vec2(0.0);
+    } else if (BW_MODE < 3.5) {
+        // Pr only
+        ypbpr.rg = vec2(0.0);
+    } else if (BW_MODE < 4.5) {
+        // Y + Pb
+        ypbpr.b = 0.0;
+    } else if (BW_MODE < 5.5) {
+        // Y + Pr
+        ypbpr.g = 0.0;
+    } else {
+        // Pb + Pr
+        ypbpr.r = 0.0;
+    }
+
     vec3 color = rgb_gain * (YPbPr_TO_RGB * ypbpr + rgb_bias);
     color.r *= 1.0 - USER_BLUE_ONLY;
     color.g *= 1.0 - USER_BLUE_ONLY;

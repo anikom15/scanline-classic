@@ -1,4 +1,6 @@
-#pragma parameter DISPLAY_COMPONENT_HEADER " —— Display: Component Video —— " 0.0 0.0 0.0 0.0
+#pragma parameter DISPLAY_COMPONENT_HEADER " —— Display: Component Video Input —— " 0.0 0.0 0.0 0.0
+
+#pragma parameter BW_MODE "Monitor mode (off, Y, Pb, Pr, YPb, YPr, PbPr)" 0.0 0.0 6.0 1.0
 
 #pragma parameter DISPLAY_BIAS_Y "Offset Y (IRE)" 0.0 -30.0 30.0 0.1
 #pragma parameter DISPLAY_BIAS_C "Offset C (IRE)" 0.0 -30.0 30.0 0.1

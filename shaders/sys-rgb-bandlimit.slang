@@ -237,8 +237,14 @@ void main()
         // First-order Butterworth filter design
         // Determine -3 dB frequency of Gaussian design
         // Set as the cutoff frequency for the Butterworth design to match the -3 dB point
-        float sigma_seconds = gaussian_sigma(cutoff_freq, cutoff_atten);
-        float butterworth_cutoff_freq = sqrt(log(2)) / (2.0 * PI * sigma_seconds);
+        float butterworth_cutoff_freq;
+
+        if (cutoff_atten <= 3.0) {
+            butterworth_cutoff_freq = cutoff_freq;
+        } else {
+            float sigma_seconds = gaussian_sigma(cutoff_freq, cutoff_atten);
+            butterworth_cutoff_freq = sqrt(log(2)) / (2.0 * PI * sigma_seconds);
+        }
         float K = tan(PI * butterworth_cutoff_freq / fs_original);
         float alpha = (1.0 - K) / (1.0 + K);
 
@@ -342,26 +348,7 @@ void main()
     return;
 #endif  // OPTION_CRISPY
 
-    if (SYS_FILTER_TYPE > 0.5) {
-        // First-order Butterworth truncated IIR implementation
-        float gain = 0.0;
-        int centroid_offset = int(gfilt.t_limit + 0.5);  // Round centroid to nearest integer tap index
-
-        input_index_int -= centroid_offset - (n_taps - 1) / 2;  // Phase compensation by shifting the center tap by the centroid
-        for (int k = 0; k < n_taps; ++k) {
-            int tap_offset = n_taps - 1 - k;  // Reverse order for causal IIR
-            float alpha = gfilt.sigma;  // Reuse sigma field for alpha
-            float dt = float(tap_offset) + frac_offset;
-            float coeff = (1.0 - alpha) * pow(alpha, dt);
-
-            float sample_index = clamp(float(input_index_int - tap_offset), 0.0, input_data_limit);
-            vec3 rgb = fetch_input_sample(sample_index, InputFrameWidth, input_data_limit);
-
-            color += coeff * rgb;
-            gain += coeff;
-        }
-        color /= max(gain, EPS);
-    } else {
+    if (SYS_FILTER_TYPE < 0.5) {
         // Standard polyphase FIR convolution with a direct Gaussian kernel.
         for (int k = 0; k < n_taps; ++k) {
             int tap_offset = k - center;
@@ -374,6 +361,25 @@ void main()
             color += coeff * rgb;
         }
         color /= gfilt.gain;
+    } else {
+        // First-order Butterworth truncated IIR implementation
+        float gain = 0.0;
+        int centroid_offset = int(gfilt.t_limit + 0.5); // Round centroid to nearest integer tap index
+        float alpha = gfilt.sigma;
+
+        input_index_int -= centroid_offset - (n_taps - 1) / 2; // Phase compensation by shifting the center tap by the centroid
+        for (int k = 0; k < n_taps; ++k) {
+            int tap_offset = n_taps - 1 - k; // Reverse order for causal IIR
+            float dt = float(tap_offset) + frac_offset;
+            float coeff = (1.0 - alpha) * pow(alpha, dt);
+
+            float sample_index = clamp(float(input_index_int - tap_offset), 0.0, input_data_limit);
+            vec3 rgb = fetch_input_sample(sample_index, InputFrameWidth, input_data_limit);
+
+            color += coeff * rgb;
+            gain += coeff;
+        }
+        color /= max(gain, EPS);
     }
 
     FragColor = vec4(color, phase_rel_sample);

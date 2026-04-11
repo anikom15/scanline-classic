@@ -1,0 +1,23 @@
+{
+    "filename" : "msx2",
+    "type" : "computer",
+    "title" : "MSX2 shader set (RGB output)",
+    "description" : "MSX2's video output is designed for RGB, although composite and RF video are commonly supported as well.",
+    "pipeline_root" : "../../pipelines",
+    "pipelines" : [
+        "misc/menu.json",
+        "sys/rgb.json",
+        "disp/crt-rgb-sd.json",
+        "misc/post.json"
+    ],
+    "parameter_root" : "../../params",
+    "parameter_sets" : [
+        "sys/msx2/base.json",
+        "sys/msx2/ntsc.json",
+        "disp/ntscj.json",
+        "disp/monitor-workstation-cga-msxarfix.json",
+        "disp/tvl-450.json"
+    ],
+    "parameter_overrides" : {
+    }
+}

@@ -1,6 +1,6 @@
 #version 450
 
-// Filename: display-rgb-bandlimit-fir.slang
+// Filename: display-rgb.slang
 //
 // Copyright (C) 2026 W. M. Martinez
 //
@@ -44,7 +44,7 @@
 #include "menus/parameters/user-uncommon.inc"
 #include "menus/parameters/sys-timing.inc"
 #include "menus/parameters/display-rgb-amp.inc"
-#include "menus/parameters/display-rgb-fir.inc"
+#include "menus/parameters/display-rgb-filter.inc"
 
 #pragma include_optional "../config/options.cfg"
 
@@ -73,6 +73,8 @@ layout(push_constant) uniform Push
     float DSP_WORKING_FS;
     float DSP_OUTPUT_FS;
 
+    float BW_MODE;
+
     float DISPLAY_CUTOFF;
     float DISPLAY_STOPBAND;
     float USER_BLUE_ONLY;
@@ -89,6 +91,8 @@ layout(push_constant) uniform Push
 #define H_BLANK_FUZZ config.H_BLANK_FUZZ
 #define DSP_WORKING_FS config.DSP_WORKING_FS
 #define DSP_OUTPUT_FS config.DSP_OUTPUT_FS
+
+#define BW_MODE config.BW_MODE
 
 #define DISPLAY_CUTOFF config.DISPLAY_CUTOFF
 #define DISPLAY_STOPBAND config.DISPLAY_STOPBAND
@@ -117,8 +121,6 @@ layout(std140, set = 0, binding = 0) uniform UBO
 #define DISPLAY_RGB_FILTER_BYPASS global.DISPLAY_RGB_FILTER_BYPASS
 #define DISPLAY_RGB_AMP_BYPASS global.DISPLAY_RGB_AMP_BYPASS
 #define DESKEW_BYPASS global.DESKEW_BYPASS
-#else
-const float DESKEW_BYPASS = 0.0;
 #endif  // OPTION_DEBUG
 
 #define DISPLAY_GAIN_R global.DISPLAY_GAIN_R
@@ -331,7 +333,11 @@ float compute_row_shift_output_samples(int output_y_i)
         ? (output_y_i * carry_clocks) % clock_factor
         : 0;
 
+#ifdef OPTION_DEBUG
     return mix(float(row_carry_clocks) * DeskewSampleRatio, 0.0, DESKEW_BYPASS);
+#else
+    return float(row_carry_clocks) * DeskewSampleRatio;
+#endif  // OPTION_DEBUG
 }
 
 vec3 fetch_input_sample(float sample_index, float input_frame_width, float input_data_limit)
@@ -434,6 +440,28 @@ void main()
 #else
     color = gain * (color + bias);
 #endif  // OPTION_DEBUG
+
+    if (BW_MODE < 0.5) {
+        // RGB
+    } else if (BW_MODE < 1.5) {
+        // R only
+        color.gb = vec2(0.0);
+    } else if (BW_MODE < 2.5) {
+        // G only
+        color.rb = vec2(0.0);
+    } else if (BW_MODE < 3.5) {
+        // B only
+         color.rg = vec2(0.0);
+    } else if (BW_MODE < 4.5) {
+        // R+G
+        color.b = 0.0;
+    } else if (BW_MODE < 5.5) {
+        // R+B
+        color.g = 0.0;
+    } else {
+        // G+B
+        color.r = 0.0;
+    }
 
     // Apply blue-only filter
     color.r *= 1.0 - USER_BLUE_ONLY;

@@ -2,7 +2,7 @@
     "root_path" : "../../../shaders",
     "shaders" : {
         "sharpen" : "sharpen",
-        "bandlimit" : "display-rgb-bandlimit-fir",
+        "bandlimit" : "display-rgb-bandlimit",
         "limiter" : "limiter",
         "linear" : "crt-linear",
         "frame" : "framev",

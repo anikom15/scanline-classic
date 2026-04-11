@@ -19,8 +19,8 @@
 //
 // System-level component amplifier and filter
 // -------------------------------
-// Input: Voltage (RGB color space)
-// Output: Voltage (YC color space)
+// Input: Real RGB voltage
+// Output: Real YCC voltage
 //
 // Encodes RGB into a chosen luma-chroma color space (YIQ / YPbPr / YUV / YDbDr / YCbCr),
 // then optionally bandlimits each component with a horizontal Gaussian (lobe technique) to
@@ -75,11 +75,11 @@ layout(push_constant) uniform Push
     float YC_MODEL;
 
     // Per-component analog bandlimit (MHz/dB).
+    float SYS_YC_FILTER_TYPE;
     float SYS_BANDWIDTH_Y;
     float SYS_BANDWIDTH_C;
     float SYS_CUTOFF_ATTEN_Y;
     float SYS_CUTOFF_ATTEN_C;
-    float DSP_WORKING_FS;
 } config;
 
 // Short-hand macros
@@ -96,15 +96,16 @@ layout(push_constant) uniform Push
 
 #define YC_MODEL config.YC_MODEL
 
+#define SYS_YC_FILTER_TYPE config.SYS_YC_FILTER_TYPE
 #define SYS_BANDWIDTH_Y config.SYS_BANDWIDTH_Y
 #define SYS_BANDWIDTH_C config.SYS_BANDWIDTH_C
 #define SYS_CUTOFF_ATTEN_Y config.SYS_CUTOFF_ATTEN_Y
 #define SYS_CUTOFF_ATTEN_C config.SYS_CUTOFF_ATTEN_C
-#define DSP_WORKING_FS config.DSP_WORKING_FS
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
     mat4 MVP;
+    float DSP_WORKING_FS;
 
     // Post-filter gain/bias per component
     float SYS_GAIN_Y;
@@ -124,6 +125,8 @@ layout(std140, set = 0, binding = 0) uniform UBO
 #define SYS_COMPONENT_BYPASS global.SYS_COMPONENT_BYPASS
 #define SYS_COMPONENT_FILTER_BYPASS global.SYS_COMPONENT_FILTER_BYPASS
 #endif  // OPTION_DEBUG
+
+#define DSP_WORKING_FS global.DSP_WORKING_FS
 
 #define SYS_GAIN_Y global.SYS_GAIN_Y
 #define SYS_GAIN_C global.SYS_GAIN_C
@@ -182,37 +185,72 @@ void main()
         H_FREQ);
     DataLength = max(contract_data_length(FrameWidth, FrameHeight), 1.0);
 
-    // Normalize the analog Gaussian design into working-sample units before
-    // evaluating the discrete kernel on the current DSP sample grid.
-    vec3 sigma_seconds = vec3(
-        gaussian_sigma(SYS_BANDWIDTH_Y * 1.0e6, SYS_CUTOFF_ATTEN_Y),
-        gaussian_sigma(SYS_BANDWIDTH_C * 1.0e6, SYS_CUTOFF_ATTEN_C),
-        gaussian_sigma(SYS_BANDWIDTH_C * 1.0e6, SYS_CUTOFF_ATTEN_C));
+    // Filter design
+    if (SYS_YC_FILTER_TYPE < 0.5) {
+        // Normalize the analog Gaussian design into working-sample units before
+        // evaluating the discrete kernel on the current DSP sample grid.
+        vec3 sigma_seconds = vec3(
+            gaussian_sigma(SYS_BANDWIDTH_Y * 1.0e6, SYS_CUTOFF_ATTEN_Y),
+            gaussian_sigma(SYS_BANDWIDTH_C * 1.0e6, SYS_CUTOFF_ATTEN_C),
+            gaussian_sigma(SYS_BANDWIDTH_C * 1.0e6, SYS_CUTOFF_ATTEN_C));
 
-    float sigma_max_seconds = max(sigma_seconds.x, max(sigma_seconds.y, sigma_seconds.z));
-    float t_support_seconds = gaussian_decay_time(sigma_max_seconds, FILTER_THRESHOLD_ANALOG);
+        float sigma_max_seconds = max(sigma_seconds.x, max(sigma_seconds.y, sigma_seconds.z));
+        float t_support_seconds = gaussian_decay_time(sigma_max_seconds, FILTER_THRESHOLD_ANALOG);
 
-    sigma = sigma_seconds * fs_current;
-    Taps = max(1.0, min(2.0 * ceil(t_support_seconds * fs_current) + 1.0, MAX_TAPS));
+        sigma = sigma_seconds * fs_current;
+        Taps = max(1.0, min(2.0 * ceil(t_support_seconds * fs_current) + 1.0, MAX_TAPS));
 
-    kernelGain = vec3(0.0);
-    for (int k = 0; k < int(Taps); ++k) {
-        float dt = float(k) - (Taps - 1.0) / 2.0;
-        kernelGain += vec3(
-            gaussian(dt, sigma.x),
-            gaussian(dt, sigma.y),
-            gaussian(dt, sigma.z));
+        kernelGain = vec3(0.0);
+        for (int k = 0; k < int(Taps); ++k) {
+            float dt = float(k) - (Taps - 1.0) / 2.0;
+            kernelGain += vec3(
+                gaussian(dt, sigma.x),
+                gaussian(dt, sigma.y),
+                gaussian(dt, sigma.z));
+        }
+        kernelGain = max(kernelGain, vec3(EPS));
+    } else {
+        // First-order Butterworth filter
+        vec2 gaussian_cutoff_freq = 1e6 * vec2(SYS_BANDWIDTH_Y, SYS_BANDWIDTH_C) * 1.0e6;
+        vec2 sigma_seconds = vec2(
+            gaussian_sigma(gaussian_cutoff_freq.x, SYS_CUTOFF_ATTEN_Y),
+            gaussian_sigma(gaussian_cutoff_freq.y, SYS_CUTOFF_ATTEN_C));
+        vec2 butterworth_cutoff_freq = mix(
+            gaussian_cutoff_freq,
+            sqrt(log(2)) / (2.0 * PI * sigma_seconds),
+            bvec2(lessThanEqual(SYS_CUTOFF_ATTEN_Y, 3.0), lessThanEqual(SYS_CUTOFF_ATTEN_C, 3.0))
+        );
+        vec2 K = tan(PI * butterworth_cutoff_freq / fs_current);
+        vec2 alpha = (1.0 - K) / (1.0 + K);
+
+        sigma = vec3(alpha.x, alpha.y, alpha.y);
+        Taps = min(ceil(log(FILTER_THRESHOLD_ANALOG) / log(max(alpha.x, alpha.y))), MAX_TAPS);
+
+        // Calculate the centroid of the impulse response
+        vec2 num = 0.0;
+        vec2 denom = 0.0;
+
+        for (int k = 0; k < int(Taps); ++k) {
+            vec2 h = (1.0 - alpha) * pow(alpha, float(k));
+            num += float(k) * h;
+            denom += h;
+        }
+
+        vec2 centroid_offset = num / vec2(max(denom.x, EPS), max(denom.y, EPS));
+
+        kernelGain = vec3(centroid_offset.x, centroid_offset.y, centroid_offset.y);
     }
-    kernelGain = max(kernelGain, vec3(EPS));
 
     gain = vec3(
         db_to_linear(SYS_GAIN_Y),
         db_to_linear(SYS_GAIN_C),
-        db_to_linear(SYS_GAIN_C));
+        db_to_linear(SYS_GAIN_C)
+    );
     bias = vec3(
         SYS_BIAS_Y * 10e-3,
         SYS_BIAS_C * 10e-3,
-        SYS_BIAS_C * 10e-3);
+        SYS_BIAS_C * 10e-3
+    );
 }
 
 #pragma stage fragment
@@ -275,21 +313,45 @@ void main()
         return;
     }
 
-    vec4 center_sample = fetch_input_sample(output_index, FrameWidth, DataLength - 1.0);
-    vec3 accum = vec3(0.0);
-    int center = (int(Taps) - 1) / 2;
+    int n_taps = int(Taps);
+    vec3 outyc = 0.0;
 
-    for (int k = 0; k < int(Taps); ++k) {
-        int tap_offset = k - center;
-        float dt = float(tap_offset);
-        vec3 coeff = vec3(
-            gaussian(dt, sigma.x),
-            gaussian(dt, sigma.y),
-            gaussian(dt, sigma.z));
-        vec3 yc = rgb_to_luma_chroma(
-            fetch_input_sample(output_index + float(tap_offset), FrameWidth, DataLength - 1.0).rgb,
-            YC_MODEL);
-        accum += coeff * yc;
+    if (SYS_YC_FILTER_TYPE < 0.5) {
+        vec4 center_sample = fetch_input_sample(output_index, FrameWidth, DataLength - 1.0);
+        vec3 accum = vec3(0.0);
+        int center = (n_taps - 1) / 2;
+
+        for (int k = 0; k < n_taps; ++k) {
+            int tap_offset = k - center;
+            float dt = float(tap_offset);
+            vec3 coeff = vec3(
+                gaussian(dt, sigma.x),
+                gaussian(dt, sigma.y),
+                gaussian(dt, sigma.z));
+            vec3 yc = rgb_to_luma_chroma(
+                fetch_input_sample(output_index + dt, FrameWidth, DataLength - 1.0).rgb,
+                YC_MODEL);
+            accum += coeff * yc;
+        }
+        outyc = accum / kernelGain;
+    } else {
+        vec3 gain = 0.0;
+        vec3 alpha = gfilt.sigma;
+        ivec3 centroid_offset = ivec3(int(kernelGain.x + 0.5), int(kernelGain.y + 0.5), int(kernelGain.z + 0.5));
+        ivec3 output_indices = ivec3(int(output_index + 0.5), int(output_index + 0.5), int(output_index + 0.5));
+
+        output_indices -= centroid_offset - (n_taps - 1) / 2;
+        for (int k = 0; k < n_taps; ++k) {
+            int tap_offset = n_taps - 1 - k;
+            float dt = float(tap_offset);
+            vec3 coeff = (1.0 - sigma) * pow(sigma, dt);
+            vec3 yc = rgb_to_luma_chroma(
+                fetch_input_sample(float(output_index) + dt, FrameWidth, DataLength - 1.0).rgb,
+                YC_MODEL);
+            accum += coeff * yc;
+            gain += coeff;
+        }
+        outyc = accum / vec3(max(gain.x, EPS), max(gain.y, EPS), max(gain.z, EPS));
     }
 
     vec3 outyc = accum / kernelGain;

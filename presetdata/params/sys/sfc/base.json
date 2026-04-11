@@ -3,11 +3,7 @@
         "ENCODER_SETUP" : 0.0,
         "SYS_FILTER_DECIMATION" : 2.0,
 
-        "SYS_BANDWIDTH_U" : 2.6,
-        "SYS_BANDWIDTH_V" : 2.6,
-        "SYS_CUTOFF_ATTEN_Y" : 0.0,
-        "SYS_CUTOFF_ATTEN_U" : 3.0,
-        "SYS_CUTOFF_ATTEN_V" : 3.0,
+        "SYS_YC_FILTER_TYPE" : 1.0,
 
         "COLOR_FILTER_MODE" : 0.0,
 
