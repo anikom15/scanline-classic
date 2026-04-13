@@ -204,5 +204,8 @@ void main()
         input_data_limit);
     vec3 color = mix(sample0.rgb, sample1.rgb, input_frac);
 
-    FragColor = vec4(color, 1.0);
+    // Alpha channel is power, simply average the sample's alpha values
+    float power = mix(sample0.a, sample1.a, input_frac);
+
+    FragColor = vec4(color, power);
 }

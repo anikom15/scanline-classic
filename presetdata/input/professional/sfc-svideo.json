@@ -1,24 +1,24 @@
 {
-  "filename" : "sfc-svideo",
-  "type" : "professional",
-  "title" : "Super Famicom S-Video shader set",
-  "description" : "All standard NTSC models, but not the Jr. and Mini models, have an S-Video output available without modification. Official cables were available in Japan and the United States.",
-  "pipeline_root" : "../../pipelines",
-  "pipelines" : [
-    "misc/menu-svideo.json",
-    "misc/frame-tv525.json",
-    "sys/svideo.json",
-    "disp/crt.json",
-    "misc/post.json"
-  ],
-  "parameter_root" : "../../params",
-  "parameter_sets" : [
-    "sys/sfc/base.json",
-    "sys/sfc/ntsc.json",
-    "disp/ntscj.json",
-    "disp/trinitron.json",
-    "disp/tvl-600.json"
-  ],
-  "parameter_overrides" : {
-  }
+    "filename" : "sfc-svideo",
+    "type" : "professional",
+    "title" : "Super Famicom S-Video shader set",
+    "description" : "All standard NTSC models, but not the Jr. and Mini models, have an S-Video output available without modification. Official cables were available in Japan and the United States.",
+    "pipeline_root" : "../../pipelines",
+    "pipelines" : [
+        "misc/menu-svideo.json",
+        "sys/rgb-component-yc.json",
+        "disp/crt-svideo-sd.json",
+        "misc/post.json"
+    ],
+    "parameter_root" : "../../params",
+    "parameter_sets" : [
+        "sys/sfc/base.json",
+        "sys/sfc/ntsc.json",
+        "misc/svideo.json",
+        "disp/ntscj.json",
+        "disp/trinitron.json",
+        "disp/tvl-600.json"
+    ],
+    "parameter_overrides" : {
+    }
 }

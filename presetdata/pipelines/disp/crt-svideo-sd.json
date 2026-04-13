@@ -1,7 +1,8 @@
 {
     "root_path" : "../../../shaders",
     "shaders" : {
-        "input" : "display-svideo",
+        "input" : "display-svideo-demod",
+        "filter" : "display-svideo-filter",
         "limiter" : "limiter",
         "linear" : "crt-linear",
         "frame" : "framev",
@@ -11,7 +12,7 @@
         "curve" : "curve"
     },
     "options" : {
-        "input" : {
+        "filter" : {
             "scale_type" : ["absolute", "source"],
             "scale" : [1024, 1.0]
         },

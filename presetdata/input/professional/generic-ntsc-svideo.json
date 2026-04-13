@@ -7,7 +7,7 @@
   "pipelines" : [
     "misc/menu-svideo.json",
     "misc/frame-tv525.json",
-    "sys/svideo.json",
+    "sys/rgb-component-yc.json",
     "disp/crt.json",
     "misc/post.json"
   ],

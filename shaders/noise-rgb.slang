@@ -393,7 +393,7 @@ float equal_energy_subcarrier_drive(float sample_index, float phase_rel_sample, 
         phase_rel_sample,
         state.sc_freq_hz,
         state.fs_current,
-        state.initial_subcarrier_phase_frac        
+        state.initial_subcarrier_phase_frac
     );
     float drive = sum_cosine_harmonics(phase, harmonic_count);
 

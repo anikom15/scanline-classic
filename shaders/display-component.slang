@@ -2,7 +2,7 @@
 
 // Filename: display-component.slang
 //
-// Copyright (C) 2025-2026 W. M. Martinez
+// Copyright (C) 2026 W. M. Martinez
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -23,7 +23,7 @@
 // Output: Real RGB voltage
 //
 // Implements a polyphase decimator with Kaiser-windowed sinc low-pass prototypes,
-// following the same sample-domain resampling model as `display-rgb-bandlimit-fir.slang`.
+// following the same sample-domain resampling model as `display-rgb.slang`.
 // Separate filter designs are used for luma (Y) and chroma (Pb/Pr), based on the
 // corresponding cutoff and stopband parameters in `display-component.inc`.
 //
@@ -37,6 +37,7 @@
 #include "common.inc"
 #include "color.inc"
 #include "contract.inc"
+#include "dsp.inc"
 #include "window.inc"
 #include "zoh.inc"
 
@@ -284,22 +285,7 @@ layout(location = 15) flat in float OutputDataLength;
 layout(location = 16) flat in float InputFrameWidth;
 layout(location = 17) flat in float OutputFrameWidth;
 layout(location = 0) out vec4 FragColor;
-layout(set = 0, binding = 2) uniform sampler2D Source;
-
-vec4 fetch_input_sample(float sample_index, float input_frame_width, float input_data_limit)
-{
-    int input_frame_width_i = max(int(input_frame_width + 0.5), 1);
-    int input_data_limit_i = max(int(input_data_limit + 0.5), 0);
-    int clamped_index_i = clamp(int(floor(clamp(sample_index, 0.0, input_data_limit))),
-        0, input_data_limit_i);
-    int texel_y = clamped_index_i / input_frame_width_i;
-    int texel_x = clamped_index_i - texel_y * input_frame_width_i;
-
-    texel_x = clamp(texel_x, 0, max(int(config.SourceSize.x) - 1, 0));
-    texel_y = clamp(texel_y, 0, max(int(config.SourceSize.y) - 1, 0));
-
-    return texelFetch(Source, ivec2(texel_x, texel_y), 0);
-}
+layout(set = 0, binding = 1) uniform sampler2D Source;
 
 void main()
 {
@@ -328,7 +314,7 @@ void main()
     float frac_offset = input_sample_pos - input_pos_floor;
     float input_data_limit = max(InputDataLength - 1.0, 0.0);
     float nearest_sample_index = clamp(floor(input_sample_pos + 0.5), 0.0, input_data_limit);
-    vec4 center_sample = fetch_input_sample(nearest_sample_index, InputFrameWidth, input_data_limit);
+    vec4 center_sample = fetch_input_sample(Source, config.SourceSize.xy, nearest_sample_index, InputFrameWidth, input_data_limit);
 
     vec3 rgb_gain = vec3(
         db_to_linear(DISPLAY_GAIN_R),
@@ -364,7 +350,7 @@ void main()
     for (int k = 0; k < zoh_taps; ++k) {
         float coeff = zoh_area(float(k) - frac_offset, 1.0, Tout);
         float sample_index = clamp(float(input_index_int + k), 0.0, input_data_limit);
-        filtered_ypbpr += coeff * fetch_input_sample(sample_index, InputFrameWidth, input_data_limit).rgb;
+        filtered_ypbpr += coeff * fetch_input_sample(Source, config.SourceSize.xy, sample_index, InputFrameWidth, input_data_limit).rgb;
         zoh_sum += coeff;
     }
     filtered_ypbpr /= max(zoh_sum, EPS);
@@ -377,7 +363,7 @@ void main()
         float w = kaiser(float(tap_offset), yfilt.taps, yfilt.beta);
         float coeff = sinc(float(tap_offset) - frac_offset, yfilt.fc_norm) * w;
         float sample_index = clamp(float(input_index_int + tap_offset), 0.0, input_data_limit);
-        y_out += coeff * fetch_input_sample(sample_index, InputFrameWidth, input_data_limit).r;
+        y_out += coeff * fetch_input_sample(Source, config.SourceSize.xy, sample_index, InputFrameWidth, input_data_limit).r;
     }
     y_out /= yfilt.gain;
 
@@ -389,7 +375,7 @@ void main()
         float w = kaiser(float(tap_offset), cfilt.taps, cfilt.beta);
         float coeff = sinc(float(tap_offset) - frac_offset, cfilt.fc_norm) * w;
         float sample_index = clamp(float(input_index_int + tap_offset), 0.0, input_data_limit);
-        c_out += coeff * fetch_input_sample(sample_index, InputFrameWidth, input_data_limit).gb;
+        c_out += coeff * fetch_input_sample(Source, config.SourceSize.xy, sample_index, InputFrameWidth, input_data_limit).gb;
     }
     c_out /= cfilt.gain;
 

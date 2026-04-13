@@ -18,7 +18,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
 // System-level component amplifier and filter
-// -------------------------------
+// -------------------------------------------
 // Input: Real RGB voltage
 // Output: Real YCC voltage
 //
@@ -41,6 +41,7 @@
 #include "common.inc"
 #include "color.inc"
 #include "contract.inc"
+#include "dsp.inc"
 
 #include "menus/parameters/dsp.inc"
 #include "menus/parameters/sys-component.inc"
@@ -218,7 +219,7 @@ void main()
         vec2 butterworth_cutoff_freq = mix(
             gaussian_cutoff_freq,
             sqrt(log(2)) / (2.0 * PI * sigma_seconds),
-            bvec2(lessThanEqual(SYS_CUTOFF_ATTEN_Y, 3.0), lessThanEqual(SYS_CUTOFF_ATTEN_C, 3.0))
+            lessThanEqual(vec2(SYS_CUTOFF_ATTEN_Y, SYS_CUTOFF_ATTEN_C), vec2(3.0))
         );
         vec2 K = tan(PI * butterworth_cutoff_freq / fs_current);
         vec2 alpha = (1.0 - K) / (1.0 + K);
@@ -227,11 +228,11 @@ void main()
         Taps = min(ceil(log(FILTER_THRESHOLD_ANALOG) / log(max(alpha.x, alpha.y))), MAX_TAPS);
 
         // Calculate the centroid of the impulse response
-        vec2 num = 0.0;
-        vec2 denom = 0.0;
+        vec2 num = vec2(0.0);
+        vec2 denom = vec2(0.0);
 
         for (int k = 0; k < int(Taps); ++k) {
-            vec2 h = (1.0 - alpha) * pow(alpha, float(k));
+            vec2 h = (1.0 - alpha) * pow(alpha, vec2(float(k)));
             num += float(k) * h;
             denom += h;
         }
@@ -254,7 +255,6 @@ void main()
 }
 
 #pragma stage fragment
-
 layout(location = 0) in vec2 vTexCoord;
 layout(location = 1) in vec3 gain;
 layout(location = 2) in vec3 bias;
@@ -265,22 +265,7 @@ layout(location = 7) flat in float FrameHeight;
 layout(location = 8) flat in float DataLength;
 layout(location = 9) flat in float Taps;
 layout(location = 0) out vec4 FragColor;
-layout(set = 0, binding = 2) uniform sampler2D Source;
-
-vec4 fetch_input_sample(float sample_index, float frame_width, float input_data_limit)
-{
-    int frame_width_i = max(int(frame_width + 0.5), 1);
-    int input_data_limit_i = max(int(input_data_limit + 0.5), 0);
-    int clamped_index_i = clamp(int(floor(clamp(sample_index, 0.0, input_data_limit))),
-        0, input_data_limit_i);
-    int texel_y = clamped_index_i / frame_width_i;
-    int texel_x = clamped_index_i - texel_y * frame_width_i;
-
-    texel_x = clamp(texel_x, 0, max(int(config.SourceSize.x) - 1, 0));
-    texel_y = clamp(texel_y, 0, max(int(config.SourceSize.y) - 1, 0));
-
-    return texelFetch(Source, ivec2(texel_x, texel_y), 0);
-}
+layout(set = 0, binding = 1) uniform sampler2D Source;
 
 void main()
 {
@@ -314,10 +299,10 @@ void main()
     }
 
     int n_taps = int(Taps);
-    vec3 outyc = 0.0;
+    vec3 outycc = vec3(0.0);
+    float phase_rel_sample = fetch_input_sample(Source, config.SourceSize.xy, output_index, FrameWidth, DataLength - 1.0).a;
 
     if (SYS_YC_FILTER_TYPE < 0.5) {
-        vec4 center_sample = fetch_input_sample(output_index, FrameWidth, DataLength - 1.0);
         vec3 accum = vec3(0.0);
         int center = (n_taps - 1) / 2;
 
@@ -329,14 +314,15 @@ void main()
                 gaussian(dt, sigma.y),
                 gaussian(dt, sigma.z));
             vec3 yc = rgb_to_luma_chroma(
-                fetch_input_sample(output_index + dt, FrameWidth, DataLength - 1.0).rgb,
+                fetch_input_sample(Source, config.SourceSize.xy, output_index + dt, FrameWidth, DataLength - 1.0).rgb,
                 YC_MODEL);
             accum += coeff * yc;
         }
-        outyc = accum / kernelGain;
+        outycc = accum / kernelGain;
     } else {
-        vec3 gain = 0.0;
-        vec3 alpha = gfilt.sigma;
+        vec3 gain = vec3(0.0);
+        vec3 accum = vec3(0.0);
+        vec3 alpha = sigma;
         ivec3 centroid_offset = ivec3(int(kernelGain.x + 0.5), int(kernelGain.y + 0.5), int(kernelGain.z + 0.5));
         ivec3 output_indices = ivec3(int(output_index + 0.5), int(output_index + 0.5), int(output_index + 0.5));
 
@@ -344,16 +330,15 @@ void main()
         for (int k = 0; k < n_taps; ++k) {
             int tap_offset = n_taps - 1 - k;
             float dt = float(tap_offset);
-            vec3 coeff = (1.0 - sigma) * pow(sigma, dt);
+            vec3 coeff = (1.0 - sigma) * pow(sigma, vec3(dt));
             vec3 yc = rgb_to_luma_chroma(
-                fetch_input_sample(float(output_index) + dt, FrameWidth, DataLength - 1.0).rgb,
+                fetch_input_sample(Source, config.SourceSize.xy, float(output_index) + dt, FrameWidth, DataLength - 1.0).rgb,
                 YC_MODEL);
             accum += coeff * yc;
             gain += coeff;
         }
-        outyc = accum / vec3(max(gain.x, EPS), max(gain.y, EPS), max(gain.z, EPS));
+        outycc = accum / vec3(max(gain.x, EPS), max(gain.y, EPS), max(gain.z, EPS));
     }
 
-    vec3 outyc = accum / kernelGain;
-    FragColor = vec4(gain * (outyc + bias), center_sample.a);
+    FragColor = vec4(gain * (outycc + bias), phase_rel_sample);
 }

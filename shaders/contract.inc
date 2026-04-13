@@ -234,6 +234,24 @@ float contract_full_frame_height(
     return is_interlaced ? v_lines_per_frame : v_lines_per_field;
 }
 
+// Returns the horizontal line frequency in Hz.
+float contract_h_frequency(
+    float original_fps,
+    float sc_freq_mode,
+    float sc_freq_custom_mhz,
+    float pixel_clock_mode,
+    float pixel_clock_mhz,
+    float h_freq_mode,
+    float h_freq_custom_khz)
+{
+    float sc_freq_hz;
+    int standard;
+    compute_subcarrier_freq(sc_freq_mode, sc_freq_custom_mhz, original_fps, sc_freq_hz, standard);
+
+    float pixel_clock_hz = compute_pixel_clock(pixel_clock_mode, pixel_clock_mhz, sc_freq_hz);
+    return compute_h_freq(h_freq_mode, standard, h_freq_custom_khz, pixel_clock_hz, original_fps);
+}
+
 // Returns the starting pixel-clock/sample-time phase offset for the current
 // field, including any odd-field timing adjustment used by the legacy
 // modulation path. This is a timebase reference for downstream reconstruction,
@@ -561,6 +579,19 @@ float contract_snap_sample_rate(
         round(safe_base_frame_width * max(requested_sample_rate, EPS) / safe_fs_original));
 
     return safe_fs_original * snapped_frame_width / safe_base_frame_width;
+}
+
+// Returns the subcarrier frequency in Hz or 0.0 if the subcarrier is disabled.
+float contract_subcarrier_freq_hz(
+    float original_fps,
+    float sc_freq_mode,
+    float sc_freq_custom_mhz)
+{
+    float sc_freq_hz;
+    int standard;
+    compute_subcarrier_freq(sc_freq_mode, sc_freq_custom_mhz, original_fps, sc_freq_hz, standard);
+
+    return max(sc_freq_hz, 0.0);
 }
 
 // Returns the snapped working-stage stored line width in samples.

@@ -12,6 +12,6 @@
         "USER_UNDERSCAN_TOGGLE" : 1.0,
         "ZOOM": 120.0,
         "BEZEL_ZOOM": 107.0,
-        "GLOW_WEIGHT" : 0.5
+        "GLOW_WEIGHT" : 0.75
     }
 }

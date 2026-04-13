@@ -165,5 +165,8 @@ void main()
     vec3 previous_rgb = fetch_signal_sample(prev_index, vMagDeltaVState.frame_width, input_data_limit);
     vec3 mag_delta_v = abs(current_rgb - previous_rgb);
 
-    FragColor = vec4(mag_delta_v, 1.0);
+    // Alpha channel is average power
+    float power = dot(current_rgb, current_rgb);
+
+    FragColor = vec4(mag_delta_v, power);
 }
