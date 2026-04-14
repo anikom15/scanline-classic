@@ -52,7 +52,7 @@
 #pragma parameter DEBUG_RGB_NOISE_HEADER " —— Debug RGB Noise —— " 0.0 0.0 0.0 0.0
 #pragma parameter RGB_NOISE_BYPASS "Bypass RGB noise" 0.0 0.0 1.0 1.0
 #pragma parameter RGB_NOISE_VIEW_MAG_DELTAV "View MagDeltaV" 0.0 0.0 2.0 1.0
-#pragma parameter RGB_NOISE_MAG_DELTAV_MIP_LOD "MagDeltaV mip LOD" 0.0 0.0 10.0 1.0
+#pragma parameter RGB_NOISE_MAG_DELTAV_MIP_LOD "MagDeltaV mip LOD" 0.0 0.0 11.0 1.0
 #endif  // OPTION_DEBUG
 
 layout(push_constant) uniform Push
@@ -281,30 +281,21 @@ NoiseGradeSettings resolve_noise_grade_settings()
     }
 
     if (RGB_NOISE_PRESET < 2.5) {
-        return NoiseGradeSettings(-50.0, 30.0, 30.0, 6.0, 10.0, 6.0);
+        return NoiseGradeSettings(-50.0, 30.0, 30.0, 3.0, 10.0, 6.0);
     }
 
-    return NoiseGradeSettings(-40.0, 40.0, 40.0, 12.0, 20.0, 20.0);
+    return NoiseGradeSettings(-40.0, 40.0, 40.0, 6.0, 20.0, 20.0);
 }
 
 // dB/linear conversions use the shared helpers from `common.inc`.
+
 
 // Fetch one sample from the packed DSP raster using integer row/column
 // decomposition. This keeps addressing aligned with the framed-signal
 // contract instead of relying on presentation-space UV sampling.
 vec4 fetch_signal_sample(float sample_index, NoiseRGBState state)
 {
-    float data_limit = max(state.data_length - 1.0, 0.0);
-    int frame_width_i = max(int(state.frame_width + 0.5), 1);
-    int data_limit_i = max(int(data_limit + 0.5), 0);
-    int clamped_index_i = clamp(int(floor(clamp(sample_index, 0.0, data_limit))), 0, data_limit_i);
-    int texel_y = clamped_index_i / frame_width_i;
-    int texel_x = clamped_index_i - texel_y * frame_width_i;
-
-    texel_x = clamp(texel_x, 0, max(int(config.SysRGBBandlimitSize.x) - 1, 0));
-    texel_y = clamp(texel_y, 0, max(int(config.SysRGBBandlimitSize.y) - 1, 0));
-
-    return texelFetch(SysRGBBandlimit, ivec2(texel_x, texel_y), 0);
+    return fetch_input_sample(SysRGBBandlimit, config.SysRGBBandlimitSize.xy, sample_index, state.frame_width, state.data_length);
 }
 
 // Sample between adjacent DSP samples with a simple linear blend. This is
@@ -669,7 +660,7 @@ vec3 compute_ground_bounce_shape(
         dot(max(center, vec3(0.0)), vec3(0.299, 0.587, 0.114)),
         0.0,
         1.0);
-    float stripe = clamp(abs(drive) * luma_level, 0.0, 1.0);
+    float stripe = abs(drive) * luma_level;
 
     return vec3(stripe);
 }
@@ -679,7 +670,7 @@ vec3 compute_ground_bounce_shape(
 vec3 compute_subcarrier_crosstalk_shape(float sample_index, float phase_rel_sample, NoiseRGBState state)
 {
     float carrier_tone = abs(equal_energy_subcarrier_drive(sample_index, phase_rel_sample, state));
-    return clamp(carrier_tone * vec3(0.25, 0.5, 1.0), vec3(0.0), vec3(1.0));
+    return carrier_tone * vec3(0.25, 0.5, 1.0);
 }
 
 void main()
@@ -736,8 +727,10 @@ void main()
             power = texture(Mip8, mag_delta_uv).a;
         else if (lod_i == 9)
             power = texture(Mip9, mag_delta_uv).a;
-        else
+        else if (lod_i == 10)
             power = texture(Mip10, mag_delta_uv).a;
+        else
+            power = texture(Source, mag_delta_uv).a;
 
         power /= 3.0;
         FragColor = vec4(power, power, power, 1.0);
@@ -758,12 +751,12 @@ void main()
     // Extract mean(||V||^2) from the alpha channel of the highest MagDeltaV mip (full screen average)
     float mag_delta_v_power = 0.0;
     {
-        // Highest mip is Mip10 (binding = 13)
+        // Highest mip is Mip11
         vec2 mag_delta_uv = mag_delta_v_uv_from_index(sample_index, vNoiseState);
-        float lod = 10.0;
-        int lod_i = 10;
-        vec4 mip10_sample = texture(Mip10, mag_delta_uv);
-        mag_delta_v_power = mip10_sample.a;
+        float lod = 11.0;
+        int lod_i = 11;
+        vec4 mip11_sample = texture(Source, mag_delta_uv);
+        mag_delta_v_power = mip11_sample.a;
     }
 
     // At power = 1.0, add 3 dB (multiply noise by sqrt(2)), scale linearly

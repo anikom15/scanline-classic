@@ -5,7 +5,20 @@
         "amp" : "sys-rgb-amp",
         "bandlimit" : "sys-rgb-bandlimit",
         "component" : "sys-component",
-        "mod" : "sys-ypbpr-yc"
+        "mod" : "sys-ypbpr-yc",
+        "deltav" : "send-mag-delta-v",
+        "mip1" : "send-decimate",
+        "mip2" : "send-decimate",
+        "mip3" : "send-decimate",
+        "mip4" : "send-decimate",
+        "mip5" : "send-decimate",
+        "mip6" : "send-decimate",
+        "mip7" : "send-decimate",
+        "mip8" : "send-decimate",
+        "mip9" : "send-decimate",
+        "mip10" : "send-decimate",
+        "mip11" : "send-decimate",
+        "noise" : "noise-svideo"
     },
     "options" : {
         "frame" : {
@@ -13,6 +26,77 @@
             "scale" : [4096.0, 1024.0]
         },
         "bandlimit" : {
+            "scale_type" : ["absolute", "source"],
+            "scale" : [2048.0, 1.0]
+        },
+        "mip1" : {
+            "scale_type" : ["source", "source"],
+            "scale" : [0.5, 1.0],
+            "alias" : "Mip1",
+            "filter_linear" : true
+        },
+        "mip2" : {
+            "scale_type" : ["source", "source"],
+            "scale" : [0.5, 1.0],
+            "alias" : "Mip2",
+            "filter_linear" : true
+        },
+        "mip3" : {
+            "scale_type" : ["source", "source"],
+            "scale" : [0.5, 1.0],
+            "alias" : "Mip3",
+            "filter_linear" : true
+        },
+        "mip4" : {
+            "scale_type" : ["source", "source"],
+            "scale" : [0.5, 1.0],
+            "alias" : "Mip4",
+            "filter_linear" : true
+        },
+        "mip5" : {
+            "scale_type" : ["source", "source"],
+            "scale" : [0.5, 1.0],
+            "alias" : "Mip5",
+            "filter_linear" : true
+        },
+        "mip6" : {
+            "scale_type" : ["source", "source"],
+            "scale" : [0.5, 1.0],
+            "alias" : "Mip6",
+            "filter_linear" : true
+        },
+        "mip7" : {
+            "scale_type" : ["source", "source"],
+            "scale" : [0.5, 1.0],
+            "alias" : "Mip7",
+            "filter_linear" : true
+        },
+        "mip8" : {
+            "scale_type" : ["source", "source"],
+            "scale" : [0.5, 1.0],
+            "alias" : "Mip8",
+            "filter_linear" : true
+        },
+        "mip9" : {
+            "scale_type" : ["source", "source"],
+            "scale" : [0.5, 1.0],
+            "alias" : "Mip9",
+            "filter_linear" : true
+        },
+        "mip10" : {
+            "scale_type" : ["source", "source"],
+            "scale" : [0.5, 1.0],
+            "alias" : "Mip10",
+            "filter_linear" : true
+        },
+        "mip11" : {
+            "scale_type" : ["source", "source"],
+            "scale" : [0.5, 1.0],
+            "alias" : "Mip11",
+            "filter_linear" : true
+        },
+        "noise" : {
+            "filter_linear" : true,
             "scale_type" : ["absolute", "source"],
             "scale" : [2048.0, 1.0]
         }

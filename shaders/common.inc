@@ -322,6 +322,21 @@ vec2 box_muller(vec2 u)
 }
 
 // Gaussian noise seeded by integer pixel and frame.
+// Returns two independent N(0, 1) samples.
+vec2 gaussian_noise2(uvec2 coord, uint frame, uint salt)
+{
+    uint s0 = hash_u32(frame ^ salt ^ 0x9E3779B9u);
+    uint s1 = hash_u32(frame ^ salt ^ 0x85EBCA6Bu);
+
+    vec2 u = vec2(
+        hash_float(uvec2(coord.x ^ s0, coord.y ^ 0xA511E9B3u)),
+        hash_float(uvec2(coord.x ^ 0x63D83595u, coord.y ^ s0))
+    );
+
+    return box_muller(u);
+}
+
+// Gaussian noise seeded by integer pixel and frame.
 // Returns three approximately independent N(0, 1) samples.
 vec3 gaussian_noise3(uvec2 coord, uint frame, uint salt)
 {
