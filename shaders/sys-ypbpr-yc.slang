@@ -172,7 +172,7 @@ void main()
 {
 #ifdef OPTION_DEBUG
     if (SYS_YPBPR_YC_BYPASS > 0.5) {
-        FragColor = fetch_input_sample(Source, config.OutputSize.xy, vTexCoord * config.OutputSize.xy, FrameWidth, DataLength - 1.0);
+        FragColor = texture(Source, vTexCoord);
         return;
     }
 #endif  // OPTION_DEBUG
@@ -206,7 +206,8 @@ void main()
 
     vec3 yc = vec3(
         mix(ypbpra.r, 0.925 * (ypbpra.r + 0.075), ENCODER_SETUP),
-        ypbpra.g * sin(phase) + pal_v_sign * ypbpra.b * cos(phase),
+        dot(mix(1.0, 0.925, ENCODER_SETUP) * ypbpra.gb,
+        vec2(sin(phase), pal_v_sign * cos(phase))),
         0.0
     );
     vec3 cv = vec3(yc.r + yc.g, 0.0, 0.0);

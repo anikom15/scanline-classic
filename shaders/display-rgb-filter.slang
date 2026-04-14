@@ -37,6 +37,7 @@
 #include "common.inc"
 #include "color.inc"
 #include "contract.inc"
+#include "dsp.inc"
 #include "window.inc"
 #include "zoh.inc"
 
@@ -50,7 +51,6 @@
 
 #ifdef OPTION_DEBUG
 #pragma parameter DEBUG_DISPLAY_RGB_BANDLIMIT_HEADER " —— Debug Display RGB Bandlimit —— " 0.0 0.0 0.0 0.0
-#pragma parameter DISPLAY_RGB_AMP_BYPASS "Bypass display RGB amplifier" 0.0 0.0 1.0 1.0
 #pragma parameter DISPLAY_RGB_FILTER_BYPASS "Bypass display RGB filter" 0.0 0.0 1.0 1.0
 #pragma parameter DESKEW_BYPASS "Bypass integrated deskew" 0.0 0.0 1.0 1.0
 #endif  // OPTION_DEBUG
@@ -77,7 +77,6 @@ layout(push_constant) uniform Push
 
     float DISPLAY_CUTOFF;
     float DISPLAY_STOPBAND;
-    float USER_BLUE_ONLY;
 } config;
 
 #define V_FREQ_MODE config.V_FREQ_MODE
@@ -97,21 +96,12 @@ layout(push_constant) uniform Push
 #define DISPLAY_CUTOFF config.DISPLAY_CUTOFF
 #define DISPLAY_STOPBAND config.DISPLAY_STOPBAND
 
-#define USER_BLUE_ONLY config.USER_BLUE_ONLY
-
 layout(std140, set = 0, binding = 0) uniform UBO
 {
     mat4 MVP;
-    float DISPLAY_GAIN_R;
-    float DISPLAY_GAIN_G;
-    float DISPLAY_GAIN_B;
-    float DISPLAY_BIAS_R;
-    float DISPLAY_BIAS_G;
-    float DISPLAY_BIAS_B;
 
 #ifdef OPTION_DEBUG
     float DISPLAY_RGB_FILTER_BYPASS;
-    float DISPLAY_RGB_AMP_BYPASS;
     float DESKEW_BYPASS;
 #endif  // OPTION_DEBUG
 
@@ -119,17 +109,8 @@ layout(std140, set = 0, binding = 0) uniform UBO
 
 #ifdef OPTION_DEBUG
 #define DISPLAY_RGB_FILTER_BYPASS global.DISPLAY_RGB_FILTER_BYPASS
-#define DISPLAY_RGB_AMP_BYPASS global.DISPLAY_RGB_AMP_BYPASS
 #define DESKEW_BYPASS global.DESKEW_BYPASS
 #endif  // OPTION_DEBUG
-
-#define DISPLAY_GAIN_R global.DISPLAY_GAIN_R
-#define DISPLAY_GAIN_G global.DISPLAY_GAIN_G
-#define DISPLAY_GAIN_B global.DISPLAY_GAIN_B
-
-#define DISPLAY_BIAS_R global.DISPLAY_BIAS_R
-#define DISPLAY_BIAS_G global.DISPLAY_BIAS_G
-#define DISPLAY_BIAS_B global.DISPLAY_BIAS_B
 
 struct KaiserFilter {
     float fc_norm;  // Normalized cutoff frequency (0..0.5)
@@ -149,16 +130,14 @@ layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
 layout(location = 2) flat out KaiserFilter kfilt;
 layout(location = 6) flat out PolyphaseFilter pfilt;
-layout(location = 8) flat out vec3 gain;
-layout(location = 9) flat out vec3 bias;
-layout(location = 10) flat out float OutputFrameHeight;
-layout(location = 11) flat out float InputDataLength;
-layout(location = 12) flat out float OutputDataLength;
-layout(location = 13) flat out float InputFrameWidth;
-layout(location = 14) flat out float OutputFrameWidth;
-layout(location = 15) flat out float DeskewSampleRatio;
-layout(location = 16) flat out float LineCarryClocksOut;
-layout(location = 17) flat out float ClockFactorOut;
+layout(location = 8) flat out float OutputFrameHeight;
+layout(location = 9) flat out float InputDataLength;
+layout(location = 10) flat out float OutputDataLength;
+layout(location = 11) flat out float InputFrameWidth;
+layout(location = 12) flat out float OutputFrameWidth;
+layout(location = 13) flat out float DeskewSampleRatio;
+layout(location = 14) flat out float LineCarryClocksOut;
+layout(location = 15) flat out float ClockFactorOut;
 
 const int MAX_TAPS = 37;
 const float KAISER_ATTEN_DB = 40.0;
@@ -296,32 +275,20 @@ void main()
     kfilt.gain = sum;
 
     pfilt.taps = kfilt.taps;
-
-    // Amplifier
-    gain = vec3(
-        db_to_linear(DISPLAY_GAIN_R),
-        db_to_linear(DISPLAY_GAIN_G),
-        db_to_linear(DISPLAY_GAIN_B));
-    bias = vec3(
-        DISPLAY_BIAS_R * 10e-3,
-        DISPLAY_BIAS_G * 10e-3,
-        DISPLAY_BIAS_B * 10e-3);
 }
 
 #pragma stage fragment
 layout(location = 0) in vec2 vTexCoord;
 layout(location = 2) flat in KaiserFilter kfilt;
 layout(location = 6) flat in PolyphaseFilter pfilt;
-layout(location = 8) flat in vec3 gain;
-layout(location = 9) flat in vec3 bias;
-layout(location = 10) flat in float OutputFrameHeight;
-layout(location = 11) flat in float InputDataLength;
-layout(location = 12) flat in float OutputDataLength;
-layout(location = 13) flat in float InputFrameWidth;
-layout(location = 14) flat in float OutputFrameWidth;
-layout(location = 15) flat in float DeskewSampleRatio;
-layout(location = 16) flat in float LineCarryClocksOut;
-layout(location = 17) flat in float ClockFactorOut;
+layout(location = 8) flat in float OutputFrameHeight;
+layout(location = 9) flat in float InputDataLength;
+layout(location = 10) flat in float OutputDataLength;
+layout(location = 11) flat in float InputFrameWidth;
+layout(location = 12) flat in float OutputFrameWidth;
+layout(location = 13) flat in float DeskewSampleRatio;
+layout(location = 14) flat in float LineCarryClocksOut;
+layout(location = 15) flat in float ClockFactorOut;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
@@ -338,24 +305,6 @@ float compute_row_shift_output_samples(int output_y_i)
 #else
     return float(row_carry_clocks) * DeskewSampleRatio;
 #endif  // OPTION_DEBUG
-}
-
-vec3 fetch_input_sample(float sample_index, float input_frame_width, float input_data_limit)
-{
-    // `input_frame_width` is passed as float for portability, but it is
-    // integral-valued by contract, so the row/column decomposition can be
-    // performed exactly in integer arithmetic here.
-    int input_frame_width_i = max(int(input_frame_width + 0.5), 1);
-    int input_data_limit_i = max(int(input_data_limit + 0.5), 0);
-    int clamped_index_i = clamp(int(floor(clamp(sample_index, 0.0, input_data_limit))),
-        0, input_data_limit_i);
-    int texel_y = clamped_index_i / input_frame_width_i;
-    int texel_x = clamped_index_i - texel_y * input_frame_width_i;
-
-    texel_x = clamp(texel_x, 0, max(int(config.SourceSize.x) - 1, 0));
-    texel_y = clamp(texel_y, 0, max(int(config.SourceSize.y) - 1, 0));
-
-    return texelFetch(Source, ivec2(texel_x, texel_y), 0).rgb;
 }
 
 void main()
@@ -397,7 +346,7 @@ void main()
 #ifdef OPTION_DEBUG
     if (DISPLAY_RGB_FILTER_BYPASS > 0.5) {
         float sample_index = clamp(floor(input_sample_pos + 0.5), 0.0, input_data_limit);
-        color = fetch_input_sample(sample_index, InputFrameWidth, input_data_limit);
+        color = fetch_input_sample(Source, config.SourceSize.xy, sample_index, InputFrameWidth, input_data_limit).rgb;
     } else {
 #endif  // OPTION_DEBUG
 
@@ -408,7 +357,7 @@ void main()
     for (int k = 0; k < zoh_taps; ++k) {
         float coeff = zoh_area(float(k) - frac_offset, 1.0, Tout);
         float sample_index = clamp(float(input_index_int + k), 0.0, input_data_limit);
-        vec3 rgb = fetch_input_sample(sample_index, InputFrameWidth, input_data_limit);
+        vec3 rgb = fetch_input_sample(Source, config.SourceSize.xy, sample_index, InputFrameWidth, input_data_limit).rgb;
 
         color += coeff * rgb;
         zoh_sum += coeff;
@@ -421,7 +370,7 @@ void main()
         float w = kaiser(float(tap_offset), kfilt.taps, kfilt.beta);
         float coeff = sinc(float(tap_offset - frac_offset), kfilt.fc_norm) * w;
         float sample_index = clamp(float(input_index_int + tap_offset), 0.0, input_data_limit);
-        vec3 rgb = fetch_input_sample(sample_index, InputFrameWidth, input_data_limit);
+        vec3 rgb = fetch_input_sample(Source, config.SourceSize.xy, sample_index, InputFrameWidth, input_data_limit).rgb;
 
         color += coeff * rgb;
     }
@@ -430,15 +379,6 @@ void main()
 
 #ifdef OPTION_DEBUG
     }  // end filter bypass
-#endif  // OPTION_DEBUG
-
-#ifdef OPTION_DEBUG
-    // RGB amplifier
-    if (DISPLAY_RGB_AMP_BYPASS < 0.5) {
-        color = gain * (color + bias);
-    }
-#else
-    color = gain * (color + bias);
 #endif  // OPTION_DEBUG
 
     if (BW_MODE < 0.5) {
@@ -462,10 +402,6 @@ void main()
         // G+B
         color.r = 0.0;
     }
-
-    // Apply blue-only filter
-    color.r *= 1.0 - USER_BLUE_ONLY;
-    color.g *= 1.0 - USER_BLUE_ONLY;
 
     FragColor = vec4(color, 1.0);  // Alpha channel indicates no further time-based DSP
 }

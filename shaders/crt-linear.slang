@@ -19,7 +19,7 @@
 //
 // CRT Linear
 // -----------
-// Input: Normalized RGB signal [0.0, 1.0]
+// Input: Normalized RGB signal [0.0, 1.0+)
 // Output: Linear RGB luminance (YrYgYb) signal [0.0, 10 000.0]
 //
 // Linearizes CRT display output using BT.1886 transfer function

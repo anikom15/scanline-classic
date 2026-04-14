@@ -1,9 +1,10 @@
 {
     "root_path" : "../../../shaders",
     "shaders" : {
+        "limiter" : "limiter",
         "input" : "display-svideo-demod",
         "filter" : "display-svideo-filter",
-        "limiter" : "limiter",
+        "amp" : "display-rgb-amp",
         "linear" : "crt-linear",
         "frame" : "framev",
         "phosphor" : "phosphor-trichrome",

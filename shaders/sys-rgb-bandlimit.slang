@@ -249,7 +249,7 @@ void main()
         float alpha = (1.0 - K) / (1.0 + K);
 
         gfilt.sigma = alpha; // Reuse sigma field for alpha
-        pfilt.taps = min(ceil(log(FILTER_THRESHOLD_ANALOG) / log(alpha)), MAX_TAPS);
+        pfilt.taps = min(ceil(log(FILTER_THRESHOLD_ANALOG) / log(max(alpha, EPS))), MAX_TAPS);
 
         // Calculate the centroid of the impulse response for phase compensation
         float num = 0.0;

@@ -176,7 +176,7 @@ void main()
 {
 #ifdef OPTION_DEBUG
     if (DISPLAY_SVIDEO_DEMOD_BYPASS > 0.5) {
-        FragColor = fetch_input_sample(Source, config.OutputSize.xy, vTexCoord * config.OutputSize.xy, FrameWidth, DataLength - 1.0);
+        FragColor = texture(Source, vTexCoord);
         return;
     }
 #endif  // OPTION_DEBUG
@@ -213,8 +213,8 @@ void main()
 
     vec3 ypbpr = vec3(
         mix(yca.r, (yca.r - 0.075) / 0.925, DECODER_SETUP),
-        2.0 * yca.g * sin(phase + c_phase) * c_gain,
-        2.0 * yca.g * cos(phase + c_phase) * pal_v_sign * c_gain
+        mix(1.0, 1.0 / 0.925, DECODER_SETUP) * 2.0 * yca.g * sin(phase + c_phase) * c_gain,
+        mix(1.0, 1.0 / 0.925, DECODER_SETUP) * 2.0 * yca.g * cos(phase + c_phase) * pal_v_sign * c_gain
     );
 
     FragColor = vec4(ypbpr, yca.a);

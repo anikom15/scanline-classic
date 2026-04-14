@@ -33,6 +33,7 @@
 #include "parameters/service-geometry.inc"
 #include "parameters/scanraster.inc"
 #include "parameters/display-svideo.inc"
+#include "parameters/display-rgb-amp.inc"
 #include "parameters/factory-geometry.inc"
 #include "parameters/mask.inc"
 #include "parameters/colorimetry.inc"

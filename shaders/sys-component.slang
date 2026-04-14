@@ -212,20 +212,44 @@ void main()
         kernelGain = max(kernelGain, vec3(EPS));
     } else {
         // First-order Butterworth filter
-        vec2 gaussian_cutoff_freq = 1e6 * vec2(SYS_BANDWIDTH_Y, SYS_BANDWIDTH_C) * 1.0e6;
+        vec2 gaussian_cutoff_freq = 1e6 * vec2(SYS_BANDWIDTH_Y, SYS_BANDWIDTH_C);
         vec2 sigma_seconds = vec2(
             gaussian_sigma(gaussian_cutoff_freq.x, SYS_CUTOFF_ATTEN_Y),
             gaussian_sigma(gaussian_cutoff_freq.y, SYS_CUTOFF_ATTEN_C));
+        /*
         vec2 butterworth_cutoff_freq = mix(
             gaussian_cutoff_freq,
-            sqrt(log(2)) / (2.0 * PI * sigma_seconds),
+            sqrt(log(2)) / max((2.0 * PI * sigma_seconds), EPS),
             lessThanEqual(vec2(SYS_CUTOFF_ATTEN_Y, SYS_CUTOFF_ATTEN_C), vec2(3.0))
         );
+        */
+        vec2 butterworth_cutoff_freq;
+
+        if (SYS_CUTOFF_ATTEN_Y > 3.0) {
+            butterworth_cutoff_freq.x = sqrt(log(2)) / max((2.0 * PI * sigma_seconds.x), EPS);
+        } else {
+            butterworth_cutoff_freq.x = gaussian_cutoff_freq.x;
+        }
+
+        if (SYS_CUTOFF_ATTEN_C > 3.0) {
+            butterworth_cutoff_freq.y = sqrt(log(2)) / max((2.0 * PI * sigma_seconds.y), EPS);
+        } else {
+            butterworth_cutoff_freq.y = gaussian_cutoff_freq.y;
+        }
+
         vec2 K = tan(PI * butterworth_cutoff_freq / fs_current);
         vec2 alpha = (1.0 - K) / (1.0 + K);
 
+        if (SYS_CUTOFF_ATTEN_Y == 0.0) {
+            alpha.x = EPS; // No filtering (DC gain = 1)
+        }
+
+        if (SYS_CUTOFF_ATTEN_C == 0.0) {
+            alpha.y = EPS; // No filtering (DC gain = 1)
+        }
+
         sigma = vec3(alpha.x, alpha.y, alpha.y);
-        Taps = min(ceil(log(FILTER_THRESHOLD_ANALOG) / log(max(alpha.x, alpha.y))), MAX_TAPS);
+        Taps = min(ceil(log(FILTER_THRESHOLD_ANALOG) / log(max(max(alpha.x, alpha.y), EPS))), MAX_TAPS);
 
         // Calculate the centroid of the impulse response
         vec2 num = vec2(0.0);
@@ -239,7 +263,7 @@ void main()
 
         vec2 centroid_offset = num / vec2(max(denom.x, EPS), max(denom.y, EPS));
 
-        kernelGain = vec3(centroid_offset.x, centroid_offset.y, centroid_offset.y);
+        kernelGain = vec3(max(max(centroid_offset.x, centroid_offset.y), centroid_offset.y));
     }
 
     gain = vec3(
@@ -313,14 +337,14 @@ void main()
                 gaussian(dt, sigma.x),
                 gaussian(dt, sigma.y),
                 gaussian(dt, sigma.z));
-            vec3 yc = rgb_to_luma_chroma(
+            vec3 ycc = rgb_to_luma_chroma(
                 fetch_input_sample(Source, config.SourceSize.xy, output_index + dt, FrameWidth, DataLength - 1.0).rgb,
                 YC_MODEL);
-            accum += coeff * yc;
+            accum += coeff * ycc;
         }
         outycc = accum / kernelGain;
     } else {
-        vec3 gain = vec3(0.0);
+        vec3 filter_gain = vec3(0.0);
         vec3 accum = vec3(0.0);
         vec3 alpha = sigma;
         ivec3 centroid_offset = ivec3(int(kernelGain.x + 0.5), int(kernelGain.y + 0.5), int(kernelGain.z + 0.5));
@@ -330,14 +354,19 @@ void main()
         for (int k = 0; k < n_taps; ++k) {
             int tap_offset = n_taps - 1 - k;
             float dt = float(tap_offset);
-            vec3 coeff = (1.0 - sigma) * pow(sigma, vec3(dt));
-            vec3 yc = rgb_to_luma_chroma(
-                fetch_input_sample(Source, config.SourceSize.xy, float(output_index) + dt, FrameWidth, DataLength - 1.0).rgb,
-                YC_MODEL);
-            accum += coeff * yc;
-            gain += coeff;
+            vec3 coeff = (1.0 - alpha) * pow(alpha, vec3(dt));
+            vec3 ycc = rgb_to_luma_chroma(
+                vec3(
+                    fetch_input_sample(Source, config.SourceSize.xy, float(output_indices.x) - dt, FrameWidth, DataLength - 1.0).r,
+                    fetch_input_sample(Source, config.SourceSize.xy, float(output_indices.y) - dt, FrameWidth, DataLength - 1.0).g,
+                    fetch_input_sample(Source, config.SourceSize.xy, float(output_indices.z) - dt, FrameWidth, DataLength - 1.0).b
+                ),
+                YC_MODEL
+            );
+            accum += coeff * ycc;
+            filter_gain += coeff;
         }
-        outycc = accum / vec3(max(gain.x, EPS), max(gain.y, EPS), max(gain.z, EPS));
+        outycc = accum / vec3(max(filter_gain.x, EPS), max(filter_gain.y, EPS), max(filter_gain.z, EPS));
     }
 
     FragColor = vec4(gain * (outycc + bias), phase_rel_sample);
