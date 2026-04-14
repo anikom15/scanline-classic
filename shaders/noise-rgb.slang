@@ -275,16 +275,11 @@ NoiseGradeSettings resolve_noise_grade_settings()
     // Professional: AWGN (external) dominated, low systematic error
     // Consumer: perceptual balance between AWGN and systematic error
     // Degraded: Systematic error (failures) dominate
-
-    if (RGB_NOISE_PRESET < 1.5) {
+    if (RGB_NOISE_PRESET < 1.5)
         return NoiseGradeSettings(-60.0, 20.0, 20.0, 0.0, 0.0, 2.0);
-    }
-
-    if (RGB_NOISE_PRESET < 2.5) {
-        return NoiseGradeSettings(-50.0, 30.0, 30.0, 3.0, 10.0, 6.0);
-    }
-
-    return NoiseGradeSettings(-40.0, 40.0, 40.0, 6.0, 20.0, 20.0);
+    if (RGB_NOISE_PRESET < 2.5)
+        return NoiseGradeSettings(-50.0, 30.0, 30.0, 3.0, 10.0, 4.0);
+    return NoiseGradeSettings(-40.0, 40.0, 40.0, 6.0, 20.0, 18.0);
 }
 
 // dB/linear conversions use the shared helpers from `common.inc`.

@@ -244,15 +244,10 @@ NoiseGradeSettings resolve_noise_grade_settings()
     // Professional: AWGN (external) dominated, low systematic error
     // Consumer: perceptual balance between AWGN and systematic error
     // Degraded: Systematic error (failures) dominate
-
-    if (SVIDEO_NOISE_PRESET < 1.5) {
+    if (SVIDEO_NOISE_PRESET < 1.5)
         return NoiseGradeSettings(-60.0, 20.0, 0.0, 1.0);
-    }
-
-    if (SVIDEO_NOISE_PRESET < 2.5) {
+    if (SVIDEO_NOISE_PRESET < 2.5)
         return NoiseGradeSettings(-50.0, 30.0, 3.0, 2.0);
-    }
-
     return NoiseGradeSettings(-40.0, 40.0, 6.0, 9.0);
 }
 
