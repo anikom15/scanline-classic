@@ -46,13 +46,15 @@ vec4 fetch_input_sample(sampler2D source, vec2 source_size, float sample_index, 
 // Reconstructs the absolute wrapped carrier phase at a given sample index
 // Parameters:
 //   - `sample_index`: the 0-based index of the sample in the 1D stream
-//   - `phase_rel_sample`: the fractional sample offset
 //   - `f`: the carrier frequency in Hz
 //   - `Fs`: the sampling frequency in Hz
-//   - `phi`: the initial carrier phase in radians at sample index 0
+//   - `phi`: the initial normalized carrier phase at sample index 0
 //
 // Returns: the normalized carrier phase wrapped to [0, 1)
-float carrier_phase(float sample_index, float phase_rel_sample, float f, float Fs, float phi)
+float carrier_phase(float sample_index, float f, float Fs, float phi)
 {
-    return fract(f / Fs * (sample_index + phase_rel_sample) + phi / (2.0 * PI));
+    float fn = fract(f / max(Fs, EPS));
+    float N = 1.0 / max(fn, EPS);
+
+    return fract((sample_index - N * floor(sample_index / N)) * fn + phi);
 }

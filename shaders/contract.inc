@@ -257,19 +257,11 @@ float contract_h_frequency(
 // modulation path. This is a timebase reference for downstream reconstruction,
 // not a command to move the packed data grid in `frameh.slang`.
 float contract_initial_field_phase_frac(
-    uint frame_count,
-    vec2 original_size,
-    float original_fps,
-    float v_freq_mode,
-    float custom_v_freq,
-    float sc_freq_mode,
-    float sc_freq_custom_mhz,
-    float pixel_clock_mode,
-    float pixel_clock_mhz,
-    float h_freq_mode,
-    float h_freq_custom_khz,
-    float h_blank_fuzz,
-    float shorten_odd_field_time,
+    vec2 original_size, float original_fps, uint frame_count,
+    float pixel_clock_mode, float pixel_clock_mhz,
+    float sc_freq_mode, float sc_freq_custom_mhz,
+    float h_freq_mode, float h_freq_custom_khz,
+    float v_freq_mode, float custom_v_freq,
     float phase_zero)
 {
     float sc_freq_hz;
@@ -278,6 +270,8 @@ float contract_initial_field_phase_frac(
 
     float pixel_clock_hz = compute_pixel_clock(pixel_clock_mode, pixel_clock_mhz, sc_freq_hz);
     float h_freq_hz = compute_h_freq(h_freq_mode, standard, h_freq_custom_khz, pixel_clock_hz, original_fps);
+
+    float frame_width = round(pixel_clock_hz / max(h_freq_hz, EPS));
 
     float v_lines_per_field;
     float v_lines_per_frame;
@@ -292,41 +286,9 @@ float contract_initial_field_phase_frac(
         v_lines_per_frame,
         is_interlaced);
 
-    bool detected_interlaced;
-    bool is_ntsc;
-    bool is_pal;
-    detect_scan_mode(
-        original_size.y,
-        v_lines_per_field,
-        original_fps,
-        detected_interlaced,
-        is_ntsc,
-        is_pal);
+    double data_length_fract = fract(frame_width * v_lines_per_field);
 
-    float total_pixels;
-    float pixel_time;
-    compute_h_timing(
-        pixel_clock_hz,
-        h_freq_hz,
-        h_blank_fuzz,
-        original_size.x,
-        total_pixels,
-        pixel_time);
-
-    float field = float(frame_count);
-    float cycles_per_field = v_lines_per_field * pixel_clock_hz / max(h_freq_hz, EPS);
-    float odd_field_adjust = compute_odd_field_time_adjustment(
-        field,
-        shorten_odd_field_time,
-        pixel_time,
-        original_size.x,
-        is_ntsc,
-        is_interlaced);
-    float odd_cycles = odd_field_adjust * pixel_clock_hz;
-
-    return fract(phase_zero / 360.0
-        + fract(field * fract(cycles_per_field))
-        + fract(odd_cycles));
+    return float(fract(double(frame_count) * data_length_fract + double(phase_zero) / 360.0lf));
 }
 
 // Returns the starting color-subcarrier phase offset for the current field.
@@ -335,18 +297,11 @@ float contract_initial_field_phase_frac(
 // above, this value is for downstream carrier reconstruction rather than
 // storage-grid placement.
 float contract_initial_subcarrier_phase_frac(
-    uint frame_count,
-    vec2 original_size,
-    float original_fps,
-    float v_freq_mode,
-    float custom_v_freq,
-    float sc_freq_mode,
-    float sc_freq_custom_mhz,
-    float pixel_clock_mode,
-    float pixel_clock_mhz,
-    float h_freq_mode,
-    float h_freq_custom_khz,
-    float h_blank_fuzz,
+    vec2 original_size, float original_fps, uint frame_count,
+    float pixel_clock_mode, float pixel_clock_mhz,
+    float sc_freq_mode, float sc_freq_custom_mhz,
+    float h_freq_mode, float h_freq_custom_khz,
+    float v_freq_mode, float custom_v_freq,
     float shorten_odd_field_time,
     float phase_zero)
 {
@@ -356,6 +311,8 @@ float contract_initial_subcarrier_phase_frac(
 
     float pixel_clock_hz = compute_pixel_clock(pixel_clock_mode, pixel_clock_mhz, sc_freq_hz);
     float h_freq_hz = compute_h_freq(h_freq_mode, standard, h_freq_custom_khz, pixel_clock_hz, original_fps);
+
+    float frame_width = round(pixel_clock_hz / max(h_freq_hz, EPS));
 
     float v_lines_per_field;
     float v_lines_per_frame;
@@ -370,42 +327,33 @@ float contract_initial_subcarrier_phase_frac(
         v_lines_per_frame,
         is_interlaced);
 
-    bool detected_interlaced;
-    bool is_ntsc;
-    bool is_pal;
-    detect_scan_mode(
-        original_size.y,
-        v_lines_per_field,
-        original_fps,
-        detected_interlaced,
-        is_ntsc,
-        is_pal);
+    double data_length = frame_width * v_lines_per_field;
 
-    float total_pixels;
-    float pixel_time;
-    compute_h_timing(
-        pixel_clock_hz,
-        h_freq_hz,
-        h_blank_fuzz,
-        original_size.x,
-        total_pixels,
-        pixel_time);
+    if (shorten_odd_field_time > 0.5) {
+        // With odd-field timing adjustment, the field length alternates between two integer values.
+        if (standard == 0) {
+            if (!is_interlaced) {
+                double sc_cycles_per_frame_fract = fract((2.0lf * data_length - 4.0lf) * (double(sc_freq_hz) / double(pixel_clock_hz)));
+                double sc_cycles_per_even_field_fract = fract(data_length * (double(sc_freq_hz) / double(pixel_clock_hz)));
 
-    float field = float(frame_count);
-    float cycles_per_field = v_lines_per_field * sc_freq_hz / max(h_freq_hz, EPS);
-    float odd_field_adjust = compute_odd_field_time_adjustment(
-        field,
-        shorten_odd_field_time,
-        pixel_time,
-        original_size.x,
-        is_ntsc,
-        is_interlaced);
-    float odd_cycles = odd_field_adjust * sc_freq_hz;
+                return float(fract(fract(double(frame_count / 2u) * sc_cycles_per_frame_fract)
+                    + double(frame_count % 2u) * sc_cycles_per_even_field_fract
+                    + double(phase_zero) / 360.0lf));
+            }
+        } else {
+            if (is_interlaced) {
+                double sc_cycles_per_frame_fract = fract((2.0lf * data_length + 4.0lf) * (double(sc_freq_hz) / double(pixel_clock_hz)));
+                double sc_cycles_per_even_field_fract = fract(data_length * (double(sc_freq_hz) / double(pixel_clock_hz)));
 
-    float cycles_per_field_q = floor(fract(cycles_per_field) * 12.0 + 0.5) / 12.0;
-    float odd_cycles_q = floor(fract(odd_cycles) * 12.0 + 0.5) / 12.0;
+                return float(fract(fract(double(frame_count / 2u) * sc_cycles_per_frame_fract)
+                    + double(frame_count % 2u) * sc_cycles_per_even_field_fract
+                    + double(phase_zero) / 360.0lf));
+            }
+        }
+    }
 
-    return fract(phase_zero / 360.0 + fract(field * cycles_per_field_q + odd_cycles_q));
+    double sc_cycles_per_field_fract = fract(data_length * (double(sc_freq_hz) / double(pixel_clock_hz)));
+    return float(fract(double(frame_count) * sc_cycles_per_field_fract + double(phase_zero) / 360.0lf));
 }
 
 // Returns 1.0 for interlaced timings and 0.0 otherwise.
@@ -539,14 +487,6 @@ float contract_output_sample_rate(
         round(base_frame_width * max(output_requested, EPS) / fs_original));
 
     return fs_original * output_width / base_frame_width;
-}
-
-// Returns the local fractional sample position for a packed 2D grid location.
-// This is purely a storage-grid coordinate and intentionally excludes any
-// field/subcarrier timebase phase.
-float contract_phase_rel_sample(float sample_x, float sample_y, float frame_width)
-{
-    return fract(sample_y * frame_width + sample_x);
 }
 
 // Returns the pixel clock in Hz for the selected timing configuration.

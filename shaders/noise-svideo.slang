@@ -561,7 +561,6 @@ vec2 compute_ground_bounce_shape(
     float fundamental_hz = ground_bounce_harmonic * state.h_freq_hz;
     float fundamental_cycles = carrier_phase(
         sample_index,
-        phase_rel_sample,
         fundamental_hz,
         state.fs_current,
         0.0

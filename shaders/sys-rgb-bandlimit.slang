@@ -328,15 +328,13 @@ void main()
     float frac_offset = input_sample_pos - input_pos_floor;
     float input_data_limit = max(InputDataLength - 1.0, 0.0);
 
-    float phase_rel_sample = contract_phase_rel_sample(output_x, output_y, OutputFrameWidth);
-
     vec3 color = vec3(0.0);
 
 #ifdef OPTION_DEBUG
     if (SYS_RGB_BANDLIMIT_BYPASS > 0.5) {
         float sample_index = clamp(floor(input_sample_pos + 0.5), 0.0, input_data_limit);
         vec3 rgb = fetch_input_sample(sample_index, InputFrameWidth, input_data_limit);
-        FragColor = vec4(rgb, phase_rel_sample);
+        FragColor = vec4(rgb, 1.0);
         return;
     }
 #endif  // OPTION_DEBUG
@@ -344,7 +342,7 @@ void main()
 #ifdef OPTION_CRISPY
     float sample_index = clamp(floor(input_sample_pos + 0.5), 0.0, input_data_limit);
     vec3 rgb = fetch_input_sample(sample_index, InputFrameWidth, input_data_limit);
-    FragColor = vec4(rgb, phase_rel_sample);
+    FragColor = vec4(rgb, 1.0);
     return;
 #endif  // OPTION_CRISPY
 
@@ -382,5 +380,5 @@ void main()
         color /= max(gain, EPS);
     }
 
-    FragColor = vec4(color, phase_rel_sample);
+    FragColor = vec4(color, 1.0);
 }

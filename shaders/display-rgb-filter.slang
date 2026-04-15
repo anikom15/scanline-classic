@@ -339,7 +339,6 @@ void main()
     int input_index_int = int(input_pos_floor);
     float frac_offset = input_sample_pos - input_pos_floor;
     float input_data_limit = max(InputDataLength - 1.0, 0.0);
-    // float phase_rel_sample = contract_phase_rel_sample(deskewed_output_x, output_y, OutputFrameWidth);
 
     vec3 color = vec3(0.0);
 
@@ -403,5 +402,5 @@ void main()
         color.r = 0.0;
     }
 
-    FragColor = vec4(color, 1.0);  // Alpha channel indicates no further time-based DSP
+    FragColor = vec4(color, 1.0);
 }

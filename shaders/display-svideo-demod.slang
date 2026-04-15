@@ -121,12 +121,13 @@ void main()
     vTexCoord = TexCoord;
 
     InitialSubcarrierPhaseFrac = contract_initial_subcarrier_phase_frac(
-        config.FrameCount, config.OriginalSize.xy, config.OriginalFPS,
-        V_FREQ_MODE, V_FREQ,
-        SC_FREQ_MODE, SC_FREQ,
+        config.OriginalSize.xy, config.OriginalFPS, config.FrameCount,
         PIXEL_CLOCK_MODE, PIXEL_CLOCK,
-        H_FREQ_MODE, H_FREQ, H_BLANK_FUZZ,
-        SHORTEN_ODD_FIELD_TIME, PHASE_ZERO
+        SC_FREQ_MODE, SC_FREQ,
+        H_FREQ_MODE, H_FREQ,
+        V_FREQ_MODE, V_FREQ,
+        SHORTEN_ODD_FIELD_TIME,
+        PHASE_ZERO
     );
 
     FrameWidth = contract_working_frame_width(
@@ -196,12 +197,11 @@ void main()
         return;
     }
 
-    vec4 yca = fetch_input_sample(Source, config.OutputSize.xy, sample_index, FrameWidth, DataLength - 1.0);
+    vec2 yc = fetch_input_sample(Source, config.OutputSize.xy, sample_index, FrameWidth, DataLength - 1.0).rg;
 
     // Demodulate chroma from real subcarrier
     float phase = 2.0 * PI * carrier_phase(
         sample_index,
-        yca.a,
         Fsc, Fs, InitialSubcarrierPhaseFrac
     );
 
@@ -212,10 +212,10 @@ void main()
     float c_phase = PI * USER_TINT / 180.0;
 
     vec3 ypbpr = vec3(
-        mix(yca.r, (yca.r - 0.075) / 0.925, DECODER_SETUP),
-        mix(1.0, 1.0 / 0.925, DECODER_SETUP) * 2.0 * yca.g * sin(phase + c_phase) * c_gain,
-        mix(1.0, 1.0 / 0.925, DECODER_SETUP) * 2.0 * yca.g * cos(phase + c_phase) * pal_v_sign * c_gain
+        mix(yc.r, (yc.r - 0.075) / 0.925, DECODER_SETUP),
+        mix(1.0, 1.0 / 0.925, DECODER_SETUP) * 2.0 * yc.g * sin(phase + c_phase) * c_gain,
+        mix(1.0, 1.0 / 0.925, DECODER_SETUP) * 2.0 * yc.g * cos(phase + c_phase) * pal_v_sign * c_gain
     );
 
-    FragColor = vec4(ypbpr, yca.a);
+    FragColor = vec4(ypbpr, 1.0);
 }

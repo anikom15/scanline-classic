@@ -231,8 +231,6 @@ void compute_v_lines_per_field(
     float interlace_ratio = original_height / raw_v_lines_per_field;
     is_interlaced = (interlace_ratio > 1.5);
 
-    v_lines_per_frame = raw_v_lines_per_field * 2.0 + 2.0;
-
     float adjusted_v_lines_per_field = raw_v_lines_per_field;
     if (is_interlaced) {
         if (raw_v_lines_per_field < 262.5) {
@@ -243,6 +241,7 @@ void compute_v_lines_per_field(
     }
 
     v_lines_per_field = adjusted_v_lines_per_field;
+    v_lines_per_frame = adjusted_v_lines_per_field * 2.0;
 }
 
 // Detect interlacing and video standard type

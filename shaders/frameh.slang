@@ -112,7 +112,6 @@ layout(location = 0) out vec2 vTexCoord;
 layout(location = 1) flat out float FrameWidth;
 layout(location = 2) flat out float FrameHeight;
 layout(location = 3) flat out float FS_ORIGINAL;
-layout(location = 4) flat out float InitalFieldPhaseFrac;
 layout(location = 5) flat out float FullFrameHeight;
 layout(location = 6) flat out float IsInterlaced;
 layout(location = 7) flat out float Field;
@@ -197,22 +196,6 @@ void main()
         H_FREQ);
 
     Field = contract_field(FieldCount);
-
-    InitalFieldPhaseFrac = contract_initial_field_phase_frac(
-        FieldCount,
-        config.OriginalSize.xy,
-        config.OriginalFPS,
-        V_FREQ_MODE,
-        V_FREQ,
-        SC_FREQ_MODE,
-        SC_FREQ,
-        PIXEL_CLOCK_MODE,
-        PIXEL_CLOCK,
-        H_FREQ_MODE,
-        H_FREQ,
-        H_BLANK_FUZZ,
-        SHORTEN_ODD_FIELD_TIME,
-        PHASE_ZERO);
 }
 
 #pragma stage fragment
@@ -220,7 +203,6 @@ layout(location = 0) in vec2 vTexCoord;
 layout(location = 1) flat in float FrameWidth;
 layout(location = 2) flat in float FrameHeight;
 layout(location = 3) flat in float FS_ORIGINAL;
-layout(location = 4) flat in float InitalFieldPhaseFrac;
 layout(location = 6) flat in float IsInterlaced;
 layout(location = 7) flat in float Field;
 layout(location = 8) flat in float ClocksPerLine;
@@ -236,8 +218,7 @@ float current_field_parity()
 bool sample_maps_to_active_time(
     float output_x,
     float output_y,
-    out vec2 source_sample_pos,
-    out float phase_rel_sample)
+    out vec2 source_sample_pos)
 {
     float frame_height_int = ceil(FrameHeight);
     float field_parity = current_field_parity();
@@ -265,7 +246,6 @@ bool sample_maps_to_active_time(
     // texels are held for `ClockFactor` clocks, while blanking remains at the
     // native 1-clock resolution.
     float source_x = (output_x - active_left - phase_clocks) / clock_factor;
-    phase_rel_sample = fract(source_x);
 
     bool in_active_y = line_index >= active_top && line_index < active_top + active_source_height;
     if (!in_active_y) {
@@ -328,8 +308,7 @@ void main()
     }
 
     vec2 source_sample_pos;
-    float PhaseRelSample;
-    bool in_active = sample_maps_to_active_time(output_x, output_y, source_sample_pos, PhaseRelSample);
+    bool in_active = sample_maps_to_active_time(output_x, output_y, source_sample_pos);
 
     vec3 color = in_active ? sample_active_content(source_sample_pos) : vec3(0.0);
 
@@ -341,5 +320,5 @@ void main()
     }
 #endif  // OPTION_DEBUG
 
-    FragColor = vec4(color, PhaseRelSample);
+    FragColor = vec4(color, 1.0);
 }

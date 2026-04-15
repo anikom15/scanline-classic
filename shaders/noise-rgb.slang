@@ -196,21 +196,16 @@ NoiseRGBState compute_noise_state()
         PIXEL_CLOCK_MODE, PIXEL_CLOCK,
         H_FREQ_MODE, H_FREQ
     );
+
     state.initial_subcarrier_phase_frac = contract_initial_subcarrier_phase_frac(
-        config.FrameCount,
-        config.OriginalSize.xy,
-        config.OriginalFPS,
-        V_FREQ_MODE,
-        V_FREQ,
-        SC_FREQ_MODE,
-        SC_FREQ,
-        PIXEL_CLOCK_MODE,
-        PIXEL_CLOCK,
-        H_FREQ_MODE,
-        H_FREQ,
-        H_BLANK_FUZZ,
+        config.OriginalSize.xy, config.OriginalFPS, config.FrameCount,
+        PIXEL_CLOCK_MODE, PIXEL_CLOCK,
+        SC_FREQ_MODE, SC_FREQ,
+        H_FREQ_MODE, H_FREQ,
+        V_FREQ_MODE, V_FREQ,
         SHORTEN_ODD_FIELD_TIME,
-        PHASE_ZERO);
+        PHASE_ZERO
+    );
     state.sc_freq_hz = contract_subcarrier_freq_hz(
         config.OriginalFPS,
         SC_FREQ_MODE, SC_FREQ
@@ -376,7 +371,6 @@ float equal_energy_subcarrier_drive(float sample_index, float phase_rel_sample, 
 
     float phase = carrier_phase(
         sample_index,
-        phase_rel_sample,
         state.sc_freq_hz,
         state.fs_current,
         state.initial_subcarrier_phase_frac
@@ -642,7 +636,6 @@ vec3 compute_ground_bounce_shape(
     float fundamental_hz = ground_bounce_harmonic * state.h_freq_hz;
     float fundamental_cycles = carrier_phase(
         sample_index,
-        phase_rel_sample,
         fundamental_hz,
         state.fs_current,
         0.0

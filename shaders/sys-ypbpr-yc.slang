@@ -27,7 +27,7 @@
 // contract frequency and phase and optionally sums the result.
 
 #pragma name SysYPbPrYC
-#pragma format R16G16B16A16_SFLOAT
+#pragma format R16G16_SFLOAT
 
 #include "common.inc"
 #include "contract.inc"
@@ -117,12 +117,13 @@ void main()
     vTexCoord = TexCoord;
 
     InitialSubcarrierPhaseFrac = contract_initial_subcarrier_phase_frac(
-        config.FrameCount, config.OriginalSize.xy, config.OriginalFPS,
-        V_FREQ_MODE, V_FREQ,
-        SC_FREQ_MODE, SC_FREQ,
+        config.OriginalSize.xy, config.OriginalFPS, config.FrameCount,
         PIXEL_CLOCK_MODE, PIXEL_CLOCK,
-        H_FREQ_MODE, H_FREQ, H_BLANK_FUZZ,
-        SHORTEN_ODD_FIELD_TIME, PHASE_ZERO
+        SC_FREQ_MODE, SC_FREQ,
+        H_FREQ_MODE, H_FREQ,
+        V_FREQ_MODE, V_FREQ,
+        SHORTEN_ODD_FIELD_TIME,
+        PHASE_ZERO
     );
 
     FrameWidth = contract_working_frame_width(
@@ -192,25 +193,23 @@ void main()
         return;
     }
 
-    vec4 ypbpra = fetch_input_sample(Source, config.OutputSize.xy, sample_index, FrameWidth, DataLength - 1.0);
+    vec3 ypbpr = fetch_input_sample(Source, config.OutputSize.xy, sample_index, FrameWidth, DataLength - 1.0).rgb;
 
     // Modulate chroma on real subcarrier
     float phase = 2.0 * PI * carrier_phase(
         sample_index,
-        ypbpra.a,
         Fsc, Fs, InitialSubcarrierPhaseFrac
     );
 
     // PAL V-axis alternation: simply invert V on odd lines
     float pal_v_sign = 1.0 - 2.0 * floor(mod(sample_y, 2.0)) * PAL;
 
-    vec3 yc = vec3(
-        mix(ypbpra.r, 0.925 * (ypbpra.r + 0.075), ENCODER_SETUP),
-        dot(mix(1.0, 0.925, ENCODER_SETUP) * ypbpra.gb,
-        vec2(sin(phase), pal_v_sign * cos(phase))),
-        0.0
+    vec2 yc = vec2(
+        mix(ypbpr.r, 0.925 * (ypbpr.r + 0.075), ENCODER_SETUP),
+        dot(mix(1.0, 0.925, ENCODER_SETUP) * ypbpr.gb,
+        vec2(sin(phase), pal_v_sign * cos(phase)))
     );
-    vec3 cv = vec3(yc.r + yc.g, 0.0, 0.0);
+    vec2 cv = vec2(yc.r + yc.g, 0.0);
 
-    FragColor = vec4(mix(cv, yc, SVIDEO), ypbpra.a);
+    FragColor = vec4(mix(cv, yc, SVIDEO), 0.0, 1.0);
 }
