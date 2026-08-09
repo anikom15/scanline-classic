@@ -6,9 +6,8 @@
   "pipeline_root" : "../../pipelines",
   "pipelines" : [
     "misc/menu.json",
-    "misc/frame-tv525.json",
     "sys/rgb.json",
-    "disp/crt.json",
+    "disp/crt-rgb-sd.json",
     "misc/post.json"
   ],
   "parameter_root" : "../../params",
@@ -17,7 +16,7 @@
     "sys/md/ntsc.json",
     "disp/ntscj.json",
     "disp/arcade-tvstyle.json",
-    "disp/tvl-400.json"
+    "disp/tvl-a-340.json"
   ],
   "parameter_overrides" : {
   }

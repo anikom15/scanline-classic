@@ -17,7 +17,7 @@
     "sys/psx/pal.json",
     "disp/palplus.json",
     "disp/tv-palplus.json",
-    "disp/tvl-800.json"
+    "disp/tvl-a-680.json"
   ],
   "parameter_overrides" : {
   }

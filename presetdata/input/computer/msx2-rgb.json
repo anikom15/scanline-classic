@@ -15,8 +15,8 @@
         "sys/msx2/base.json",
         "sys/msx2/ntsc.json",
         "disp/ntscj.json",
-        "disp/monitor-workstation-cga-msxarfix.json",
-        "disp/tvl-450-monitor.json"
+        "disp/monitor-workstation-msxarfix.json",
+        "disp/tvl-m-450.json"
     ],
     "parameter_overrides" : {
     }

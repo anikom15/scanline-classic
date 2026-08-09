@@ -17,7 +17,7 @@
     "sys/md/palm.json",
     "disp/palm.json",
     "disp/trinitron.json",
-    "disp/tvl-600.json"
+    "disp/tvl-m-600.json"
   ],
   "parameter_overrides" : {
   }

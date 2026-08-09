@@ -17,7 +17,7 @@
     "disp/ntsc.json",
     "disp/tv.json",
     "disp/consumer-color-ntsc.json",
-    "disp/tvl-450.json"
+    "disp/tvl-a-340.json"
   ],
   "parameter_overrides" : {
   }

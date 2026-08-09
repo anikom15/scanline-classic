@@ -11,13 +11,14 @@
   ],
   "parameter_root" : "../../params",
   "parameter_sets" : [
-    "sys/famicom/famicom-av.json",
+    "sys/famicom/base.json",
+    "sys/famicom/av.json",
     "sys/sfc/base.json",
     "sys/sfc/pal.json",
     "misc/rf-palg.json",
     "disp/pal.json",
     "disp/trinitron.json",
-    "disp/tvl-400.json"
+    "disp/tvl-m-400.json"
   ],
   "parameter_overrides" : {
   }

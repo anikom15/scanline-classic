@@ -14,3 +14,7 @@
 #pragma parameter PHASE_ZERO "Initial phase offset (°) " 0.0 0.0 360.0 1.0
 #pragma parameter FIELD_ODD "Odd / even field select (0 = even, 1 = odd)" 0.0 0.0 1.0 1.0
 #pragma parameter SHORTEN_ODD_FIELD_TIME "NES/SNES field time adjust (off, on)" 0.0 0.0 1.0 1.0
+
+#pragma parameter BLANKING_COLOR_R "Frame blank color R" 0.0 0.0 1.0 0.01
+#pragma parameter BLANKING_COLOR_G "Frame blank color G" 0.0 0.0 1.0 0.01
+#pragma parameter BLANKING_COLOR_B "Frame blank color B" 0.0 0.0 1.0 0.01

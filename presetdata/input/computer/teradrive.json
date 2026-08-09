@@ -6,18 +6,18 @@
   "pipeline_root" : "../../pipelines",
   "pipelines" : [
     "misc/menu.json",
-    "misc/frame-tv525.json",
     "sys/rgb.json",
-    "disp/crt.json",
+    "disp/crt-rgb-vga.json",
     "misc/post.json"
   ],
   "parameter_root" : "../../params",
   "parameter_sets" : [
     "sys/md/base.json",
     "sys/md/ntsc.json",
-    "disp/hdtv.json",
-    "disp/monitor-workstation-vga.json",
-    "disp/tvl-420.json"
+    "disp/vga.json",
+    "disp/ntscj.json",
+    "disp/monitor-workstation.json",
+    "disp/tvl-m-600.json"
   ],
   "parameter_overrides" : {
   }

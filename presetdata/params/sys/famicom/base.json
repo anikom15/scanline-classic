@@ -1,0 +1,7 @@
+{
+    "parameters" : {
+        "BLANKING_COLOR_R" : 0.8666666666666667,
+        "BLANKING_COLOR_G" : 0.3333333333333333,
+        "BLANKING_COLOR_B" : 0.0
+    }
+}

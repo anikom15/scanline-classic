@@ -1,0 +1,31 @@
+{
+    "root_path" : "../../../shaders",
+    "shaders" : {
+        "limiter" : "limiter",
+        "input" : "display-rgb-filter",
+        "amp" : "display-rgb-amp",
+        "linear" : "crt-linear",
+        "frame" : "framev",
+        "phosphor" : "phosphor-trichrome",
+        "beam" : "beam",
+        "mask" : "mask",
+        "curve" : "curve"
+    },
+    "options" : {
+        "input" : {
+            "scale_type" : ["absolute", "source"],
+            "scale" : [2048, 1.0]
+        },
+        "frame" : {
+            "scale_type" : ["source", "absolute"],
+            "scale" : [1.0, 626.0]
+        },
+        "beam" : {
+            "scale_type" : ["viewport"],
+            "filter_linear" : true
+        },
+        "curve" : {
+            "filter_linear" : true
+        }
+    }
+}

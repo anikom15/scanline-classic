@@ -4,6 +4,7 @@
         "SYS_FILTER_DECIMATION" : 2.0,
 
         "SYS_YC_FILTER_TYPE" : 1.0,
+        "SYS_BANDWIDTH_C" : 2.6,
 
         "COLOR_FILTER_MODE" : 0.0,
 

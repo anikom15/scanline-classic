@@ -13,12 +13,13 @@
   "parameter_sets" : [
     "sys/sfc/base.json",
     "sys/sfc/pal.json",
-    "sys/famicom/famicom-av.json",
+    "sys/famicom/base.json",
+    "sys/famicom/av.json",
     "misc/rf-palg.json",
     "disp/pal.json",
     "disp/tv.json",
     "disp/consumer-color-pal.json",
-    "disp/tvl-300.json"
+    "disp/tvl-a-300.json"
   ],
   "parameter_overrides" : {
   }

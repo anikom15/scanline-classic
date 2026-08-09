@@ -1,0 +1,10 @@
+{
+    "parameters" : {
+        "RGB_NOISE_PRESET" : 1.0,
+
+        "DISPLAY_CUTOFF" : 12.0,
+        "DISPLAY_STOPBAND" : 15.0,
+
+        "DSP_OUTPUT_FS" : 30.0
+    }
+}

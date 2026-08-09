@@ -1,0 +1,8 @@
+{
+    "parameters" : {
+        "DISPLAY_CUTOFF" : 10.0,
+        "DISPLAY_STOPBAND" : 12.5,
+
+        "DSP_OUTPUT_FS" : 25.0
+    }
+}

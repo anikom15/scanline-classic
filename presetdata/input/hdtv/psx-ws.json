@@ -17,7 +17,7 @@
     "sys/psx/ntscj.json",
     "disp/hdtv.json",
     "disp/trinitron-hv-stretch.json",
-    "disp/tvl-800.json"
+    "disp/tvl-a-680.json"
   ],
   "parameter_overrides" : {
   }

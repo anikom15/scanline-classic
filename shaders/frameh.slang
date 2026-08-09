@@ -36,7 +36,6 @@
 #include "common.inc"
 #include "contract.inc"
 
-#include "menus/parameters/scanraster.inc"
 #include "menus/parameters/sys-timing.inc"
 
 #pragma include_optional "../config/options.cfg"
@@ -66,10 +65,11 @@ layout(push_constant) uniform Push
     float H_FREQ;
     float H_BLANK_FUZZ;
     float SHORTEN_ODD_FIELD_TIME;
-    float SCANLINE_BLANK_WEIGHT;
     float PHASE_ZERO;
     float FIELD_ODD;
-
+    float BLANKING_COLOR_R;
+    float BLANKING_COLOR_G;
+    float BLANKING_COLOR_B;
 
 #ifdef OPTION_DEBUG
     float FRAME_VIZ_ACTIVE;
@@ -99,6 +99,8 @@ layout(push_constant) uniform Push
 #define SHORTEN_ODD_FIELD_TIME config.SHORTEN_ODD_FIELD_TIME
 #define PHASE_ZERO config.PHASE_ZERO
 #define FIELD_ODD config.FIELD_ODD
+
+#define BLANKING_COLOR vec3(config.BLANKING_COLOR_R, config.BLANKING_COLOR_G, config.BLANKING_COLOR_B)
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
@@ -269,7 +271,7 @@ vec3 fetch_source_sample(float source_x, float source_y)
 {
     if (source_x < 0.0 || source_x >= config.SourceSize.x ||
         source_y < 0.0 || source_y >= config.SourceSize.y) {
-        return vec3(0.0);
+        return BLANKING_COLOR;
     }
 
     vec2 texel = vec2(source_x + 0.5, source_y + 0.5) * config.SourceSize.zw;
@@ -310,7 +312,7 @@ void main()
     vec2 source_sample_pos;
     bool in_active = sample_maps_to_active_time(output_x, output_y, source_sample_pos);
 
-    vec3 color = in_active ? sample_active_content(source_sample_pos) : vec3(0.0);
+    vec3 color = in_active ? sample_active_content(source_sample_pos) : BLANKING_COLOR;
 
 #ifdef OPTION_DEBUG
     if (!in_active && in_frame && FRAME_VIZ_BLANKING > 0.5) {

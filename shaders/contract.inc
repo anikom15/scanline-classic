@@ -31,6 +31,63 @@
 
 #include "modulation.inc"
 
+// Returns the output sample rate and width needed for an HD anti-aliasing filter.
+// The estimated output depends on the display type:
+//   - EDTV: up to 1262 samples per line, 19.71 MHz output rate
+//   - Hi-Vision: up to 3212 samples per line, 108.405 MHz output rate
+//   - Standard HDTV: up to 3212 samples per line, 108.405 MHz output rate
+//   - Progressive-only HDTV: up to 3212 samples per line, 216.81 MHz output rate
+//   - Full HDTV: up to 3212 samples per line, 216.81 MHz output rate
+//
+// The actual sample rate will vary to align with an integral line width.
+vec2 contract_auto_hd_aa_fs_spl(
+    vec2 original_size,
+    float original_fps,
+    float sc_freq_mode,
+    float sc_freq_custom_mhz,
+    float pixel_clock_mode,
+    float pixel_clock_mhz,
+    float h_freq_mode,
+    float h_freq_custom_khz,
+    float v_freq_mode,
+    float v_freq_custom_hz,
+    float hd_display_type)
+{
+    float sc_freq_hz;
+    int standard;
+    compute_subcarrier_freq(sc_freq_mode, sc_freq_custom_mhz, original_fps, sc_freq_hz, standard);
+
+    float pixel_clock_hz = compute_pixel_clock(pixel_clock_mode, pixel_clock_mhz, sc_freq_hz);
+    float h_freq_hz = compute_h_freq(h_freq_mode, standard, h_freq_custom_khz, pixel_clock_hz, original_fps);
+
+    float v_lines_per_field;
+    float v_lines_per_frame;
+    bool is_interlaced;
+
+    compute_v_lines_per_field(
+        v_freq_mode, standard, v_freq_custom_hz, original_fps, original_size.y,
+        v_lines_per_field, v_lines_per_frame, is_interlaced
+    );
+
+    float v_freq_hz = compute_v_freq(v_freq_mode, h_freq_hz, v_lines_per_field, v_freq_custom_hz);
+    float target_sample_rate;
+    float line_width;
+
+    if (hd_display_type < 0.5)
+        target_sample_rate = 19.71e6;  // EDTV
+    else if (hd_display_type < 2.5)
+        target_sample_rate = 108.405e6;  // Hi-Vision and Standard HDTV
+    else
+        target_sample_rate = 216.81e6;  // Progressive-only and Full HDTV
+
+    // Snap sample rate to an integral line width
+    line_width = round(target_sample_rate / h_freq_hz);
+
+    float sample_rate = line_width * h_freq_hz;
+
+    return vec2(sample_rate, line_width);
+}
+
 // Returns the number of stored clock samples that represent one active source pixel.
 float contract_clock_factor(
     float original_width,

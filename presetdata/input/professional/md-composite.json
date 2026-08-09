@@ -17,7 +17,7 @@
     "sys/md/ntsc.json",
     "disp/ntscj.json",
     "disp/trinitron.json",
-    "disp/tvl-600.json"
+    "disp/tvl-m-450.json"
   ],
   "parameter_overrides" : {
   }

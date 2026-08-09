@@ -17,7 +17,7 @@
     "disp/pal.json",
     "disp/tv.json",
     "disp/consumer-color-pal.json",
-    "disp/tvl-450.json"
+    "disp/tvl-a-450.json"
   ],
   "parameter_overrides" : {
   }

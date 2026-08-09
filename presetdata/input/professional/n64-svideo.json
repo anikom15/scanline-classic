@@ -6,18 +6,18 @@
   "pipeline_root" : "../../pipelines",
   "pipelines" : [
     "misc/menu-svideo.json",
-    "misc/frame-tv525.json",
     "sys/rgb-component-yc.json",
-    "disp/crt.json",
+    "disp/crt-svideo-sd.json",
     "misc/post.json"
   ],
   "parameter_root" : "../../params",
   "parameter_sets" : [
     "sys/n64/base.json",
     "sys/n64/ntsc.json",
+    "misc/svideo.json",
     "disp/ntscj.json",
     "disp/trinitron.json",
-    "disp/tvl-600.json"
+    "disp/tvl-m-600.json"
   ],
   "parameter_overrides" : {
   }

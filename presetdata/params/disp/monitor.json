@@ -13,12 +13,6 @@
         "ZOOM": 120.0,
         "BEZEL_ZOOM": 107.0,
         "BEZEL_GAIN" : -12.0,
-        "GLOW_WEIGHT" : 0.33,
-        "DISPLAY_BANDLIMIT_R" : 25.175,
-        "DISPLAY_BANDLIMIT_G" : 25.175,
-        "DISPLAY_BANDLIMIT_B" : 25.175,
-        "DISPLAY_CUTOFF_ATTEN_R" : 19.0,
-        "DISPLAY_CUTOFF_ATTEN_G" : 19.0,
-        "DISPLAY_CUTOFF_ATTEN_B" : 19.0
+        "GLOW_WEIGHT" : 0.50
     }
 }
