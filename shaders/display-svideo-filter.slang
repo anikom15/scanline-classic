@@ -53,6 +53,7 @@
 #pragma parameter DEBUG_DISPLAY_SVIDEO_FILTER_HEADER " —— Debug Display S-Video Filter —— " 0.0 0.0 0.0 0.0
 #pragma parameter DISPLAY_COMPONENT_BYPASS "Bypass display S-Video stage" 0.0 0.0 1.0 1.0
 #pragma parameter DISPLAY_COMPONENT_FILTER_BYPASS "Bypass display S-Video filter" 0.0 0.0 1.0 1.0
+#pragma parameter DESKEW_BYPASS "Bypass integrated deskew" 0.0 0.0 1.0 1.0
 #endif  // OPTION_DEBUG
 
 #define SVIDEO_INPUT

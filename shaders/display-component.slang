@@ -53,6 +53,7 @@
 #pragma parameter DEBUG_DISPLAY_COMPONENT_HEADER " —— Debug Display Component —— " 0.0 0.0 0.0 0.0
 #pragma parameter DISPLAY_COMPONENT_BYPASS "Bypass display component stage" 0.0 0.0 1.0 1.0
 #pragma parameter DISPLAY_COMPONENT_FILTER_BYPASS "Bypass display component filter" 0.0 0.0 1.0 1.0
+#pragma parameter DESKEW_BYPASS "Bypass integrated deskew" 0.0 0.0 1.0 1.0
 #endif  // OPTION_DEBUG
 
 #define COMPONENT_INPUT

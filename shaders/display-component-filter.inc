@@ -88,6 +88,7 @@ layout(std140, set = 0, binding = 0) uniform UBO
 #ifdef OPTION_DEBUG
     float DISPLAY_COMPONENT_FILTER_BYPASS;
     float DISPLAY_COMPONENT_BYPASS;
+    float DESKEW_BYPASS;
 #endif  // OPTION_DEBUG
 
 } global;
@@ -95,6 +96,7 @@ layout(std140, set = 0, binding = 0) uniform UBO
 #ifdef OPTION_DEBUG
 #define DISPLAY_COMPONENT_FILTER_BYPASS global.DISPLAY_COMPONENT_FILTER_BYPASS
 #define DISPLAY_COMPONENT_BYPASS global.DISPLAY_COMPONENT_BYPASS
+#define DESKEW_BYPASS global.DESKEW_BYPASS
 #endif  // OPTION_DEBUG
 
 #define DISPLAY_STOPBAND_C global.DISPLAY_STOPBAND_C
@@ -168,11 +170,41 @@ layout(location = 14) flat out float InputFrameWidth;
 layout(location = 15) flat out float OutputFrameWidth;
 layout(location = 16) flat out vec3 ypbprGain;
 layout(location = 17) flat out vec3 ypbprBias;
+layout(location = 18) flat out float DeskewSampleRatio;
+layout(location = 19) flat out float LineCarryClocksOut;
+layout(location = 20) flat out float ClockFactorOut;
 
 void main()
 {
     gl_Position = global.MVP * Position;
     vTexCoord = TexCoord;
+
+    float fs_original = contract_fs_original(
+        config.OriginalFPS,
+        SC_FREQ_MODE,
+        SC_FREQ,
+        PIXEL_CLOCK_MODE,
+        PIXEL_CLOCK);
+    float LineCarryClocks = contract_line_carry_clocks(
+        config.OriginalSize.xy,
+        config.OriginalFPS,
+        SC_FREQ_MODE,
+        SC_FREQ,
+        PIXEL_CLOCK_MODE,
+        PIXEL_CLOCK,
+        H_FREQ_MODE,
+        H_FREQ,
+        H_BLANK_FUZZ);
+    float ClockFactor = contract_clock_factor(
+        config.OriginalSize.x,
+        config.OriginalFPS,
+        SC_FREQ_MODE,
+        SC_FREQ,
+        PIXEL_CLOCK_MODE,
+        PIXEL_CLOCK,
+        H_FREQ_MODE,
+        H_FREQ,
+        H_BLANK_FUZZ);
 
     OutputFrameHeight = contract_frame_height(
         config.OriginalSize.xy,
@@ -221,6 +253,10 @@ void main()
         DSP_WORKING_FS,
         DSP_OUTPUT_FS);
 
+    DeskewSampleRatio = OutputSampleRate / max(fs_original, EPS);
+    LineCarryClocksOut = LineCarryClocks;
+    ClockFactorOut = ClockFactor;
+
     yfilt = design_kaiser_filter(DISPLAY_CUTOFF_Y, DISPLAY_STOPBAND_Y, OutputSampleRate);
     cfilt = design_kaiser_filter(DISPLAY_CUTOFF_C, DISPLAY_STOPBAND_C, OutputSampleRate);
 
@@ -246,8 +282,26 @@ layout(location = 14) flat in float InputFrameWidth;
 layout(location = 15) flat in float OutputFrameWidth;
 layout(location = 16) flat in vec3 ypbprGain;
 layout(location = 17) flat in vec3 ypbprBias;
+layout(location = 18) flat in float DeskewSampleRatio;
+layout(location = 19) flat in float LineCarryClocksOut;
+layout(location = 20) flat in float ClockFactorOut;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 1) uniform sampler2D Source;
+
+float compute_row_shift_output_samples(int output_y_i)
+{
+    int carry_clocks = int(LineCarryClocksOut);
+    int clock_factor = int(ClockFactorOut);
+    int row_carry_clocks = (clock_factor > 0)
+        ? (output_y_i * carry_clocks) % clock_factor
+        : 0;
+
+#ifdef OPTION_DEBUG
+    return mix(float(row_carry_clocks) * DeskewSampleRatio, 0.0, DESKEW_BYPASS);
+#else
+    return float(row_carry_clocks) * DeskewSampleRatio;
+#endif  // OPTION_DEBUG
+}
 
 void main()
 {
@@ -262,7 +316,10 @@ void main()
         return;
     }
 
-    float field_output_index = output_y * OutputFrameWidth + output_x;
+    float row_shift_output = compute_row_shift_output_samples(output_y_i);
+    float deskewed_output_x = output_x + row_shift_output;
+
+    float field_output_index = output_y * OutputFrameWidth + deskewed_output_x;
     if (field_output_index < 0.0 || field_output_index >= OutputDataLength) {
         FragColor = vec4(0.0);
         return;
