@@ -57,19 +57,22 @@ Controls the presentation of the simulated display on the output display.
 
 ### Tone Mapping
 
-  * TONEMAP_TYPE - Tone map output (off, Reinhard, Neutral, Hable, ACES): Selects a tone mapping technique; Neutral is a good default, while Hable and ACES are stronger filmic options
-
-  * VIEWING_ENVIRONMENT - Viewing environment (dark, dim, bright): HDR only; selects the scene-adaptation environment used by the tone-mapping stage
+Tone-mapping policy is configured globally in `config/options.cfg` using:
+`OPTION_OUTPUT_TONEMAP_TYPE` and `OPTION_OUTPUT_VIEWING_ENVIRONMENT`.
 
 ### Color Correction
 
-  * CHROMATIC_ADAPTATION - Chromatic adaptation (off, LBrad, Z-L, Brad): Selects the technique for translating the source white point to the display white point; Linear Bradford or Zhang-Li is generally recommended
+Output-adaptation policy is configured globally in `config/options.cfg` using:
 
-  * ADAPTATION_LEVEL - Adaptation Level (Z-L only): Controls how strongly the Zhang-Li adaptation model is applied; only used when Z-L is selected above
+  * OPTION_OUTPUT_CHROMATIC_ADAPTATION - Chromatic adaptation (off, LBrad, Z-L, Brad): Selects the technique for translating the source white point to the display white point; Linear Bradford or Zhang-Li is generally recommended
 
-  * GAMUT_COMPRESSION - Gamut mapping (off, basic, Luv, IPT): SDR only; selects the technique for translating out-of-gamut colors to the display gamut; Luv is a good quality default, while off/basic are faster; IPT is an alternative to Luv that better maintains blue hues at the cost of saturation
+  * OPTION_OUTPUT_ADAPTATION_LEVEL - Adaptation Level (Z-L only): Controls how strongly the Zhang-Li adaptation model is applied; only used when Z-L is selected above
 
-  * GAMUT_SELECT - Output gamut (BT.2020, DCI-P3): WCG only; selects the target gamut container for wide-color output presets
+  * OPTION_OUTPUT_GAMUT_COMPRESSION - Gamut mapping (off, basic, Luv, IPT): SDR only; selects the technique for translating out-of-gamut colors to the display gamut; Luv is a good quality default, while off/basic are faster; IPT is an alternative to Luv that better maintains blue hues at the cost of saturation
+
+  * OPTION_OUTPUT_GAMUT_SELECT - Output gamut (BT.709, BT.2020, DCI-P3): Selects the target output gamut container for SDR/WCG operation
+
+  * OPTION_OUTPUT_COLOR_BIT_DEPTH - Output color bit depth (8, 10): Selects SDR output dither target bit depth in the final bezel/output stage
 
 ### Bezel
 

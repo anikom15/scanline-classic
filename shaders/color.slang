@@ -23,10 +23,45 @@
 #include "tools/zebra.inc"
 
 #include "menus/parameters/colorimetry.inc"
-#include "menus/parameters/output-color.inc"
 #include "menus/parameters/user-common.inc"
 
 #pragma include_optional "../config/options.cfg"
+
+#ifdef OPTION_OUTPUT_CHROMATIC_ADAPTATION
+const float OUTPUT_CHROMATIC_ADAPTATION = OPTION_OUTPUT_CHROMATIC_ADAPTATION;
+#else
+const float OUTPUT_CHROMATIC_ADAPTATION = 1.0;
+#endif
+
+#ifdef OPTION_OUTPUT_ADAPTATION_LEVEL
+const float OUTPUT_ADAPTATION_LEVEL = OPTION_OUTPUT_ADAPTATION_LEVEL;
+#else
+const float OUTPUT_ADAPTATION_LEVEL = 1.0;
+#endif
+
+#ifdef OPTION_OUTPUT_TONEMAP_TYPE
+const float OUTPUT_TONEMAP_TYPE = OPTION_OUTPUT_TONEMAP_TYPE;
+#else
+const float OUTPUT_TONEMAP_TYPE = 2.0;
+#endif
+
+#ifdef OPTION_OUTPUT_VIEWING_ENVIRONMENT
+const float OUTPUT_VIEWING_ENVIRONMENT = OPTION_OUTPUT_VIEWING_ENVIRONMENT;
+#else
+const float OUTPUT_VIEWING_ENVIRONMENT = 1.0;
+#endif
+
+#ifdef OPTION_OUTPUT_GAMUT_SELECT
+const float OUTPUT_GAMUT_SELECT = OPTION_OUTPUT_GAMUT_SELECT;
+#else
+const float OUTPUT_GAMUT_SELECT = 0.0;
+#endif
+
+#ifdef OPTION_OUTPUT_GAMUT_COMPRESSION
+const float OUTPUT_GAMUT_COMPRESSION = OPTION_OUTPUT_GAMUT_COMPRESSION;
+#else
+const float OUTPUT_GAMUT_COMPRESSION = 2.0;
+#endif
 
 #ifdef OPTION_DEBUG
 #pragma parameter DEBUG_COLOR_HEADER " —— Debug Color —— " 0.0 0.0 0.0 0.0
@@ -82,13 +117,13 @@ layout(push_constant) uniform Push
 #define B_Y config.B_Y
 #define W_X config.W_X
 #define W_Y config.W_Y
-#define CHROMATIC_ADAPTATION config.CHROMATIC_ADAPTATION
-#define ADAPTATION_LEVEL config.ADAPTATION_LEVEL
+#define CHROMATIC_ADAPTATION OUTPUT_CHROMATIC_ADAPTATION
+#define ADAPTATION_LEVEL OUTPUT_ADAPTATION_LEVEL
 
-#define GAMUT_SELECT config.GAMUT_SELECT
-#define GAMUT_COMPRESSION config.GAMUT_COMPRESSION
-#define VIEWING_ENVIRONMENT config.VIEWING_ENVIRONMENT
-#define TONEMAP_TYPE config.TONEMAP_TYPE
+#define GAMUT_SELECT OUTPUT_GAMUT_SELECT
+#define GAMUT_COMPRESSION OUTPUT_GAMUT_COMPRESSION
+#define VIEWING_ENVIRONMENT OUTPUT_VIEWING_ENVIRONMENT
+#define TONEMAP_TYPE OUTPUT_TONEMAP_TYPE
 #define EnableHDR config.EnableHDR
 
 #ifdef OPTION_DEBUG

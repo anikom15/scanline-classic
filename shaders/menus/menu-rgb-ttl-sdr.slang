@@ -26,7 +26,6 @@
 #include "parameters/user-uncommon.inc"
 #include "parameters/output-curve.inc"
 #include "parameters/output-tonemap-sdr.inc"
-#include "parameters/output-color.inc"
 #include "parameters/output-color-sdr.inc"
 #include "parameters/output-bezel.inc"
 #include "parameters/service-geometry.inc"

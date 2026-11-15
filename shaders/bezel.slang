@@ -27,10 +27,21 @@
 #include "texture.inc"
 
 #include "menus/parameters/factory-geometry.inc"
-#include "menus/parameters/output-color.inc"
 #include "menus/parameters/output-bezel.inc"
 
 #pragma include_optional "../config/options.cfg"
+
+#ifdef OPTION_OUTPUT_GAMUT_SELECT
+const float OUTPUT_GAMUT_SELECT = OPTION_OUTPUT_GAMUT_SELECT;
+#else
+const float OUTPUT_GAMUT_SELECT = 0.0;
+#endif
+
+#ifdef OPTION_OUTPUT_COLOR_BIT_DEPTH
+const float OUTPUT_COLOR_BIT_DEPTH = OPTION_OUTPUT_COLOR_BIT_DEPTH;
+#else
+const float OUTPUT_COLOR_BIT_DEPTH = 0.0;
+#endif
 
 #ifdef OPTION_DEBUG
 #pragma parameter DEBUG_BEZEL_HEADER " —— Debug Bezel —— " 0.0 0.0 0.0 0.0
@@ -116,8 +127,8 @@ const float KEY_THRESH = 0.5;
 
 #define EFFECTIVE_GLOW_RADIUS (GLOW_RADIUS_PERCENT * 0.01)
 
-#define GAMUT_SELECT config.GAMUT_SELECT
-#define COLOR_OUTPUT_BIT_DEPTH config.COLOR_OUTPUT_BIT_DEPTH
+#define GAMUT_SELECT OUTPUT_GAMUT_SELECT
+#define COLOR_OUTPUT_BIT_DEPTH OUTPUT_COLOR_BIT_DEPTH
 
 #ifdef OPTION_DEBUG
 #define DEBUG_GLOW config.DEBUG_GLOW
