@@ -1,6 +1,7 @@
 import argparse
 import concurrent.futures
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -9,7 +10,7 @@ import sys
 ROOT = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(ROOT, 'out')
 PRESETDATA = os.path.join(ROOT, 'presetdata')
-PRESETS_OUT = os.path.join(OUT, 'presets', 'uhd-4k-sdr')
+PRESETS_OUT = os.path.join(OUT, 'presets')
 
 # Files to copy to OUT
 top_files = ['README.md', 'COPYING', 'NEWS']
@@ -97,6 +98,66 @@ def run_presetgen(verbose=False, jobs=1):
                 print(f"Error: presetgen failed for {infile}: {exc}")
                 sys.exit(1)
 
+def normalize_flat_preset_paths(verbose=False):
+    presets_dir = PRESETS_OUT
+    if not os.path.exists(presets_dir):
+        return
+
+    pattern = re.compile(r'\.\.[\\/]\.\.[\\/]\.\.[\\/](shaders|share)')
+    updated_files = 0
+    fixed_scale_type_files = 0
+
+    for root, _, files in os.walk(presets_dir):
+        for name in files:
+            if not name.lower().endswith('.slangp'):
+                continue
+            path = os.path.join(root, name)
+            with open(path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            fixed = pattern.sub(r'..\\..\\\1', content)
+
+            lines = fixed.splitlines()
+            shaders_count = None
+            for line in lines:
+                stripped = line.strip()
+                if stripped.startswith('shaders') and '=' in stripped:
+                    try:
+                        shaders_count = int(stripped.split('=', 1)[1].strip())
+                    except ValueError:
+                        shaders_count = None
+                    break
+
+            removed_last_scale_type = False
+            if shaders_count is not None and shaders_count > 0:
+                last_index = shaders_count - 1
+                remove_keys = {
+                    f"scale_type{last_index}",
+                    f"scale_type_x{last_index}",
+                    f"scale_type_y{last_index}",
+                }
+                filtered_lines = []
+                for line in lines:
+                    if '=' in line:
+                        key = line.split('=', 1)[0].strip()
+                        if key in remove_keys:
+                            removed_last_scale_type = True
+                            continue
+                    filtered_lines.append(line)
+                fixed = '\n'.join(filtered_lines)
+                if content.endswith('\n'):
+                    fixed += '\n'
+
+            if fixed != content:
+                with open(path, 'w', encoding='utf-8') as f:
+                    f.write(fixed)
+                updated_files += 1
+                if removed_last_scale_type:
+                    fixed_scale_type_files += 1
+
+    if verbose and updated_files:
+        print(f"Normalized relative paths in {updated_files} preset file(s).")
+    if verbose and fixed_scale_type_files:
+        print(f"Removed final-pass scale_type entries in {fixed_scale_type_files} preset file(s).")
 
 def run_shader_lint(verbose=False, strict_structure=False):
     python_exec = get_python_executable()
@@ -140,64 +201,7 @@ def main():
 
     prepare_out_folder(verbose=verbose)
     run_presetgen(verbose=verbose, jobs=jobs)
-
-    # Only run generate_wcg_menu.py and generate_wcg_presets.py on the 'out' folder
-    scripts_dir = os.path.join(ROOT, 'scripts')
-    python_exec = get_python_executable()
-
-    def run_script(script_name, extra_args=None):
-        cmd = [python_exec, os.path.join(scripts_dir, script_name)]
-        if verbose:
-            cmd.append('--verbose')
-        cmd.extend(['--jobs', str(jobs)])
-        if extra_args:
-            cmd.extend(extra_args)
-        print(f"Running: {' '.join(str(x) for x in cmd)}")
-        subprocess.run(cmd, check=True)
-
-    menu_tasks = [
-        ('generate_wcg_menu.py', ['--out-dir', OUT]),
-        ('generate_hdr_menu.py', ['--out-dir', OUT]),
-    ]
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=min(jobs, len(menu_tasks))) as executor:
-        futures = {executor.submit(run_script, name, args): name for name, args in menu_tasks}
-        for future in concurrent.futures.as_completed(futures):
-            script_name = futures[future]
-            try:
-                future.result()
-            except Exception as exc:
-                print(f"Error: {script_name} failed: {exc}")
-                sys.exit(1)
-
-    preset_tasks = [
-        ('generate_wcg_presets.py', [
-            '--root-dir', OUT,
-            '--input-dir', os.path.join(OUT, 'presets', 'uhd-4k-sdr'),
-            '--output-dir', os.path.join(OUT, 'presets', 'uhd-4k-wcg')
-        ]),
-        ('generate_hdr_presets.py', [
-            '--root-dir', OUT,
-            '--input-dir', os.path.join(OUT, 'presets', 'uhd-4k-sdr'),
-            '--output-dir', os.path.join(OUT, 'presets', 'uhd-4k-hdr')
-        ]),
-    ]
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=min(jobs, len(preset_tasks))) as executor:
-        futures = {executor.submit(run_script, name, args): name for name, args in preset_tasks}
-        for future in concurrent.futures.as_completed(futures):
-            script_name = futures[future]
-            try:
-                future.result()
-            except Exception as exc:
-                print(f"Error: {script_name} failed: {exc}")
-                sys.exit(1)
-
-    # Generate FHD presets after HDR presets are ready
-    run_script('generate_fhd_presets.py', ['--root-dir', OUT])
-
-    # Generate Steam Deck presets after WCG presets are ready
-    run_script('generate_deck_presets.py', ['--root-dir', OUT])
+    normalize_flat_preset_paths(verbose=verbose)
 
     print("Build complete. Output in 'out' folder.")
 

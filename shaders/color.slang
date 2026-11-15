@@ -18,6 +18,9 @@
 //
 // Color converter base functions, to be used with #include
 
+#pragma name Color
+#pragma format R16G16B16A16_SFLOAT
+
 #include "common.inc"
 #include "color.inc"
 #include "tools/zebra.inc"
@@ -790,13 +793,6 @@ void main()
     }
 
     RGB = toRGB * XYZ;
-
-    if (GAMUT_SELECT < 0.5) {
-    } else if (GAMUT_SELECT < 1.5) {
-        RGB *= vec3(1.1, 1.0, 1.0);
-    } else {
-        RGB *= vec3(1.0, 1.0, 1.1);
-    }
 
     if (DEBUG_COLOR_DELTA > 0.5) {
         vec3 RGB_baseline = toRGB * XYZ_baseline;

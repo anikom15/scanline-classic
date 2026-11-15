@@ -2,8 +2,7 @@
 
 ## Project purpose and architecture
 - This repo is a data-driven RetroArch shader/preset build system, not just shader source files.
-- Core flow: `presetdata/input/*.json` (preset definitions) + `presetdata/pipelines/*.json` + `presetdata/params/*.json` -> `external/presetgen/presetgen.py` -> SDR `.slangp` presets in `out/presets/uhd-4k-sdr`.
-- After SDR generation, `scripts/generate_*` produces WCG/HDR/FHD variants from SDR outputs.
+- Core flow: `presetdata/input/*.json` (preset definitions) + `presetdata/pipelines/*.json` + `presetdata/params/*.json` -> `external/presetgen/presetgen.py` -> `.slangp` presets in `out/presets/<type>` (for example `arcade`, `consumer`, `professional`).
 - Shader passes are modular; output-stage bezel integration is wired via pipeline JSON (example: `presetdata/pipelines/misc/post.json` uses `bezel`).
 
 ## Critical workflow commands
@@ -30,10 +29,6 @@
 ## Project-specific conventions
 - Prefer changing source-of-truth inputs (`presetdata`, `shaders`, `scripts`) over generated outputs.
 - Do not manually edit generated files in `out/` or `out-trim/` unless explicitly doing a one-off debug check.
-- WCG/HDR preset generation is transform-based:
-  - `scripts/generate_wcg_presets.py` swaps `-sdr.slang` -> `-wcg.slang`.
-  - `scripts/generate_hdr_presets.py` swaps `-sdr.slang` -> `-hdr.slang` and removes last-pass `scale_type` as a RetroArch HDR workaround.
-- WCG/HDR menu shaders are generated from SDR menu shaders by include rewriting (`scripts/generate_wcg_menu.py`, `scripts/generate_hdr_menu.py`).
 
 ## DSP frame contract (`frameh` -> resamplers -> DSP -> resamplers -> `framev`)
 - Treat `shaders/frameh.slang` as the canonical start of the framed DSP section. It derives invariant timing/geometry values from uniforms via `shaders/contract.inc` and writes the horizontally framed raster.

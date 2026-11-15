@@ -31,7 +31,7 @@ README Edition 11
 2. Build with shader lint gate: `python build.py --lint-shaders`
 3. Build with strict shader-structure gate: `python build.py --lint-shaders --strict-structure`
 
-Generated presets are written to `out/`.
+Generated presets are written to `out/presets/` (for example `out/presets/arcade`, `out/presets/consumer`, and `out/presets/professional`).
 
 ### Global Options
 

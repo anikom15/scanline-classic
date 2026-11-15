@@ -2,7 +2,7 @@
 
 // Filename: bezel.slang
 //
-// Copyright (C) 2025 W. M. Martinez
+// Copyright (C) 2025-2026 W. M. Martinez
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -82,8 +82,6 @@ layout(push_constant) uniform Push
 #endif  // OPTION_DEBUG
 
     float EnableHDR;
-    float MaxNits;
-    float PaperWhiteNits;
 } config;
 
 #define VIEWPORT_V_POS config.VIEWPORT_V_POS
@@ -674,35 +672,18 @@ vec3 calculate_glow_mipmapped(vec2 coord, float radius, float diffusion_steps, f
     return max(glow, vec3(0.0));
 }
 
-// RA Inverse Tonemapper
-vec3 inverse_tonemap(const vec3 sdr_linear, const float max_nits, const float paper_white_nits)
-{
-    const float input_val = max(sdr_linear.r, max(sdr_linear.g, sdr_linear.b));
-
-    const float peak_ratio = max_nits / max(paper_white_nits, EPS);
-
-    const float numerator = input_val;
-    const float denominator = 1.0 - input_val * (1.0 - (1.0 / max(peak_ratio, EPS)));
-    const float tonemapped_val = numerator / max(denominator, EPS);
-
-    return sdr_linear * (tonemapped_val / max(input_val, EPS));
-}
-
-void write_output_color(vec3 final_linear, uint frame)
+void write_output_color(vec3 linear, uint frame)
 {
     const int WORKING_BITS = 16;
 
     if (config.EnableHDR > 0.5) {
-        // Map linear RGB to nits using RA inverse tonemapping
-        vec3 hdr_linear = inverse_tonemap(final_linear, config.MaxNits, config.PaperWhiteNits);
-
-        vec3 hdr_pq = pq(hdr_linear);
-        hdr_pq = apply_dither_blue(hdr_pq, WORKING_BITS, 10, vTexCoord * config.OutputSize.xy, frame);
         // PQ output: SMPTE ST.2084 encoding for HDR10
+        vec3 hdr_pq = pq(linear);
+        hdr_pq = apply_dither_blue(hdr_pq, WORKING_BITS, 10, vTexCoord * config.OutputSize.xy, frame);
         FragColor = vec4(clamp(hdr_pq, 0.0, 1.0), 1.0);
     } else {
         // SDR WCG output: apply CRT gamma directly to linear RGB
-        vec3 final_gamma = crt_gamma(clamp(final_linear, 0.0, 1.0));
+        vec3 final_gamma = crt_gamma(clamp(linear, 0.0, 1.0));
         int output_bits = 8 + 2 * int(COLOR_OUTPUT_BIT_DEPTH);
         final_gamma = apply_dither_blue(final_gamma, WORKING_BITS, output_bits, vTexCoord * config.OutputSize.xy, frame);
         FragColor = vec4(clamp(final_gamma, 0.0, 1.0), 1.0);
