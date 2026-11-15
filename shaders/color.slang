@@ -1,4 +1,4 @@
-#pragma include_optional "../config/options.cfg"
+#version 450
 // Filename: color-base.slang
 //
 // Copyright (C) 2025-2026 W. M. Martinez
@@ -52,22 +52,13 @@ layout(push_constant) uniform Push
     float W_Y;
     float CHROMATIC_ADAPTATION;
     float ADAPTATION_LEVEL;
-
-#ifdef SDR
-    float GAMUT_COMPRESSION;
-#endif  // SDR
-
-#ifdef WCG
     float GAMUT_SELECT;
-#endif  // WCG
+    float GAMUT_COMPRESSION;
 
     float COLORIMETRY_PRESET;
-
-#ifdef HDR
     float VIEWING_ENVIRONMENT;
-#else
     float TONEMAP_TYPE;
-#endif  // HDR
+    float EnableHDR;
 
     float USER_PICTURE;
     float USER_BRIGHTNESS;
@@ -94,19 +85,11 @@ layout(push_constant) uniform Push
 #define CHROMATIC_ADAPTATION config.CHROMATIC_ADAPTATION
 #define ADAPTATION_LEVEL config.ADAPTATION_LEVEL
 
-#ifdef SDR
-#define GAMUT_COMPRESSION config.GAMUT_COMPRESSION
-#endif  // SDR
-
-#ifdef WCG
 #define GAMUT_SELECT config.GAMUT_SELECT
-#endif  // WCG
-
-#ifdef HDR
+#define GAMUT_COMPRESSION config.GAMUT_COMPRESSION
 #define VIEWING_ENVIRONMENT config.VIEWING_ENVIRONMENT
-#else
 #define TONEMAP_TYPE config.TONEMAP_TYPE
-#endif  // HDR
+#define EnableHDR config.EnableHDR
 
 #ifdef OPTION_DEBUG
 #define MAKEUP_GAIN config.MAKEUP_GAIN
@@ -273,17 +256,6 @@ float scale_chroma_ipt(vec3 color, vec3 ipt, mat3 toRGB)
 layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
-
-#ifdef WIDE_COLOR
-layout(location = 1) out float white_level;
-layout(location = 2) out float max_luma_weight;
-layout(location = 3) out vec3 ref_XYZ;
-layout(location = 4) out mat3 cat_transform;
-layout(location = 7) out BradfordParams bradford_params;
-layout(location = 11) out Colorimetry colorimetry;
-#endif  // WIDE_COLOR
-
-#ifdef SDR
 layout(location = 1) out float white_level;
 layout(location = 2) out float max_luma_weight;
 layout(location = 3) out vec3 ref_XYZ;
@@ -292,7 +264,7 @@ layout(location = 5) out vec2 ipt_scale;
 layout(location = 6) out mat3 cat_transform;
 layout(location = 9) out BradfordParams bradford_params;
 layout(location = 13) out Colorimetry colorimetry;
-#endif  // SDR
+layout(location = 17) out mat3 xyz_to_output_color;
 
 void main()
 {
@@ -418,13 +390,12 @@ void main()
 #endif  // OPTION_NOCOLOR
 #endif  // OPTION_NOCAT
 
-#ifdef SDR
     // Precompute Luv scale factors for advanced gamut compression
     // Apply chromatic adaptation to primary XYZ values for output gamut testing
     luv_scale = vec2(0.0);
     ipt_scale = vec2(0.0);
 
-    if (GAMUT_COMPRESSION > 1.5 && COLORIMETRY_PRESET < 3.5) {
+    if (EnableHDR < 0.5 && GAMUT_COMPRESSION > 1.5 && COLORIMETRY_PRESET < 3.5) {
         vec3 white_XYZ = RGB_to_XYZ_local * WHITE;
         vec3 red_XYZ = RGB_to_XYZ_local * RED;
         vec3 green_XYZ = RGB_to_XYZ_local * GREEN;
@@ -450,10 +421,19 @@ void main()
         }
 #endif  // OPTION_NOCOLOR
 #endif  // OPTION_NOCAT
-        vec3 white_out = XYZ_TO_COLOR_SPACE * white_XYZ;
-        vec3 red_out = XYZ_TO_COLOR_SPACE * red_XYZ;
-        vec3 green_out = XYZ_TO_COLOR_SPACE * green_XYZ;
-        vec3 blue_out = XYZ_TO_COLOR_SPACE * blue_XYZ;
+        mat3 toRGB;
+        if (GAMUT_SELECT < 0.5) {
+            toRGB = XYZ_TO_sRGB;
+        } else if (GAMUT_SELECT < 1.5) {
+            toRGB = XYZ_TO_BT2020;
+        } else {
+            toRGB = XYZ_TO_DCIP3;
+        }
+
+        vec3 white_out = toRGB * white_XYZ;
+        vec3 red_out = toRGB * red_XYZ;
+        vec3 green_out = toRGB * green_XYZ;
+        vec3 blue_out = toRGB * blue_XYZ;
 
         if (GAMUT_COMPRESSION < 2.5) {
             vec3 white_luv = XYZ_to_CIE_LUV(white_XYZ);
@@ -462,16 +442,16 @@ void main()
             vec3 blue_luv = XYZ_to_CIE_LUV(blue_XYZ);
 
             // Determine luminance pre-scale
-            float y_scale = scale_luminance_cieluv(white_out, white_luv, XYZ_TO_COLOR_SPACE);
+            float y_scale = scale_luminance_cieluv(white_out, white_luv, toRGB);
 
             red_luv.x *= y_scale;
             green_luv.x *= y_scale;
             blue_luv.x *= y_scale;
 
             // Determine chroma pre-scale
-            float red_c_scale = scale_chroma_cieluv(red_out, red_luv, XYZ_TO_COLOR_SPACE);
-            float green_c_scale = scale_chroma_cieluv(green_out, green_luv, XYZ_TO_COLOR_SPACE);
-            float blue_c_scale = scale_chroma_cieluv(blue_out, blue_luv, XYZ_TO_COLOR_SPACE);
+            float red_c_scale = scale_chroma_cieluv(red_out, red_luv, toRGB);
+            float green_c_scale = scale_chroma_cieluv(green_out, green_luv, toRGB);
+            float blue_c_scale = scale_chroma_cieluv(blue_out, blue_luv, toRGB);
             float c_scale = min(min(red_c_scale, green_c_scale), blue_c_scale);
 
             luv_scale = vec2(y_scale, c_scale);
@@ -481,37 +461,35 @@ void main()
             vec3 green_ipt = XYZ_to_IPT(green_XYZ);
             vec3 blue_ipt = XYZ_to_IPT(blue_XYZ);
 
-            float y_scale = scale_luminance_ipt(white_out, white_ipt, XYZ_TO_COLOR_SPACE);
+            float y_scale = scale_luminance_ipt(white_out, white_ipt, toRGB);
 
             red_ipt.x *= y_scale;
             green_ipt.x *= y_scale;
             blue_ipt.x *= y_scale;
 
-            float red_c_scale = scale_chroma_ipt(red_out, red_ipt, XYZ_TO_COLOR_SPACE);
-            float green_c_scale = scale_chroma_ipt(green_out, green_ipt, XYZ_TO_COLOR_SPACE);
-            float blue_c_scale = scale_chroma_ipt(blue_out, blue_ipt, XYZ_TO_COLOR_SPACE);
+            float red_c_scale = scale_chroma_ipt(red_out, red_ipt, toRGB);
+            float green_c_scale = scale_chroma_ipt(green_out, green_ipt, toRGB);
+            float blue_c_scale = scale_chroma_ipt(blue_out, blue_ipt, toRGB);
             float c_scale = min(min(red_c_scale, green_c_scale), blue_c_scale);
 
             ipt_scale = vec2(y_scale, c_scale);
         }
     }
-#endif  // SDR
+
+    if (EnableHDR > 0.5) {
+        xyz_to_output_color = XYZ_TO_BT2020;
+    } else if (GAMUT_SELECT < 0.5) {
+        xyz_to_output_color = XYZ_TO_sRGB;
+    } else if (GAMUT_SELECT < 1.5) {
+        xyz_to_output_color = XYZ_TO_BT2020;
+    } else {
+        xyz_to_output_color = XYZ_TO_DCIP3;
+    }
 
 }
 
 #pragma stage fragment
 layout(location = 0) in vec2 vTexCoord;
-
-#ifdef WIDE_COLOR
-layout(location = 1) in float white_level;
-layout(location = 2) in float max_luma_weight;
-layout(location = 3) in vec3 ref_XYZ;
-layout(location = 4) in mat3 cat_transform;
-layout(location = 7) in BradfordParams bradford_params;
-layout(location = 11) in Colorimetry colorimetry;
-#endif  // WIDE_COLOR
-
-#ifdef SDR
 layout(location = 1) in float white_level;
 layout(location = 2) in float max_luma_weight;
 layout(location = 3) in vec3 ref_XYZ;
@@ -520,7 +498,7 @@ layout(location = 5) in vec2 ipt_scale;
 layout(location = 6) in mat3 cat_transform;
 layout(location = 9) in BradfordParams bradford_params;
 layout(location = 13) in Colorimetry colorimetry;
-#endif  // SDR
+layout(location = 17) in mat3 xyz_to_output_color;
 
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 1) uniform sampler2D Source;
@@ -652,19 +630,16 @@ vec3 render_debug_card(vec2 uv, float safe_gain, float peak_gain, Colorimetry co
 
 void main()
 {
-
-#ifdef HDR
-    float TARGET_NITS;
-    if (VIEWING_ENVIRONMENT < 0.5) {
-        TARGET_NITS = 100.0 / (48.0 / 100.0);
-    } else if (VIEWING_ENVIRONMENT < 1.5) {
-        TARGET_NITS = 100.0;
-    } else {
-        TARGET_NITS = 100.0 / (203.0 / 100.0);
+    float TARGET_NITS = 100.0;
+    if (EnableHDR > 0.5) {
+        if (VIEWING_ENVIRONMENT < 0.5) {
+            TARGET_NITS = 100.0 / (48.0 / 100.0);
+        } else if (VIEWING_ENVIRONMENT < 1.5) {
+            TARGET_NITS = 100.0;
+        } else {
+            TARGET_NITS = 100.0 / (203.0 / 100.0);
+        }
     }
-#else
-    const float TARGET_NITS = 100.0;
-#endif  // HDR
 
     vec4 src = texture(Source, vTexCoord);
     vec3 YrYgYb = src.rgb;
@@ -696,37 +671,35 @@ void main()
         YrYgYb /= low_peak;
     }
 
-#ifdef HDR
-    // HDR: tone mapping handled via PQ
-#else
-    // Tone mapping
-    if (TONEMAP_TYPE < 0.5) {
-        // No tone mapping
-    } else if (TONEMAP_TYPE < 1.5) {
-        // Reinhard tone mapping
-        float Y_in = YrYgYb.r + YrYgYb.g + YrYgYb.b;
-        float Y_out = Y_in / (1.0 + Y_in);
-        YrYgYb *= Y_out / max(Y_in, EPS);
-    } else if (TONEMAP_TYPE < 2.5) {
-        // Reinhard extended
-        float Y_in = YrYgYb.r + YrYgYb.g + YrYgYb.b;
-        float Y_out = (Y_in * (1.0 + Y_in / (high_peak * high_peak))) / (1.0 + Y_in);
-        YrYgYb *= Y_out / max(Y_in, EPS);
-    } else if (TONEMAP_TYPE < 3.5) {
-        // Uncharted 2 tone mapping
-        float exposure_bias = 2.0;
-        float Y_in = YrYgYb.r + YrYgYb.g + YrYgYb.b;
-        float Y_out = uncharted2_tonemap(Y_in, exposure_bias);
-        YrYgYb *= Y_out / max(Y_in, EPS);
-    } else {
-        // ACES approximation
-        float Y_in = YrYgYb.r + YrYgYb.g + YrYgYb.b;
-        float Y_out = (Y_in * (2.51 * Y_in + 0.03)) / (Y_in * (2.43 * Y_in + 0.59) + 0.14);
-        YrYgYb *= Y_out / max(Y_in, EPS);
-    }
+    if (EnableHDR < 0.5) {
+        // Tone mapping
+        if (TONEMAP_TYPE < 0.5) {
+            // No tone mapping
+        } else if (TONEMAP_TYPE < 1.5) {
+            // Reinhard tone mapping
+            float Y_in = YrYgYb.r + YrYgYb.g + YrYgYb.b;
+            float Y_out = Y_in / (1.0 + Y_in);
+            YrYgYb *= Y_out / max(Y_in, EPS);
+        } else if (TONEMAP_TYPE < 2.5) {
+            // Reinhard extended
+            float Y_in = YrYgYb.r + YrYgYb.g + YrYgYb.b;
+            float Y_out = (Y_in * (1.0 + Y_in / (high_peak * high_peak))) / (1.0 + Y_in);
+            YrYgYb *= Y_out / max(Y_in, EPS);
+        } else if (TONEMAP_TYPE < 3.5) {
+            // Uncharted 2 tone mapping
+            float exposure_bias = 2.0;
+            float Y_in = YrYgYb.r + YrYgYb.g + YrYgYb.b;
+            float Y_out = uncharted2_tonemap(Y_in, exposure_bias);
+            YrYgYb *= Y_out / max(Y_in, EPS);
+        } else {
+            // ACES approximation
+            float Y_in = YrYgYb.r + YrYgYb.g + YrYgYb.b;
+            float Y_out = (Y_in * (2.51 * Y_in + 0.03)) / (Y_in * (2.43 * Y_in + 0.59) + 0.14);
+            YrYgYb *= Y_out / max(Y_in, EPS);
+        }
 
-    YrYgYb = clamp(YrYgYb, 0.0, 1.0);
-#endif  // HDR
+        YrYgYb = clamp(YrYgYb, 0.0, 1.0);
+    }
 
     // Convert YrYgYb to XYZ using native colorimetry
     vec3 XYZ = YrYgYb_to_XYZ(YrYgYb, colorimetry);
@@ -751,7 +724,7 @@ void main()
 #endif  // OPTION_NOCOLOR
 #endif  // OPTION_NOCAT
 
-    mat3 toRGB = XYZ_TO_COLOR_SPACE;
+    mat3 toRGB = xyz_to_output_color;
 
     // Early exit for full bypass
     if (COLOR_CONVERSION_BYPASS > 0.5) {
@@ -762,8 +735,7 @@ void main()
     vec3 RGB;
 
     // Convert adapted XYZ to output color space
-
-#ifdef SDR
+    if (EnableHDR < 0.5) {
         // Take advantage of intermediate for advanced compression
         if (GAMUT_COMPRESSION < 1.5 || COLORIMETRY_PRESET >= 3.5) {
             // Handle later
@@ -780,9 +752,16 @@ void main()
             Ipt.yz *= ipt_scale.y;
             XYZ = IPT_to_XYZ(Ipt);
         }
-#endif  // SDR
+    }
 
-        RGB = toRGB * XYZ;
+    RGB = toRGB * XYZ;
+
+    if (GAMUT_SELECT < 0.5) {
+    } else if (GAMUT_SELECT < 1.5) {
+        RGB *= vec3(1.1, 1.0, 1.0);
+    } else {
+        RGB *= vec3(1.0, 1.0, 1.1);
+    }
 
     if (DEBUG_COLOR_DELTA > 0.5) {
         vec3 RGB_baseline = toRGB * XYZ_baseline;
@@ -792,17 +771,17 @@ void main()
         return;
     }
 
-#ifdef SDR
-    // Gamut mapping
-    if (GAMUT_COMPRESSION < 0.5 || COLORIMETRY_PRESET >= 3.5) {
-        // No gamut compression
-    } else if (GAMUT_COMPRESSION < 1.5) {
-        RGB = reduce_luminance(RGB);
-    } else {
-        // Advanced gamut compression
-        // Already applied earlier
+    if (EnableHDR < 0.5) {
+        // Gamut mapping
+        if (GAMUT_COMPRESSION < 0.5 || COLORIMETRY_PRESET >= 3.5) {
+            // No gamut compression
+        } else if (GAMUT_COMPRESSION < 1.5) {
+            RGB = reduce_luminance(RGB);
+        } else {
+            // Advanced gamut compression
+            // Already applied earlier
+        }
     }
-#endif  // SDR
 
     // Debug: Visualize out-of-range colors with sinusoid modulation
     if (COLOR_DEBUG_OUT_OF_RANGE > 0.5) {

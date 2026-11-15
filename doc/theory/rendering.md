@@ -35,10 +35,10 @@ Input
   │    Pass 13..17: framev → phosphor-trichrome → beam → mask → curve
   │
   ├─ 5) Presentation (tone/gamut policy)
-  │    Pass 18: color-sdr
+  │    Pass 18: color
   │
   └─ 6) Inverse EOTF / encoding (output contract)
-       Pass 19: bezel-sdr → Backbuffer (SDR R8G8B8A8_UNORM)
+       Pass 19: bezel → Backbuffer (SDR R8G8B8A8_UNORM)
 ```
 
 ### Variant overlay (SDR vs WCG vs HDR)
@@ -135,7 +135,7 @@ Operate in linear YrYgYb/light domain for physically meaningful compositing and 
 
 Fit linear working data into the intended output-referred target.
 
-- **Pass 18**: `color-sdr.slang`
+- **Pass 18**: `color.slang`
   - tone-map policy selection
   - gamut mapping/compression policy
   - SDR-target color conversion

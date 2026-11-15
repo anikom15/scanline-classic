@@ -1,4 +1,6 @@
-// Filename: bezel-base.slang
+#version 450
+
+// Filename: bezel.slang
 //
 // Copyright (C) 2025 W. M. Martinez
 //
@@ -14,8 +16,9 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
-//
-// Bezel functions to be used with #include
+
+#pragma name Bezel
+#pragma format A2B10G10R10_UNORM_PACK32
 
 #include "common.inc"
 #include "color.inc"
@@ -24,6 +27,7 @@
 #include "texture.inc"
 
 #include "menus/parameters/factory-geometry.inc"
+#include "menus/parameters/output-color.inc"
 #include "menus/parameters/output-bezel.inc"
 
 #pragma include_optional "../config/options.cfg"
@@ -56,9 +60,8 @@ layout(push_constant) uniform Push
     float GLOW_RADIUS_PERCENT;
     float EDGE_GUARD_PERCENT;
 
-#ifdef WCG
     float GAMUT_SELECT;
-#endif  // WCG
+    float COLOR_OUTPUT_BIT_DEPTH;
 
 #ifdef OPTION_DEBUG
     float BEZEL_BYPASS;
@@ -113,9 +116,8 @@ const float KEY_THRESH = 0.5;
 
 #define EFFECTIVE_GLOW_RADIUS (GLOW_RADIUS_PERCENT * 0.01)
 
-#ifdef WCG
 #define GAMUT_SELECT config.GAMUT_SELECT
-#endif  // WCG
+#define COLOR_OUTPUT_BIT_DEPTH config.COLOR_OUTPUT_BIT_DEPTH
 
 #ifdef OPTION_DEBUG
 #define DEBUG_GLOW config.DEBUG_GLOW
@@ -141,6 +143,8 @@ layout(location = 0) out vec2 vTexCoord;
 layout(location = 1) out vec2 screen_coord;
 layout(location = 2) out float AspectRatio;
 layout(location = 3) out vec2 viewport_max_dist; // Precomputed normalization distances for radial falloff
+layout(location = 4) out mat3 color_to_xyz;
+layout(location = 7) out mat3 xyz_to_color;
 
 /**
  * Vertex shader: Transforms the vertex position and calculates texture coordinates
@@ -218,6 +222,21 @@ void main()
 
     // Precompute max distances
     viewport_max_dist = abs((final_border_size - corrected_size) * 0.5) * config.OutputSize.zw;
+
+    // Select color conversion matrices based on HDR and gamut settings
+    if (config.EnableHDR > 0.5) {
+        color_to_xyz = BT2020_TO_XYZ;
+        xyz_to_color = XYZ_TO_BT2020;
+    } else if (GAMUT_SELECT < 0.5) {
+        color_to_xyz = sRGB_TO_XYZ;
+        xyz_to_color = XYZ_TO_sRGB;
+    } else if (GAMUT_SELECT < 1.5) {
+        color_to_xyz = BT2020_TO_XYZ;
+        xyz_to_color = XYZ_TO_BT2020;
+    } else {
+        color_to_xyz = DCIP3_TO_XYZ;
+        xyz_to_color = XYZ_TO_DCIP3;
+    }
 }
 
 #pragma stage fragment
@@ -225,6 +244,8 @@ layout(location = 0) in vec2 vTexCoord;
 layout(location = 1) in vec2 screen_coord;
 layout(location = 2) in float AspectRatio;
 layout(location = 3) in vec2 viewport_max_dist;
+layout(location = 4) in mat3 color_to_xyz;
+layout(location = 7) in mat3 xyz_to_color;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 1) uniform sampler2D Source;
 layout(set = 0, binding = 2) uniform sampler2D BORDER;
@@ -325,59 +346,57 @@ vec3 process_glow_color(vec3 color, float compression, float temperature, float 
     if (amount <= EPS && abs(t) <= EPS && dither <= EPS)
         return max(color, vec3(0.0));
 
-    vec3 xyz_in = COLOR_SPACE_TO_XYZ * color;
+    vec3 xyz_in = color_to_xyz * color;
     vec3 xyz_base = xyz_in;
 
-#ifdef HDR
     if (amount > EPS || dither > EPS) {
-        // HDR processing path: RGB → XYZ → LMS(PQ) → ICtCp, then back to XYZ
-        vec3 lms = XYZ_TO_LMS * xyz_in;
-        vec3 lms_pq = lms_apply_pq(lms);
-        vec3 ictcp = lms_pq_to_ictcp(lms_pq);
+        if (config.EnableHDR > 0.5) {
+            // HDR processing path: RGB → XYZ → LMS(PQ) → ICtCp, then back to XYZ
+            vec3 lms = XYZ_TO_LMS * xyz_in;
+            vec3 lms_pq = lms_apply_pq(lms);
+            vec3 ictcp = lms_pq_to_ictcp(lms_pq);
 
-        if (amount > EPS) {
-            float intensity_factor = ictcp.x;  // I component (0-1 range after PQ)
-            float chroma_scale = mix(0.3, 1.0, c);  // amount inverted: c=1 → scale=1 (no compression)
+            if (amount > EPS) {
+                float intensity_factor = ictcp.x;  // I component (0-1 range after PQ)
+                float chroma_scale = mix(0.3, 1.0, c);  // amount inverted: c=1 → scale=1 (no compression)
 
-            if (intensity_factor > 0.5) {
-                float intensity_boost = (intensity_factor - 0.5) * 2.0;
-                chroma_scale *= mix(1.0, 0.4, intensity_boost * (1.0 - c));
+                if (intensity_factor > 0.5) {
+                    float intensity_boost = (intensity_factor - 0.5) * 2.0;
+                    chroma_scale *= mix(1.0, 0.4, intensity_boost * (1.0 - c));
+                }
+
+                ictcp.y *= chroma_scale;  // Compress Ct (red-green)
+                ictcp.z *= chroma_scale;  // Compress Cp (yellow-blue)
             }
 
-            ictcp.y *= chroma_scale;  // Compress Ct (red-green)
-            ictcp.z *= chroma_scale;  // Compress Cp (yellow-blue)
-        }
+            if (dither > EPS)
+                ictcp.x = clamp(ictcp.x + noise * dither, 0.0, 1.0);
 
-        if (dither > EPS)
-            ictcp.x = clamp(ictcp.x + noise * dither, 0.0, 1.0);
+            vec3 lms_processed = lms_remove_pq(ictcp_to_lms_pq(ictcp));
+            xyz_base = LMS_TO_XYZ * lms_processed;
+        } else {
+            // SDR/WCG processing path: chroma compression + L* dither in CIE Luv
+            vec3 luv = XYZ_to_CIE_LUV(xyz_in);
 
-        vec3 lms_processed = lms_remove_pq(ictcp_to_lms_pq(ictcp));
-        xyz_base = LMS_TO_XYZ * lms_processed;
-    }
-#else
-    if (amount > EPS || dither > EPS) {
-        // SDR/WCG processing path: chroma compression + L* dither in CIE Luv
-        vec3 luv = XYZ_to_CIE_LUV(xyz_in);
+            if (amount > EPS) {
+                float intensity_factor = clamp(luv.x, 0.0, 1.0);
+                float chroma_scale = mix(0.3, 1.0, c);
 
-        if (amount > EPS) {
-            float intensity_factor = clamp(luv.x, 0.0, 1.0);
-            float chroma_scale = mix(0.3, 1.0, c);
+                if (intensity_factor > 0.5) {
+                    float intensity_boost = (intensity_factor - 0.5) * 2.0;
+                    chroma_scale *= mix(1.0, 0.4, intensity_boost * (1.0 - c));
+                }
 
-            if (intensity_factor > 0.5) {
-                float intensity_boost = (intensity_factor - 0.5) * 2.0;
-                chroma_scale *= mix(1.0, 0.4, intensity_boost * (1.0 - c));
+                luv.y *= chroma_scale;
+                luv.z *= chroma_scale;
             }
 
-            luv.y *= chroma_scale;
-            luv.z *= chroma_scale;
+            if (dither > EPS)
+                luv.x = clamp(luv.x + noise * dither * 100.0, EPS, 100.0);
+
+            xyz_base = CIE_LUV_to_XYZ(luv);
         }
-
-        if (dither > EPS)
-            luv.x = clamp(luv.x + noise * dither * 100.0, EPS, 100.0);
-
-        xyz_base = CIE_LUV_to_XYZ(luv);
     }
-#endif  // HDR
 
     if (abs(t) > EPS) {
         vec3 lms = XYZ_TO_LMS * xyz_base;
@@ -399,7 +418,7 @@ vec3 process_glow_color(vec3 color, float compression, float temperature, float 
         xyz_base = xyz_shifted * gain;
     }
 
-    return max(XYZ_TO_COLOR_SPACE * xyz_base, vec3(0.0));
+    return max(xyz_to_color * xyz_base, vec3(0.0));
 }
 
 /**
@@ -662,16 +681,6 @@ void write_output_color(vec3 final_linear, uint frame)
 {
     const int WORKING_BITS = 16;
 
-#ifdef HDR
-    // PQ output: SMPTE ST.2084 encoded values
-    vec3 final_pq = pq(final_linear);
-
-    final_pq = apply_dither_blue(final_pq, WORKING_BITS, 10, vTexCoord * config.OutputSize.xy, frame);
-    FragColor = vec4(clamp(final_pq, 0.0, 1.0), 1.0);
-#endif  // HDR
-
-#ifdef WCG
-    // WCG requires manual HDR10 handling when HDR is enabled
     if (config.EnableHDR > 0.5) {
         // Map linear RGB to nits using RA inverse tonemapping
         vec3 hdr_linear = inverse_tonemap(final_linear, config.MaxNits, config.PaperWhiteNits);
@@ -683,17 +692,10 @@ void write_output_color(vec3 final_linear, uint frame)
     } else {
         // SDR WCG output: apply CRT gamma directly to linear RGB
         vec3 final_gamma = crt_gamma(clamp(final_linear, 0.0, 1.0));
-        final_gamma = apply_dither_blue(final_gamma, WORKING_BITS, 8, vTexCoord * config.OutputSize.xy, frame);
+        int output_bits = 8 + 2 * int(COLOR_OUTPUT_BIT_DEPTH);
+        final_gamma = apply_dither_blue(final_gamma, WORKING_BITS, output_bits, vTexCoord * config.OutputSize.xy, frame);
         FragColor = vec4(clamp(final_gamma, 0.0, 1.0), 1.0);
     }
-#endif  // WCG
-
-#ifdef SDR
-    // Gamma output: use inverse CRT gamma to preserve shadow detail
-    vec3 final_gamma = crt_gamma(clamp(final_linear, 0.0, 1.0));
-    final_gamma = apply_dither_blue(final_gamma, WORKING_BITS, 8, vTexCoord * config.OutputSize.xy, frame);
-    FragColor = vec4(clamp(final_gamma, 0.0, 1.0), 1.0);
-#endif  // SDR
 
 }
 

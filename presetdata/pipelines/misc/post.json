@@ -1,8 +1,8 @@
 {
     "root_path" : "../../../shaders",
     "shaders" : {
-        "color" : "color-sdr",
-        "bezel" : "bezel-sdr"
+        "color" : "color",
+        "bezel" : "bezel"
     },
     "textures" : [
         "BORDER"

@@ -4,7 +4,7 @@
 - This repo is a data-driven RetroArch shader/preset build system, not just shader source files.
 - Core flow: `presetdata/input/*.json` (preset definitions) + `presetdata/pipelines/*.json` + `presetdata/params/*.json` -> `external/presetgen/presetgen.py` -> SDR `.slangp` presets in `out/presets/uhd-4k-sdr`.
 - After SDR generation, `scripts/generate_*` produces WCG/HDR/FHD variants from SDR outputs.
-- Shader passes are modular; output-stage bezel integration is wired via pipeline JSON (example: `presetdata/pipelines/misc/post.json` uses `bezel-sdr`).
+- Shader passes are modular; output-stage bezel integration is wired via pipeline JSON (example: `presetdata/pipelines/misc/post.json` uses `bezel`).
 
 ## Critical workflow commands
 - Full build (recommended): `python build.py` (or `python build.py --jobs 8 -v`).
