@@ -1,5 +1,4 @@
 {
-    "root_path" : "../../../shaders",
     "shaders" : {
         "component" : "digital-component",
         "filter" : "digital-ycc-filter",

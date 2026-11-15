@@ -1,0 +1,22 @@
+{
+  "filename" : "nes-gb-rf",
+  "type" : "professional",
+  "title" : "NES RF shader set (PAL-I)",
+  "description" : "The original NES supported RF and A/V output.",
+  "pipelines" : [
+    "sys/nes-eu-rf.json",
+    "disp/crt-625.json",
+    "misc/post.json"
+  ],
+  "parameter_sets" : [
+    "sys/famicom/base.json",
+    "sys/sfc/base.json",
+    "sys/sfc/pal.json",
+    "misc/rf-pali.json",
+    "disp/pal.json",
+    "disp/trinitron.json",
+    "disp/tvl-m-400.json"
+  ],
+  "parameter_overrides" : {
+  }
+}

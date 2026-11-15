@@ -3,14 +3,11 @@
   "type" : "professional",
   "title" : "Super Famicom composite shader set",
   "description" : "All models included an A/V cable with the console.",
-  "pipeline_root" : "../../pipelines",
   "pipelines" : [
-    "misc/menu-composite.json",
     "sys/rgb-component-composite.json",
     "disp/crt-composite-sd.json",
     "misc/post.json"
   ],
-  "parameter_root" : "../../params",
   "parameter_sets" : [
     "sys/sfc/base.json",
     "sys/sfc/ntsc.json",

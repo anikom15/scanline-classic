@@ -3,13 +3,11 @@
   "type" : "arcade",
   "title" : "Nintendo Vs. System shader set",
   "description" : "Arcade version of the Famicom/NES",
-  "pipeline_root" : "../../pipelines",
   "pipelines" : [
     "sys/famicom-rgb.json",
     "disp/crt-rgb-sd.json",
     "misc/post.json"
   ],
-  "parameter_root" : "../../params",
   "parameter_sets" : [
     "sys/famicom/base.json",
     "sys/sfc/base.json",

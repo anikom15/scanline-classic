@@ -3,14 +3,11 @@
   "type" : "professional",
   "title" : "Super Famicom RGB shader set",
   "description" : "All standard models, but not the Jr. and Mini models, have an RGB output available without modification. However, its use was only officially supported in Japan with the OEM JP-21 connector.",
-  "pipeline_root" : "../../pipelines",
   "pipelines" : [
-    "misc/menu.json",
     "sys/rgb.json",
     "disp/crt-rgb-sd.json",
     "misc/post.json"
   ],
-  "parameter_root" : "../../params",
   "parameter_sets" : [
     "sys/sfc/base.json",
     "sys/sfc/ntsc.json",

@@ -3,15 +3,12 @@
   "type" : "professional",
   "title" : "Generic RGB shader set (NTSC-M)",
   "description" : "For use with any standard definition TV-based system.",
-  "pipeline_root" : "../../pipelines",
   "pipelines" : [
-    "misc/menu.json",
     "misc/frame-tv525.json",
     "sys/rgb.json",
     "disp/crt.json",
     "misc/post.json"
   ],
-  "parameter_root" : "../../params",
   "parameter_sets" : [
     "sys/generic/ntsc.json",
     "disp/ntsc.json",

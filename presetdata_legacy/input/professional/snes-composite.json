@@ -1,0 +1,21 @@
+{
+  "filename" : "snes-composite_snesmini",
+  "type" : "professional",
+  "title" : "SNES composite shader set",
+  "description" : "All models included an A/V cable with the console.",
+  "pipelines" : [
+    "misc/frame-tv525.json",
+    "sys/component-composite.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_sets" : [
+    "sys/sfc/base.json",
+    "sys/sfc/ntsc.json",
+    "disp/ntsc.json",
+    "disp/trinitron.json",
+    "disp/tvl-m-600.json"
+  ],
+  "parameter_overrides" : {
+  }
+}

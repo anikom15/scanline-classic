@@ -1,5 +1,4 @@
 {
-    "root_path" : "../../../shaders",
     "shaders" : {
         "frame" : "frameh",
         "amp" : "sys-rgb-amp"

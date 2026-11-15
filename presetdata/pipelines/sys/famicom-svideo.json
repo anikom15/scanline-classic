@@ -1,7 +1,5 @@
 {
-    "root_path" : "../../../shaders",
     "shaders" : {
-        "menu" : "menus/menu-svideo-sdr",
         "frame" : "frameh",
         "special" : "famicom-rgb",
         "amp" : "sys-rgb-amp",

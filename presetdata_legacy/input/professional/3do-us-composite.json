@@ -1,0 +1,23 @@
+{
+  "filename" : "3do-us-composite",
+  "type" : "professional",
+  "title" : "3DO composite shader set (NTSC-M)",
+  "description" : "Composite output is available on all 3DO models with the included cable.",
+  "pipelines" : [
+    "sys/3do-special.json",
+    "misc/frame-digital-780.json",
+    "sys/digital-composite.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_sets" : [
+    "sys/3do/base.json",
+    "sys/3do/ntsc.json",
+    "sys/3do/composite.json",
+    "disp/ntsc.json",
+    "disp/trinitron.json",
+    "disp/tvl-m-600.json"
+  ],
+  "parameter_overrides" : {
+  }
+}

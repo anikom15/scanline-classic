@@ -1,0 +1,21 @@
+{
+  "filename" : "snes-br",
+  "type" : "professional",
+  "title" : "SNES RF shader set",
+  "description" : "PAL-M variant",
+  "pipelines" : [
+    "misc/frame-tv525.json",
+    "sys/component-rf.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_sets" : [
+    "sys/sfc/base.json",
+    "sys/sfc/palm.json",
+    "disp/palm.json",
+    "disp/trinitron.json",
+    "disp/tvl-m-600.json"
+  ],
+  "parameter_overrides" : {
+  }
+}

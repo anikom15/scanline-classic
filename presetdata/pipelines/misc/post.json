@@ -1,5 +1,4 @@
 {
-    "root_path" : "../../../shaders",
     "shaders" : {
         "color" : "color",
         "bezel" : "bezel"

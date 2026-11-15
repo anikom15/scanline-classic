@@ -1,0 +1,20 @@
+{
+  "filename" : "aaa-generic-ntscj-composite",
+  "type" : "professional",
+  "title" : "Generic Composite shader set (NTSC-J)",
+  "description" : "For use with any standard definition TV-based system.",
+  "pipelines" : [
+    "misc/frame-tv525.json",
+    "sys/component-composite.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_sets" : [
+    "sys/generic/ntscj.json",
+    "disp/ntscj.json",
+    "disp/trinitron.json",
+    "disp/tvl-m-600.json"
+  ],
+  "parameter_overrides" : {
+  }
+}

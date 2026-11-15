@@ -1,5 +1,4 @@
 {
-    "root_path" : "../../../shaders",
     "shaders" : {
         "limiter" : "limiter",
         "input" : "hd-rgb-filter",

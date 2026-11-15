@@ -3,15 +3,12 @@
   "type" : "professional",
   "title" : "Generic RGB shader set (PAL)",
   "description" : "For use with any standard definition TV-based system.",
-  "pipeline_root" : "../../pipelines",
   "pipelines" : [
-    "misc/menu.json",
     "misc/frame-tv625.json",
     "sys/rgb.json",
     "disp/crt-625.json",
     "misc/post.json"
   ],
-  "parameter_root" : "../../params",
   "parameter_sets" : [
     "sys/generic/pal.json",
     "disp/pal.json",

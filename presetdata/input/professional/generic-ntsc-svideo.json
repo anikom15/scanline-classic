@@ -3,15 +3,12 @@
   "type" : "professional",
   "title" : "Generic S-Video shader set (NTSC-M)",
   "description" : "For use with any standard definition TV-based system.",
-  "pipeline_root" : "../../pipelines",
   "pipelines" : [
-    "misc/menu-svideo.json",
     "misc/frame-tv525.json",
     "sys/rgb-component-yc.json",
     "disp/crt.json",
     "misc/post.json"
   ],
-  "parameter_root" : "../../params",
   "parameter_sets" : [
     "sys/generic/ntsc.json",
     "disp/ntsc.json",

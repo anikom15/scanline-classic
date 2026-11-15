@@ -1,0 +1,21 @@
+{
+  "filename" : "n64-eu",
+  "type" : "professional",
+  "title" : "Nintendo 64 composite shader set (PAL)",
+  "description" : "All models have composite video as standard.",
+  "pipelines" : [
+    "misc/frame-tv625.json",
+    "sys/component-composite.json",
+    "disp/crt-625.json",
+    "misc/post.json"
+  ],
+  "parameter_sets" : [
+    "sys/n64/base.json",
+    "sys/n64/pal.json",
+    "disp/pal.json",
+    "disp/trinitron.json",
+    "disp/tvl-m-600.json"
+  ],
+  "parameter_overrides" : {
+  }
+}

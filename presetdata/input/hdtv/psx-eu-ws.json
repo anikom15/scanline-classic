@@ -3,14 +3,11 @@
   "type" : "hdtv",
   "title" : "PlayStation RGB shader set (PALplus widescreen)",
   "description" : "Simulates PlayStation connected via SCART to a widescreen set and stretched to 16:9 for native 16:9 content.  For widescreen hack, see psx-eu.",
-  "pipeline_root" : "../../pipelines",
   "pipelines" : [
-    "misc/menu.json",
     "sys/rgb.json",
     "disp/crt-rgb-hd.json",
     "misc/post.json"
   ],
-  "parameter_root" : "../../params",
   "parameter_sets" : [
     "sys/psx/base.json",
     "sys/psx/pal.json",

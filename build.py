@@ -64,6 +64,7 @@ def get_python_executable():
 
 def run_presetgen(verbose=False, jobs=1):
     python_exec = get_python_executable()
+    presetgen_config = os.path.join(PRESETDATA, 'presetgen.json')
     # Find all JSON files in presetdata/input/ and its subdirectories
     input_dir = os.path.join(PRESETDATA, 'input')
     input_files = []
@@ -81,7 +82,8 @@ def run_presetgen(verbose=False, jobs=1):
         cmd = [
             python_exec, os.path.join(ROOT, 'external', 'presetgen', 'presetgen.py'),
             '--input', infile,
-            '--output', PRESETS_OUT,
+            '--output', OUT,
+            '--config', presetgen_config,
         ]
         if verbose:
             cmd.append('-v')

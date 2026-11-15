@@ -1,0 +1,21 @@
+{
+  "filename" : "gen-rf",
+  "type" : "professional",
+  "title" : "Genesis RF shader set",
+  "description" : "RF was a standard and common option for all Genesis consoles",
+  "pipelines" : [
+    "misc/frame-tv525.json",
+    "sys/yc-rf.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_sets" : [
+    "sys/md/base.json",
+    "sys/md/ntsc.json",
+    "misc/rf-ntsc.json",
+    "disp/trinitron.json",
+    "disp/tvl-m-450.json"
+  ],
+  "parameter_overrides" : {
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "filename" : "n64-eu",
+  "type" : "consumer",
+  "title" : "Nintendo 64 composite shader set",
+  "description" : "All models have composite video as standard.",
+  "pipelines" : [
+    "misc/frame-tv625.json",
+    "sys/component-composite.json",
+    "disp/crt-625.json",
+    "misc/post.json"
+  ],
+  "parameter_sets" : [
+    "sys/n64/base.json",
+    "sys/n64/pal.json",
+    "disp/pal.json",
+    "disp/tv.json",
+    "disp/consumer-color-pal.json",
+    "disp/tvl-a-450.json"
+  ],
+  "parameter_overrides" : {
+  }
+}

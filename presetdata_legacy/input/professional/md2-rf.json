@@ -1,0 +1,22 @@
+{
+  "filename" : "md2-rf",
+  "type" : "professional",
+  "title" : "Mega Drive II RF shader set (NTSC-J)",
+  "description" : "Late model 2s and later have slightly cleaner video output",
+  "pipelines" : [
+    "misc/frame-tv525.json",
+    "sys/yc-rf.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_sets" : [
+    "sys/md/base2.json",
+    "sys/md/ntsc.json",
+    "misc/rf-ntsc.json",
+    "disp/ntscj.json",
+    "disp/trinitron.json",
+    "disp/tvl-m-600.json"
+  ],
+  "parameter_overrides" : {
+  }
+}

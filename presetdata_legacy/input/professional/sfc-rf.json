@@ -1,0 +1,22 @@
+{
+  "filename" : "sfc-rf_sfcjr-rf",
+  "type" : "professional",
+  "title" : "Super Famicom RF shader set",
+  "description" : "NTSC-J variant",
+  "pipelines" : [
+    "misc/frame-tv525.json",
+    "sys/component-rf.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_sets" : [
+    "sys/sfc/base.json",
+    "sys/sfc/ntsc.json",
+    "misc/rf-ntsc.json",
+    "disp/ntscj.json",
+    "disp/trinitron.json",
+    "disp/tvl-m-600.json"
+  ],
+  "parameter_overrides" : {
+  }
+}

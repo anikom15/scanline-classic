@@ -1,0 +1,23 @@
+{
+  "filename" : "snes-eu-rf",
+  "type" : "professional",
+  "title" : "SNES RF shader set (PAL-G)",
+  "description" : "PAL-G and PAL-I are almost identical; PAL-I has slightly higher bandwidth.",
+  "pipelines" : [
+    "misc/frame-tv625.json",
+    "sys/component-rf.json",
+    "disp/crt-625.json",
+    "misc/post.json"
+  ],
+  "parameter_sets" : [
+    "sys/sfc/base.json",
+    "sys/sfc/pal.json",
+    "misc/rf-palg.json",
+    "disp/pal.json",
+    "disp/trinitron.json",
+    "disp/deflicker.json",
+    "disp/tvl-m-600.json"
+  ],
+  "parameter_overrides" : {
+  }
+}

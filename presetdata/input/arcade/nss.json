@@ -3,14 +3,11 @@
   "type" : "arcade",
   "title" : "Nintendo Super System shader set",
   "description" : "Arcade variant of the SNES",
-  "pipeline_root" : "../../pipelines",
   "pipelines" : [
-    "misc/menu.json",
     "sys/rgb.json",
     "disp/crt-rgb-sd.json",
     "misc/post.json"
   ],
-  "parameter_root" : "../../params",
   "parameter_sets" : [
     "sys/sfc/base.json",
     "sys/sfc/ntsc.json",

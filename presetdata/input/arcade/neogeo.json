@@ -3,14 +3,11 @@
   "type" : "arcade",
   "title" : "Neo Geo MVS shader set",
   "description" : "Arcade version of the Neo Geo",
-  "pipeline_root" : "../../pipelines",
   "pipelines" : [
-    "misc/menu.json",
     "sys/rgb.json",
     "disp/crt-rgb-sd.json",
     "misc/post.json"
   ],
-  "parameter_root" : "../../params",
   "parameter_sets" : [
     "sys/neogeo.json",
     "disp/ntscj.json",

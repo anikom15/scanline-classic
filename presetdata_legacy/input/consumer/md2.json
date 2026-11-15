@@ -1,0 +1,22 @@
+{
+  "filename" : "md2",
+  "type" : "consumer",
+  "title" : "Mega Drive composite shader set (NTSC-J)",
+  "description" : "Late model 2s and later have slightly cleaner video output.",
+  "pipelines" : [
+    "misc/frame-tv525.json",
+    "sys/yc-composite.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_sets" : [
+    "sys/md/base2.json",
+    "sys/md/ntsc.json",
+    "disp/ntscj.json",
+    "disp/trinitron.json",
+    "disp/consumer-color-ntsc.json",
+    "disp/tvl-a-450.json"
+  ],
+  "parameter_overrides" : {
+  }
+}

@@ -1,5 +1,4 @@
 {
-    "root_path" : "../../../shaders",
     "shaders" : {
         "sharpen" : "sharpen",
         "bandlimit" : "display-rgb-bandlimit",

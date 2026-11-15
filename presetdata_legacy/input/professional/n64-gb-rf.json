@@ -1,0 +1,22 @@
+{
+  "filename" : "n64-gb-rf",
+  "type" : "professional",
+  "title" : "Nintendo 64 RF shader set (PAL-I)",
+  "description" : "RF output is available with the appropriate RF modulator.",
+  "pipelines" : [
+    "misc/frame-tv625.json",
+    "sys/component-rf.json",
+    "disp/crt-625.json",
+    "misc/post.json"
+  ],
+  "parameter_sets" : [
+    "sys/n64/base.json",
+    "sys/n64/pal.json",
+    "misc/rf-pali.json",
+    "disp/pal.json",
+    "disp/trinitron.json",
+    "disp/tvl-m-600.json"
+  ],
+  "parameter_overrides" : {
+  }
+}

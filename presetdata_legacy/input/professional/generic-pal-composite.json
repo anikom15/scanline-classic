@@ -1,0 +1,21 @@
+{
+  "filename" : "aaa-generic-pal-composite",
+  "type" : "professional",
+  "title" : "Generic Composite shader set (PAL)",
+  "description" : "For use with any standard definition TV-based system.",
+  "pipelines" : [
+    "misc/frame-tv625.json",
+    "sys/component-composite.json",
+    "disp/crt-625.json",
+    "misc/post.json"
+  ],
+  "parameter_sets" : [
+    "sys/generic/pal.json",
+    "disp/pal.json",
+    "disp/trinitron.json",
+    "disp/deflicker.json",
+    "disp/tvl-m-600.json"
+  ],
+  "parameter_overrides" : {
+  }
+}

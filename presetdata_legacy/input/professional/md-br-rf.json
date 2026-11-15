@@ -1,0 +1,21 @@
+{
+  "filename" : "md-br-rf",
+  "type" : "professional",
+  "title" : "Mega Drive RF shader set (Brazil variant)",
+  "description" : "Most TVs in Brazil were RF only, however A/V output was also available",
+  "pipelines" : [
+    "misc/frame-tv525.json",
+    "sys/yc-rf.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_sets" : [
+    "sys/md/base.json",
+    "sys/md/palm.json",
+    "disp/palm.json",
+    "disp/trinitron.json",
+    "disp/tvl-m-600.json"
+  ],
+  "parameter_overrides" : {
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "filename" : "psx-rf",
+  "type" : "professional",
+  "title" : "PlayStation RF shader set",
+  "description" : "RF video was available on all PSX models with an official modulator.",
+  "pipelines" : [
+    "misc/frame-tv525.json",
+    "sys/component-rf.json",
+    "disp/crt.json",
+    "misc/post.json"
+  ],
+  "parameter_sets" : [
+    "sys/psx/base.json",
+    "sys/psx/ntscj.json",
+    "misc/rf-ntsc.json",
+    "disp/ntscj.json",
+    "disp/trinitron.json",
+    "disp/tvl-m-600.json"
+  ],
+  "parameter_overrides" : {
+  }
+}
