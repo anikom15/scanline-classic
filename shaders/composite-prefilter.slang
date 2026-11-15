@@ -23,11 +23,15 @@
 // Output: Separated Y and C signals + original composite passthrough
 
 #include "common.inc"
-#include "modulation.inc"
-#include "bandlimit.inc"
+#include "color.inc"
+#include "contract.inc"
+#include "dsp.inc"
+#include "window.inc"
+#include "zoh.inc"
 
+#include "menus/parameters/dsp.inc"
+#include "menus/parameters/display-composite.inc"
 #include "menus/parameters/sys-timing.inc"
-#include "menus/parameters/composite.inc"
 
 #pragma include_optional "../config/options.cfg"
 
@@ -42,13 +46,12 @@
 layout(push_constant) uniform Push
 {
     vec4 OriginalSize;
+    vec4 SourceSize;
     vec4 OutputSize;
-    vec4 FrameHSize;
     uint FrameCount;
     float OriginalFPS;
     float V_FREQ_MODE;
     float V_FREQ;
-    float SHORTEN_ODD_FIELD_TIME;
     float SC_FREQ_MODE;
     float SC_FREQ;
     float PIXEL_CLOCK_MODE;
@@ -56,6 +59,9 @@ layout(push_constant) uniform Push
     float H_FREQ_MODE;
     float H_FREQ;
     float H_BLANK_FUZZ;
+    float DSP_WORKING_FS;
+    float DSP_OUTPUT_FS;
+
     float COLOR_FILTER_MODE;
     float NOTCH_WIDTH;
     float NOTCH_ATTEN_DB;
@@ -66,8 +72,6 @@ layout(push_constant) uniform Push
 #ifdef OPTION_DEBUG
     float BYPASS_PREFILTER;
 #endif  // OPTION_DEBUG
-
-    float BW_MODE;
 } config;
 
 #ifdef OPTION_DEBUG
@@ -94,7 +98,6 @@ layout(push_constant) uniform Push
 
 #define COMB_FILTER_LUMA_ADAPT config.COMB_FILTER_LUMA_ADAPT
 #define COMB_FILTER_CHROMA_ADAPT config.COMB_FILTER_CHROMA_ADAPT
-#define BW_MODE config.BW_MODE
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {

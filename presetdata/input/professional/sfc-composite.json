@@ -6,9 +6,8 @@
   "pipeline_root" : "../../pipelines",
   "pipelines" : [
     "misc/menu-composite.json",
-    "misc/frame-tv525.json",
-    "sys/component-composite.json",
-    "disp/crt.json",
+    "sys/rgb-component-composite.json",
+    "disp/crt-composite-sd.json",
     "misc/post.json"
   ],
   "parameter_root" : "../../params",

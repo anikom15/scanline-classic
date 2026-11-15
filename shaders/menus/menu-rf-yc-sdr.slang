@@ -32,7 +32,7 @@
 #include "parameters/output-bezel.inc"
 #include "parameters/service-geometry.inc"
 #include "parameters/scanraster.inc"
-#include "parameters/composite.inc"
+#include "parameters/display-composite.inc"
 #include "parameters/display-rgb.inc"
 #include "parameters/factory-geometry.inc"
 #include "parameters/mask.inc"

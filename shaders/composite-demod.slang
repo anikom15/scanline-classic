@@ -27,7 +27,7 @@
 
 #include "menus/parameters/user-video.inc"
 #include "menus/parameters/sys-timing.inc"
-#include "menus/parameters/composite.inc"
+#include "menus/parameters/display-composite.inc"
 
 #pragma include_optional "../config/options.cfg"
 
