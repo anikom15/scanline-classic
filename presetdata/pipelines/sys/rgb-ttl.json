@@ -1,6 +1,7 @@
 {
     "shaders" : {
-        "frame" : "frameh"
+        "frame" : "frameh",
+        "noise" : "noise-dac"
     },
     "options" : {
         "frame" : {

@@ -4,9 +4,8 @@
   "title" : "Neo Geo AES RGB shader set",
   "description" : "SNK sold official JP-21 cables in Japan.",
   "pipelines" : [
-    "misc/frame-tv525.json",
     "sys/rgb.json",
-    "disp/crt.json",
+    "disp/crt-rgb-sd.json",
     "misc/post.json"
   ],
   "parameter_sets" : [

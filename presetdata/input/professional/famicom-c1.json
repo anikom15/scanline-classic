@@ -4,8 +4,8 @@
     "title" : "Famicom RGB shader set",
     "description" : "Represents RGB output from e.g. Sharp C1 TV.  For additional RGB see arcade directory.",
     "pipelines" : [
-        "sys/famicom-rgb.json",
-        "disp/crt.json",
+        "sys/famicom-rgb-ttl.json",
+        "disp/crt-rgb-sd.json",
         "misc/post.json"
     ],
     "parameter_sets" : [

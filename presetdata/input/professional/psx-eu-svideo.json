@@ -6,7 +6,7 @@
   "pipelines" : [
     "misc/frame-tv625.json",
     "sys/rgb-component-yc.json",
-    "disp/crt-625.json",
+    "disp/crt-rgb-sd.json",
     "misc/post.json"
   ],
   "parameter_sets" : [

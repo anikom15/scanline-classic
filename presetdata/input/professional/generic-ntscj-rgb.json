@@ -4,9 +4,8 @@
   "title" : "Generic RGB shader set (NTSC-J)",
   "description" : "For use with any standard definition TV-based system.",
   "pipelines" : [
-    "misc/frame-tv525.json",
     "sys/rgb.json",
-    "disp/crt.json",
+    "disp/crt-rgb-sd.json",
     "misc/post.json"
   ],
   "parameter_sets" : [

@@ -12,6 +12,15 @@
 
         "PIXEL_CLOCK_MODE" : 1.0,
         "H_FREQ_MODE" : 1.0,
-        "H_BLANK_FUZZ" : 78.4
+        "H_BLANK_FUZZ" : 78.4,
+
+        "SYS_SYNC_TYPE" : 2.0,
+
+        "DAC_NOISE_AWGN_DB" : -50.0,
+        "DAC_NOISE_JITTER_UI" : 1.0,
+
+        "RGB_NOISE_XTALK_REJECT_DB": 50.0,
+
+        "DSP_WORKING_FS" : 64.0
     }
 }

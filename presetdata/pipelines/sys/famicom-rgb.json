@@ -2,8 +2,10 @@
     "shaders" : {
         "frame" : "frameh",
         "special" : "famicom-rgb",
-        "amp" : "sys-rgb-amp",
+        "noise-dac" : "noise-dac",
         "bandlimit" : "sys-rgb-bandlimit",
+        "amp" : "sys-rgb-amp",
+        "sync" : "sys-sync",
         "deltav" : "send-mag-delta-v",
         "mip1" : "send-decimate",
         "mip2" : "send-decimate",
@@ -16,7 +18,7 @@
         "mip9" : "send-decimate",
         "mip10" : "send-decimate",
         "mip11" : "send-decimate",
-        "noise" : "noise-rgb"
+        "noise-rgb" : "noise-rgb"
     },
     "options" : {
         "frame" : {
@@ -93,7 +95,7 @@
             "alias" : "Mip11",
             "filter_linear" : true
         },
-        "noise" : {
+        "noise-rgb" : {
             "filter_linear" : true,
             "scale_type" : ["absolute", "source"],
             "scale" : [2048.0, 1.0]

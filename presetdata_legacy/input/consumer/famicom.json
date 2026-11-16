@@ -5,7 +5,7 @@
     "description" : "The original Famicom was RF only",
     "pipelines" : [
         "sys/famicom-rf.json",
-        "disp/crt.json",
+        "disp/crt-rgb-sd.json",
         "misc/post.json"
     ],
     "parameter_sets" : [

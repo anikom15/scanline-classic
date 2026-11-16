@@ -4,9 +4,8 @@
   "title" : "Mega Drive RGB shader set",
   "description" : "RGB was officially supported in France, however RGB output is available on most Mega Drives.  An official cable was released for all European Mega Drive IIs.",
   "pipelines" : [
-    "misc/frame-tv625.json",
-    "sys/rgb.json",
-    "disp/crt-625.json",
+    "sys/rgb-64.json",
+    "disp/crt-rgb-sd.json",
     "misc/post.json"
   ],
   "parameter_sets" : [

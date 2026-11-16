@@ -16,6 +16,8 @@
         "COLOR_FILTER_MODE" : 0.0,
 
         "H_FREQ_MODE" : 1.0,
-        "H_FREQ" : 3420.0
+        "H_FREQ" : 3420.0,
+
+        "DSP_WORKING_FS" : 64.0
     }
 }

@@ -7,7 +7,7 @@
     "sys/3do-special-pal.json",
     "misc/frame-digital-944.json",
     "sys/digital-svideo.json",
-    "disp/crt-625.json",
+    "disp/crt-rgb-sd.json",
     "misc/post.json"
   ],
   "parameter_sets" : [
