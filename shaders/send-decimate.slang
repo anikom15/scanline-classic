@@ -187,8 +187,13 @@ void main()
         return;
     }
 
-    // Shift input to the left for analog decimation
-    float input_sample_pos = (field_output_index + 0.5 - ANALOG_DECIMATE / vSendDecimateState.mip_level)
+    // Shift input to the left for analog decimation.
+    // Guard against mip_level == 0 (identity-scale stage) so this pass can be
+    // reused safely without generating INF/NaN sample positions.
+    float mip_level_divisor = (abs(vSendDecimateState.mip_level) > EPS)
+        ? vSendDecimateState.mip_level
+        : 1.0;
+    float input_sample_pos = (field_output_index + 0.5 - ANALOG_DECIMATE / mip_level_divisor)
         * vSendDecimateState.horizontal_ratio - 0.5;
     float input_data_limit = max(vSendDecimateState.input_data_length - 1.0, 0.0);
     float input_pos_floor = floor(input_sample_pos);
@@ -202,10 +207,6 @@ void main()
         input_pos_floor + 1.0,
         vSendDecimateState.input_frame_width,
         input_data_limit);
-    vec3 color = mix(sample0.rgb, sample1.rgb, input_frac);
 
-    // Alpha channel is power, simply average the sample's alpha values
-    float power = mix(sample0.a, sample1.a, input_frac);
-
-    FragColor = vec4(color, power);
+    FragColor = mix(sample0, sample1, input_frac);
 }

@@ -61,6 +61,10 @@ layout(push_constant) uniform Push
     float USER_UNDERSCAN_TOGGLE; // toggle
     float USER_V_POS;            // % (50 = center)
     float USER_V_SIZE;            // % (50 = 1.0)
+    float S_CORRECTION_H;   // %
+    float S_CORRECTION_V;   // %
+    float ASPECT;
+    float H_FREQ_MODE;
 } config;
 
 #define DSP_WORKING_FS config.DSP_WORKING_FS
@@ -76,17 +80,17 @@ layout(push_constant) uniform Push
 #define USER_UNDERSCAN_TOGGLE config.USER_UNDERSCAN_TOGGLE
 #define DEFLECTION_ANGLE config.DEFLECTION_ANGLE
 #define UNDERSCAN config.UNDERSCAN
+#define ASPECT config.ASPECT
+#define H_FREQ_MODE config.H_FREQ_MODE
+#define S_CORRECTION_H config.S_CORRECTION_H
+#define S_CORRECTION_V config.S_CORRECTION_V
 
 layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 MVP;
 
     // Factory/service geometry controls needed here
-    float S_CORRECTION_H;   // %
-    float S_CORRECTION_V;   // %
 
-    float ASPECT;
     uint FrameCount;
-    float H_FREQ_MODE;
     float OriginalFPS;
     float PIXEL_CLOCK;
     float PIXEL_CLOCK_MODE;
@@ -105,20 +109,16 @@ layout(std140, set = 0, binding = 0) uniform UBO {
 
 } global;
 
-#define ASPECT global.ASPECT
 #define V_FREQ_MODE global.V_FREQ_MODE
 #define V_FREQ global.V_FREQ
 #define SC_FREQ_MODE global.SC_FREQ_MODE
 #define SC_FREQ global.SC_FREQ
 #define PIXEL_CLOCK_MODE global.PIXEL_CLOCK_MODE
 #define PIXEL_CLOCK global.PIXEL_CLOCK
-#define H_FREQ_MODE global.H_FREQ_MODE
 #define H_FREQ global.H_FREQ
 #define H_BLANK_FUZZ global.H_BLANK_FUZZ
 
 // Geometry macro bindings
-#define S_CORRECTION_H global.S_CORRECTION_H
-#define S_CORRECTION_V global.S_CORRECTION_V
 
 #ifdef OPTION_DEBUG
 #define GEOMETRY_BYPASS global.GEOMETRY_BYPASS

@@ -20,7 +20,7 @@
 // Signal magnitude-delta utility
 // ------------------------------
 // Input: Real RGB voltage
-// Output: Per-channel MagDeltaV
+// Output: Per-channel MagDeltaV (RGBA)
 //
 // Computes the magnitude of the causal first difference
 // |ΔV[n]| = |V[n] - V[n-1]| over the packed 1D signal carried between
@@ -126,7 +126,9 @@ layout(location = 1) flat in MagDeltaVState vMagDeltaVState;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 1) uniform sampler2D Source;
 
-vec3 fetch_signal_sample(float sample_index, float frame_width, float data_limit)
+// `sys-sync` can carry modeled sync in alpha, so MagDeltaV consumes all four
+// channels as signal inputs and outputs the causal magnitude delta per channel.
+vec4 fetch_signal_sample(float sample_index, float frame_width, float data_limit)
 {
     int frame_width_i = max(int(frame_width + 0.5), 1);
     int data_limit_i = max(int(data_limit + 0.5), 0);
@@ -138,7 +140,7 @@ vec3 fetch_signal_sample(float sample_index, float frame_width, float data_limit
     texel_x = clamp(texel_x, 0, max(int(config.SourceSize.x) - 1, 0));
     texel_y = clamp(texel_y, 0, max(int(config.SourceSize.y) - 1, 0));
 
-    return texelFetch(Source, ivec2(texel_x, texel_y), 0).rgb;
+    return texelFetch(Source, ivec2(texel_x, texel_y), 0);
 }
 
 void main()
@@ -161,12 +163,8 @@ void main()
     float input_data_limit = max(vMagDeltaVState.data_length - 1.0, 0.0);
     float prev_index = max(field_output_index - 1.0, 0.0);
 
-    vec3 current_rgb = fetch_signal_sample(field_output_index, vMagDeltaVState.frame_width, input_data_limit);
-    vec3 previous_rgb = fetch_signal_sample(prev_index, vMagDeltaVState.frame_width, input_data_limit);
-    vec3 mag_delta_v = abs(current_rgb - previous_rgb);
+    vec4 current_signal = fetch_signal_sample(field_output_index, vMagDeltaVState.frame_width, input_data_limit);
+    vec4 previous_signal = fetch_signal_sample(prev_index, vMagDeltaVState.frame_width, input_data_limit);
 
-    // Alpha channel is average power
-    float power = dot(current_rgb, current_rgb);
-
-    FragColor = vec4(mag_delta_v, power);
+    FragColor = abs(current_signal - previous_signal);
 }
