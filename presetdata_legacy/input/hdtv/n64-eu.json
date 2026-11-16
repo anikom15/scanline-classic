@@ -14,7 +14,7 @@
     "sys/n64/pal.json",
     "disp/palplus.json",
     "disp/tv-palplus.json",
-    "disp/tvl-a-680.json"
+    "disp/tvl-a-600.json"
   ],
   "parameter_overrides" : {
   }

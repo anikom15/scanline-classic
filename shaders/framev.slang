@@ -160,7 +160,7 @@ FrameVState compute_framev_state()
     if (state.is_interlaced > 0.5 && HAS_SUBFRAMES && state.effective_double_refresh > 0.5)
         state.subframe_field_offset = float(CURRENT_SUBFRAME);
 
-    state.line_period = (state.is_interlaced > 0.5 && state.effective_double_refresh < 0.5)
+    state.line_period = (state.is_interlaced > 0.5)
         ? state.v_scale * 2.0
         : state.v_scale;
     state.num_blanks = max(state.line_period - 1.0, 0.0);
@@ -182,7 +182,8 @@ void main()
 layout(location = 0) in vec2 vTexCoord;
 layout(location = 1) flat in FrameVState vFrameState;
 layout(location = 0) out vec4 FragColor;
-layout(set = 0, binding = 2) uniform sampler2D Source;
+layout(set = 0, binding = 1) uniform sampler2D Source;
+layout(set = 0, binding = 2) uniform sampler2D CRTLinearFeedback;
 
 // Compute the blank-row dimming strength for the current position inside one
 // zero-stuffed scanline block.
@@ -223,15 +224,26 @@ vec3 sample_source_signal(float output_x, float source_y)
 vec3 sample_signal_content(float output_x, float output_y, FrameVState state)
 {
     float effective_field = state.field + state.subframe_field_offset;
-    float field_phase_offset = (state.is_interlaced > 0.5 && state.effective_double_refresh < 0.5)
+    float field_phase_offset = (state.is_interlaced > 0.5)
         ? mod(effective_field, 2.0) * state.v_scale
         : 0.0;
 
-    float scaled_signal_y = output_y - state.data_top_scaled - field_phase_offset;
+    float scaled_signal_y = output_y - state.data_top_scaled;
     float original_y = floor(scaled_signal_y / state.line_period);
 
     if (scaled_signal_y < 0.0 || original_y < 0.0 || original_y >= ceil(state.frame_height))
         return vec3(0.0);
+
+    float v_scanline_offset = mod(scaled_signal_y - field_phase_offset, state.line_period);
+
+    if (state.is_interlaced > 0.5 && state.effective_double_refresh > 0.5 && !HAS_SUBFRAMES && v_scanline_offset >= 1.0) {
+        // Return previous source frame for double refresh without subframes
+        if (output_x < 0.0 || output_x >= config.SourceSize.x || original_y < 0.0 || original_y >= config.SourceSize.y)
+            return vec3(0.0);
+
+        vec2 source_tex = (vec2(floor(output_x), floor(original_y)) + 0.5) * config.SourceSize.zw;
+        return texture(CRTLinearFeedback, source_tex).rgb;
+    }
 
     vec3 base = sample_source_signal(output_x, original_y);
 
@@ -239,7 +251,6 @@ vec3 sample_signal_content(float output_x, float output_y, FrameVState state)
     return base;
 #endif  // OPTION_NOSCANLINES
 
-    float v_scanline_offset = mod(scaled_signal_y, state.line_period);
     if (v_scanline_offset < 1.0)
         return base;
 
@@ -253,6 +264,13 @@ vec3 sample_signal_content(float output_x, float output_y, FrameVState state)
 // live-signal gain estimate.
 float average_signal_gain(FrameVState state)
 {
+#ifdef OPTION_NOSCANLINES
+    return 1.0;
+#endif  // OPTION_NOSCANLINES
+
+    if (state.is_interlaced > 0.5 && state.effective_double_refresh > 0.5 && !HAS_SUBFRAMES)
+        return 1.0;
+
     float num_blanks_local = max(state.line_period - 1.0, 0.0);
     float base = SCANLINE_BLANK_WEIGHT / 100.0;
     float avg_blank_mix = (state.line_period > 0.0) ? base * (num_blanks_local / state.line_period) : 0.0;

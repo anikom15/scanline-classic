@@ -14,7 +14,7 @@
     "sys/n64/ntsc.json",
     "disp/hdtv.json",
     "disp/trinitron-hv.json",
-    "disp/tvl-a-680.json"
+    "disp/tvl-a-600.json"
   ],
   "parameter_overrides" : {
   }

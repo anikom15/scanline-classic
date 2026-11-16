@@ -12,7 +12,6 @@
     "sys/generic/pal.json",
     "disp/pal.json",
     "disp/trinitron.json",
-    "disp/deflicker.json",
     "disp/tvl-m-600.json"
   ],
   "parameter_overrides" : {
