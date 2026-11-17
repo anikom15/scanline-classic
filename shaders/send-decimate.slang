@@ -45,7 +45,7 @@
 layout(push_constant) uniform Push
 {
     vec4 OriginalSize;
-    vec4 SysRGBBandlimitSize;
+    vec4 SendSourceSize;
     vec4 SourceSize;
     vec4 OutputSize;
     float OriginalFPS;
@@ -118,14 +118,14 @@ SendDecimateState compute_send_decimate_state()
         H_FREQ_MODE,
         H_FREQ,
         DSP_WORKING_FS);
-    float base_storage_width = max(config.SysRGBBandlimitSize.x, 1.0);
+    float base_storage_width = max(config.SendSourceSize.x, 1.0);
     float input_storage_scale = config.SourceSize.x / base_storage_width;
     float output_storage_scale = config.OutputSize.x / base_storage_width;
     state.mip_level = -log2(output_storage_scale);
 
     // Use the contract-derived working frame width as the source of truth for
     // the active 1D data area, and scale it by each mip stage's storage ratio
-    // relative to `SysRGBBandlimitSize` rather than by the padded texture width.
+    // relative to `SendSourceSize` rather than by the padded texture width.
     state.input_frame_width = max(1.0,
         round(base_frame_width * max(input_storage_scale, 0.0)));
     state.output_frame_width = max(1.0,

@@ -239,7 +239,7 @@ void main()
     float alpha = sample_in.a;
 
     const float sync_ref_low = 0.0;
-    const float sync_ref_ttl = -3.5;
+    const float sync_ref_ttl = -1.4;
     const float sync_ref_csync = -0.4;
 
     if (SYS_SYNC_TYPE < 0.5) {

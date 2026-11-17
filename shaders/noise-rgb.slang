@@ -48,13 +48,13 @@
 #pragma parameter DEBUG_RGB_NOISE_HEADER " —— Debug RGB Noise —— " 0.0 0.0 0.0 0.0
 #pragma parameter RGB_NOISE_BYPASS "Bypass RGB noise" 0.0 0.0 1.0 1.0
 #pragma parameter RGB_NOISE_VIEW_MAG_DELTAV "View MagDeltaV" 0.0 0.0 2.0 1.0
-#pragma parameter RGB_NOISE_MAG_DELTAV_MIP_LOD "MagDeltaV mip LOD" 0.0 0.0 11.0 1.0
+#pragma parameter RGB_NOISE_MAG_DELTAV_MIP_LOD "MagDeltaV mip LOD" 0.0 0.0 12.0 1.0
 #endif  // OPTION_DEBUG
 
 layout(push_constant) uniform Push
 {
     vec4 OriginalSize;
-    vec4 SysRGBBandlimitSize;
+    vec4 SendSourceSize;
     vec4 OutputSize;
     uint FrameCount;
     float OriginalFPS;
@@ -71,7 +71,6 @@ layout(push_constant) uniform Push
     float H_BLANK_FUZZ;
     float DSP_WORKING_FS;
 
-    float RGB_NOISE_AWGN_DB;
     float RGB_NOISE_XTALK_REJECT_DB;
 
 #ifdef OPTION_DEBUG
@@ -93,7 +92,6 @@ layout(push_constant) uniform Push
 #define CURRENT_SUBFRAME config.CurrentSubFrame
 #define TOTAL_SUBFRAMES config.TotalSubFrames
 
-#define RGB_NOISE_AWGN_DB config.RGB_NOISE_AWGN_DB
 #define RGB_NOISE_XTALK_REJECT_DB config.RGB_NOISE_XTALK_REJECT_DB
 
 layout(std140, set = 0, binding = 0) uniform UBO
@@ -159,8 +157,8 @@ void main()
 layout(location = 0) in vec2 vTexCoord;
 layout(location = 1) flat in NoiseRGBState vNoiseState;
 layout(location = 0) out vec4 FragColor;
-layout(set = 0, binding = 1) uniform sampler2D Source;  // Mip 11 (1-pixel terminal mip)
-layout(set = 0, binding = 2) uniform sampler2D SysRGBBandlimit;
+layout(set = 0, binding = 1) uniform sampler2D Source;  // Mip 12 (1-pixel terminal mip)
+layout(set = 0, binding = 2) uniform sampler2D SendSource;
 layout(set = 0, binding = 3) uniform sampler2D MagDeltaV;  // Mip 0
 layout(set = 0, binding = 4) uniform sampler2D Mip1;
 layout(set = 0, binding = 5) uniform sampler2D Mip2;
@@ -172,11 +170,12 @@ layout(set = 0, binding = 10) uniform sampler2D Mip7;
 layout(set = 0, binding = 11) uniform sampler2D Mip8;
 layout(set = 0, binding = 12) uniform sampler2D Mip9;
 layout(set = 0, binding = 13) uniform sampler2D Mip10;
+layout(set = 0, binding = 14) uniform sampler2D Mip11;
 
 #ifdef OPTION_XTALK_SAMPLE_COUNT
 const int XTALK_SAMPLE_COUNT = OPTION_XTALK_SAMPLE_COUNT;
 #else
-const int XTALK_SAMPLE_COUNT = 12;
+const int XTALK_SAMPLE_COUNT = 13;
 #endif
 
 vec2 mag_delta_v_uv_from_index(float sample_index, NoiseRGBState state)
@@ -214,6 +213,8 @@ vec4 sample_mag_delta_v_level(vec2 mag_delta_uv, int lod_i)
         return texture(Mip9, mag_delta_uv);
     if (lod_i == 10)
         return texture(Mip10, mag_delta_uv);
+    if (lod_i == 11)
+        return texture(Mip11, mag_delta_uv);
 
     return texture(Source, mag_delta_uv);
 }
@@ -249,8 +250,8 @@ void main()
 #ifdef OPTION_DEBUG
     if (RGB_NOISE_BYPASS > 0.5) {
         FragColor = fetch_input_sample(
-            SysRGBBandlimit,
-            config.SysRGBBandlimitSize.xy,
+            SendSource,
+            config.SendSourceSize.xy,
             sample_index,
             vNoiseState.frame_width,
             vNoiseState.data_length);
@@ -278,8 +279,8 @@ void main()
         CURRENT_SUBFRAME,
         TOTAL_SUBFRAMES);
     vec4 sample_signal = fetch_input_sample(
-        SysRGBBandlimit,
-        config.SysRGBBandlimitSize.xy,
+        SendSource,
+        config.SendSourceSize.xy,
         sample_index,
         vNoiseState.frame_width,
         vNoiseState.data_length);
@@ -289,7 +290,6 @@ void main()
         mag_delta += mag_delta_sample;
     }
 
-    float awgn_sigma = db_to_linear(RGB_NOISE_AWGN_DB);
     float crosstalk_gain = db_to_linear(-RGB_NOISE_XTALK_REJECT_DB);
     vec3 crosstalk_drive = vec3(
         dot(mag_delta.gba, vec3(1.0)),
@@ -298,9 +298,6 @@ void main()
     );
     vec3 crosstalk = crosstalk_gain * crosstalk_drive;
 
-    uvec2 noise_seed = uvec2(uint(output_x_i), uint(output_y_i));
-    vec3 awgn_noise = gaussian_noise3(noise_seed, frame, 0xD3ADB33Fu);
-
-    vec3 color = sample_signal.rgb + awgn_sigma * awgn_noise + vec3(crosstalk);
+    vec3 color = sample_signal.rgb + vec3(crosstalk);
     FragColor = vec4(color, 1.0);  // Sync no longer needed
 }

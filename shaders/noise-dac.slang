@@ -51,7 +51,6 @@ layout(push_constant) uniform Push
 {
     vec4 OriginalSize;
     vec4 SourceSize;
-    vec4 SysRGBBandlimitSize;
     vec4 OutputSize;
     uint FrameCount;
     float OriginalFPS;
@@ -228,12 +227,12 @@ void main()
 
     vec4 jittered_sample = sample_signal_linear(jittered_index, vNoiseState);
 
-    vec3 awgn_noise = gaussian_noise3(
+    vec4 awgn_noise = gaussian_noise4(
         uvec2(uint(output_x_i), uint(output_y_i)),
         frame,
         0xD3ADB33Fu);
     float awgn_sigma = db_to_linear(awgn_db);
 
-    vec3 color = jittered_sample.rgb + awgn_sigma * awgn_noise;
-    FragColor = vec4(color, jittered_sample.a);
+    vec4 color_sync = vec4(jittered_sample.rgb + awgn_sigma * awgn_noise.rgb, jittered_sample.a);
+    FragColor = color_sync;
 }

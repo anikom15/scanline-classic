@@ -4,7 +4,7 @@
   "title" : "Mega Drive RGB shader set",
   "description" : "RGB was officially supported in France, however RGB output is available on most Mega Drives.",
   "pipelines" : [
-    "sys/rgb-64.json",
+    "sys/rgb.json",
     "disp/crt-rgb-sd.json",
     "misc/post.json"
   ],

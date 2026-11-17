@@ -4,7 +4,7 @@
   "title" : "PlayStation RGB shader set (PALplus widescreen)",
   "description" : "Simulates PlayStation connected via SCART to a widescreen set and stretched to 16:9 for native 16:9 content.  For widescreen hack, see psx-eu.",
   "pipelines" : [
-    "sys/rgb-64.json",
+    "sys/rgb.json",
     "disp/crt-rgb-sd.json",
     "misc/post.json"
   ],

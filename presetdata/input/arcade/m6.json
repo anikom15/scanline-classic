@@ -4,7 +4,7 @@
   "title" : "Sega Mega 6 / Mega-Tech / Mega Play shader set",
   "description" : "Arcade variant of the Mega Drive / Genesis",
   "pipelines" : [
-    "sys/rgb-64.json",
+    "sys/rgb.json",
     "disp/crt-rgb-sd.json",
     "misc/post.json"
   ],

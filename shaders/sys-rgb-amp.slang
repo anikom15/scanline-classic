@@ -31,6 +31,7 @@
 #include "common.inc"
 
 #include "menus/parameters/sys-rgb.inc"
+#include "menus/parameters/noise-rgb.inc"
 
 #pragma include_optional "../config/options.cfg"
 
@@ -47,6 +48,9 @@ layout(push_constant) uniform Push
     float SYS_GAIN_R;
     float SYS_GAIN_G;
     float SYS_GAIN_B;
+
+    float RGB_NOISE_IMD2;
+    float RGB_NOISE_IMD3;
 
 #ifdef OPTION_DEBUG
     float SYS_RGB_AMP_BYPASS;
@@ -66,6 +70,9 @@ layout(push_constant) uniform Push
 #define SYS_GAIN_G config.SYS_GAIN_G
 #define SYS_GAIN_B config.SYS_GAIN_B
 
+#define RGB_NOISE_IMD2 config.RGB_NOISE_IMD2
+#define RGB_NOISE_IMD3 config.RGB_NOISE_IMD3
+
 layout(std140, set = 0, binding = 0) uniform UBO
 {
     mat4 MVP;
@@ -77,41 +84,50 @@ layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
 layout(location = 1) out vec3 gain;
 layout(location = 2) out vec3 bias;
+layout(location = 3) out vec2 imd;
 
 void main()
 {
-   gl_Position = global.MVP * Position;
-   vTexCoord = TexCoord;
+    gl_Position = global.MVP * Position;
+    vTexCoord = TexCoord;
 
-   gain = vec3(
-       db_to_linear(SYS_GAIN_R),
-       db_to_linear(SYS_GAIN_G),
-       db_to_linear(SYS_GAIN_B));
+    gain = vec3(
+        db_to_linear(SYS_GAIN_R),
+        db_to_linear(SYS_GAIN_G),
+        db_to_linear(SYS_GAIN_B));
 
-   bias = vec3(
-       SYS_BIAS_R * 10e-3,
-       SYS_BIAS_G * 10e-3,
-       SYS_BIAS_B * 10e-3);
+    bias = vec3(
+        SYS_BIAS_R * 10e-3,
+        SYS_BIAS_G * 10e-3,
+        SYS_BIAS_B * 10e-3);
+
+    imd = vec2(
+        pow(10.0, RGB_NOISE_IMD2 / 20.0),
+        4.0 / 3.0 * pow(10.0, RGB_NOISE_IMD3 / 20.0)
+    );
 }
 
 #pragma stage fragment
 layout(location = 0) in vec2 vTexCoord;
 layout(location = 1) in vec3 gain;
 layout(location = 2) in vec3 bias;
+layout(location = 3) in vec2 imd;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
 void main()
 {
-    vec3 color = texture(Source, vTexCoord).rgb;
+    vec3 v = texture(Source, vTexCoord).rgb;
 
 #ifdef OPTION_DEBUG
     if (SYS_RGB_AMP_BYPASS >= 0.5) {
-        FragColor = vec4(color, 1.0);
+        FragColor = vec4(v, 1.0);
         return;
     }
 #endif  // OPTION_DEBUG
 
-    color = gain * (color + bias);
+    vec3 distortion = imd.x * (v * v) - imd.y * (v * v * v);
+
+    vec3 color = gain * (v + distortion) + bias;
     FragColor = vec4(color, 1.0);
 }

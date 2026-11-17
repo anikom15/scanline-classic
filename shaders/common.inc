@@ -357,6 +357,27 @@ vec3 gaussian_noise3(uvec2 coord, uint frame, uint salt)
     return vec3(g0.x, g0.y, g1.x);
 }
 
+// Gaussian noise seeded by integer pixel and frame.
+// Returns four approximately independent N(0, 1) samples.
+vec4 gaussian_noise4(uvec2 coord, uint frame, uint salt)
+{
+    uint s0 = hash_u32(frame ^ salt ^ 0x9E3779B9u);
+    uint s1 = hash_u32(frame ^ salt ^ 0x85EBCA6Bu);
+
+    vec2 u0 = vec2(
+        hash_float(uvec2(coord.x ^ s0, coord.y ^ 0xA511E9B3u)),
+        hash_float(uvec2(coord.x ^ 0x63D83595u, coord.y ^ s0))
+    );
+    vec2 u1 = vec2(
+        hash_float(uvec2(coord.x ^ s1, coord.y ^ 0xC2B2AE35u)),
+        hash_float(uvec2(coord.x ^ 0x27D4EB2Fu, coord.y ^ s1))
+    );
+
+    vec2 g0 = box_muller(u0);
+    vec2 g1 = box_muller(u1);
+    return vec4(g0.x, g0.y, g1.x, g1.y);
+}
+
 // Triangular PDF dither noise in [-0.5, 0.5], seeded by integer pixel and frame.
 // This reduces residual patterning versus single-uniform noise at equivalent LSB amplitude.
 float tpdf_noise(vec2 coord, uint frame)
