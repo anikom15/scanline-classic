@@ -2,3 +2,4 @@
 
 #pragma parameter DOUBLE_REFRESH "Double refresh rate (eliminates flicker)" 0.0 0.0 1.0 1.0
 #pragma parameter SCANLINE_BLANK_WEIGHT "Blank scanline weight (%)" 100.0 0.0 100.0 1.0
+#pragma parameter BEAM_BLOOM "Beam bloom intensity (%)" 0.7 0.0 20.0 0.1

@@ -31,6 +31,7 @@
 #include "menus/parameters/sys-timing.inc"
 #include "menus/parameters/dsp.inc"
 #include "menus/parameters/factory-geometry.inc"
+#include "menus/parameters/scanraster.inc"
 #include "menus/parameters/service-geometry.inc"
 #include "menus/parameters/user-uncommon.inc"
 
@@ -101,6 +102,8 @@ layout(std140, set = 0, binding = 0) uniform UBO {
     float H_FREQ;
     float H_BLANK_FUZZ;
 
+    float BEAM_BLOOM;
+
 #ifdef OPTION_DEBUG
     // Debug-only stage bypass / diagnostics controls
     float GEOMETRY_BYPASS;
@@ -117,6 +120,8 @@ layout(std140, set = 0, binding = 0) uniform UBO {
 #define PIXEL_CLOCK global.PIXEL_CLOCK
 #define H_FREQ global.H_FREQ
 #define H_BLANK_FUZZ global.H_BLANK_FUZZ
+
+#define BEAM_BLOOM global.BEAM_BLOOM
 
 // Geometry macro bindings
 
@@ -430,13 +435,35 @@ void main()
     vec2 data_center = frame_uv_scale * 0.5;
     vec2 input_uv = (geometry_uv - 0.5) * frame_uv_scale + data_center;
 
+    // Bloom
+    // Derive integrated field power from the terminal mip level (full-field average).
+
+    geometry_uv = 2.0 * geometry_uv - 1.0;
+    float bloom = BEAM_BLOOM * 0.07;
+    float integrated_bloom = 0.0;
+    int n_lod = textureQueryLevels(Source);
+    for (int i = 0; i < n_lod; ++i) {
+        vec3 field_mean_rgb = textureLod(Source, input_uv, i).rgb;
+
+        // Correct for non-information lines
+        field_mean_rgb *= config.SourceSize.y / OriginalFrameHeight;
+
+        float field_power = dot(field_mean_rgb, vec3(1.0 / 3.0)) / TARGET_NITS;
+        float bloom_scale = bloom * field_power / pow(2.0, float(n_lod - (i + 1)));
+        integrated_bloom += bloom_scale;
+    }
+    geometry_uv /= 1.0 + integrated_bloom;
+    geometry_uv = geometry_uv * 0.5 + 0.5;
+
+    input_uv = clamp01((geometry_uv - 0.5) * frame_uv_scale + data_center);
+
     // Bicubic resample from input texture using BEAM_FOCUS
     float focus = clamp(BEAM_FOCUS * 0.01, 0.0, 1.0);
     float C = -1.0 / 3.0 * focus * focus + 5.0 / 6.0 * focus;
     float B = 1.0 - 2.0 * C;
 
     vec3 color;
-    float alpha = texture(Source, clamp01(input_uv)).a;
+    float alpha = texture(Source, input_uv).a;
 
 #ifdef OPTION_DEBUG
     if (BEAM_FILTER_TYPE < 0.5) {

@@ -21,7 +21,8 @@
         },
         "beam" : {
             "scale_type" : ["viewport"],
-            "filter_linear" : true
+            "filter_linear" : true,
+            "mipmap_input" : true
         },
         "curve" : {
             "filter_linear" : true

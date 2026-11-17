@@ -668,14 +668,14 @@ vec3 render_debug_card(vec2 uv, float safe_gain, float peak_gain, Colorimetry co
 
 void main()
 {
-    float TARGET_NITS = 100.0;
+    float target_nits = TARGET_NITS;
     if (EnableHDR > 0.5) {
         if (VIEWING_ENVIRONMENT < 0.5) {
-            TARGET_NITS = 100.0 / (48.0 / 100.0);
+            target_nits = 100.0 / (48.0 / 100.0);
         } else if (VIEWING_ENVIRONMENT < 1.5) {
-            TARGET_NITS = 100.0;
+            target_nits = 100.0;
         } else {
-            TARGET_NITS = 100.0 / (203.0 / 100.0);
+            target_nits = 100.0 / (203.0 / 100.0);
         }
     }
 
@@ -693,7 +693,7 @@ void main()
         YrYgYb = render_debug_card(vTexCoord, safe_gain, peak_gain, colorimetry, high_peak);
     } else {
         // Source peak luminance: white_level × target nits
-        float source_peak = max(white_level * TARGET_NITS * peak_gain, EPS);
+        float source_peak = max(white_level * target_nits * peak_gain, EPS);
 
         // Apply makeup gain before tone mapping to boost highlights
         if (MAKEUP_GAIN > 0.5) {
@@ -703,9 +703,9 @@ void main()
         }
 
         // Determine high peak for tone mapping based on source peak and target nits
-        float low_peak = TARGET_NITS;
+        float low_peak = target_nits;
 
-        high_peak = max(source_peak, TARGET_NITS) / low_peak;
+        high_peak = max(source_peak, target_nits) / low_peak;
         YrYgYb /= low_peak;
     }
 

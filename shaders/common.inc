@@ -21,6 +21,8 @@ const float LN10 = 2.30258509299;
 const float FILTER_THRESHOLD = 1.0 / 255.0; // 8-bit LSB threshold for early loop exit
 const float FILTER_THRESHOLD_ANALOG = 0.01; // Threshold for analog-level bandlimit optimization (e.g., 0.01 = -40 dB)
 
+const float TARGET_NITS = 100.0;
+
 // Decibel conversion helpers.
 // Use amplitude conversions for voltages, gains, and signal magnitudes.
 // Use power conversions for squared-energy style controls such as noise power.

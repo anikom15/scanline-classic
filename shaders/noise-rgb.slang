@@ -299,5 +299,6 @@ void main()
     vec3 crosstalk = crosstalk_gain * crosstalk_drive;
 
     vec3 color = sample_signal.rgb + vec3(crosstalk);
+
     FragColor = vec4(color, 1.0);  // Sync no longer needed
 }
