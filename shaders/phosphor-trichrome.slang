@@ -38,15 +38,13 @@ layout(push_constant) uniform Push
 {
     float OriginalFPS;
     uint TotalSubFrames;
-    float PHOSPHOR_MANTISSA_R;
-    float PHOSPHOR_MANTISSA_G;
-    float PHOSPHOR_MANTISSA_B;
-    float PHOSPHOR_EXPONENT_R;
-    float PHOSPHOR_EXPONENT_G;
-    float PHOSPHOR_EXPONENT_B;
-    float PHOSPHOR_HOLD_R;
-    float PHOSPHOR_HOLD_G;
-    float PHOSPHOR_HOLD_B;
+    float PHOSPHOR_DECAY_10_R;
+    float PHOSPHOR_DECAY_10_G;
+    float PHOSPHOR_DECAY_10_B;
+
+    float PHOSPHOR_DECAY_0P1_R;
+    float PHOSPHOR_DECAY_0P1_G;
+    float PHOSPHOR_DECAY_0P1_B;
 
 #ifdef OPTION_DEBUG
     float PHOSPHOR_BYPASS;
@@ -61,17 +59,13 @@ layout(push_constant) uniform Push
 // Subframe support
 #define TOTAL_SUBFRAMES config.TotalSubFrames
 
-#define PHOSPHOR_MANTISSA_R config.PHOSPHOR_MANTISSA_R
-#define PHOSPHOR_MANTISSA_G config.PHOSPHOR_MANTISSA_G
-#define PHOSPHOR_MANTISSA_B config.PHOSPHOR_MANTISSA_B
+#define PHOSPHOR_DECAY_10_R config.PHOSPHOR_DECAY_10_R
+#define PHOSPHOR_DECAY_10_G config.PHOSPHOR_DECAY_10_G
+#define PHOSPHOR_DECAY_10_B config.PHOSPHOR_DECAY_10_B
 
-#define PHOSPHOR_EXPONENT_R config.PHOSPHOR_EXPONENT_R
-#define PHOSPHOR_EXPONENT_G config.PHOSPHOR_EXPONENT_G
-#define PHOSPHOR_EXPONENT_B config.PHOSPHOR_EXPONENT_B
-
-#define PHOSPHOR_HOLD_R config.PHOSPHOR_HOLD_R
-#define PHOSPHOR_HOLD_G config.PHOSPHOR_HOLD_G
-#define PHOSPHOR_HOLD_B config.PHOSPHOR_HOLD_B
+#define PHOSPHOR_DECAY_0P1_R config.PHOSPHOR_DECAY_0P1_R
+#define PHOSPHOR_DECAY_0P1_G config.PHOSPHOR_DECAY_0P1_G
+#define PHOSPHOR_DECAY_0P1_B config.PHOSPHOR_DECAY_0P1_B
 
 layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 MVP;
@@ -81,28 +75,44 @@ layout(std140, set = 0, binding = 0) uniform UBO {
 layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
+layout(location = 1) out vec3 vn;
+layout(location = 2) out vec3 vtau;
 
 void main()
 {
     gl_Position = global.MVP * Position;
     vTexCoord = TexCoord;
+
+    vec3 t10 = 0.001 * vec3(
+        PHOSPHOR_DECAY_10_R,
+        PHOSPHOR_DECAY_10_G,
+        PHOSPHOR_DECAY_10_B);
+    vec3 t0p1 = vec3(
+        PHOSPHOR_DECAY_0P1_R,
+        PHOSPHOR_DECAY_0P1_G,
+        PHOSPHOR_DECAY_0P1_B);
+
+    // Ensure that t10 is greater than zero
+    t10 = max(t10, vec3(EPS));
+
+    // Ensure t0p1 is bounded
+    t0p1 = max(t0p1, vec3(0.01));
+
+    // R and a from the system of equations for phosphor decay
+    // from 10% and 0.1% decay time constants
+    vec3 R = t0p1 / t10;
+    vec3 a = (-1.0 + sqrt(4.0 * R - 3.0)) / 2.0;
+    vn = log(10.0) / log(a);
+    vtau = t10 / (pow(vec3(10.0), 1.0 / vn) - 1.0);
 }
 
 #pragma stage fragment
 layout(location = 0) in vec2 vTexCoord;
+layout(location = 1) in vec3 vn;
+layout(location = 2) in vec3 vtau;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 1) uniform sampler2D Source;
 layout(set = 0, binding = 2) uniform sampler2D Phosphor3Feedback;
-
-vec3 phosphor_inv_pow3(vec3 col, vec3 gamma, vec3 n)
-{
-    // Handle dark/off pixels early to avoid pow() on ~0
-    vec3 mask = step(vec3(EPS), col);
-    vec3 safe = max(col, vec3(EPS));
-    // Compute decay: y_{k+1} = (y_k^{-1/n} + gamma)^{-n}
-    vec3 y = pow(pow(safe, -1.0 / n) + gamma, -n);
-    return mask * min(y, col - EPS);  // Prevent positive feedback
-}
 
 void main()
 {
@@ -126,32 +136,18 @@ void main()
     }
 #endif  // OPTION_DEBUG
 
-    vec3 n = vec3(1.0 / PHOSPHOR_HOLD_R,
-                  1.0 / PHOSPHOR_HOLD_G,
-                  1.0 / PHOSPHOR_HOLD_B);
-
-    vec3 tau = vec3(
-        PHOSPHOR_MANTISSA_R * pow(10.0, PHOSPHOR_EXPONENT_R),
-        PHOSPHOR_MANTISSA_G * pow(10.0, PHOSPHOR_EXPONENT_G),
-        PHOSPHOR_MANTISSA_B * pow(10.0, PHOSPHOR_EXPONENT_B));
-
-    vec3 gamma_c = (pow(vec3(10.0), 1.0 / n) - 1.0) / tau;
-
     // Use per-subframe time step for smoother decay
     float fps = max(config.OriginalFPS, 1.0);
     float subframes = max(float(TOTAL_SUBFRAMES), 1.0);
-    vec3 gamma_frame = gamma_c / (fps * subframes);
-
-    // Point-sample normalization so that the average of the first two point samples is 0.5.
-    // A_point = 1 / (1 + (1 + r)^(-n)), with r = gamma_frame and per-channel n.
-    //vec3 A_point = 1.0 / (vec3(1.0) + pow(vec3(1.0) + gamma_frame, -n));
-
-    // Scale current input by A_point; feedback carries the tail.
-    //color *= A_point;
+    vec3 tau_frame = vtau * fps * subframes;
 
     vec3 color1 = texture(Phosphor3Feedback, Tex).rgb;
-    color1 = phosphor_inv_pow3(color1, gamma_frame, n);
-    color = max(color, color1);  // More stable 'saturation' method
+    vec3 decay = pow(1.0 + 1.0 / tau_frame * pow(color1 / TARGET_NITS, 1.0 / vn), vn);
+
+    // Make decay safe
+    vec3 persistence = min(color1 / max(decay, vec3(EPS)), color1 * (1.0 - EPS));
+
+    color = persistence + color;
 
     FragColor = vec4(color, alpha);
 }

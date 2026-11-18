@@ -448,8 +448,8 @@ void main()
         // Correct for non-information lines
         field_mean_rgb *= config.SourceSize.y / OriginalFrameHeight;
 
-        float field_power = dot(field_mean_rgb, vec3(1.0 / 3.0)) / TARGET_NITS;
-        float bloom_scale = bloom * field_power / pow(2.0, float(n_lod - (i + 1)));
+        float field_drive = dot(field_mean_rgb, vec3(1.0 / 3.0)) / TARGET_NITS;
+        float bloom_scale = bloom * field_drive / pow(2.0, float(n_lod - (i + 1)));
         integrated_bloom += bloom_scale;
     }
     geometry_uv /= 1.0 + integrated_bloom;

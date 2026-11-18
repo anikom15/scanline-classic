@@ -1,13 +1,9 @@
 #pragma parameter PHOSPHOR_HEADER " —— Factory: Phosphors —— " 0.0 0.0 0.0 0.0
 
-#pragma parameter PHOSPHOR_MANTISSA_R "Phosphor decay mantissa R (s)" 1.0 0.0 999.0 1.0
-#pragma parameter PHOSPHOR_MANTISSA_G "Phosphor decay mantissa G (s)" 100.0 0.0 999.0 1.0
-#pragma parameter PHOSPHOR_MANTISSA_B "Phosphor decay mantissa B (s)" 100.0 0.0 999.0 1.0
+#pragma parameter PHOSPHOR_DECAY_10_R "Phosphor 10% decay R (ms)" 1.0 0.0 10.0 0.01
+#pragma parameter PHOSPHOR_DECAY_10_G "Phosphor 10% decay G (ms)" 0.1 0.0 10.0 0.01
+#pragma parameter PHOSPHOR_DECAY_10_B "Phosphor 10% decay B (ms)" 0.1 0.0 10.0 0.01
 
-#pragma parameter PHOSPHOR_EXPONENT_R "Phosphor decay exponent R (base-10)" -3.0 -9.0 0.0 1.0
-#pragma parameter PHOSPHOR_EXPONENT_G "Phosphor decay exponent G (base-10)" -6.0 -9.0 0.0 1.0
-#pragma parameter PHOSPHOR_EXPONENT_B "Phosphor decay exponent B (base-10)" -6.0 -9.0 0.0 1.0
-
-#pragma parameter PHOSPHOR_HOLD_R "Phosphor tail hold R (order)" 0.9 0.5 2.0 0.1
-#pragma parameter PHOSPHOR_HOLD_G "Phosphor tail hold G (order)" 1.2 0.5 2.0 0.1
-#pragma parameter PHOSPHOR_HOLD_B "Phosphor tail hold B (order)" 1.2 0.5 2.0 0.1
+#pragma parameter PHOSPHOR_DECAY_0P1_R "Phosphor 0.1% decay R (s)" 0.08 0.0 10.0 0.01
+#pragma parameter PHOSPHOR_DECAY_0P1_G "Phosphor 0.1% decay G (s)" 0.04 0.0 10.0 0.01
+#pragma parameter PHOSPHOR_DECAY_0P1_B "Phosphor 0.1% decay B (s)" 0.02 0.0 10.0 0.01
