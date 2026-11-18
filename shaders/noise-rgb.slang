@@ -26,8 +26,8 @@
 // raster between `frameh.slang` and `framev.slang`.
 //
 // Model:
-//  - `RGB_NOISE_AWGN_DB` is absolute RMS noise level relative to a 1.0 signal.
-//  - `RGB_NOISE_XTALK_REJECT_DB` is one rejection value for all channels.
+//  - `RGB_NOISE_FEEDBACK_DB` is the capacitave feedback level in dB.
+//  - `RGB_NOISE_XTALK_DB` is one rejection value for all channels.
 //  - Crosstalk drive uses equal contribution from MagDeltaV R/G/B/H/V.
 
 #pragma name NoiseRGB
@@ -71,7 +71,8 @@ layout(push_constant) uniform Push
     float H_BLANK_FUZZ;
     float DSP_WORKING_FS;
 
-    float RGB_NOISE_XTALK_REJECT_DB;
+    float RGB_NOISE_FEEDBACK_DB;
+    float RGB_NOISE_XTALK_DB;
 
 #ifdef OPTION_DEBUG
     float RGB_NOISE_BYPASS;
@@ -92,7 +93,8 @@ layout(push_constant) uniform Push
 #define CURRENT_SUBFRAME config.CurrentSubFrame
 #define TOTAL_SUBFRAMES config.TotalSubFrames
 
-#define RGB_NOISE_XTALK_REJECT_DB config.RGB_NOISE_XTALK_REJECT_DB
+#define RGB_NOISE_FEEDBACK_DB config.RGB_NOISE_FEEDBACK_DB
+#define RGB_NOISE_XTALK_DB config.RGB_NOISE_XTALK_DB
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
@@ -290,7 +292,10 @@ void main()
         mag_delta += mag_delta_sample;
     }
 
-    float crosstalk_gain = db_to_linear(-RGB_NOISE_XTALK_REJECT_DB);
+    float feedback_gain = db_to_linear(RGB_NOISE_FEEDBACK_DB);
+    vec3 feedback = feedback_gain * mag_delta.rgb;
+
+    float crosstalk_gain = db_to_linear(RGB_NOISE_XTALK_DB);
     vec3 crosstalk_drive = vec3(
         dot(mag_delta.gba, vec3(1.0)),
         dot(mag_delta.rba, vec3(1.0)),
@@ -298,7 +303,7 @@ void main()
     );
     vec3 crosstalk = crosstalk_gain * crosstalk_drive;
 
-    vec3 color = sample_signal.rgb + vec3(crosstalk);
+    vec3 color = sample_signal.rgb + feedback + crosstalk;
 
     FragColor = vec4(color, 1.0);  // Sync no longer needed
 }

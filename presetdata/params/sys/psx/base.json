@@ -19,7 +19,7 @@
         "DAC_NOISE_AWGN_DB" : -50.0,
         "DAC_NOISE_JITTER_UI" : 1.0,
 
-        "RGB_NOISE_XTALK_REJECT_DB": 50.0,
+        "RGB_NOISE_XTALK_DB": -50.0,
 
         "DSP_WORKING_FS" : 64.0
     }
