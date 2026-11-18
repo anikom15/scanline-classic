@@ -24,7 +24,9 @@
 #pragma format R16G16B16A16_SFLOAT
 
 #include "common.inc"
+#include "color.inc"
 
+#include "menus/parameters/colorimetry.inc"
 #include "menus/parameters/phosphor.inc"
 
 #pragma include_optional "../config/options.cfg"
@@ -45,6 +47,16 @@ layout(push_constant) uniform Push
     float PHOSPHOR_DECAY_0P1_R;
     float PHOSPHOR_DECAY_0P1_G;
     float PHOSPHOR_DECAY_0P1_B;
+
+    float R_X;
+    float R_Y;
+    float G_X;
+    float G_Y;
+    float B_X;
+    float B_Y;
+    float W_X;
+    float W_Y;
+    float COLORIMETRY_PRESET;
 
 #ifdef OPTION_DEBUG
     float PHOSPHOR_BYPASS;
@@ -67,9 +79,26 @@ layout(push_constant) uniform Push
 #define PHOSPHOR_DECAY_0P1_G config.PHOSPHOR_DECAY_0P1_G
 #define PHOSPHOR_DECAY_0P1_B config.PHOSPHOR_DECAY_0P1_B
 
+#define COLORIMETRY_PRESET config.COLORIMETRY_PRESET
+#define R_X config.R_X
+#define R_Y config.R_Y
+#define G_X config.G_X
+#define G_Y config.G_Y
+#define B_X config.B_X
+#define B_Y config.B_Y
+#define W_X config.W_X
+#define W_Y config.W_Y
+
 layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 MVP;
 } global;
+
+vec3 persistence(vec3 x, vec3 tau, vec3 n)
+{
+    vec3 decay = pow(1.0 + 1.0 / tau * pow(x, 1.0 / n), n);
+
+    return min(x / max(decay, vec3(EPS)), x * (1.0 - EPS));
+}
 
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
@@ -77,6 +106,7 @@ layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
 layout(location = 1) out vec3 vn;
 layout(location = 2) out vec3 vtau;
+layout(location = 3) flat out vec3 luma_weights;
 
 void main()
 {
@@ -104,12 +134,43 @@ void main()
     vec3 a = (-1.0 + sqrt(4.0 * R - 3.0)) / 2.0;
     vn = log(10.0) / log(a);
     vtau = t10 / (pow(vec3(10.0), 1.0 / vn) - 1.0);
+
+    // Use per-subframe time step for smoother decay
+    float fps = max(config.OriginalFPS, 1.0);
+    float subframes = max(float(TOTAL_SUBFRAMES), 1.0);
+    vtau = vtau * fps * subframes;
+
+    mat3 RGB_to_XYZ;
+
+#ifdef OPTION_NOCOLOR
+    RGB_to_XYZ = sRGB_TO_XYZ;
+#else
+    if (COLORIMETRY_PRESET < 0.5) {
+        vec3 ref_XYZ = xyY_to_XYZ(vec3(W_X, W_Y, 1.0));
+        vec3 red_XYZ = xyY_to_XYZ(vec3(R_X, R_Y, 1.0));
+        vec3 green_XYZ = xyY_to_XYZ(vec3(G_X, G_Y, 1.0));
+        vec3 blue_XYZ = xyY_to_XYZ(vec3(B_X, B_Y, 1.0));
+
+        RGB_to_XYZ = get_RGB_to_XYZ(red_XYZ, green_XYZ, blue_XYZ, ref_XYZ);
+    } else if (COLORIMETRY_PRESET < 1.5) {
+        RGB_to_XYZ = SMPTE_C_TO_XYZ;
+    } else if (COLORIMETRY_PRESET < 2.5) {
+        RGB_to_XYZ = NTSC_J_TO_XYZ;
+    } else if (COLORIMETRY_PRESET < 3.5) {
+        RGB_to_XYZ = EBU_TO_XYZ;
+    } else {
+        RGB_to_XYZ = sRGB_TO_XYZ;
+    }
+#endif // OPTION_NOCOLOR
+
+    luma_weights = vec3(RGB_to_XYZ[0][1], RGB_to_XYZ[1][1], RGB_to_XYZ[2][1]);
 }
 
 #pragma stage fragment
 layout(location = 0) in vec2 vTexCoord;
 layout(location = 1) in vec3 vn;
 layout(location = 2) in vec3 vtau;
+layout(location = 3) in vec3 luma_weights;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 1) uniform sampler2D Source;
 layout(set = 0, binding = 2) uniform sampler2D Phosphor3Feedback;
@@ -136,18 +197,9 @@ void main()
     }
 #endif  // OPTION_DEBUG
 
-    // Use per-subframe time step for smoother decay
-    float fps = max(config.OriginalFPS, 1.0);
-    float subframes = max(float(TOTAL_SUBFRAMES), 1.0);
-    vec3 tau_frame = vtau * fps * subframes;
-
     vec3 color1 = texture(Phosphor3Feedback, Tex).rgb;
-    vec3 decay = pow(1.0 + 1.0 / tau_frame * pow(color1 / TARGET_NITS, 1.0 / vn), vn);
 
-    // Make decay safe
-    vec3 persistence = min(color1 / max(decay, vec3(EPS)), color1 * (1.0 - EPS));
-
-    color = persistence + color;
+    color = max(max((TARGET_NITS * luma_weights) * persistence(color1 / (TARGET_NITS * luma_weights), vtau, vn), color * (TARGET_NITS * luma_weights)), vec3(0.0));
 
     FragColor = vec4(color, alpha);
 }

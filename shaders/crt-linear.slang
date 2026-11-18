@@ -46,28 +46,10 @@ layout(push_constant) uniform Push
     // User settings
     float USER_PICTURE;
     float USER_BRIGHTNESS;
-    float R_X;
-    float R_Y;
-    float G_X;
-    float G_Y;
-    float B_X;
-    float B_Y;
-    float W_X;
-    float W_Y;
-    float COLORIMETRY_PRESET;
 } config;
 
 #define USER_PICTURE config.USER_PICTURE
 #define USER_BRIGHTNESS config.USER_BRIGHTNESS
-#define COLORIMETRY_PRESET config.COLORIMETRY_PRESET
-#define R_X config.R_X
-#define R_Y config.R_Y
-#define G_X config.G_X
-#define G_Y config.G_Y
-#define B_X config.B_X
-#define B_Y config.B_Y
-#define W_X config.W_X
-#define W_Y config.W_Y
 
 layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 MVP;
@@ -93,31 +75,6 @@ void main()
     float white_level = 2.0 * USER_PICTURE / 100.0 + black_level;
     bt1886_a = pow(white_level - black_level, gamma);
     bt1886_b = black_level / (white_level - black_level);
-
-    mat3 RGB_to_XYZ;
-
-#ifdef OPTION_NOCOLOR
-    RGB_to_XYZ = sRGB_TO_XYZ;
-#else
-    if (COLORIMETRY_PRESET < 0.5) {
-        vec3 ref_XYZ = xyY_to_XYZ(vec3(W_X, W_Y, 1.0));
-        vec3 red_XYZ = xyY_to_XYZ(vec3(R_X, R_Y, 1.0));
-        vec3 green_XYZ = xyY_to_XYZ(vec3(G_X, G_Y, 1.0));
-        vec3 blue_XYZ = xyY_to_XYZ(vec3(B_X, B_Y, 1.0));
-
-        RGB_to_XYZ = get_RGB_to_XYZ(red_XYZ, green_XYZ, blue_XYZ, ref_XYZ);
-    } else if (COLORIMETRY_PRESET < 1.5) {
-        RGB_to_XYZ = SMPTE_C_TO_XYZ;
-    } else if (COLORIMETRY_PRESET < 2.5) {
-        RGB_to_XYZ = NTSC_J_TO_XYZ;
-    } else if (COLORIMETRY_PRESET < 3.5) {
-        RGB_to_XYZ = EBU_TO_XYZ;
-    } else {
-        RGB_to_XYZ = sRGB_TO_XYZ;
-    }
-#endif  // OPTION_NOCOLOR
-
-    luma_weights = vec3(RGB_to_XYZ[0][1], RGB_to_XYZ[1][1], RGB_to_XYZ[2][1]);
 }
 
 #pragma stage fragment
@@ -132,9 +89,6 @@ void main()
 {
     // Linearize input using BT.1886 transfer function
     vec3 color = bt1886_linear(texture(Source, vTexCoord).rgb, bt1886_a, bt1886_b);
-
-    // Multiply each component by the luminance weight to get absolute luminance
-    color *= TARGET_NITS * luma_weights;
 
     FragColor = vec4(color, 1.0);
 }
