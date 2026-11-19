@@ -19,8 +19,8 @@
 //
 // System-level component amplifier and filter
 // -------------------------------------------
-// Input: Real RGB voltage
-// Output: Real YCC voltage
+// Input: Real RGB voltage with optional sync in alpha
+// Output: Real YCC voltage with sync on luma
 //
 // Encodes RGB into a chosen luma-chroma color space (YIQ / YPbPr / YUV / YDbDr / YCbCr),
 // then optionally bandlimits each component with a horizontal Gaussian (lobe technique) to
@@ -33,7 +33,7 @@
 // - Filtering is performed in the color space domain, not RGB, to better emulate analog chains.
 // - Bypasses:
 //     SYS_COMPONENT_BYPASS          -> output source RGB unmodified (skip color conversion + filter)
-//     SYS_COMPONENT_FILTER_BYPASS   -> convert to selected color space, but skip filtering
+//     SYS_COMPONENT_FILTER_BYPASS   -> convert and add sync to luma, but skip filtering
 
 #pragma name SysComponent
 #pragma format R16G16B16A16_SFLOAT
@@ -276,7 +276,8 @@ void main()
     if (SYS_COMPONENT_FILTER_BYPASS >= 1.0) {
         vec4 source_sample = texture(Source, vTexCoord);
         vec3 yc = rgb_to_luma_chroma(source_sample.rgb, YC_MODEL);
-        FragColor = vec4(yc, source_sample.a);
+        yc.r += source_sample.a;
+        FragColor = vec4(yc, 0.0);
         return;
     }
 #endif  // OPTION_DEBUG
@@ -312,10 +313,8 @@ void main()
                 gaussian(dt, sigma.z));
             vec4 yccs = fetch_input_sample(Source, config.SourceSize.xy, output_index + dt, FrameWidth, DataLength - 1.0);
 
-            // Add sync to luma
-            yccs.r += yccs.a;
-
             vec3 ycc = rgb_to_luma_chroma(yccs.rgb, YC_MODEL);
+            ycc.r += yccs.a;
 
             accum += coeff * ycc;
         }
@@ -339,10 +338,8 @@ void main()
                 fetch_input_sample(Source, config.SourceSize.xy, float(output_indices.x) - dt, FrameWidth, DataLength - 1.0).a
                 );
 
-            // Add sync to luma
-            yccs.r += yccs.a;
-
             vec3 ycc = rgb_to_luma_chroma(yccs.rgb, YC_MODEL);
+            ycc.r += yccs.a;
 
             accum += coeff * ycc;
             filter_gain += coeff;

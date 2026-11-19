@@ -218,9 +218,10 @@ void main()
     // PAL V-axis alternation: simply invert V on odd lines
     float pal_v_sign = 1.0 - 2.0 * floor(mod(sample_y, 2.0)) * PAL;
 
-    // Apply IQ imbalance
-    ypbpr.g *= sqrt(g_iq);
-    ypbpr.b /= sqrt(g_iq);
+    // Scale IQ imbalance with squared luma, reaching its maximum at |Y| = 1.
+    float iq_gain = sqrt(mix(1.0, g_iq, min(ypbpr.r * ypbpr.r, 1.0)));
+    ypbpr.g *= iq_gain;
+    ypbpr.b /= iq_gain;
 
     vec2 yc = vec2(
         mix(ypbpr.r, 0.925 * (ypbpr.r + 0.075), ENCODER_SETUP),

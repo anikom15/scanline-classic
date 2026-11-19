@@ -282,7 +282,11 @@ void main()
         vNoiseState.frame_width,
         vNoiseState.data_length);
     vec4 mag_delta = vec4(0.0);
+    int max_lod = int(floor(log2(float(config.SendSourceSize.x))));
+
     for (int i = 0; i < XTALK_SAMPLE_COUNT; ++i) {
+        if (i > max_lod)
+            break;
         vec4 mag_delta_sample = sample_mag_delta_v_lod(sample_index, float(i), vNoiseState);
         mag_delta += mag_delta_sample;
     }
