@@ -1,7 +1,7 @@
 {
     "shaders" : {
         "amp" : "sys-rgb-amp",
-        "sys-bandlimit" : "sys-rgb-bandlimit",
+        "sys-bandlimit" : "sys-bandlimit",
         "yc" : "sys-yc",
         "mod" : "yc-composite",
         "prefilter" : "composite-prefilter",

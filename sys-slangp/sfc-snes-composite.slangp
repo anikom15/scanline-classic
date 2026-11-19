@@ -5,7 +5,7 @@
 
 shaders = 9
 
-shader0 = "../src/sys-rgb-bandlimit.slang"
+shader0 = "../src/sys-bandlimit.slang"
 filter_linear0 = "false"
 scale_type0 = "source"
 scale_x0 = 3.0
@@ -40,7 +40,7 @@ filter_linear8 = "true"
 textures = BORDER
 BORDER = "../share/bezel-trinitron.png"
 
-# sys-rgb-bandlimit parameters
+# sys-bandlimit parameters
 SYS_BANDWIDTH_R = 4.8
 SYS_BANDWIDTH_G = 4.8
 SYS_BANDWIDTH_B = 4.8

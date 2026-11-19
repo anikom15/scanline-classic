@@ -1,6 +1,6 @@
 #version 450
 
-// Filename: noise-rgb.slang
+// Filename: noise-txrx.slang
 //
 // Copyright (C) 2026 W. M. Martinez
 //
@@ -17,20 +17,15 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
-// RGB noise injection in the DSP sample domain
+// General noise injection in the DSP sample domain
 // --------------------------------------------
-// Input: RGB voltage
-// Output: RGB voltage
+// Input: voltage
+// Output: voltage
 //
-// Adds broadband AWGN and simple MagDeltaV-driven crosstalk to the framed 1D
+// Adds simple MagDeltaV-driven crosstalk to the framed 1D
 // raster between `frameh.slang` and `framev.slang`.
-//
-// Model:
-//  - `RGB_NOISE_FEEDBACK_DB` is the capacitave feedback level in dB.
-//  - `RGB_NOISE_XTALK_DB` is one rejection value for all channels.
-//  - Crosstalk drive uses equal contribution from MagDeltaV R/G/B/H/V.
 
-#pragma name NoiseRGB
+#pragma name NoiseTxRx
 #pragma format R16G16B16A16_SFLOAT
 
 #include "common.inc"
@@ -39,16 +34,16 @@
 #include "subframe.inc"
 
 #include "menus/parameters/dsp.inc"
-#include "menus/parameters/noise-rgb.inc"
+#include "menus/parameters/noise-txrx.inc"
 #include "menus/parameters/sys-timing.inc"
 
 #pragma include_optional "../config/options.cfg"
 
 #ifdef OPTION_DEBUG
 #pragma parameter DEBUG_RGB_NOISE_HEADER " —— Debug RGB Noise —— " 0.0 0.0 0.0 0.0
-#pragma parameter RGB_NOISE_BYPASS "Bypass RGB noise" 0.0 0.0 1.0 1.0
-#pragma parameter RGB_NOISE_VIEW_MAG_DELTAV "View MagDeltaV" 0.0 0.0 2.0 1.0
-#pragma parameter RGB_NOISE_MAG_DELTAV_MIP_LOD "MagDeltaV mip LOD" 0.0 0.0 12.0 1.0
+#pragma parameter TXRX_NOISE_BYPASS "Bypass RGB noise" 0.0 0.0 1.0 1.0
+#pragma parameter TXRX_NOISE_VIEW_MAG_DELTAV "View MagDeltaV" 0.0 0.0 2.0 1.0
+#pragma parameter TXRX_NOISE_MAG_DELTAV_MIP_LOD "MagDeltaV mip LOD" 0.0 0.0 12.0 1.0
 #endif  // OPTION_DEBUG
 
 layout(push_constant) uniform Push
@@ -71,13 +66,13 @@ layout(push_constant) uniform Push
     float H_BLANK_FUZZ;
     float DSP_WORKING_FS;
 
-    float RGB_NOISE_FEEDBACK_DB;
-    float RGB_NOISE_XTALK_DB;
+    float TXRX_NOISE_FEEDBACK_DB;
+    float TXRX_NOISE_XTALK_DB;
 
 #ifdef OPTION_DEBUG
-    float RGB_NOISE_BYPASS;
-    float RGB_NOISE_VIEW_MAG_DELTAV;
-    float RGB_NOISE_MAG_DELTAV_MIP_LOD;
+    float TXRX_NOISE_BYPASS;
+    float TXRX_NOISE_VIEW_MAG_DELTAV;
+    float TXRX_NOISE_MAG_DELTAV_MIP_LOD;
 #endif  // OPTION_DEBUG
 } config;
 
@@ -93,8 +88,8 @@ layout(push_constant) uniform Push
 #define CURRENT_SUBFRAME config.CurrentSubFrame
 #define TOTAL_SUBFRAMES config.TotalSubFrames
 
-#define RGB_NOISE_FEEDBACK_DB config.RGB_NOISE_FEEDBACK_DB
-#define RGB_NOISE_XTALK_DB config.RGB_NOISE_XTALK_DB
+#define TXRX_NOISE_FEEDBACK_DB config.TXRX_NOISE_FEEDBACK_DB
+#define TXRX_NOISE_XTALK_DB config.TXRX_NOISE_XTALK_DB
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
@@ -102,12 +97,12 @@ layout(std140, set = 0, binding = 0) uniform UBO
 } global;
 
 #ifdef OPTION_DEBUG
-#define RGB_NOISE_BYPASS config.RGB_NOISE_BYPASS
-#define RGB_NOISE_VIEW_MAG_DELTAV config.RGB_NOISE_VIEW_MAG_DELTAV
-#define RGB_NOISE_MAG_DELTAV_MIP_LOD config.RGB_NOISE_MAG_DELTAV_MIP_LOD
+#define TXRX_NOISE_BYPASS config.TXRX_NOISE_BYPASS
+#define TXRX_NOISE_VIEW_MAG_DELTAV config.TXRX_NOISE_VIEW_MAG_DELTAV
+#define TXRX_NOISE_MAG_DELTAV_MIP_LOD config.TXRX_NOISE_MAG_DELTAV_MIP_LOD
 #endif  // OPTION_DEBUG
 
-struct NoiseRGBState {
+struct NoiseTxRxState {
     float frame_width;
     float frame_height;
     float data_length;
@@ -117,11 +112,11 @@ struct NoiseRGBState {
 layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
-layout(location = 1) flat out NoiseRGBState vNoiseState;
+layout(location = 1) flat out NoiseTxRxState vNoiseState;
 
-NoiseRGBState compute_noise_state()
+NoiseTxRxState compute_noise_state()
 {
-    NoiseRGBState state;
+    NoiseTxRxState state;
 
     state.frame_width = contract_working_frame_width(
         config.OriginalFPS,
@@ -157,7 +152,7 @@ void main()
 
 #pragma stage fragment
 layout(location = 0) in vec2 vTexCoord;
-layout(location = 1) flat in NoiseRGBState vNoiseState;
+layout(location = 1) flat in NoiseTxRxState vNoiseState;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 1) uniform sampler2D Source;  // Mip 12 (1-pixel terminal mip)
 layout(set = 0, binding = 2) uniform sampler2D SendSource;
@@ -180,7 +175,7 @@ const int XTALK_SAMPLE_COUNT = OPTION_XTALK_SAMPLE_COUNT;
 const int XTALK_SAMPLE_COUNT = 13;
 #endif
 
-vec2 mag_delta_v_uv_from_index(float sample_index, NoiseRGBState state)
+vec2 mag_delta_v_uv_from_index(float sample_index, NoiseTxRxState state)
 {
     float data_limit = max(state.data_length - 1.0, 0.0);
     float clamped_index = clamp(sample_index, 0.0, data_limit);
@@ -221,7 +216,7 @@ vec4 sample_mag_delta_v_level(vec2 mag_delta_uv, int lod_i)
     return texture(Source, mag_delta_uv);
 }
 
-vec4 sample_mag_delta_v_lod(float sample_index, float lod, NoiseRGBState state)
+vec4 sample_mag_delta_v_lod(float sample_index, float lod, NoiseTxRxState state)
 {
     vec2 mag_delta_uv = mag_delta_v_uv_from_index(sample_index, state);
     float lod_clamped = clamp(lod, 0.0, 11.0);
@@ -250,7 +245,7 @@ void main()
     float sample_index = output_y * vNoiseState.frame_width + output_x;
 
 #ifdef OPTION_DEBUG
-    if (RGB_NOISE_BYPASS > 0.5) {
+    if (TXRX_NOISE_BYPASS > 0.5) {
         FragColor = fetch_input_sample(
             SendSource,
             config.SendSourceSize.xy,
@@ -260,13 +255,13 @@ void main()
         return;
     }
 
-    if (RGB_NOISE_VIEW_MAG_DELTAV > 0.5) {
+    if (TXRX_NOISE_VIEW_MAG_DELTAV > 0.5) {
         vec4 debug_mag_delta_v = sample_mag_delta_v_lod(
             sample_index,
-            RGB_NOISE_MAG_DELTAV_MIP_LOD,
+            TXRX_NOISE_MAG_DELTAV_MIP_LOD,
             vNoiseState);
 
-        if (RGB_NOISE_VIEW_MAG_DELTAV > 1.5) {
+        if (TXRX_NOISE_VIEW_MAG_DELTAV > 1.5) {
             float a = clamp(debug_mag_delta_v.a, 0.0, 1.0);
             FragColor = vec4(a, a, a, 1.0);
         } else {
@@ -292,18 +287,19 @@ void main()
         mag_delta += mag_delta_sample;
     }
 
-    float feedback_gain = db_to_linear(RGB_NOISE_FEEDBACK_DB);
-    vec3 feedback = feedback_gain * mag_delta.rgb;
+    float feedback_gain = db_to_linear(TXRX_NOISE_FEEDBACK_DB);
+    vec4 feedback = feedback_gain * mag_delta;
 
-    float crosstalk_gain = db_to_linear(RGB_NOISE_XTALK_DB);
-    vec3 crosstalk_drive = vec3(
+    float crosstalk_gain = db_to_linear(TXRX_NOISE_XTALK_DB);
+    vec4 crosstalk_drive = vec4(
         dot(mag_delta.gba, vec3(1.0)),
         dot(mag_delta.rba, vec3(1.0)),
-        dot(mag_delta.rga, vec3(1.0))
+        dot(mag_delta.rga, vec3(1.0)),
+        dot(mag_delta.rgb, vec3(1.0))
     );
-    vec3 crosstalk = crosstalk_gain * crosstalk_drive;
+    vec4 crosstalk = crosstalk_gain * crosstalk_drive;
 
-    vec3 color = sample_signal.rgb + feedback + crosstalk;
+    vec4 out_signal = sample_signal + feedback + crosstalk;
 
-    FragColor = vec4(color, 1.0);  // Sync no longer needed
+    FragColor = out_signal;
 }

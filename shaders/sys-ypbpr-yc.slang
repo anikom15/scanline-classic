@@ -36,6 +36,7 @@
 #include "menus/parameters/dsp.inc"
 #include "menus/parameters/sys-encode.inc"
 #include "menus/parameters/sys-timing.inc"
+#include "menus/parameters/noise-svideo.inc"
 
 #pragma include_optional "../config/options.cfg"
 
@@ -67,6 +68,9 @@ layout(push_constant) uniform Push
     float PAL;
     float SVIDEO;
 
+    float SVIDEO_CARRIER_LEAKAGE;
+    float SVIDEO_IQ_IMBALANCE;
+
 #ifdef OPTION_DEBUG
     float SYS_YPBPR_YC_BYPASS;
 #endif  // OPTION_DEBUG
@@ -91,6 +95,9 @@ layout(push_constant) uniform Push
 #define PAL config.PAL
 #define SVIDEO config.SVIDEO
 
+#define SVIDEO_CARRIER_LEAKAGE config.SVIDEO_CARRIER_LEAKAGE
+#define SVIDEO_IQ_IMBALANCE config.SVIDEO_IQ_IMBALANCE
+
 #ifdef OPTION_DEBUG
 #define SYS_YPBPR_YC_BYPASS config.SYS_YPBPR_YC_BYPASS
 #endif  // OPTION_DEBUG
@@ -110,6 +117,8 @@ layout(location = 3) flat out float DataLength;
 layout(location = 4) flat out float InitialSubcarrierPhaseFrac;
 layout(location = 5) flat out float Fs;
 layout(location = 6) flat out float Fsc;
+layout(location = 7) flat out float c_leakage;
+layout(location = 8) flat out float g_iq;
 
 void main()
 {
@@ -156,6 +165,9 @@ void main()
         config.OriginalFPS,
         SC_FREQ_MODE, SC_FREQ
     );
+
+    c_leakage = pow(10.0, SVIDEO_CARRIER_LEAKAGE / 20.0);
+    g_iq = pow(10.0, SVIDEO_IQ_IMBALANCE / 20.0);
 }
 
 #pragma stage fragment
@@ -166,6 +178,8 @@ layout(location = 3) flat in float DataLength;
 layout(location = 4) flat in float InitialSubcarrierPhaseFrac;
 layout(location = 5) flat in float Fs;
 layout(location = 6) flat in float Fsc;
+layout(location = 7) flat in float c_leakage;
+layout(location = 8) flat in float g_iq;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 1) uniform sampler2D Source;
 
@@ -204,12 +218,20 @@ void main()
     // PAL V-axis alternation: simply invert V on odd lines
     float pal_v_sign = 1.0 - 2.0 * floor(mod(sample_y, 2.0)) * PAL;
 
+    // Apply IQ imbalance
+    ypbpr.g *= sqrt(g_iq);
+    ypbpr.b /= sqrt(g_iq);
+
     vec2 yc = vec2(
         mix(ypbpr.r, 0.925 * (ypbpr.r + 0.075), ENCODER_SETUP),
         dot(mix(1.0, 0.925, ENCODER_SETUP) * ypbpr.gb,
-        vec2(sin(phase), pal_v_sign * cos(phase)))
+            vec2(sin(phase), pal_v_sign * cos(phase)))
     );
+
+    // Apply carrier leakage
+    yc.g += c_leakage;
+
     vec2 cv = vec2(yc.r + yc.g, 0.0);
 
-    FragColor = vec4(mix(cv, yc, SVIDEO), 0.0, 1.0);
+    FragColor = vec4(mix(cv, yc, SVIDEO), 0.0, 0.0);
 }

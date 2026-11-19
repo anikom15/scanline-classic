@@ -24,7 +24,7 @@
 //
 // Encodes RGB into a chosen luma-chroma color space (YIQ / YPbPr / YUV / YDbDr / YCbCr),
 // then optionally bandlimits each component with a horizontal Gaussian (lobe technique) to
-// approximate analog system bandwidth. Component-wise SYS_GAIN/SYS_BIAS are applied after filtering.
+// approximate analog system bandwidth.
 //
 // Notes:
 // - YDbDr is implemented by first computing YUV, then scaling chroma:
@@ -33,7 +33,7 @@
 // - Filtering is performed in the color space domain, not RGB, to better emulate analog chains.
 // - Bypasses:
 //     SYS_COMPONENT_BYPASS          -> output source RGB unmodified (skip color conversion + filter)
-//     SYS_COMPONENT_FILTER_BYPASS   -> convert to selected color space and apply SYS_GAIN/BIAS, but skip filtering
+//     SYS_COMPONENT_FILTER_BYPASS   -> convert to selected color space, but skip filtering
 
 #pragma name SysComponent
 #pragma format R16G16B16A16_SFLOAT
@@ -108,12 +108,6 @@ layout(std140, set = 0, binding = 0) uniform UBO
     mat4 MVP;
     float DSP_WORKING_FS;
 
-    // Post-filter gain/bias per component
-    float SYS_GAIN_Y;
-    float SYS_GAIN_C;
-    float SYS_BIAS_Y;
-    float SYS_BIAS_C;
-
 #ifdef OPTION_DEBUG
     // Bypasses
     float SYS_COMPONENT_BYPASS;        // 0 or 1
@@ -129,23 +123,16 @@ layout(std140, set = 0, binding = 0) uniform UBO
 
 #define DSP_WORKING_FS global.DSP_WORKING_FS
 
-#define SYS_GAIN_Y global.SYS_GAIN_Y
-#define SYS_GAIN_C global.SYS_GAIN_C
-#define SYS_BIAS_Y global.SYS_BIAS_Y
-#define SYS_BIAS_C global.SYS_BIAS_C
-
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
-layout(location = 1) out vec3 gain;
-layout(location = 2) out vec3 bias;
-layout(location = 3) flat out vec3 sigma;
-layout(location = 4) flat out vec3 kernelGain;
-layout(location = 6) flat out float FrameWidth;
-layout(location = 7) flat out float FrameHeight;
-layout(location = 8) flat out float DataLength;
-layout(location = 9) flat out float Taps;
+layout(location = 1) flat out vec3 sigma;
+layout(location = 2) flat out vec3 kernelGain;
+layout(location = 3) flat out float FrameWidth;
+layout(location = 4) flat out float FrameHeight;
+layout(location = 5) flat out float DataLength;
+layout(location = 6) flat out float Taps;
 
 const float MAX_TAPS = 71.0;
 
@@ -265,29 +252,16 @@ void main()
 
         kernelGain = vec3(max(max(centroid_offset.x, centroid_offset.y), centroid_offset.y));
     }
-
-    gain = vec3(
-        db_to_linear(SYS_GAIN_Y),
-        db_to_linear(SYS_GAIN_C),
-        db_to_linear(SYS_GAIN_C)
-    );
-    bias = vec3(
-        SYS_BIAS_Y * 10e-3,
-        SYS_BIAS_C * 10e-3,
-        SYS_BIAS_C * 10e-3
-    );
 }
 
 #pragma stage fragment
 layout(location = 0) in vec2 vTexCoord;
-layout(location = 1) in vec3 gain;
-layout(location = 2) in vec3 bias;
-layout(location = 3) flat in vec3 sigma;
-layout(location = 4) flat in vec3 kernelGain;
-layout(location = 6) flat in float FrameWidth;
-layout(location = 7) flat in float FrameHeight;
-layout(location = 8) flat in float DataLength;
-layout(location = 9) flat in float Taps;
+layout(location = 1) flat in vec3 sigma;
+layout(location = 2) flat in vec3 kernelGain;
+layout(location = 3) flat in float FrameWidth;
+layout(location = 4) flat in float FrameHeight;
+layout(location = 5) flat in float DataLength;
+layout(location = 6) flat in float Taps;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 1) uniform sampler2D Source;
 
@@ -302,7 +276,7 @@ void main()
     if (SYS_COMPONENT_FILTER_BYPASS >= 1.0) {
         vec4 source_sample = texture(Source, vTexCoord);
         vec3 yc = rgb_to_luma_chroma(source_sample.rgb, YC_MODEL);
-        FragColor = vec4(gain * (yc + bias), source_sample.a);
+        FragColor = vec4(yc, source_sample.a);
         return;
     }
 #endif  // OPTION_DEBUG
@@ -324,7 +298,6 @@ void main()
 
     int n_taps = int(Taps);
     vec3 outycc = vec3(0.0);
-    float phase_rel_sample = fetch_input_sample(Source, config.SourceSize.xy, output_index, FrameWidth, DataLength - 1.0).a;
 
     if (SYS_YC_FILTER_TYPE < 0.5) {
         vec3 accum = vec3(0.0);
@@ -337,9 +310,13 @@ void main()
                 gaussian(dt, sigma.x),
                 gaussian(dt, sigma.y),
                 gaussian(dt, sigma.z));
-            vec3 ycc = rgb_to_luma_chroma(
-                fetch_input_sample(Source, config.SourceSize.xy, output_index + dt, FrameWidth, DataLength - 1.0).rgb,
-                YC_MODEL);
+            vec4 yccs = fetch_input_sample(Source, config.SourceSize.xy, output_index + dt, FrameWidth, DataLength - 1.0);
+
+            // Add sync to luma
+            yccs.r += yccs.a;
+
+            vec3 ycc = rgb_to_luma_chroma(yccs.rgb, YC_MODEL);
+
             accum += coeff * ycc;
         }
         outycc = accum / kernelGain;
@@ -355,19 +332,23 @@ void main()
             int tap_offset = n_taps - 1 - k;
             float dt = float(tap_offset);
             vec3 coeff = (1.0 - alpha) * pow(alpha, vec3(dt));
-            vec3 ycc = rgb_to_luma_chroma(
-                vec3(
-                    fetch_input_sample(Source, config.SourceSize.xy, float(output_indices.x) - dt, FrameWidth, DataLength - 1.0).r,
-                    fetch_input_sample(Source, config.SourceSize.xy, float(output_indices.y) - dt, FrameWidth, DataLength - 1.0).g,
-                    fetch_input_sample(Source, config.SourceSize.xy, float(output_indices.z) - dt, FrameWidth, DataLength - 1.0).b
-                ),
-                YC_MODEL
-            );
+            vec4 yccs = vec4(
+                fetch_input_sample(Source, config.SourceSize.xy, float(output_indices.x) - dt, FrameWidth, DataLength - 1.0).r,
+                fetch_input_sample(Source, config.SourceSize.xy, float(output_indices.y) - dt, FrameWidth, DataLength - 1.0).g,
+                fetch_input_sample(Source, config.SourceSize.xy, float(output_indices.z) - dt, FrameWidth, DataLength - 1.0).b,
+                fetch_input_sample(Source, config.SourceSize.xy, float(output_indices.x) - dt, FrameWidth, DataLength - 1.0).a
+                );
+
+            // Add sync to luma
+            yccs.r += yccs.a;
+
+            vec3 ycc = rgb_to_luma_chroma(yccs.rgb, YC_MODEL);
+
             accum += coeff * ycc;
             filter_gain += coeff;
         }
         outycc = accum / vec3(max(filter_gain.x, EPS), max(filter_gain.y, EPS), max(filter_gain.z, EPS));
     }
 
-    FragColor = vec4(gain * (outycc + bias), phase_rel_sample);
+    FragColor = vec4(outycc, 0.0);
 }

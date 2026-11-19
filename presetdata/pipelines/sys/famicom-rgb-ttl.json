@@ -3,7 +3,7 @@
         "frame" : "frameh",
         "special" : "famicom-rgb",
         "noise-dac" : "noise-dac",
-        "bandlimit" : "sys-rgb-bandlimit"
+        "bandlimit" : "sys-bandlimit"
     },
     "options" : {
         "frame" : {

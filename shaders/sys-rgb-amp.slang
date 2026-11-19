@@ -2,7 +2,7 @@
 
 // Filename: sys-rgb-amp.slang
 //
-// Copyright (C) 2023 W. M. Martinez
+// Copyright (C) 2026 W. M. Martinez
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -25,13 +25,13 @@
 // Can be used to alter channel level, e.g. to compensate an emulator's
 // output being too dark or too bright
 
-#pragma name Amplifier
+#pragma name RGBAmplifier
 #pragma format R16G16B16A16_SFLOAT
 
 #include "common.inc"
 
 #include "menus/parameters/sys-rgb.inc"
-#include "menus/parameters/noise-rgb.inc"
+#include "menus/parameters/noise-txrx.inc"
 
 #pragma include_optional "../config/options.cfg"
 
@@ -49,8 +49,8 @@ layout(push_constant) uniform Push
     float SYS_GAIN_G;
     float SYS_GAIN_B;
 
-    float RGB_NOISE_IMD2;
-    float RGB_NOISE_IMD3;
+    float TXRX_NOISE_IMD2;
+    float TXRX_NOISE_IMD3;
 
 #ifdef OPTION_DEBUG
     float SYS_RGB_AMP_BYPASS;
@@ -70,8 +70,8 @@ layout(push_constant) uniform Push
 #define SYS_GAIN_G config.SYS_GAIN_G
 #define SYS_GAIN_B config.SYS_GAIN_B
 
-#define RGB_NOISE_IMD2 config.RGB_NOISE_IMD2
-#define RGB_NOISE_IMD3 config.RGB_NOISE_IMD3
+#define TXRX_NOISE_IMD2 config.TXRX_NOISE_IMD2
+#define TXRX_NOISE_IMD3 config.TXRX_NOISE_IMD3
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
@@ -82,8 +82,8 @@ layout(std140, set = 0, binding = 0) uniform UBO
 layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
-layout(location = 1) out vec3 gain;
-layout(location = 2) out vec3 bias;
+layout(location = 1) out vec4 gain;
+layout(location = 2) out vec4 bias;
 layout(location = 3) out vec2 imd;
 
 void main()
@@ -91,43 +91,45 @@ void main()
     gl_Position = global.MVP * Position;
     vTexCoord = TexCoord;
 
-    gain = vec3(
+    gain = vec4(
         db_to_linear(SYS_GAIN_R),
         db_to_linear(SYS_GAIN_G),
-        db_to_linear(SYS_GAIN_B));
+        db_to_linear(SYS_GAIN_B),
+        1.0);
 
-    bias = vec3(
+    bias = vec4(
         SYS_BIAS_R * 10e-3,
         SYS_BIAS_G * 10e-3,
-        SYS_BIAS_B * 10e-3);
+        SYS_BIAS_B * 10e-3,
+        0.0);
 
     imd = vec2(
-        pow(10.0, RGB_NOISE_IMD2 / 20.0),
-        4.0 / 3.0 * pow(10.0, RGB_NOISE_IMD3 / 20.0)
+        pow(10.0, TXRX_NOISE_IMD2 / 20.0),
+        4.0 / 3.0 * pow(10.0, TXRX_NOISE_IMD3 / 20.0)
     );
 }
 
 #pragma stage fragment
 layout(location = 0) in vec2 vTexCoord;
-layout(location = 1) in vec3 gain;
-layout(location = 2) in vec3 bias;
+layout(location = 1) in vec4 gain;
+layout(location = 2) in vec4 bias;
 layout(location = 3) in vec2 imd;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
 void main()
 {
-    vec3 v = texture(Source, vTexCoord).rgb;
+    vec4 v = texture(Source, vTexCoord);
 
 #ifdef OPTION_DEBUG
-    if (SYS_RGB_AMP_BYPASS >= 0.5) {
-        FragColor = vec4(v, 1.0);
+    if (SYS_RGB_AMP_BYPASS > 0.5) {
+        FragColor = v;
         return;
     }
 #endif  // OPTION_DEBUG
 
-    vec3 distortion = imd.x * (v * v) - imd.y * (v * v * v);
+    vec4 distortion = imd.x * (v * v) - imd.y * (v * v * v);
 
-    vec3 color = gain * (v + distortion) + bias;
-    FragColor = vec4(color, 1.0);
+    v = gain * (v + distortion) + bias;
+    FragColor = v;
 }

@@ -2,7 +2,7 @@
     "shaders" : {
         "frame" : "frameh",
         "amp" : "sys-rgb-amp",
-        "bandlimit" : "sys-rgb-bandlimit",
+        "bandlimit" : "sys-bandlimit",
         "component" : "sys-component",
         "mod" : "sys-ypbpr-yc",
         "deltav" : "send-mag-delta-v",

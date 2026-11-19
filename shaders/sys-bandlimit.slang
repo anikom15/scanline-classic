@@ -1,6 +1,6 @@
 #version 450
 
-// Filename: sys-rgb-bandlimit.slang
+// Filename: sys-bandlimit.slang
 //
 // Copyright (C) 2025-2026 W. M. Martinez
 //
@@ -17,10 +17,10 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
-// System-side RGB filter
+// System-side general filter
 // ----------------------
-// Input: Real RGB voltage
-// Output: Real RGB voltage
+// Input: Real voltage
+// Output: Real voltage
 //
 // Implements a polyphase FIR resampler with a direct Gaussian kernel
 // over the canonical 1D framed signal emitted by `frameh.slang`.
@@ -28,6 +28,11 @@
 // The vertex shader computes the filter parameters and polyphase
 // factors based on the input and output sizes and timing, while the
 // fragment shader applies the filter to produce the final output color.
+//
+// The filter is designed to limit the bandwidth proportionally to the
+// system clock, ensuring a smooth output.  It operates on all four
+// channels of the input signal.  The fourth channel can be used for
+// sync or any other passband metadata.
 
 #pragma name SysRGBBandlimit
 #pragma format R16G16B16A16_SFLOAT
@@ -279,7 +284,7 @@ layout(location = 11) flat in float OutputFrameWidth;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
-vec3 fetch_input_sample(float sample_index, float input_frame_width, float input_data_limit)
+vec4 fetch_input_sample(float sample_index, float input_frame_width, float input_data_limit)
 {
     // `input_frame_width` is passed as float for portability, but it is
     // integral-valued by contract, so the row/column decomposition can be
@@ -294,7 +299,7 @@ vec3 fetch_input_sample(float sample_index, float input_frame_width, float input
     texel_x = clamp(texel_x, 0, max(int(config.SourceSize.x) - 1, 0));
     texel_y = clamp(texel_y, 0, max(int(config.SourceSize.y) - 1, 0));
 
-    return texelFetch(Source, ivec2(texel_x, texel_y), 0).rgb;
+    return texelFetch(Source, ivec2(texel_x, texel_y), 0);
 }
 
 void main()
@@ -328,21 +333,19 @@ void main()
     float frac_offset = input_sample_pos - input_pos_floor;
     float input_data_limit = max(InputDataLength - 1.0, 0.0);
 
-    vec3 color = vec3(0.0);
+    vec4 color = vec4(0.0);
 
 #ifdef OPTION_DEBUG
     if (SYS_RGB_BANDLIMIT_BYPASS > 0.5) {
         float sample_index = clamp(floor(input_sample_pos + 0.5), 0.0, input_data_limit);
-        vec3 rgb = fetch_input_sample(sample_index, InputFrameWidth, input_data_limit);
-        FragColor = vec4(rgb, 1.0);
+        FragColor = fetch_input_sample(sample_index, InputFrameWidth, input_data_limit);
         return;
     }
 #endif  // OPTION_DEBUG
 
 #ifdef OPTION_CRISPY
     float sample_index = clamp(floor(input_sample_pos + 0.5), 0.0, input_data_limit);
-    vec3 rgb = fetch_input_sample(sample_index, InputFrameWidth, input_data_limit);
-    FragColor = vec4(rgb, 1.0);
+    FragColor = fetch_input_sample(sample_index, InputFrameWidth, input_data_limit);
     return;
 #endif  // OPTION_CRISPY
 
@@ -354,9 +357,9 @@ void main()
             float coeff = gaussian(dt, gfilt.sigma);
 
             float sample_index = clamp(float(input_index_int + tap_offset), 0.0, input_data_limit);
-            vec3 rgb = fetch_input_sample(sample_index, InputFrameWidth, input_data_limit);
+            vec4 sample_value = fetch_input_sample(sample_index, InputFrameWidth, input_data_limit);
 
-            color += coeff * rgb;
+            color += coeff * sample_value;
         }
         color /= gfilt.gain;
     } else {
@@ -372,13 +375,13 @@ void main()
             float coeff = (1.0 - alpha) * pow(alpha, dt);
 
             float sample_index = clamp(float(input_index_int - tap_offset), 0.0, input_data_limit);
-            vec3 rgb = fetch_input_sample(sample_index, InputFrameWidth, input_data_limit);
+            vec4 sample_value = fetch_input_sample(sample_index, InputFrameWidth, input_data_limit);
 
-            color += coeff * rgb;
+            color += coeff * sample_value;
             gain += coeff;
         }
         color /= max(gain, EPS);
     }
 
-    FragColor = vec4(color, 1.0);
+    FragColor = color;
 }

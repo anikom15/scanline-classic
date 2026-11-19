@@ -59,7 +59,7 @@ These are recomputed locally and are not carried as metadata:
 - Stop relying on transported `FS_CURRENT`
 - Keep output addressing and resampling geometry stage-local
 - First targets:
-  - `shaders/sys-rgb-bandlimit.slang`
+  - `shaders/sys-bandlimit.slang`
   - `shaders/display-rgb-bandlimit-fir.slang`
 
 ### Phase 5: Cleanup

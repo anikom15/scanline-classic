@@ -3,7 +3,7 @@
         "frame" : "frameh",
         "special" : "famicom-rgb",
         "amp" : "sys-rgb-amp",
-        "sys-bandlimit" : "sys-rgb-bandlimit",
+        "sys-bandlimit" : "sys-bandlimit",
         "component" : "sys-component",
         "svideo" : "svideo",
         "disp-bandlimit" : "display-rgb-bandlimit",

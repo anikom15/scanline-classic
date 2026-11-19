@@ -3,7 +3,7 @@
         "frame" : "frameh",
         "special" : "famicom-rgb",
         "noise-dac" : "noise-dac",
-        "bandlimit" : "sys-rgb-bandlimit",
+        "bandlimit" : "sys-bandlimit",
         "amp" : "sys-rgb-amp",
         "sync" : "sys-sync",
         "deltav" : "send-mag-delta-v",
@@ -18,7 +18,7 @@
         "mip9" : "send-decimate",
         "mip10" : "send-decimate",
         "mip11" : "send-decimate",
-        "noise-rgb" : "noise-rgb"
+        "noise-txrx" : "noise-txrx"
     },
     "options" : {
         "frame" : {
@@ -95,7 +95,7 @@
             "alias" : "Mip11",
             "filter_linear" : true
         },
-        "noise-rgb" : {
+        "noise-txrx" : {
             "filter_linear" : true,
             "scale_type" : ["absolute", "source"],
             "scale" : [2048.0, 1.0]

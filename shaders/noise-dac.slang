@@ -22,8 +22,6 @@
 // Input: RGB voltage
 // Output: RGB voltage
 //
-// Extracted from `noise-rgb.slang` to model DAC-stage noise contribution only.
-//
 // Covered effects:
 //  - broadband AWGN
 //  - sample jitter / phase noise

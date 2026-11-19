@@ -3,6 +3,7 @@
         "frame" : "frameh",
         "sync" : "sys-sync",
         "noise-dac" : "noise-dac",
+        "amp" : "sys-rgb-amp",
         "deltav" : "send-mag-delta-v",
         "mip1" : "send-decimate",
         "mip2" : "send-decimate",
@@ -16,16 +17,15 @@
         "mip10" : "send-decimate",
         "mip11" : "send-decimate",
         "mip12" : "send-decimate",
-        "noise-rgb" : "noise-rgb",
-        "amp" : "sys-rgb-amp",
-        "bandlimit" : "sys-rgb-bandlimit"
+        "noise-txrx" : "noise-txrx",
+        "bandlimit" : "sys-bandlimit"
     },
     "options" : {
         "frame" : {
             "scale_type" : ["absolute", "absolute"],
             "scale" : [4096.0, 1024.0]
         },
-        "noise-dac": {
+        "amp": {
             "alias" : "SendSource"
         },
         "mip1" : {
@@ -100,7 +100,7 @@
             "alias" : "Mip12",
             "filter_linear" : true
         },
-        "noise-rgb" : {
+        "noise-txrx" : {
             "scale_type" : ["absolute", "source"],
             "scale" : [4096.0, 1.0],
             "filter_linear" : true

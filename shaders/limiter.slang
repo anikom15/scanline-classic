@@ -97,11 +97,11 @@ layout(set = 0, binding = 1) uniform sampler2D Source;
 
 void main()
 {
-    vec4 color = texture(Source, vTexCoord);
+    vec3 color = texture(Source, vTexCoord).rgb;
 
 #ifdef OPTION_DEBUG
     if (LIMITER_BYPASS > 0.5) {
-        FragColor = color;
+        FragColor = vec4(color, 1.0);  // Strip sync or any other metadata
         return;
     }
 #endif  // OPTION_DEBUG
@@ -109,15 +109,15 @@ void main()
     if (LIMITER_TYPE > 0.5) {
         // Hard limiter
         color.rgb = clamp(color.rgb, vec3(0.0), compression);
-        FragColor = color;
+        FragColor = vec4(color, 1.0);  // Strip sync or any other metadata
         return;
     }
 
     // Soft limiter
     vec3 distortion = peak - compression;
-    vec3 softColor = distortion * tanh((color.rgb - compression) / distortion) + compression;
+    vec3 softColor = distortion * tanh((color - compression) / distortion) + compression;
 
-    color.rgb = mix(color.rgb, softColor, greaterThan(color.rgb, compression));
+    color = mix(color, softColor, greaterThan(color, compression));
 
-    FragColor = color;
+    FragColor = vec4(color, 1.0);  // Strip sync or any other metadata
 }
