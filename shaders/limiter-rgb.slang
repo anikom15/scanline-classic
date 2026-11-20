@@ -1,6 +1,6 @@
 #version 450
 
-// Filename: limiter.slang
+// Filename: limiter-rgb.slang
 //
 // Copyright (C) 2026 W. M. Martinez
 //
@@ -24,47 +24,47 @@
 //
 // Applies a soft knee compression using a hyperbolic tangent function
 
-#pragma name Limiter
+#pragma name LimiterRGB
 #pragma format R16G16B16A16_SFLOAT
 
 #include "common.inc"
 
-#include "menus/parameters/limiter.inc"
+#include "menus/parameters/limiter-rgb.inc"
 
 #pragma include_optional "../config/options.cfg"
 
 #ifdef OPTION_DEBUG
-#pragma parameter DEBUG_LIMITER_HEADER " —— Debug Limiter —— " 0.0 0.0 0.0 0.0
-#pragma parameter LIMITER_BYPASS "Bypass limiter" 0.0 0.0 1.0 1.0
+#pragma parameter DEBUG_LIMITER_RGB_HEADER " —— Debug RGB Limiter —— " 0.0 0.0 0.0 0.0
+#pragma parameter LIMITER_RGB_BYPASS "Bypass RGB limiter" 0.0 0.0 1.0 1.0
 #endif  // OPTION_DEBUG
 
 layout(push_constant) uniform Push
 {
     vec4 OutputSize;
     float LIMITER_TYPE;
-    float LIMITER_RYCV_COMPRESSION_POINT;
-    float LIMITER_GCPb_COMPRESSION_POINT;
-    float LIMITER_BCPR_COMPRESSION_POINT;
-    float LIMITER_RYCV_MAX_OUTPUT;
-    float LIMITER_GCPb_MAX_OUTPUT;
-    float LIMITER_BCPR_MAX_OUTPUT;
+    float LIMITER_R_COMPRESSION_POINT;
+    float LIMITER_G_COMPRESSION_POINT;
+    float LIMITER_B_COMPRESSION_POINT;
+    float LIMITER_R_MAX_OUTPUT;
+    float LIMITER_G_MAX_OUTPUT;
+    float LIMITER_B_MAX_OUTPUT;
 
 #ifdef OPTION_DEBUG
-    float LIMITER_BYPASS;
+    float LIMITER_RGB_BYPASS;
 #endif  // OPTION_DEBUG
 
 } config;
 
 #define LIMITER_TYPE config.LIMITER_TYPE
-#define LIMITER_RYCV_COMPRESSION_POINT config.LIMITER_RYCV_COMPRESSION_POINT
-#define LIMITER_GCPb_COMPRESSION_POINT config.LIMITER_GCPb_COMPRESSION_POINT
-#define LIMITER_BCPR_COMPRESSION_POINT config.LIMITER_BCPR_COMPRESSION_POINT
-#define LIMITER_RYCV_MAX_OUTPUT config.LIMITER_RYCV_MAX_OUTPUT
-#define LIMITER_GCPb_MAX_OUTPUT config.LIMITER_GCPb_MAX_OUTPUT
-#define LIMITER_BCPR_MAX_OUTPUT config.LIMITER_BCPR_MAX_OUTPUT
+#define LIMITER_R_COMPRESSION_POINT config.LIMITER_R_COMPRESSION_POINT
+#define LIMITER_G_COMPRESSION_POINT config.LIMITER_G_COMPRESSION_POINT
+#define LIMITER_B_COMPRESSION_POINT config.LIMITER_B_COMPRESSION_POINT
+#define LIMITER_R_MAX_OUTPUT config.LIMITER_R_MAX_OUTPUT
+#define LIMITER_G_MAX_OUTPUT config.LIMITER_G_MAX_OUTPUT
+#define LIMITER_B_MAX_OUTPUT config.LIMITER_B_MAX_OUTPUT
 
 #ifdef OPTION_DEBUG
-#define LIMITER_BYPASS config.LIMITER_BYPASS
+#define LIMITER_BYPASS config.LIMITER_RGB_BYPASS
 #endif  // OPTION_DEBUG
 
 layout(std140, set = 0, binding = 0) uniform UBO
@@ -84,8 +84,11 @@ void main()
     gl_Position = global.MVP * Position;
     vTexCoord = TexCoord;
 
-    compression = vec3(LIMITER_RYCV_COMPRESSION_POINT, LIMITER_GCPb_COMPRESSION_POINT, LIMITER_BCPR_COMPRESSION_POINT) * 10e-3; // Convert IRE to V
-    peak = vec3(LIMITER_RYCV_MAX_OUTPUT, LIMITER_GCPb_MAX_OUTPUT, LIMITER_BCPR_MAX_OUTPUT) * 10e-3; // Convert IRE to V
+    compression = vec3(LIMITER_R_COMPRESSION_POINT, LIMITER_G_COMPRESSION_POINT, LIMITER_B_COMPRESSION_POINT) * 10e-3; // Convert IRE to V
+    peak = vec3(LIMITER_R_MAX_OUTPUT, LIMITER_G_MAX_OUTPUT, LIMITER_B_MAX_OUTPUT) * 10e-3; // Convert IRE to V
+
+    // Ensure compression is not greater than peak
+    compression = min(compression, peak);
 }
 
 #pragma stage fragment
@@ -115,9 +118,13 @@ void main()
 
     // Soft limiter
     vec3 distortion = peak - compression;
-    vec3 softColor = distortion * tanh((color - compression) / distortion) + compression;
 
-    color = mix(color, softColor, greaterThan(color, compression));
+    // Positive and negative components of the soft limiter
+    vec3 soft_p = distortion * tanh((color - compression) / distortion) + compression;
+    vec3 soft_n = distortion * tanh((color + compression) / distortion) - compression;
+
+    color = mix(color, soft_p, greaterThan(color, compression));
+    color = mix(color, soft_n, lessThan(color, -compression));
 
     FragColor = vec4(color, 1.0);  // Strip sync or any other metadata
 }

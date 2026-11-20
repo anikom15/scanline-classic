@@ -1,4 +1,4 @@
-#pragma parameter SYS_COMPONENT_HEADER " —— System: Component Video —— " 0.0 0.0 0.0 0.0
+#pragma parameter SYS_COMPONENT_HEADER " —— System: Component —— " 0.0 0.0 0.0 0.0
 
 #pragma parameter SYS_BIAS_Y "Offset Y (IRE)" 0.0 -30.0 30.0 0.1
 #pragma parameter SYS_BIAS_C "Offset C (IRE)" 0.0 -30.0 30.0 0.1

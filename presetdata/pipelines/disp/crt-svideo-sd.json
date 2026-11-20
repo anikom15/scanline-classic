@@ -1,8 +1,9 @@
 {
     "shaders" : {
-        "limiter" : "limiter",
+        "limiter-yc" : "limiter-yc",
         "input" : "display-svideo-demod",
         "filter" : "display-svideo-filter",
+        "limiter-rgb" : "limiter-rgb",
         "amp" : "display-rgb-amp",
         "linear" : "crt-linear",
         "frame" : "framev",

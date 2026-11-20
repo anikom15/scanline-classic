@@ -234,7 +234,6 @@ void main()
             carrier.x + sin(phase_harmonics.x) / 3.0 + sin(phase_harmonics.y) / 5.0 + sin(phase_harmonics.z) / 7.0,
             carrier.y + cos(phase_harmonics.x) / 3.0 + cos(phase_harmonics.y) / 5.0 + cos(phase_harmonics.z) / 7.0
         );
-        //carrier *= 4.0 / PI;
     }
 
     // PAL V-axis alternation: simply invert V on odd lines

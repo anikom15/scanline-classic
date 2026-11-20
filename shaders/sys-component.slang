@@ -22,18 +22,8 @@
 // Input: Real RGB voltage with optional sync in alpha
 // Output: Real YCC voltage with sync on luma
 //
-// Encodes RGB into a chosen luma-chroma color space (YIQ / YPbPr / YUV / YDbDr / YCbCr),
-// then optionally bandlimits each component with a horizontal Gaussian (lobe technique) to
-// approximate analog system bandwidth.
-//
-// Notes:
-// - YDbDr is implemented by first computing YUV, then scaling chroma:
-//     Db = (1.333 / 0.436) * U  ≈  3.05688 * U
-//     Dr = (-1.333 / 0.615) * V ≈ -2.16829 * V
-// - Filtering is performed in the color space domain, not RGB, to better emulate analog chains.
-// - Bypasses:
-//     SYS_COMPONENT_BYPASS          -> output source RGB unmodified (skip color conversion + filter)
-//     SYS_COMPONENT_FILTER_BYPASS   -> convert and add sync to luma, but skip filtering
+// Encodes RGB into YCC (Y, B-Y, R-Y) and filters each component
+// YCC is not scaled; scaling factors depend on use case.
 
 #pragma name SysComponent
 #pragma format R16G16B16A16_SFLOAT

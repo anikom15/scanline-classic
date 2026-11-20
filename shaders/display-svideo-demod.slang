@@ -211,11 +211,11 @@ void main()
     float c_gain = 0.01 * (2.0 * USER_COLOR);
     float c_phase = PI * USER_TINT / 180.0;
 
-    vec3 ypbpr = vec3(
+    vec3 component = vec3(
         mix(yc.r, (yc.r - 0.075) / 0.925, DECODER_SETUP),
         mix(1.0, 1.0 / 0.925, DECODER_SETUP) * 2.0 * yc.g * sin(phase + c_phase) * c_gain,
         mix(1.0, 1.0 / 0.925, DECODER_SETUP) * 2.0 * yc.g * cos(phase + c_phase) * pal_v_sign * c_gain
     );
 
-    FragColor = vec4(ypbpr, 1.0);
+    FragColor = vec4(component, 1.0);
 }

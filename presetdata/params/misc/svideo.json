@@ -1,9 +1,5 @@
 {
     "parameters" : {
-        "SVIDEO" : 1.0,
-        "LIMITER_RYCV_COMPRESSION_POINT" : 100.0,
-        "LIMITER_GCPb_COMPRESSION_POINT" : 120.0,
-        "LIMITER_RYCV_MAX_OUTPUT" : 110.0,
-        "LIMITER_GCPb_MAX_OUTPUT" : 133.0
+        "SVIDEO" : 1.0
     }
 }

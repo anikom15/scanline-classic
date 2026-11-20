@@ -401,24 +401,25 @@ void main()
         // Y only
         component.gb = vec2(0.0);
     } else if (BW_MODE < 2.5) {
-        // Pb only
+        // B-Y only
         component.rb = vec2(0.0);
     } else if (BW_MODE < 3.5) {
-        // Pr only
+        // R-Y only
         component.rg = vec2(0.0);
     } else if (BW_MODE < 4.5) {
-        // Y + Pb
+        // Y + B-Y
         component.b = 0.0;
     } else if (BW_MODE < 5.5) {
-        // Y + Pr
+        // Y + R-Y
         component.g = 0.0;
     } else {
-        // Pb + Pr
+        // B-Y + R-Y
         component.r = 0.0;
     }
 
     component.g /= 0.492111;
     component.b /= 0.877283;
+
     vec3 color = luma_chroma_to_rgb(component);
 
     FragColor = vec4(color, 1.0);

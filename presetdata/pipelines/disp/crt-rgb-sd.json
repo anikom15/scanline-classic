@@ -1,6 +1,6 @@
 {
     "shaders" : {
-        "limiter" : "limiter",
+        "limiter" : "limiter-rgb",
         "input" : "display-rgb-filter",
         "amp" : "display-rgb-amp",
         "linear" : "crt-linear",

@@ -26,7 +26,7 @@
 // output being too dark or too bright
 
 #pragma name YCAmplifier
-#pragma format R16G16B16A16_SFLOAT
+#pragma format R16G16_SFLOAT
 
 #include "common.inc"
 
@@ -78,8 +78,8 @@ layout(std140, set = 0, binding = 0) uniform UBO
 layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
-layout(location = 1) out vec4 gain;
-layout(location = 2) out vec4 bias;
+layout(location = 1) out vec2 gain;
+layout(location = 2) out vec2 bias;
 layout(location = 3) out vec2 imd;
 
 void main()
@@ -87,17 +87,15 @@ void main()
     gl_Position = global.MVP * Position;
     vTexCoord = TexCoord;
 
-    gain = vec4(
+    gain = vec2(
         db_to_linear(SYS_GAIN_Y),
-        db_to_linear(SYS_GAIN_C),
-        1.0,
-        1.0);
+        db_to_linear(SYS_GAIN_C)
+    );
 
-    bias = vec4(
+    bias = vec2(
         SYS_BIAS_Y * 10e-3,
-        SYS_BIAS_C * 10e-3,
-        0.0,
-        0.0);
+        SYS_BIAS_C * 10e-3
+    );
 
     imd = vec2(
         pow(10.0, TXRX_NOISE_IMD2 / 20.0),
@@ -107,25 +105,25 @@ void main()
 
 #pragma stage fragment
 layout(location = 0) in vec2 vTexCoord;
-layout(location = 1) in vec4 gain;
-layout(location = 2) in vec4 bias;
+layout(location = 1) in vec2 gain;
+layout(location = 2) in vec2 bias;
 layout(location = 3) in vec2 imd;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
 void main()
 {
-    vec4 v = texture(Source, vTexCoord);
+    vec2 v = texture(Source, vTexCoord).rg;
 
 #ifdef OPTION_DEBUG
     if (SYS_YC_AMP_BYPASS > 0.5) {
-        FragColor = v;
+        FragColor = vec4(v, 0.0, 1.0);
         return;
     }
 #endif  // OPTION_DEBUG
 
-    vec4 distortion = imd.x * (v * v) - imd.y * (v * v * v);
+    vec2 distortion = imd.x * (v * v) - imd.y * (v * v * v);
 
     v = gain * (v + distortion) + bias;
-    FragColor = v;
+    FragColor = vec4(v, 0.0, 1.0);
 }
