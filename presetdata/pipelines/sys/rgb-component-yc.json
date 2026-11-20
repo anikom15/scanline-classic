@@ -5,7 +5,7 @@
         "noise-dac" : "noise-dac",
         "bandlimit" : "sys-bandlimit",
         "component" : "sys-component",
-        "mod" : "sys-ypbpr-yc",
+        "mod" : "sys-component-yc",
         "amp" : "sys-yc-amp",
         "deltav" : "send-mag-delta-v-dsp",
         "mip1" : "send-decimate-dsp",

@@ -130,6 +130,8 @@ mat3 YPbPr_TO_RGB = mat3(
     0.0,   -0.344136, 1.772,
     1.402, -0.714136, 0.0);
 
+const vec3 RGB_TO_Y_601 = vec3(0.299, 0.587, 0.114);
+
 #define RGB_TO_YUV RGB_TO_YPbPr
 #define YUV_TO_RGB YPbPr_TO_RGB
 
@@ -317,37 +319,23 @@ mat3 zhai2018_cat16(vec3 ref_XYZ, vec3 tgt_XYZ, float d)
 }
 
 // Convert RGB to selected luma-chroma space.
-// For YDbDr: RGB -> YUV -> scale (U,V) to (Db,Dr).
-vec3 rgb_to_luma_chroma(vec3 rgb, float model)
+// Outputs Y, (R-Y), (B-Y)
+// May need additional scaling for certain use cases
+vec3 rgb_to_luma_chroma(vec3 rgb)
 {
-    if (model < 0.5) { // YPbPr
-        return RGB_TO_YPbPr * rgb;
-    } else if (model < 1.5) { // YDbDr via YUV scale
-        // Db = (1.333 / 0.436) * U ; Dr = (-1.333 / 0.615) * V
-        const float K_DB_FROM_U = 1.333 / 0.436;  // ≈ 3.056880734
-        const float K_DR_FROM_V = -1.333 / 0.615; // ≈ -2.168292683
-
-        vec3 yuv = RGB_TO_YUV * rgb;
-
-        return vec3(yuv.r, K_DB_FROM_U * yuv.g, K_DR_FROM_V * yuv.b);
-    } else { // YCbCr
-        return RGB_TO_YCbCr * rgb;
-    }
+    float y = dot(RGB_TO_Y_601, rgb);
+    return vec3(y, rgb.r - y, rgb.b - y);
 }
 
-// Helper: decode from selected luma-chroma model to RGB
-vec3 decode_luma_chroma_to_rgb(vec3 yc, float model) {
-    if (model < 0.5) {
-        return YPbPr_TO_RGB * yc;
-    } else if (model < 1.5) {
-        // YDbDr -> YUV -> RGB
-        const float U_FROM_DB = 0.436 / 1.333;
-        const float V_FROM_DR = -0.615 / 1.333;
-        vec3 yuv = vec3(yc.r, yc.g * U_FROM_DB, yc.b * V_FROM_DR);
-        return YUV_TO_RGB * yuv;
-    } else {
-        return YCbCr_TO_RGB * yc;
-    }
+// Convert Y, (R-Y), (B-Y) back to RGB
+// (R-Y) and (B-Y) must be scaled before use
+vec3 luma_chroma_to_rgb(vec3 ycc)
+{
+    float y = ycc.x;
+    float r = ycc.y + y;
+    float b = ycc.z + y;
+    float g = (y - RGB_TO_Y_601.r * r - RGB_TO_Y_601.b * b) / RGB_TO_Y_601.g;
+    return vec3(r, g, b);
 }
 
 // SMPTE 2084 PQ (Perceptual Quantizer) encoding

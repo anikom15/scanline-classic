@@ -17,15 +17,15 @@
 //
 // Display-side component decoder wrapper include
 // ----------------------------------------------
-// Input: Real YPbPr voltage
+// Input: Real component voltage
 // Output: Real RGB voltage
 //
 // Implements a polyphase decimator with Kaiser-windowed sinc low-pass prototypes,
 // following the same sample-domain resampling model as `display-rgb.slang`.
-// Separate filter designs are used for luma (Y) and chroma (Pb/Pr), based on the
+// Separate filter designs are used for luma (Y) and chroma (C), based on the
 // corresponding cutoff and stopband parameters in `display-component.inc`.
 //
-// After resampling/filtering in the YPbPr domain, component gain/bias are
+// After resampling/filtering in the component domain, gain/bias are
 // applied, the signal is decoded to RGB, and the final RGB amplifier plus
 // blue-only toggle are applied.
 
@@ -168,8 +168,8 @@ layout(location = 12) flat out float InputDataLength;
 layout(location = 13) flat out float OutputDataLength;
 layout(location = 14) flat out float InputFrameWidth;
 layout(location = 15) flat out float OutputFrameWidth;
-layout(location = 16) flat out vec3 ypbprGain;
-layout(location = 17) flat out vec3 ypbprBias;
+layout(location = 16) flat out vec3 componentGain;
+layout(location = 17) flat out vec3 componentBias;
 layout(location = 18) flat out float DeskewSampleRatio;
 layout(location = 19) flat out float LineCarryClocksOut;
 layout(location = 20) flat out float ClockFactorOut;
@@ -260,11 +260,11 @@ void main()
     yfilt = design_kaiser_filter(DISPLAY_CUTOFF_Y, DISPLAY_STOPBAND_Y, OutputSampleRate);
     cfilt = design_kaiser_filter(DISPLAY_CUTOFF_C, DISPLAY_STOPBAND_C, OutputSampleRate);
 
-    ypbprGain = vec3(
+    componentGain = vec3(
         db_to_linear(DISPLAY_GAIN_Y),
         db_to_linear(DISPLAY_GAIN_C),
         db_to_linear(DISPLAY_GAIN_C));
-    ypbprBias = vec3(
+    componentBias = vec3(
         DISPLAY_BIAS_Y * 10e-3,
         DISPLAY_BIAS_C * 10e-3,
         DISPLAY_BIAS_C * 10e-3);
@@ -280,8 +280,8 @@ layout(location = 12) flat in float InputDataLength;
 layout(location = 13) flat in float OutputDataLength;
 layout(location = 14) flat in float InputFrameWidth;
 layout(location = 15) flat in float OutputFrameWidth;
-layout(location = 16) flat in vec3 ypbprGain;
-layout(location = 17) flat in vec3 ypbprBias;
+layout(location = 16) flat in vec3 componentGain;
+layout(location = 17) flat in vec3 componentBias;
 layout(location = 18) flat in float DeskewSampleRatio;
 layout(location = 19) flat in float LineCarryClocksOut;
 layout(location = 20) flat in float ClockFactorOut;
@@ -342,27 +342,29 @@ void main()
     }
 
     if (DISPLAY_COMPONENT_FILTER_BYPASS > 0.5) {
-        vec3 ypbpr = ypbprGain * (center_sample.rgb + ypbprBias);
-        vec3 color = YPbPr_TO_RGB * ypbpr;
+        vec3 component = componentGain * (center_sample.rgb + componentBias);
+        component.g /= 0.492111;
+        component.b /= 0.877283;
+        vec3 color = luma_chroma_to_rgb(component);
 
         FragColor = vec4(color, 1.0);
         return;
     }
 #endif  // OPTION_DEBUG
 
-    vec3 filtered_ypbpr;
+    vec3 filtered_component;
 #ifdef OPTION_CRISPY
     float Tout = max(invDelta, EPS);
     float zoh_sum = 0.0;
-    filtered_ypbpr = vec3(0.0);
+    filtered_component = vec3(0.0);
     int zoh_taps = max(int(ceil(Tout)) + 1, 1);
     for (int k = 0; k < zoh_taps; ++k) {
         float coeff = zoh_area(float(k) - frac_offset, 1.0, Tout);
         float sample_index = clamp(float(input_index_int + k), 0.0, input_data_limit);
-        filtered_ypbpr += coeff * fetch_input_sample(Source, config.SourceSize.xy, sample_index, InputFrameWidth, input_data_limit).rgb;
+        filtered_component += coeff * fetch_input_sample(Source, config.SourceSize.xy, sample_index, InputFrameWidth, input_data_limit).rgb;
         zoh_sum += coeff;
     }
-    filtered_ypbpr /= max(zoh_sum, EPS);
+    filtered_component /= max(zoh_sum, EPS);
 #else
     float y_out = 0.0;
     int n_taps_y = int(yfilt.taps);
@@ -388,34 +390,36 @@ void main()
     }
     c_out /= cfilt.gain;
 
-    filtered_ypbpr = vec3(y_out, c_out);
+    filtered_component = vec3(y_out, c_out);
 #endif  // OPTION_CRISPY
 
-    vec3 ypbpr = ypbprGain * (filtered_ypbpr + ypbprBias);
+    vec3 component = componentGain * (filtered_component + componentBias);
 
     if (BW_MODE < 0.5) {
-        // YPbPr (full color)
+        // component (full color)
     } else if (BW_MODE < 1.5) {
         // Y only
-        ypbpr.gb = vec2(0.0);
+        component.gb = vec2(0.0);
     } else if (BW_MODE < 2.5) {
         // Pb only
-        ypbpr.rb = vec2(0.0);
+        component.rb = vec2(0.0);
     } else if (BW_MODE < 3.5) {
         // Pr only
-        ypbpr.rg = vec2(0.0);
+        component.rg = vec2(0.0);
     } else if (BW_MODE < 4.5) {
         // Y + Pb
-        ypbpr.b = 0.0;
+        component.b = 0.0;
     } else if (BW_MODE < 5.5) {
         // Y + Pr
-        ypbpr.g = 0.0;
+        component.g = 0.0;
     } else {
         // Pb + Pr
-        ypbpr.r = 0.0;
+        component.r = 0.0;
     }
 
-    vec3 color = YPbPr_TO_RGB * ypbpr;
+    component.g /= 0.492111;
+    component.b /= 0.877283;
+    vec3 color = luma_chroma_to_rgb(component);
 
     FragColor = vec4(color, 1.0);
 }

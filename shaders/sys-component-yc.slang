@@ -1,6 +1,6 @@
 #version 450
 
-// Filename: sys-ypbpr-yc.slang
+// Filename: sys-component-yc.slang
 //
 // Copyright (C) 2026 W. M. Martinez
 //
@@ -17,16 +17,16 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
-// System-level YPbPr to YC modulator
+// System-level component video to YC modulator
 // ----------------------------------
-// Input: Real YPbPr voltage
+// Input: Real component video voltage (Y, R-Y, B-Y)
 // Output: Real Y, modulated C voltage
 //     OR: Real composite video voltage
 //
 // Modulates the chroma channel on a real subcarrier according to
 // contract frequency and phase and optionally sums the result.
 
-#pragma name SysYPbPrYC
+#pragma name SyscomponentYC
 #pragma format R16G16_SFLOAT
 
 #include "common.inc"
@@ -41,8 +41,8 @@
 #pragma include_optional "../config/options.cfg"
 
 #ifdef OPTION_DEBUG
-#pragma parameter DEBUG_SYS_YPBPR_YC_HEADER " —— Debug Sys YPbPr to YC Modulator —— " 0.0 0.0 0.0 0.0
-#pragma parameter SYS_YPBPR_YC_BYPASS "Bypass Sys YPbPr to YC modulator" 0.0 0.0 1.0 1.0
+#pragma parameter DEBUG_SYS_component_YC_HEADER " —— Debug Sys component to YC Modulator —— " 0.0 0.0 0.0 0.0
+#pragma parameter SYS_component_YC_BYPASS "Bypass Sys component to YC modulator" 0.0 0.0 1.0 1.0
 #endif  // OPTION_DEBUG
 
 layout(push_constant) uniform Push
@@ -65,6 +65,7 @@ layout(push_constant) uniform Push
     float DSP_WORKING_FS;
 
     float ENCODER_SETUP;
+    float CARRIER_SHAPE;
     float PAL;
     float SVIDEO;
 
@@ -72,7 +73,7 @@ layout(push_constant) uniform Push
     float SVIDEO_IQ_IMBALANCE;
 
 #ifdef OPTION_DEBUG
-    float SYS_YPBPR_YC_BYPASS;
+    float SYS_component_YC_BYPASS;
 #endif  // OPTION_DEBUG
 
 } config;
@@ -92,6 +93,7 @@ layout(push_constant) uniform Push
 #define DSP_WORKING_FS config.DSP_WORKING_FS
 
 #define ENCODER_SETUP config.ENCODER_SETUP
+#define CARRIER_SHAPE config.CARRIER_SHAPE
 #define PAL config.PAL
 #define SVIDEO config.SVIDEO
 
@@ -99,7 +101,7 @@ layout(push_constant) uniform Push
 #define SVIDEO_IQ_IMBALANCE config.SVIDEO_IQ_IMBALANCE
 
 #ifdef OPTION_DEBUG
-#define SYS_YPBPR_YC_BYPASS config.SYS_YPBPR_YC_BYPASS
+#define SYS_component_YC_BYPASS config.SYS_component_YC_BYPASS
 #endif  // OPTION_DEBUG
 
 layout(std140, binding = 0) uniform UBO
@@ -186,7 +188,7 @@ layout(set = 0, binding = 1) uniform sampler2D Source;
 void main()
 {
 #ifdef OPTION_DEBUG
-    if (SYS_YPBPR_YC_BYPASS > 0.5) {
+    if (SYS_component_YC_BYPASS > 0.5) {
         FragColor = texture(Source, vTexCoord);
         return;
     }
@@ -207,7 +209,11 @@ void main()
         return;
     }
 
-    vec3 ypbpr = fetch_input_sample(Source, config.OutputSize.xy, sample_index, FrameWidth, DataLength - 1.0).rgb;
+    vec3 component = fetch_input_sample(Source, config.OutputSize.xy, sample_index, FrameWidth, DataLength - 1.0).rgb;
+
+    // Scale color difference signals
+    component.g *= 0.492111;
+    component.b *= 0.877283;
 
     // Modulate chroma on real subcarrier
     float phase = 2.0 * PI * carrier_phase(
@@ -215,18 +221,34 @@ void main()
         Fsc, Fs, InitialSubcarrierPhaseFrac
     );
 
+    vec2 carrier = vec2(sin(phase), cos(phase));
+
+    // Obtain carrier signal components for distorted carrier if enabled
+    if (CARRIER_SHAPE > 0.5) {
+        vec3 phase_harmonics = vec3(
+            2.0 * PI * carrier_phase(sample_index, 3.0 * Fsc, Fs, InitialSubcarrierPhaseFrac),
+            2.0 * PI * carrier_phase(sample_index, 5.0 * Fsc, Fs, InitialSubcarrierPhaseFrac),
+            2.0 * PI * carrier_phase(sample_index, 7.0 * Fsc, Fs, InitialSubcarrierPhaseFrac)
+        );
+        carrier = vec2(
+            carrier.x + sin(phase_harmonics.x) / 3.0 + sin(phase_harmonics.y) / 5.0 + sin(phase_harmonics.z) / 7.0,
+            carrier.y + cos(phase_harmonics.x) / 3.0 + cos(phase_harmonics.y) / 5.0 + cos(phase_harmonics.z) / 7.0
+        );
+        //carrier *= 4.0 / PI;
+    }
+
     // PAL V-axis alternation: simply invert V on odd lines
     float pal_v_sign = 1.0 - 2.0 * floor(mod(sample_y, 2.0)) * PAL;
 
     // Scale IQ imbalance with squared luma, reaching its maximum at |Y| = 1.
-    float iq_gain = sqrt(mix(1.0, g_iq, min(ypbpr.r * ypbpr.r, 1.0)));
-    ypbpr.g *= iq_gain;
-    ypbpr.b /= iq_gain;
+    float iq_gain = sqrt(mix(1.0, g_iq, min(component.r * component.r, 1.0)));
+    component.g /= iq_gain;
+    component.b *= iq_gain;
 
     vec2 yc = vec2(
-        mix(ypbpr.r, 0.925 * (ypbpr.r + 0.075), ENCODER_SETUP),
-        dot(mix(1.0, 0.925, ENCODER_SETUP) * ypbpr.gb,
-            vec2(sin(phase), pal_v_sign * cos(phase)))
+        mix(component.r, 0.925 * (component.r + 0.075), ENCODER_SETUP),
+        dot(mix(1.0, 0.925, ENCODER_SETUP) * component.gb,
+            vec2(carrier.x, pal_v_sign * carrier.y))
     );
 
     // Apply carrier leakage

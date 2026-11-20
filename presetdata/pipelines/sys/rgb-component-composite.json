@@ -4,7 +4,7 @@
         "amp" : "sys-rgb-amp",
         "bandlimit" : "sys-bandlimit",
         "component" : "sys-component",
-        "mod" : "sys-ypbpr-yc",
+        "mod" : "sys-component-yc",
         "deltav" : "send-mag-delta-v-dsp",
         "mip1" : "send-decimate-dsp",
         "mip2" : "send-decimate-dsp",

@@ -72,9 +72,6 @@ layout(push_constant) uniform Push
     float H_FREQ;
     float H_BLANK_FUZZ;
 
-    // Color model selection
-    float YC_MODEL;
-
     // Per-component analog bandlimit (MHz/dB).
     float SYS_YC_FILTER_TYPE;
     float SYS_BANDWIDTH_Y;
@@ -82,8 +79,6 @@ layout(push_constant) uniform Push
     float SYS_CUTOFF_ATTEN_Y;
     float SYS_CUTOFF_ATTEN_C;
 } config;
-
-// Short-hand macros
 
 #define V_FREQ_MODE config.V_FREQ_MODE
 #define V_FREQ config.V_FREQ
@@ -94,8 +89,6 @@ layout(push_constant) uniform Push
 #define H_FREQ_MODE config.H_FREQ_MODE
 #define H_FREQ config.H_FREQ
 #define H_BLANK_FUZZ config.H_BLANK_FUZZ
-
-#define YC_MODEL config.YC_MODEL
 
 #define SYS_YC_FILTER_TYPE config.SYS_YC_FILTER_TYPE
 #define SYS_BANDWIDTH_Y config.SYS_BANDWIDTH_Y
@@ -275,7 +268,7 @@ void main()
 
     if (SYS_COMPONENT_FILTER_BYPASS >= 1.0) {
         vec4 source_sample = texture(Source, vTexCoord);
-        vec3 yc = rgb_to_luma_chroma(source_sample.rgb, YC_MODEL);
+        vec3 yc = rgb_to_luma_chroma(source_sample.rgb);
         yc.r += source_sample.a;
         FragColor = vec4(yc, 0.0);
         return;
@@ -313,7 +306,7 @@ void main()
                 gaussian(dt, sigma.z));
             vec4 yccs = fetch_input_sample(Source, config.SourceSize.xy, output_index + dt, FrameWidth, DataLength - 1.0);
 
-            vec3 ycc = rgb_to_luma_chroma(yccs.rgb, YC_MODEL);
+            vec3 ycc = rgb_to_luma_chroma(yccs.rgb);
             ycc.r += yccs.a;
 
             accum += coeff * ycc;
@@ -338,7 +331,7 @@ void main()
                 fetch_input_sample(Source, config.SourceSize.xy, float(output_indices.x) - dt, FrameWidth, DataLength - 1.0).a
                 );
 
-            vec3 ycc = rgb_to_luma_chroma(yccs.rgb, YC_MODEL);
+            vec3 ycc = rgb_to_luma_chroma(yccs.rgb);
             ycc.r += yccs.a;
 
             accum += coeff * ycc;

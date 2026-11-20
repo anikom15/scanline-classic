@@ -316,8 +316,6 @@ These settings are identical in purpose to Display RGB, but apply at the system 
 
 ### Component Video
 
-  * YC_MODEL - System color space (YPbPr, YDbDr, YCbCr): Selects the RGB-to-component conversion matrix
-
   * SYS_BIAS_Y, SYS_BIAS_U, SYS_BIAS_V - Offset Y/U/V (IRE): Sets the offset for the given component channel
 
   * SYS_GAIN_Y, SYS_GAIN_U, SYS_GAIN_V - Gain Y/U/V (dB): Sets the gain for the given component channel
@@ -347,8 +345,6 @@ These settings are identical in purpose to Display RGB, but apply at the system 
   * FILTER_DPD_IN_MAX - Filter DPD input max: Sets the upper input bound of the signal window mapped into DPD drive
 
 ### Y/C Processing
-
-  * YC_MODEL - System color space (YPbPr, YDbDr, YCbCr): Selects the RGB-to-Y/C conversion matrix used before encoding or modulation
 
   * SYS_BIAS_Y, SYS_BIAS_U, SYS_BIAS_V - Offset Y/U/V (IRE): Sets offset for the luminance and chroma channels in the Y/C path
 
