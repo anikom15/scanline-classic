@@ -17,7 +17,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
-// DAC-stage RGB noise injection in the DSP sample domain
+// DAC-stage RGB noise injection in the pixel-clock domain
 // ------------------------------------------------------
 // Input: RGB voltage
 // Output: RGB voltage
@@ -34,7 +34,6 @@
 #include "dsp.inc"
 #include "subframe.inc"
 
-#include "menus/parameters/dsp.inc"
 #include "menus/parameters/noise-dac.inc"
 #include "menus/parameters/sys-timing.inc"
 
@@ -63,8 +62,6 @@ layout(push_constant) uniform Push
     float H_FREQ_MODE;
     float H_FREQ;
     float H_BLANK_FUZZ;
-    float DSP_WORKING_FS;
-
     float DAC_NOISE_AWGN_DB;
     float DAC_NOISE_JITTER_UI;
 } config;
@@ -78,7 +75,6 @@ layout(push_constant) uniform Push
 #define H_FREQ_MODE config.H_FREQ_MODE
 #define H_FREQ config.H_FREQ
 #define H_BLANK_FUZZ config.H_BLANK_FUZZ
-#define DSP_WORKING_FS config.DSP_WORKING_FS
 #define CURRENT_SUBFRAME config.CurrentSubFrame
 #define TOTAL_SUBFRAMES config.TotalSubFrames
 
@@ -88,19 +84,11 @@ layout(push_constant) uniform Push
 layout(std140, set = 0, binding = 0) uniform UBO
 {
     mat4 MVP;
-    float PHASE_ZERO;
-    float RGB_NOISE_PRESET;
-    float RGB_NOISE_CLOCK_HARMONIC;
-    float SHORTEN_ODD_FIELD_TIME;
 
 #ifdef OPTION_DEBUG
     float DAC_NOISE_BYPASS;
 #endif  // OPTION_DEBUG
 } global;
-
-#define PHASE_ZERO global.PHASE_ZERO
-#define RGB_NOISE_PRESET global.RGB_NOISE_PRESET
-#define SHORTEN_ODD_FIELD_TIME global.SHORTEN_ODD_FIELD_TIME
 
 #ifdef OPTION_DEBUG
 #define DAC_NOISE_BYPASS global.DAC_NOISE_BYPASS
@@ -122,15 +110,14 @@ NoiseDACState compute_noise_state()
 {
     NoiseDACState state;
 
-    state.frame_width = contract_working_frame_width(
+    state.frame_width = contract_frame_width(
         config.OriginalFPS,
         SC_FREQ_MODE,
         SC_FREQ,
         PIXEL_CLOCK_MODE,
         PIXEL_CLOCK,
         H_FREQ_MODE,
-        H_FREQ,
-        DSP_WORKING_FS);
+        H_FREQ);
     state.frame_height = contract_frame_height(
         config.OriginalSize.xy,
         config.OriginalFPS,

@@ -1,6 +1,4 @@
-#version 450
-
-// Filename: noise-txrx.slang
+// Filename: noise-txrx-common.slang
 //
 // Copyright (C) 2026 W. M. Martinez
 //
@@ -17,13 +15,14 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
-// General noise injection in the DSP sample domain
+// General noise injection in the selected sample domain
 // --------------------------------------------
 // Input: voltage
 // Output: voltage
 //
 // Adds simple MagDeltaV-driven crosstalk to the framed 1D
 // raster between `frameh.slang` and `framev.slang`.
+// Pixel variants run before sys-bandlimit; DSP variants run after it.
 
 #pragma name NoiseTxRx
 #pragma format R16G16B16A16_SFLOAT
@@ -42,7 +41,7 @@
 #ifdef OPTION_DEBUG
 #pragma parameter DEBUG_RGB_NOISE_HEADER " —— Debug RGB Noise —— " 0.0 0.0 0.0 0.0
 #pragma parameter TXRX_NOISE_BYPASS "Bypass RGB noise" 0.0 0.0 1.0 1.0
-#pragma parameter TXRX_NOISE_VIEW_MAG_DELTAV "View MagDeltaV" 0.0 0.0 2.0 1.0
+#pragma parameter TXRX_NOISE_VIEW_MAG_DELTAV "View MagDeltaV" 0.0 0.0 1.0 1.0
 #pragma parameter TXRX_NOISE_MAG_DELTAV_MIP_LOD "MagDeltaV mip LOD" 0.0 0.0 12.0 1.0
 #endif  // OPTION_DEBUG
 
@@ -118,6 +117,16 @@ NoiseTxRxState compute_noise_state()
 {
     NoiseTxRxState state;
 
+#ifdef SEND_PIXEL_DOMAIN
+    state.frame_width = contract_frame_width(
+        config.OriginalFPS,
+        SC_FREQ_MODE,
+        SC_FREQ,
+        PIXEL_CLOCK_MODE,
+        PIXEL_CLOCK,
+        H_FREQ_MODE,
+        H_FREQ);
+#else
     state.frame_width = contract_working_frame_width(
         config.OriginalFPS,
         SC_FREQ_MODE,
@@ -127,6 +136,7 @@ NoiseTxRxState compute_noise_state()
         H_FREQ_MODE,
         H_FREQ,
         DSP_WORKING_FS);
+#endif
     state.frame_height = contract_frame_height(
         config.OriginalSize.xy,
         config.OriginalFPS,
@@ -260,13 +270,7 @@ void main()
             sample_index,
             TXRX_NOISE_MAG_DELTAV_MIP_LOD,
             vNoiseState);
-
-        if (TXRX_NOISE_VIEW_MAG_DELTAV > 1.5) {
-            float a = clamp(debug_mag_delta_v.a, 0.0, 1.0);
-            FragColor = vec4(a, a, a, 1.0);
-        } else {
-            FragColor = vec4(clamp(debug_mag_delta_v.rgb, 0.0, 1.0), 1.0);
-        }
+        FragColor = debug_mag_delta_v;
         return;
     }
 #endif  // OPTION_DEBUG

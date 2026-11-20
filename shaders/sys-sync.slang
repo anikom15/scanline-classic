@@ -17,7 +17,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
-// System sync processing
+// System sync processing in the pixel-clock domain
 // --------------------------------------------
 // Input: RGB voltage
 // Output: RGB voltage
@@ -36,7 +36,6 @@
 #include "common.inc"
 #include "contract.inc"
 
-#include "menus/parameters/dsp.inc"
 #include "menus/parameters/sys-timing.inc"
 #include "menus/parameters/sys-sync.inc"
 
@@ -57,7 +56,6 @@ layout(push_constant) uniform Push
     float H_FREQ;
     float H_BLANK_FUZZ;
     float FIELD_ODD;
-    float DSP_WORKING_FS;
     float SYS_SYNC_TYPE;
 } config;
 
@@ -71,7 +69,6 @@ layout(push_constant) uniform Push
 #define H_FREQ config.H_FREQ
 #define H_BLANK_FUZZ config.H_BLANK_FUZZ
 #define FIELD_ODD config.FIELD_ODD
-#define DSP_WORKING_FS config.DSP_WORKING_FS
 #define SYS_SYNC_TYPE config.SYS_SYNC_TYPE
 
 layout(std140, set = 0, binding = 0) uniform UBO
@@ -81,14 +78,12 @@ layout(std140, set = 0, binding = 0) uniform UBO
 
 struct SyncState {
     float base_frame_width;
-    float working_frame_width;
     float frame_height;
     float active_left_base;
     float active_top;
     float active_source_height;
     float clock_factor;
     float clocks_per_line;
-    float x_scale_to_base;
 };
 
 #pragma stage vertex
@@ -109,15 +104,6 @@ SyncState compute_sync_state()
         PIXEL_CLOCK,
         H_FREQ_MODE,
         H_FREQ);
-    state.working_frame_width = contract_working_frame_width(
-        config.OriginalFPS,
-        SC_FREQ_MODE,
-        SC_FREQ,
-        PIXEL_CLOCK_MODE,
-        PIXEL_CLOCK,
-        H_FREQ_MODE,
-        H_FREQ,
-        DSP_WORKING_FS);
     state.frame_height = contract_frame_height(
         config.OriginalSize.xy,
         config.OriginalFPS,
@@ -170,8 +156,6 @@ SyncState compute_sync_state()
 
     float active_width_base = config.OriginalSize.x * max(state.clock_factor, 1.0);
     state.active_left_base = (state.base_frame_width - active_width_base) * 0.5;
-    state.x_scale_to_base = state.base_frame_width / max(state.working_frame_width, 1.0);
-
     return state;
 }
 
@@ -209,7 +193,7 @@ void main()
     vec4 sample_in = fetch_source_texel(output_x_i, output_y_i);
 
     float frame_height_int = ceil(vSyncState.frame_height);
-    bool in_frame_x = output_x >= 0.0 && output_x < vSyncState.working_frame_width;
+    bool in_frame_x = output_x >= 0.0 && output_x < vSyncState.base_frame_width;
     bool in_frame_y = output_y >= 0.0 && output_y < frame_height_int;
     bool in_frame = in_frame_x && in_frame_y;
 
@@ -218,7 +202,7 @@ void main()
     int row_phase_clocks_int = (output_y_i * phase_step_clocks_int) % clock_factor_int;
     float phase_clocks = float(row_phase_clocks_int);
 
-    float base_x = output_x * vSyncState.x_scale_to_base;
+    float base_x = output_x;
     float source_x_base = (base_x - vSyncState.active_left_base - phase_clocks) / max(vSyncState.clock_factor, 1.0);
     bool in_active_x = source_x_base >= 0.0 && source_x_base < config.OriginalSize.x;
     bool in_active_y = output_y >= vSyncState.active_top

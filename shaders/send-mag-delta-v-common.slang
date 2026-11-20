@@ -1,6 +1,4 @@
-#version 450
-
-// Filename: send-mag-delta-v.slang
+// Filename: send-mag-delta-v-common.slang
 //
 // Copyright (C) 2026 W. M. Martinez
 //
@@ -28,6 +26,7 @@
 // sample-rate independent: it works directly in sample units, needs only two
 // taps, and uses the contract-derived frame geometry only to unwrap the 1D
 // sample index across row boundaries.
+// Pixel variants run before sys-bandlimit; DSP variants run after it.
 
 #pragma name MagDeltaV
 #pragma format R16G16B16A16_SFLOAT
@@ -88,6 +87,16 @@ MagDeltaVState compute_mag_delta_v_state()
 {
     MagDeltaVState state;
 
+#ifdef SEND_PIXEL_DOMAIN
+    state.frame_width = contract_frame_width(
+        config.OriginalFPS,
+        SC_FREQ_MODE,
+        SC_FREQ,
+        PIXEL_CLOCK_MODE,
+        PIXEL_CLOCK,
+        H_FREQ_MODE,
+        H_FREQ);
+#else
     state.frame_width = contract_working_frame_width(
         config.OriginalFPS,
         SC_FREQ_MODE,
@@ -97,6 +106,7 @@ MagDeltaVState compute_mag_delta_v_state()
         H_FREQ_MODE,
         H_FREQ,
         DSP_WORKING_FS);
+#endif
     state.frame_height = contract_frame_height(
         config.OriginalSize.xy,
         config.OriginalFPS,

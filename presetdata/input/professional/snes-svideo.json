@@ -4,14 +4,14 @@
   "title" : "SNES S-Video shader set",
   "description" : "All standard NTSC models, but not the Jr. and Mini models, have an S-Video output available without modification. Official cables were available in Japan and the United States.",
   "pipelines" : [
-    "misc/frame-tv525.json",
     "sys/rgb-component-yc.json",
-    "disp/crt-rgb-sd.json",
+    "disp/crt-svideo-sd.json",
     "misc/post.json"
   ],
   "parameter_sets" : [
     "sys/sfc/base.json",
     "sys/sfc/ntsc.json",
+    "misc/svideo.json",
     "disp/ntsc.json",
     "disp/trinitron.json",
     "disp/tvl-m-600.json"

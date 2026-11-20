@@ -1,6 +1,4 @@
-#version 450
-
-// Filename: send-decimate.slang
+// Filename: send-decimate-common.slang
 //
 // Copyright (C) 2026 W. M. Martinez
 //
@@ -19,8 +17,8 @@
 //
 // Signal decimation utility (analog shift)
 // ----------------------------------------
-// Input:  Packed 1D DSP signal in RGB
-// Output: Linearly decimated packed 1D DSP signal in RGB
+// Input:  Packed 1D signal in RGB
+// Output: Linearly decimated packed 1D signal in RGB
 //
 // This pass replaces the old texture-mipmap approximation for `MagDeltaV`.
 // Instead of filtering each 2D row independently, it unwraps the signal over
@@ -30,6 +28,7 @@
 //
 // The pass can simulate analog causality by phase shifting according to mip
 // level if `ANALOG_DECIMATE` is enabled.
+// Pixel variants run before sys-bandlimit; DSP variants run after it.
 
 #pragma name SendDecimate
 #pragma format R16G16B16A16_SFLOAT
@@ -109,6 +108,16 @@ SendDecimateState compute_send_decimate_state()
         H_FREQ_MODE,
         H_FREQ);
 
+#ifdef SEND_PIXEL_DOMAIN
+    float base_frame_width = contract_frame_width(
+        config.OriginalFPS,
+        SC_FREQ_MODE,
+        SC_FREQ,
+        PIXEL_CLOCK_MODE,
+        PIXEL_CLOCK,
+        H_FREQ_MODE,
+        H_FREQ);
+#else
     float base_frame_width = contract_working_frame_width(
         config.OriginalFPS,
         SC_FREQ_MODE,
@@ -118,12 +127,13 @@ SendDecimateState compute_send_decimate_state()
         H_FREQ_MODE,
         H_FREQ,
         DSP_WORKING_FS);
+#endif
     float base_storage_width = max(config.SendSourceSize.x, 1.0);
     float input_storage_scale = config.SourceSize.x / base_storage_width;
     float output_storage_scale = config.OutputSize.x / base_storage_width;
     state.mip_level = -log2(output_storage_scale);
 
-    // Use the contract-derived working frame width as the source of truth for
+    // Use the contract-derived domain frame width as the source of truth for
     // the active 1D data area, and scale it by each mip stage's storage ratio
     // relative to `SendSourceSize` rather than by the padded texture width.
     state.input_frame_width = max(1.0,

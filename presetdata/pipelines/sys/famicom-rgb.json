@@ -2,32 +2,31 @@
     "shaders" : {
         "frame" : "frameh",
         "special" : "famicom-rgb",
-        "noise-dac" : "noise-dac",
-        "bandlimit" : "sys-bandlimit",
-        "amp" : "sys-rgb-amp",
         "sync" : "sys-sync",
-        "deltav" : "send-mag-delta-v",
-        "mip1" : "send-decimate",
-        "mip2" : "send-decimate",
-        "mip3" : "send-decimate",
-        "mip4" : "send-decimate",
-        "mip5" : "send-decimate",
-        "mip6" : "send-decimate",
-        "mip7" : "send-decimate",
-        "mip8" : "send-decimate",
-        "mip9" : "send-decimate",
-        "mip10" : "send-decimate",
-        "mip11" : "send-decimate",
-        "noise-txrx" : "noise-txrx"
+        "noise-dac" : "noise-dac",
+        "amp" : "sys-rgb-amp",
+        "deltav" : "send-mag-delta-v-pixel",
+        "mip1" : "send-decimate-pixel",
+        "mip2" : "send-decimate-pixel",
+        "mip3" : "send-decimate-pixel",
+        "mip4" : "send-decimate-pixel",
+        "mip5" : "send-decimate-pixel",
+        "mip6" : "send-decimate-pixel",
+        "mip7" : "send-decimate-pixel",
+        "mip8" : "send-decimate-pixel",
+        "mip9" : "send-decimate-pixel",
+        "mip10" : "send-decimate-pixel",
+        "mip11" : "send-decimate-pixel",
+        "noise-txrx" : "noise-txrx-pixel",
+        "bandlimit" : "sys-bandlimit"
     },
     "options" : {
         "frame" : {
             "scale_type" : ["absolute", "absolute"],
             "scale" : [4096.0, 1024.0]
         },
-        "bandlimit" : {
-            "scale_type" : ["absolute", "source"],
-            "scale" : [2048.0, 1.0]
+        "amp" : {
+            "alias" : "SendSource"
         },
         "mip1" : {
             "scale_type" : ["source", "source"],
@@ -95,10 +94,16 @@
             "alias" : "Mip11",
             "filter_linear" : true
         },
+        "mip12" : {
+            "scale_type" : ["source", "source"],
+            "scale" : [0.5, 1.0],
+            "alias" : "Mip12",
+            "filter_linear" : true
+        },
         "noise-txrx" : {
             "filter_linear" : true,
             "scale_type" : ["absolute", "source"],
-            "scale" : [2048.0, 1.0]
+            "scale" : [4096.0, 1.0]
         }
     }
 }
