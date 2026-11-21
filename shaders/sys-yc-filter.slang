@@ -91,6 +91,7 @@ layout(location = 5) flat out float FrameWidth;
 layout(location = 6) flat out float FrameHeight;
 layout(location = 7) flat out float DataLength;
 layout(location = 8) flat out float Taps;
+layout(location = 9) flat out float ChromaDelay;
 
 const float MAX_TAPS = float(SYS_YC_FILTER_MAX_TAPS);
 
@@ -165,16 +166,15 @@ void main()
     }
 
     vec2 carrier_response = vec2(gain.y + image.x, image.y);
-    if (config.SYS_YC_FILTER_TYPE < 0.5) {
-        FilterGain = vec2(max(gain.x, EPS), max(length(carrier_response) * 0.5, EPS));
-    } else {
-        FilterGain = vec2(max(gain.x, EPS), max(gain.y, EPS));
-    }
+    FilterGain = vec2(max(gain.x, EPS), max(length(carrier_response) * 0.5, EPS));
     float chroma_delay = dot(vec2(moment.y + image_moment.x, image_moment.y), carrier_response)
         / max(dot(carrier_response, carrier_response), EPS);
     if (attenuation.y <= 0.0) {
         chroma_delay = 0.0;
     }
+    ChromaDelay = config.SYS_YC_FILTER_TYPE < 0.5
+        ? 0.0
+        : -atan(carrier_response.y, carrier_response.x) / max(ChromaFrequency, EPS);
     LumaDelay = config.SYS_YC_FILTER_TYPE < 0.5 ? 0.0 : chroma_delay - moment.x / max(gain.x, EPS);
 }
 
@@ -188,6 +188,7 @@ layout(location = 5) flat in float FrameWidth;
 layout(location = 6) flat in float FrameHeight;
 layout(location = 7) flat in float DataLength;
 layout(location = 8) flat in float Taps;
+layout(location = 9) flat in float ChromaDelay;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 1) uniform sampler2D Source;
 
@@ -223,6 +224,14 @@ void main()
         }
 
         vec2 sample_yc = fetch_input_sample(Source, config.SourceSize.xy, sample_index, FrameWidth, DataLength - 1.0).rg;
+        float chroma = sample_yc.y;
+        if (ChromaDelay != 0.0) {
+            float chroma_index = sample_index - ChromaDelay;
+            float chroma_floor = floor(chroma_index);
+            float c0 = fetch_input_sample(Source, config.SourceSize.xy, chroma_floor, FrameWidth, DataLength - 1.0).g;
+            float c1 = fetch_input_sample(Source, config.SourceSize.xy, chroma_floor + 1.0, FrameWidth, DataLength - 1.0).g;
+            chroma = mix(c0, c1, fract(chroma_index));
+        }
         float y = sample_yc.x;
         if (LumaDelay != 0.0) {
             float y_index = sample_index - LumaDelay;
@@ -232,11 +241,7 @@ void main()
             y = mix(y0, y1, fract(y_index));
         }
         accum.x += h.x * y;
-        if (config.SYS_YC_FILTER_TYPE < 0.5) {
-            accum.y += h.y * cos(ChromaFrequency * t) * sample_yc.y;
-        } else {
-            accum.y += h.y * sample_yc.y;
-        }
+        accum.y += h.y * cos(ChromaFrequency * t) * chroma;
 
         if (config.SYS_YC_TRAP > 0.5 &&
             config.SYS_CUTOFF_ATTEN_C > 0.0 &&

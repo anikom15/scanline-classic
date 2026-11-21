@@ -64,9 +64,10 @@ class FilterTapTests(unittest.TestCase):
         self.assertIn('luma_band_weight += h.y;', shader)
         self.assertIn('2.0 * luma_band_accum / luma_band_weight', shader)
         self.assertIn('config.SYS_CUTOFF_ATTEN_C > 0.0', shader)
-        self.assertIn('accum.y += h.y * cos(ChromaFrequency * t) * sample_yc.y;', shader)
-        self.assertIn('accum.y += h.y * sample_yc.y;', shader)
-        self.assertIn('FilterGain = vec2(max(gain.x, EPS), max(gain.y, EPS));', shader)
+        self.assertIn('accum.y += h.y * cos(ChromaFrequency * t) * chroma;', shader)
+        self.assertIn('FilterGain = vec2(max(gain.x, EPS), max(length(carrier_response) * 0.5, EPS));', shader)
+        self.assertIn('flat out float ChromaDelay;', shader)
+        self.assertIn('chroma = mix(c0, c1, fract(chroma_index));', shader)
 
     def test_threshold_and_transition_width_change_caps(self):
         original = self.results()
