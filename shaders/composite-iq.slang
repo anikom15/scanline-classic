@@ -110,7 +110,7 @@ void main()
         q_wsum += abs(h_r) + abs(h_l);
 
         // Early exit once coefficients fall below significance
-        if (abs(h_r) < FILTER_THRESHOLD && abs(h_l) < FILTER_THRESHOLD)
+        if (abs(h_r) < FILTER_THRESHOLD_ANALOG && abs(h_l) < FILTER_THRESHOLD_ANALOG)
             break;
     }
     q_analytic /= max(q_wsum, EPS);

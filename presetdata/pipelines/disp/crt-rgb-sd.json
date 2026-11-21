@@ -13,7 +13,7 @@
     "options" : {
         "input" : {
             "scale_type" : ["absolute", "source"],
-            "scale" : [1024, 1.0]
+            "scale" : [2048.0, 1.0]
         },
         "frame" : {
             "scale_type" : ["source", "absolute"],

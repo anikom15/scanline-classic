@@ -19,18 +19,20 @@
 //
 // Sharpness enhancement via dual bandpass filters
 // ------------------------------------------------
-// Input: Real RGB voltage
-// Output: Real RGB voltage (sharpened)
+// Input and output: luma in R, modulated chroma in G.
 //
-// Applies user-controlled sharpness enhancement using two gaussian bandpass
-// filters at complementary frequencies, with gains scaled logarithmically in dB.
+// Applies two zero-phase Gaussian bandpass filters to luma. Chroma remains
+// aligned with the center luma sample.
 
 #pragma name Sharpen
 #pragma format R16G16B16A16_SFLOAT
 
 #include "common.inc"
-#include "modulation.inc"
+#include "filter-taps.inc"
+#include "contract.inc"
+#include "dsp.inc"
 
+#include "menus/parameters/dsp.inc"
 #include "menus/parameters/sys-timing.inc"
 #include "menus/parameters/user-common.inc"
 
@@ -42,30 +44,24 @@
 
 layout(push_constant) uniform Push
 {
-    // Timing and source geometry (for sharpness bandpass)
-    vec4 OriginalSize;    // .xy size, .zw inv size
+    vec4 OriginalSize;
+    vec4 SourceSize;
     vec4 OutputSize;
-    vec4 FrameHSize;
-    uint FrameCount;
-    float OriginalFPS;    // Vertical frequency (Hz)
+    float OriginalFPS;
     float V_FREQ_MODE;
     float V_FREQ;
-    float SHORTEN_ODD_FIELD_TIME;
     float SC_FREQ_MODE;
-    float SC_FREQ;        // Custom subcarrier frequency (MHz)
+    float SC_FREQ;
     float PIXEL_CLOCK_MODE;
     float PIXEL_CLOCK;
     float H_FREQ_MODE;
-
-    // User video adjustments
-    float USER_SHARPNESS;
-    float H_BLANK_FUZZ;
     float H_FREQ;
+    float DSP_WORKING_FS;
+    float USER_SHARPNESS;
 } config;
 
 #define V_FREQ_MODE config.V_FREQ_MODE
 #define V_FREQ config.V_FREQ
-#define SHORTEN_ODD_FIELD_TIME config.SHORTEN_ODD_FIELD_TIME
 #define SC_FREQ_MODE config.SC_FREQ_MODE
 #define SC_FREQ config.SC_FREQ
 #define PIXEL_CLOCK_MODE config.PIXEL_CLOCK_MODE
@@ -73,7 +69,7 @@ layout(push_constant) uniform Push
 #define H_FREQ_MODE config.H_FREQ_MODE
 #define USER_SHARPNESS config.USER_SHARPNESS
 #define H_FREQ config.H_FREQ
-#define H_BLANK_FUZZ config.H_BLANK_FUZZ
+#define DSP_WORKING_FS config.DSP_WORKING_FS
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
@@ -96,40 +92,30 @@ layout(location = 0) out vec2 vTexCoord;
 layout(location = 1) out flat vec4 sharpness_filters;
 layout(location = 2) out flat float Fs;
 layout(location = 3) out flat vec4 sharpness_params;  // (tap_count1, gain1, tap_count2, gain2)
+layout(location = 4) out flat float FrameWidth;
+layout(location = 5) out flat float FrameHeight;
+layout(location = 6) out flat float DataLength;
 
-// At Fs = 32 MHz, the wider (0.4 MHz) lobe yields about 37 taps at FILTER_THRESHOLD.
-const float SHARPNESS_MAX_TAPS = 75.0;
+const float SHARPNESS_MAX_TAPS = float(SHARPEN_MAX_TAPS);
+const float SHARPNESS_PRIMARY_BANDWIDTH_HZ = 3.0e6;
+const float SHARPNESS_SECONDARY_BANDWIDTH_HZ = 2.0e6;
+const float SHARPNESS_ATTEN_DB = 40.0;
 
 void main()
 {
     gl_Position = global.MVP * Position;
     vTexCoord = TexCoord;
 
-    // Derive sample rate from original timing
-    float f_sc;
-    int standard;
-    float pixel_time;
-    float active_source_pixels;
-    compute_subcarrier_freq(
-        SC_FREQ_MODE, SC_FREQ,
-        config.OriginalFPS,
-        f_sc, standard);
-
-    float pixel_clock_hz = compute_pixel_clock(
-        PIXEL_CLOCK_MODE, PIXEL_CLOCK, f_sc
-    );
-
-    float h_freq_hz = compute_h_freq(
-        H_FREQ_MODE, standard, H_FREQ, pixel_clock_hz,
-        config.OriginalFPS);
-
-    compute_h_timing(
-        pixel_clock_hz, h_freq_hz, H_BLANK_FUZZ,
-        config.OriginalSize.x, active_source_pixels, pixel_time);
-
-    float Delta = config.OutputSize.x / active_source_pixels;
-    float Fs_original = 1.0 / pixel_time;
-    Fs = Fs_original * Delta * 2.0; // Effective sample rate at 2x scaling (32 MHz path)
+    Fs = contract_working_sample_rate(
+        config.OriginalFPS, SC_FREQ_MODE, SC_FREQ, PIXEL_CLOCK_MODE, PIXEL_CLOCK,
+        H_FREQ_MODE, H_FREQ, DSP_WORKING_FS);
+    FrameWidth = contract_working_frame_width(
+        config.OriginalFPS, SC_FREQ_MODE, SC_FREQ, PIXEL_CLOCK_MODE, PIXEL_CLOCK,
+        H_FREQ_MODE, H_FREQ, DSP_WORKING_FS);
+    FrameHeight = contract_frame_height(
+        config.OriginalSize.xy, config.OriginalFPS, V_FREQ_MODE, V_FREQ,
+        SC_FREQ_MODE, SC_FREQ, PIXEL_CLOCK_MODE, PIXEL_CLOCK, H_FREQ_MODE, H_FREQ);
+    DataLength = max(contract_data_length(FrameWidth, FrameHeight), 1.0);
 
 #ifdef OPTION_CRISPY
     sharpness_filters = vec4(0.0);
@@ -141,8 +127,8 @@ void main()
 
     float emphasis_center_hz = 3.0e6;
     float emphasis2_center_hz = 8.0e6;
-    float emphasis_sigma = gaussian_sigma(3.0e6 / Fs, 40.0);
-    float emphasis2_sigma = gaussian_sigma(2.0e6 / Fs, 40.0);
+    float emphasis_sigma = gaussian_sigma(SHARPNESS_PRIMARY_BANDWIDTH_HZ / Fs, SHARPNESS_ATTEN_DB);
+    float emphasis2_sigma = gaussian_sigma(SHARPNESS_SECONDARY_BANDWIDTH_HZ / Fs, SHARPNESS_ATTEN_DB);
     sharpness_filters = vec4(emphasis_center_hz, emphasis_sigma, emphasis2_center_hz, emphasis2_sigma);
 
     float tap_radius1 = gaussian_decay_time(emphasis_sigma, FILTER_THRESHOLD_ANALOG);
@@ -177,38 +163,42 @@ layout(location = 0) in vec2 vTexCoord;
 layout(location = 1) flat in vec4 sharpness_filters;
 layout(location = 2) flat in float Fs;
 layout(location = 3) flat in vec4 sharpness_params;  // (tap_count1, gain1, tap_count2, gain2)
+layout(location = 4) flat in float FrameWidth;
+layout(location = 5) flat in float FrameHeight;
+layout(location = 6) flat in float DataLength;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
 void main()
 {
-    // Sharpness bandpass + harmonic (modulated Gaussian)
-    float sharpness = USER_SHARPNESS / 100.0;
+    vec2 pixel = floor(vTexCoord * config.OutputSize.xy);
+    float sample_index = pixel.y * FrameWidth + pixel.x;
+    if (pixel.x >= FrameWidth || pixel.y >= FrameHeight || sample_index >= DataLength) {
+        FragColor = vec4(0.0);
+        return;
+    }
+
+    float data_limit = DataLength - 1.0;
+    vec4 center_sample = fetch_input_sample(Source, config.SourceSize.xy, sample_index, FrameWidth, data_limit);
+
 #ifdef OPTION_CRISPY
-    vec3 color = texture(Source, vTexCoord).rgb;
-    FragColor = vec4(color, 1.0);  // Sharpening circuit disabled under OPTION_CRISPY
+    FragColor = center_sample;
     return;
 #endif  // OPTION_CRISPY
 
-    vec3 color = vec3(0.0);
-
 #ifdef OPTION_DEBUG
-    if (SHARPNENER_BYPASS < 0.5) {
+    if (SHARPNENER_BYPASS >= 0.5) {
+        FragColor = center_sample;
+        return;
+    }
 #endif  // OPTION_DEBUG
 
+    float sharpness = USER_SHARPNESS / 100.0;
+    float luma = center_sample.r;
     float emphasis_center_hz = sharpness_filters.x;
     float emphasis_sigma = sharpness_filters.y;
     float emphasis2_center_hz = sharpness_filters.z;
     float emphasis2_sigma = sharpness_filters.w;
-
-    // Horizontal lattice setup
-    vec2 UV = vTexCoord * config.OutputSize.xy;
-    float line = floor(UV.y);
-    float baseCenter = floor(UV.x) + 0.5;
-    vec2 TexCenter = vec2(
-        baseCenter * config.OutputSize.z,
-        (line + 0.5) * config.OutputSize.w);
-    vec2 dx = vec2(config.OutputSize.z, 0.0);
 
     // Zero-phase bandpass: cosine modulation baked into kernel weights.
     float emphasis_phase_step = 2.0 * PI * emphasis_center_hz / Fs;
@@ -222,29 +212,26 @@ void main()
     float gain2 = sharpness_params.w;
     int center2 = (n_taps2 - 1) / 2;
 
-    vec3 band_color = vec3(0.0);
-    vec3 band2_color = vec3(0.0);
+    float band_luma = 0.0;
+    float band2_luma = 0.0;
 
     // Sample each horizontal tap once and reuse it for both bandpass accumulators.
     int max_center = max(center1, center2);
     for (int n = -max_center; n <= max_center; ++n) {
         float tap_offset = float(n);
-        vec3 rgb = texture(Source, TexCenter + tap_offset * dx).rgb;
-
-        if (tap_offset == 0.0) {
-            color = rgb; // Bypass path (for 0 dB target)
-        }
+        float sample_luma = (n == 0) ? center_sample.r : fetch_input_sample(
+            Source, config.SourceSize.xy, sample_index + tap_offset, FrameWidth, data_limit).r;
         if (abs(n) <= center1) {
             float w1 = gaussian(tap_offset, emphasis_sigma) * cos(tap_offset * emphasis_phase_step);
-            band_color += w1 * rgb;
+            band_luma += w1 * sample_luma;
         }
         if (abs(n) <= center2) {
             float w2 = gaussian(tap_offset, emphasis2_sigma) * cos(tap_offset * emphasis2_phase_step);
-            band2_color += w2 * rgb;
+            band2_luma += w2 * sample_luma;
         }
     }
-    band_color /= gain1;
-    band2_color /= gain2;
+    band_luma /= gain1;
+    band2_luma /= gain2;
 
     // Piecewise-linear dB targets (final response at center frequencies):
     // Primary: 0% -> -6 dB, 50% -> 3 dB, 100% -> 8 dB
@@ -263,14 +250,8 @@ void main()
     float bp_primary_gain = total_primary_gain - 1.0;
     float bp_secondary_gain = total_secondary_gain - 1.0;
 
-    color += bp_primary_gain * band_color;
-    color += bp_secondary_gain * band2_color;
+    luma += bp_primary_gain * band_luma;
+    luma += bp_secondary_gain * band2_luma;
 
-#ifdef OPTION_DEBUG
-    } else {
-        color = texture(Source, vTexCoord).rgb;
-    }
-#endif  // OPTION_DEBUG
-
-    FragColor = vec4(color, 1.0);
+    FragColor = vec4(luma, center_sample.gba);
 }

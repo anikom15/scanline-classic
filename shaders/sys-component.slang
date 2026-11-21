@@ -29,6 +29,7 @@
 #pragma format R16G16B16A16_SFLOAT
 
 #include "common.inc"
+#include "filter-taps.inc"
 #include "color.inc"
 #include "contract.inc"
 #include "dsp.inc"
@@ -117,7 +118,7 @@ layout(location = 4) flat out float FrameHeight;
 layout(location = 5) flat out float DataLength;
 layout(location = 6) flat out float Taps;
 
-const float MAX_TAPS = 71.0;
+const float MAX_TAPS = float(SYS_COMPONENT_MAX_TAPS);
 
 void main()
 {
@@ -186,13 +187,6 @@ void main()
         vec2 sigma_seconds = vec2(
             gaussian_sigma(gaussian_cutoff_freq.x, SYS_CUTOFF_ATTEN_Y),
             gaussian_sigma(gaussian_cutoff_freq.y, SYS_CUTOFF_ATTEN_C));
-        /*
-        vec2 butterworth_cutoff_freq = mix(
-            gaussian_cutoff_freq,
-            sqrt(log(2)) / max((2.0 * PI * sigma_seconds), EPS),
-            lessThanEqual(vec2(SYS_CUTOFF_ATTEN_Y, SYS_CUTOFF_ATTEN_C), vec2(3.0))
-        );
-        */
         vec2 butterworth_cutoff_freq;
 
         if (SYS_CUTOFF_ATTEN_Y > 3.0) {

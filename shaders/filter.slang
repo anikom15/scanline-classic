@@ -195,7 +195,7 @@ float bandlimit_convolve_gaussian_x_r(vec2 uv, vec4 outputSize, sampler2D source
         float wr = gaussian(nf - offsetX, sigmaR);
         float wl = gaussian(nf + offsetX, sigmaR);
 
-        if (wr < FILTER_THRESHOLD && wl < FILTER_THRESHOLD)
+        if (wr < FILTER_THRESHOLD_ANALOG && wl < FILTER_THRESHOLD_ANALOG)
             break;
 
         float pr = dpd_sample_r(tex + nf * dx, outputSize, source, pixelTimePx);

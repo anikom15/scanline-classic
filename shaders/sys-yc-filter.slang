@@ -21,12 +21,13 @@
 // Input and output: luma in R, modulated chroma in G.
 // C bandwidth is the baseband prototype bandwidth, i.e. half the bandpass width.
 // The sampled sidebands can overlap near DC or Nyquist; kernel support is
-// limited to 273 taps, including when the working rate is selected automatically.
+// limited by the generated tap cap, including at automatic working rates.
 
 #pragma name SysYCFilter
 #pragma format R16G16_SFLOAT
 
 #include "common.inc"
+#include "filter-taps.inc"
 #include "contract.inc"
 #include "dsp.inc"
 
@@ -85,7 +86,7 @@ layout(location = 6) flat out float FrameHeight;
 layout(location = 7) flat out float DataLength;
 layout(location = 8) flat out float Taps;
 
-const float MAX_TAPS = 137.0;
+const float MAX_TAPS = float(SYS_YC_FILTER_MAX_TAPS);
 
 void main()
 {

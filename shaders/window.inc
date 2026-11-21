@@ -91,3 +91,10 @@ float kaiser_beta_from_atten(float A)
     if (A < 50.0) return 0.5842 * pow(A - 21.0, 0.4) + 0.07886 * (A - 21.0);
     return 0.1102 * (A - 8.7);
 }
+
+const float DISPLAY_MIN_TRANSITION_WIDTH_HZ = 0.5e6;
+
+float display_transition_width_hz(float cutoff_hz, float stopband_hz)
+{
+    return max(stopband_hz - cutoff_hz, DISPLAY_MIN_TRANSITION_WIDTH_HZ);
+}

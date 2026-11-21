@@ -35,6 +35,7 @@
 #pragma format R16G16B16A16_SFLOAT
 
 #include "common.inc"
+#include "filter-taps.inc"
 #include "color.inc"
 #include "contract.inc"
 #include "dsp.inc"
@@ -139,7 +140,7 @@ layout(location = 13) flat out float DeskewSampleRatio;
 layout(location = 14) flat out float LineCarryClocksOut;
 layout(location = 15) flat out float ClockFactorOut;
 
-const int MAX_TAPS = 37;
+const int MAX_TAPS = DISPLAY_RGB_FILTER_MAX_TAPS;
 const float KAISER_ATTEN_DB = 40.0;
 
 void main()
@@ -249,14 +250,13 @@ void main()
     pfilt.Delta = Delta;
 
     // Kaiser window design from cutoff and stopband
-    // Don't allow stopband to be less than cutoff
-    float cutoff = DISPLAY_CUTOFF * 1.0e6;  // MHz
-    float stopband = max(DISPLAY_CUTOFF, DISPLAY_STOPBAND) * 1.0e6;  // MHz
+    float cutoff = DISPLAY_CUTOFF * 1.0e6;
+    float stopband = DISPLAY_STOPBAND * 1.0e6;
 
     // FIR cutoff is the user cutoff
     kfilt.fc_norm = cutoff / fs_out;
 
-    float trans_width = max(stopband - cutoff, EPS); // MHz, avoid div0
+    float trans_width = display_transition_width_hz(cutoff, stopband);
     float delta_omega = 2.0 * PI * trans_width / fs_out; // radians/sample
     float beta_precise = kaiser_beta_from_atten(KAISER_ATTEN_DB);
     float taps_calc = min((KAISER_ATTEN_DB - 8.0) / (2.285 * max(delta_omega, EPS)), MAX_TAPS);

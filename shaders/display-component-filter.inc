@@ -117,7 +117,9 @@ struct PolyphaseFilter {
     float Delta;
 };
 
-const int MAX_TAPS = 37;
+#include "filter-taps.inc"
+
+const int MAX_TAPS = DISPLAY_COMPONENT_FILTER_MAX_TAPS;
 const float KAISER_ATTEN_DB = 40.0;
 
 float compute_kaiser_gain(KaiserFilter filt)
@@ -140,8 +142,8 @@ KaiserFilter design_kaiser_filter(float cutoff_mhz, float stopband_mhz, float fs
     KaiserFilter filt;
 
     float cutoff = cutoff_mhz * 1.0e6;
-    float stopband = max(cutoff_mhz, stopband_mhz) * 1.0e6;
-    float trans_width = max(stopband - cutoff, EPS);
+    float stopband = stopband_mhz * 1.0e6;
+    float trans_width = display_transition_width_hz(cutoff, stopband);
     float delta_omega = 2.0 * PI * trans_width / max(fs_out, EPS);
 
     filt.fc_norm = min(cutoff / max(fs_out, EPS), 0.5 - EPS);

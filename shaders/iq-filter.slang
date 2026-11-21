@@ -294,7 +294,7 @@ void main()
             env_max = max(env_max, max(w_r_q, w_l_q));
         }
 
-        if (env_max < FILTER_THRESHOLD)
+        if (env_max < FILTER_THRESHOLD_ANALOG)
             break;
 
         vec2 iq_r = texture(Source, tex_r).rg;

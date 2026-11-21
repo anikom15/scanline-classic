@@ -18,7 +18,7 @@
 const float EPS = 1.19209289551e-7;
 const float PI = 3.14159265359;
 const float LN10 = 2.30258509299;
-const float FILTER_THRESHOLD = 1.0 / 255.0; // 8-bit LSB threshold for early loop exit
+const float FILTER_THRESHOLD_DIGITAL = 1.0 / 256.0; // 8-bit LSB threshold for early loop exit
 const float FILTER_THRESHOLD_ANALOG = 0.01; // Threshold for analog-level bandlimit optimization (e.g., 0.01 = -40 dB)
 
 const float TARGET_NITS = 100.0;

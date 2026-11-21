@@ -215,10 +215,10 @@ void main()
         float weight_pos = sinc_lowpass_kaiser(fx_pos, fc_norm.x, taps.x, KAISER_BETA, window_pos);
         float weight_neg = sinc_lowpass_kaiser(fx_neg, fc_norm.x, taps.x, KAISER_BETA, window_neg);
 
-        if (window_pos < FILTER_THRESHOLD && window_neg < FILTER_THRESHOLD)
+        if (window_pos < FILTER_THRESHOLD_DIGITAL && window_neg < FILTER_THRESHOLD_DIGITAL)
             break;
 
-        if (window_pos >= FILTER_THRESHOLD) {
+        if (window_pos >= FILTER_THRESHOLD_DIGITAL) {
             vec2 sample_pos = src_center + vec2(float(dx), 0.0);
             vec2 sample_coord = sample_pos * config.SourceSize.zw;
             vec3 color;
@@ -234,7 +234,7 @@ void main()
             weight_sum += weight_pos;
         }
 
-        if (window_neg >= FILTER_THRESHOLD) {
+        if (window_neg >= FILTER_THRESHOLD_DIGITAL) {
             vec2 sample_pos = src_center + vec2(float(-dx), 0.0);
             vec2 sample_coord = sample_pos * config.SourceSize.zw;
             vec3 color;

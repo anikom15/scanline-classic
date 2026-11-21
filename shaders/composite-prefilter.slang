@@ -228,7 +228,7 @@ void main()
             float g_notch_r = gaussian(nf - Ax, sigma_notch);
             float g_notch_l = gaussian(nf + Ax, sigma_notch);
 
-            if (g_bp_r < FILTER_THRESHOLD && g_bp_l < FILTER_THRESHOLD && g_notch_r < FILTER_THRESHOLD && g_notch_l < FILTER_THRESHOLD)
+            if (g_bp_r < FILTER_THRESHOLD_ANALOG && g_bp_l < FILTER_THRESHOLD_ANALOG && g_notch_r < FILTER_THRESHOLD_ANALOG && g_notch_l < FILTER_THRESHOLD_ANALOG)
                 break;
 
             // Right

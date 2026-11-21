@@ -6,6 +6,8 @@ import shutil
 import subprocess
 import sys
 
+from scripts.generate_filter_taps import generate_filter_taps
+
 # Paths
 ROOT = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(ROOT, 'out')
@@ -197,6 +199,8 @@ def main():
     if args.strict_structure and not args.lint_shaders:
         print("Error: --strict-structure requires --lint-shaders")
         sys.exit(2)
+
+    generate_filter_taps(ROOT)
 
     if args.lint_shaders:
         run_shader_lint(verbose=verbose, strict_structure=args.strict_structure)

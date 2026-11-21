@@ -219,9 +219,9 @@ void main()
         float g_cr_l = gaussian(nf + Ax, sigma_cr);
 
         // Early exit when all channels below threshold
-        bool y_done  = !filter_y || (g_y_r  < FILTER_THRESHOLD && g_y_l  < FILTER_THRESHOLD);
-        bool cb_done = !filter_cb || (g_cb_r < FILTER_THRESHOLD && g_cb_l < FILTER_THRESHOLD);
-        bool cr_done = !filter_cr || (g_cr_r < FILTER_THRESHOLD && g_cr_l < FILTER_THRESHOLD);
+        bool y_done  = !filter_y || (g_y_r  < FILTER_THRESHOLD_DIGITAL && g_y_l  < FILTER_THRESHOLD_DIGITAL);
+        bool cb_done = !filter_cb || (g_cb_r < FILTER_THRESHOLD_DIGITAL && g_cb_l < FILTER_THRESHOLD_DIGITAL);
+        bool cr_done = !filter_cr || (g_cr_r < FILTER_THRESHOLD_DIGITAL && g_cr_l < FILTER_THRESHOLD_DIGITAL);
 
         if (y_done && cb_done && cr_done)
             break;

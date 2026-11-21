@@ -38,6 +38,7 @@
 #pragma format R16G16B16A16_SFLOAT
 
 #include "common.inc"
+#include "filter-taps.inc"
 #include "color.inc"
 #include "contract.inc"
 
@@ -136,7 +137,7 @@ layout(location = 9) flat out float InputDataLength;
 layout(location = 10) flat out float OutputDataLength;
 layout(location = 11) flat out float OutputFrameWidth;
 
-const float MAX_TAPS = 71.0;
+const float MAX_TAPS = float(SYS_BANDLIMIT_MAX_TAPS);
 
 void main()
 {

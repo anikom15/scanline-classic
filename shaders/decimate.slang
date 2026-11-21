@@ -144,10 +144,10 @@ void main()
         float w_pos = sinc_lowpass_bh4(fx_pos, fc_norm.x, taps.x, w_env_pos);
         float w_neg = sinc_lowpass_bh4(fx_neg, fc_norm.x, taps.x, w_env_neg);
 
-        if (w_env_pos < FILTER_THRESHOLD && w_env_neg < FILTER_THRESHOLD)
+        if (w_env_pos < FILTER_THRESHOLD_DIGITAL && w_env_neg < FILTER_THRESHOLD_DIGITAL)
             break;
 
-        if (w_env_pos >= FILTER_THRESHOLD) {
+        if (w_env_pos >= FILTER_THRESHOLD_DIGITAL) {
             vec2 sample_pos = src_center + vec2(float(dx), 0.0);
             vec2 coord = clamp(sample_pos * config.SourceSize.zw, vec2(0.0), vec2(1.0));
             vec3 c = texture(Source, coord).rgb;
@@ -155,7 +155,7 @@ void main()
             wsum += w_pos;
         }
 
-        if (w_env_neg >= FILTER_THRESHOLD) {
+        if (w_env_neg >= FILTER_THRESHOLD_DIGITAL) {
             vec2 sample_pos = src_center + vec2(float(-dx), 0.0);
             vec2 coord = clamp(sample_pos * config.SourceSize.zw, vec2(0.0), vec2(1.0));
             vec3 c = texture(Source, coord).rgb;
