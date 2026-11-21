@@ -158,15 +158,15 @@ Represents controls available either through the service menu, from the back of 
 
   * BW_MODE - Monitor mode (off, BW, Y, C, Y+C): Practically the same as the S-Video setting, but represents feeding off the encoder hardware directly
 
-  * COLOR_FILTER_MODE - Filter mode (notch, simple comb, adaptive comb): Selects the composite separation filter technique; notch is usually best for 2D content, adaptive comb is often better for 3D or detailed motion
+  * COLOR_FILTER_MODE - Filter mode (notch, simple comb, adaptive comb): Comb filtering is not yet implemented in the new display prefilter; all modes use notch/bandpass separation
 
-  * NOTCH_WIDTH - Luma notch filter width (MHz): Increasing this value reduces color bleeding at the expense of sharpness
+  * NOTCH_WIDTH - Luma notch filter full width (MHz): Increasing this value reduces color bleeding at the expense of sharpness
 
-  * NOTCH_ATTEN_DB - Luma notch filter attenuation (dB): Increasing this value reduces color bleeding at the expense of sharpness
+  * NOTCH_ATTEN_DB - Luma notch prototype attenuation at half-width (dB); zero bypasses the notch
 
-  * BANDPASS_WIDTH - Chroma bandpass width (MHz): Increasing this value improves color resolution at the expense of introducing artifacts
+  * BANDPASS_WIDTH - Chroma bandpass full width (MHz): Increasing this value improves color resolution at the expense of introducing artifacts
 
-  * BANDPASS_ATTEN_DB - Chroma bandpass attenuation (dB): Decreasing this value improves color resolution at the expense of introducing artifacts
+  * BANDPASS_ATTEN_DB - Chroma bandpass prototype attenuation at half-width (dB); zero bypasses the bandpass
 
   * COMB_FILTER_LUMA_ADAPT - Comb filter luma correlation factor: Affects the threshold for determining whether to engage the comb filter on luma when the adaptive comb filter is used; higher values require a stronger correlation between lines
 

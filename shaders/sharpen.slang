@@ -39,7 +39,8 @@
 #pragma include_optional "../config/options.cfg"
 
 #ifdef OPTION_DEBUG
-#pragma parameter SHARPNENER_BYPASS "Bypass sharpener" 0.0 0.0 1.0 1.0
+#pragma parameter DEBUG_SHARPEN_HEADER " —— Debug Sharpen —— " 0.0 0.0 0.0 0.0
+#pragma parameter DEBUG_SHARPEN_BYPASS "Bypass sharpener" 0.0 0.0 1.0 1.0
 #endif  // OPTION_DEBUG
 
 layout(push_constant) uniform Push
@@ -76,13 +77,13 @@ layout(std140, set = 0, binding = 0) uniform UBO
     mat4 MVP;
 
 #ifdef OPTION_DEBUG
-    float SHARPNENER_BYPASS;
+    float DEBUG_SHARPEN_BYPASS;
 #endif  // OPTION_DEBUG
 } global;
 
 
 #ifdef OPTION_DEBUG
-#define SHARPNENER_BYPASS global.SHARPNENER_BYPASS
+#define DEBUG_SHARPEN_BYPASS global.DEBUG_SHARPEN_BYPASS
 #endif  // OPTION_DEBUG
 
 #pragma stage vertex
@@ -122,7 +123,7 @@ void main()
     sharpness_params = vec4(0.0);
 #else
 #ifdef OPTION_DEBUG
-    if (SHARPNENER_BYPASS < 0.5) {
+    if (DEBUG_SHARPEN_BYPASS < 0.5) {
 #endif  // OPTION_DEBUG
 
     float emphasis_center_hz = 3.0e6;
@@ -187,7 +188,7 @@ void main()
 #endif  // OPTION_CRISPY
 
 #ifdef OPTION_DEBUG
-    if (SHARPNENER_BYPASS >= 0.5) {
+    if (DEBUG_SHARPEN_BYPASS >= 0.5) {
         FragColor = center_sample;
         return;
     }

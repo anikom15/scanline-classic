@@ -133,6 +133,10 @@ def calculate_filter_taps(root):
         shaders / 'sys-component.slang', thresholds)
     yc_gaussian_threshold, yc_butterworth_threshold = _truncation_thresholds(
         shaders / 'sys-yc-filter.slang', thresholds)
+    composite_calls = _gaussian_thresholds(shaders / 'display-composite.slang', thresholds)
+    if len(composite_calls) != 1:
+        raise ValueError("Expected one Gaussian truncation threshold in display-composite.slang")
+    composite_threshold = composite_calls[0][1]
 
     rgb_menu = menus / 'sys-rgb.inc'
     decimation = _parameter(rgb_menu, 'SYS_FILTER_DECIMATION')[1]
@@ -184,6 +188,15 @@ def calculate_filter_taps(root):
                 cutoff, min(attenuation, 3.0), SYSTEM_DSP_HZ, yc_butterworth_threshold, eps,
                 guarded_sigma=True, clamp_cutoff=True))
 
+    composite_menu = menus / 'display-composite.inc'
+    bandwidth_min = _parameter(composite_menu, 'DISPLAY_BANDPASS_WIDTH')[0]
+    attenuation_max = _parameter(composite_menu, 'DISPLAY_BANDPASS_ATTEN_DB')[1]
+    if bandwidth_min <= 0.0:
+        raise ValueError("Display bandpass width range must be positive")
+    composite_gaussian = _gaussian_taps(
+        _sigma(0.5e6 * bandwidth_min, attenuation_max),
+        SYSTEM_DSP_HZ, composite_threshold)
+
     min_transition = _constant(shaders / 'window.inc', 'DISPLAY_MIN_TRANSITION_WIDTH_HZ')
     display_component = shaders / 'display-component-filter.inc'
     display_rgb = shaders / 'display-rgb-filter.slang'
@@ -218,6 +231,8 @@ def calculate_filter_taps(root):
          {'Gaussian': max(component_gaussian), 'Butterworth': max(component_butterworth)}),
         ('sys-yc-filter.slang', 'SYS_YC_FILTER_MAX_TAPS',
          {'Gaussian': max(yc_gaussian), 'Butterworth': max(yc_butterworth)}),
+        ('display-composite.slang', 'DISPLAY_COMPOSITE_MAX_TAPS',
+         {'Gaussian': composite_gaussian}),
         ('display-component-filter.inc', 'DISPLAY_COMPONENT_FILTER_MAX_TAPS',
          {'Kaiser': component_kaiser}),
         ('display-rgb-filter.slang', 'DISPLAY_RGB_FILTER_MAX_TAPS',

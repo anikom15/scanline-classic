@@ -38,6 +38,7 @@ timing at the default 32 MHz working rate.
 `sys-bandlimit.slang` - Gaussian or BW polyphase lowpass
 `sys-component.slang` - Gaussian or BW lowpass
 `sys-yc-filter.slang` - Gaussian or BW lowpass and bandpass
+`display-composite.slang` - Gaussian notch and bandpass separation
 `sharpen.slang` - dual Gaussian luma bandpass enhancement
 
 ## SD Display DSP domain
@@ -78,6 +79,14 @@ domain, before display demodulation and filtering; it is not included in the
 current pipelines. Its zero-phase luma filters require no chroma delay. Its
 fixed 3 MHz and 8 MHz emphasis peaks can alias at working sample rates below
 twice the peak frequency.
+
+The composite prefilter also operates at the working rate, before chroma
+demodulation and display-rate conversion. Its notch and bandpass widths are
+full widths around the subcarrier; their attenuation settings describe the
+Gaussian prototype at half that width. Zero attenuation bypasses the
+corresponding filter. With the subcarrier disabled, the output is unfiltered
+luma and zero chroma. Comb modes currently fall back to notch/bandpass
+separation.
 
 ## Out of Scope Shaders
 

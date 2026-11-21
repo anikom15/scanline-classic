@@ -39,8 +39,8 @@
 #pragma include_optional "../config/options.cfg"
 
 #ifdef OPTION_DEBUG
-#pragma parameter DEBUG_RGB_NOISE_HEADER " —— Debug RGB Noise —— " 0.0 0.0 0.0 0.0
-#pragma parameter TXRX_NOISE_BYPASS "Bypass RGB noise" 0.0 0.0 1.0 1.0
+#pragma parameter DEBUG_RGB_NOISE_HEADER " —— Debug Tx/Rx Noise —— " 0.0 0.0 0.0 0.0
+#pragma parameter TXRX_NOISE_BYPASS "Bypass Tx/Rx noise" 0.0 0.0 1.0 1.0
 #pragma parameter TXRX_NOISE_VIEW_MAG_DELTAV "View MagDeltaV" 0.0 0.0 1.0 1.0
 #pragma parameter TXRX_NOISE_MAG_DELTAV_MIP_LOD "MagDeltaV mip LOD" 0.0 0.0 12.0 1.0
 #endif  // OPTION_DEBUG

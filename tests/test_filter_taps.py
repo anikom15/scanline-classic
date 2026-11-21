@@ -46,6 +46,13 @@ class FilterTapTests(unittest.TestCase):
         generated = (self.root / 'shaders' / 'filter-taps.inc').read_text(encoding='utf-8')
         self.assertEqual(generated, (ROOT / 'shaders' / 'filter-taps.inc').read_text(encoding='utf-8'))
 
+    def test_sys_yc_filter_supports_svideo_output_mode(self):
+        shader = (ROOT / 'shaders' / 'sys-yc-filter.slang').read_text(encoding='utf-8')
+        self.assertIn('#include "menus/parameters/sys-encode.inc"', shader)
+        self.assertRegex(shader, r'float\s+SVIDEO\s*;')
+        self.assertIn('vec2 cv = vec2(yc.r + yc.g, 0.0);', shader)
+        self.assertIn('yc = mix(cv, yc, SVIDEO);', shader)
+
     def test_threshold_and_transition_width_change_caps(self):
         original = self.results()
         common = self.root / 'shaders' / 'common.inc'
@@ -130,6 +137,18 @@ class FilterTapTests(unittest.TestCase):
             changed = self.results()['sharpen.slang']
         self.assertLess(changed['primary Gaussian'], baseline['primary Gaussian'])
         self.assertLess(changed['secondary Gaussian'], baseline['secondary Gaussian'])
+
+    def test_composite_cap_tracks_width_and_working_rate(self):
+        baseline = self.results()['display-composite.slang']['Gaussian']
+        self.assertEqual(baseline, _gaussian_taps(_sigma(0.15e6, 20.0), 32.0e6, 0.01))
+        menu = self.root / 'shaders' / 'menus' / 'parameters' / 'display-composite.inc'
+        text = menu.read_text(encoding='utf-8')
+        menu.write_text(text.replace('1.3 0.3 3.0 0.01', '1.3 0.2 3.0 0.01'),
+                        encoding='utf-8')
+        self.assertGreater(self.results()['display-composite.slang']['Gaussian'], baseline)
+        menu.write_text(text, encoding='utf-8')
+        with patch('scripts.generate_filter_taps.SYSTEM_DSP_HZ', 16.0e6):
+            self.assertLess(self.results()['display-composite.slang']['Gaussian'], baseline)
 
     def test_rejects_unstable_system_bandwidth_range(self):
         menu = self.root / 'shaders' / 'menus' / 'parameters' / 'sys-component.inc'

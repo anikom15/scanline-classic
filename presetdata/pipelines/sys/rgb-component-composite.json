@@ -1,10 +1,12 @@
 {
     "shaders" : {
         "frame" : "frameh",
-        "amp" : "sys-rgb-amp",
+        "sync": "sys-sync",
+        "noise-dac" : "noise-dac",
         "bandlimit" : "sys-bandlimit",
         "component" : "sys-component",
         "mod" : "sys-component-yc",
+        "amp" : "sys-cv-amp",
         "deltav" : "send-mag-delta-v-dsp",
         "mip1" : "send-decimate-dsp",
         "mip2" : "send-decimate-dsp",
@@ -17,15 +19,16 @@
         "mip9" : "send-decimate-dsp",
         "mip10" : "send-decimate-dsp",
         "mip11" : "send-decimate-dsp",
-        "noise" : "noise-composite"
+        "mip12" : "send-decimate-dsp",
+        "noise-txrx" : "noise-txrx-dsp"
     },
     "options" : {
         "frame" : {
             "scale_type" : ["absolute", "absolute"],
             "scale" : [4096.0, 1024.0]
         },
-        "mod" : {
-            "alias" : "CompositeOut"
+        "amp" : {
+            "alias" : "SendSource"
         },
         "mip1" : {
             "scale_type" : ["source", "source"],
@@ -93,10 +96,16 @@
             "alias" : "Mip11",
             "filter_linear" : true
         },
-        "noise" : {
+        "mip12" : {
+            "scale_type" : ["source", "source"],
+            "scale" : [0.5, 1.0],
+            "alias" : "Mip12",
+            "filter_linear" : true
+        },
+        "noise-txrx" : {
             "filter_linear" : true,
             "scale_type" : ["absolute", "source"],
-            "scale" : [2048.0, 1.0]
+            "scale" : [4096.0, 1.0]
         }
     }
 }

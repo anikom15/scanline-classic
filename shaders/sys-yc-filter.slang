@@ -33,6 +33,7 @@
 
 #include "menus/parameters/dsp.inc"
 #include "menus/parameters/sys-component.inc"
+#include "menus/parameters/sys-encode.inc"
 #include "menus/parameters/sys-timing.inc"
 
 #pragma include_optional "../config/options.cfg"
@@ -62,11 +63,14 @@ layout(push_constant) uniform Push
     float SYS_BANDWIDTH_C;
     float SYS_CUTOFF_ATTEN_Y;
     float SYS_CUTOFF_ATTEN_C;
+    float SVIDEO;
 
 #ifdef OPTION_DEBUG
     float SYS_YC_FILTER_BYPASS;
 #endif
 } config;
+
+#define SVIDEO config.SVIDEO
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
@@ -229,5 +233,7 @@ void main()
     if (config.SYS_CUTOFF_ATTEN_C <= 0.0) {
         yc.y = fetch_input_sample(Source, config.SourceSize.xy, index, FrameWidth, DataLength - 1.0).g;
     }
+    vec2 cv = vec2(yc.r + yc.g, 0.0);
+    yc = mix(cv, yc, SVIDEO);
     FragColor = vec4(yc, 0.0, 0.0);
 }
