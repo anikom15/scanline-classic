@@ -35,6 +35,7 @@
 #include "menus/parameters/sys-component.inc"
 #include "menus/parameters/sys-encode.inc"
 #include "menus/parameters/sys-timing.inc"
+#include "menus/parameters/sys-yc-filter.inc"
 
 #pragma include_optional "../config/options.cfg"
 
@@ -64,6 +65,7 @@ layout(push_constant) uniform Push
     float SYS_CUTOFF_ATTEN_Y;
     float SYS_CUTOFF_ATTEN_C;
     float SVIDEO;
+    float SYS_YC_TRAP;
 
 #ifdef OPTION_DEBUG
     float SYS_YC_FILTER_BYPASS;
@@ -162,10 +164,12 @@ void main()
         image_moment += t * image_tap;
     }
 
-    // Normalize the actual real bandpass response at the carrier, including
-    // the negative-frequency image of the modulated prototype.
     vec2 carrier_response = vec2(gain.y + image.x, image.y);
-    FilterGain = vec2(max(gain.x, EPS), max(length(carrier_response) * 0.5, EPS));
+    if (config.SYS_YC_FILTER_TYPE < 0.5) {
+        FilterGain = vec2(max(gain.x, EPS), max(length(carrier_response) * 0.5, EPS));
+    } else {
+        FilterGain = vec2(max(gain.x, EPS), max(gain.y, EPS));
+    }
     float chroma_delay = dot(vec2(moment.y + image_moment.x, image_moment.y), carrier_response)
         / max(dot(carrier_response, carrier_response), EPS);
     if (attenuation.y <= 0.0) {
@@ -204,6 +208,8 @@ void main()
     }
 
     vec2 accum = vec2(0.0);
+    float luma_band_accum = 0.0;
+    float luma_band_weight = 0.0;
     for (int k = 0; k < int(Taps); ++k) {
         float t = config.SYS_YC_FILTER_TYPE < 0.5 ? float(k) - (Taps - 1.0) / 2.0 : float(k);
         vec2 h;
@@ -226,10 +232,32 @@ void main()
             y = mix(y0, y1, fract(y_index));
         }
         accum.x += h.x * y;
-        accum.y += h.y * cos(ChromaFrequency * t) * sample_yc.y;
+        if (config.SYS_YC_FILTER_TYPE < 0.5) {
+            accum.y += h.y * cos(ChromaFrequency * t) * sample_yc.y;
+        } else {
+            accum.y += h.y * sample_yc.y;
+        }
+
+        if (config.SYS_YC_TRAP > 0.5 &&
+            config.SYS_CUTOFF_ATTEN_C > 0.0 &&
+            ChromaFrequency > 0.0) {
+            float carrier = cos(ChromaFrequency * t);
+            luma_band_accum += h.y * carrier * y;
+            luma_band_weight += h.y;
+        }
     }
 
     vec2 yc = accum / FilterGain;
+
+    if (config.SYS_YC_TRAP > 0.5 &&
+        config.SYS_CUTOFF_ATTEN_C > 0.0 &&
+        ChromaFrequency > 0.0) {
+        if (luma_band_weight > EPS) {
+            float luma_band = 2.0 * luma_band_accum / luma_band_weight;
+            yc.x -= luma_band;
+        }
+    }
+
     if (config.SYS_CUTOFF_ATTEN_C <= 0.0) {
         yc.y = fetch_input_sample(Source, config.SourceSize.xy, index, FrameWidth, DataLength - 1.0).g;
     }

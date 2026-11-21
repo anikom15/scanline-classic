@@ -3,8 +3,6 @@
         "ENCODER_SETUP" : 0.0,
         "SYS_FILTER_DECIMATION" : 2.0,
 
-        "SYS_YC_FILTER_TYPE" : 1.0,
-
         "COLOR_FILTER_MODE" : 0.0,
 
         "PIXEL_CLOCK_MODE" : 1.0,

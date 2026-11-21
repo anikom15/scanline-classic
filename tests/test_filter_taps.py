@@ -53,6 +53,21 @@ class FilterTapTests(unittest.TestCase):
         self.assertIn('vec2 cv = vec2(yc.r + yc.g, 0.0);', shader)
         self.assertIn('yc = mix(cv, yc, SVIDEO);', shader)
 
+    def test_sys_yc_filter_supports_notch_trap(self):
+        shader = (ROOT / 'shaders' / 'sys-yc-filter.slang').read_text(encoding='utf-8')
+        menu = (ROOT / 'shaders' / 'menus' / 'parameters' / 'sys-yc-filter.inc').read_text(encoding='utf-8')
+        self.assertIn('#pragma parameter SYS_YC_TRAP', menu)
+        self.assertRegex(shader, r'float\s+SYS_YC_TRAP\s*;')
+        self.assertIn('config.SYS_YC_TRAP > 0.5', shader)
+        self.assertIn('yc.x -= luma_band;', shader)
+        self.assertIn('luma_band_accum += h.y * carrier * y;', shader)
+        self.assertIn('luma_band_weight += h.y;', shader)
+        self.assertIn('2.0 * luma_band_accum / luma_band_weight', shader)
+        self.assertIn('config.SYS_CUTOFF_ATTEN_C > 0.0', shader)
+        self.assertIn('accum.y += h.y * cos(ChromaFrequency * t) * sample_yc.y;', shader)
+        self.assertIn('accum.y += h.y * sample_yc.y;', shader)
+        self.assertIn('FilterGain = vec2(max(gain.x, EPS), max(gain.y, EPS));', shader)
+
     def test_threshold_and_transition_width_change_caps(self):
         original = self.results()
         common = self.root / 'shaders' / 'common.inc'

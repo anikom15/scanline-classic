@@ -2,10 +2,6 @@
     "parameters" : {
         "ENCODER_SETUP" : 0.0,
 
-        "SYS_YC_FILTER_TYPE" : 1.0,
-
-        "RGB_NOISE_PRESET" : 1.0,
-
         "COLOR_FILTER_MODE" : 0.0,
 
         "PIXEL_CLOCK_MODE" : 1.0,

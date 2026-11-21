@@ -30,7 +30,7 @@
 
 #include "common.inc"
 
-#include "menus/parameters/sys-yc.inc"
+#include "menus/parameters/sys-yc-amp.inc"
 #include "menus/parameters/noise-txrx.inc"
 
 #pragma include_optional "../config/options.cfg"

@@ -11,6 +11,7 @@
   "parameter_sets" : [
     "sys/md/base.json",
     "sys/md/ntsc.json",
+    "sys/cxa1145.json",
     "disp/ntscj.json",
     "disp/trinitron.json",
     "disp/tvl-m-450.json"

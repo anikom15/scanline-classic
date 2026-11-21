@@ -6,6 +6,8 @@
         "COLOR_FILTER_MODE" : 0.0,
 
         "H_FREQ_MODE" : 1.0,
-        "H_FREQ" : 3420.0
+        "H_FREQ" : 3420.0,
+
+        "SYS_YC_TRAP" : 1.0
     }
 }
