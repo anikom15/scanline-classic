@@ -1,0 +1,23 @@
+{
+    "filename" : "famicom-titler",
+    "type" : "professional",
+    "title" : "Famicom S-Video shader set",
+    "description" : "Represents S-Video output from e.g. Famicom Titler",
+    "pipelines" : [
+        "sys/famicom-svideo.json",
+        "disp/crt-svideo-sd.json",
+        "misc/post.json"
+    ],
+    "parameter_sets" : [
+        "sys/famicom/base.json",
+        "sys/famicom/svideo.json",
+        "sys/sfc/base.json",
+        "sys/sfc/ntsc.json",
+        "misc/svideo.json",
+        "disp/ntscj.json",
+        "disp/trinitron.json",
+        "disp/tvl-m-450.json"
+    ],
+    "parameter_overrides" : {
+    }
+}

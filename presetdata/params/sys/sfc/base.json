@@ -13,7 +13,6 @@
         "H_FREQ" : 1364.0,
         "SHORTEN_ODD_FIELD_TIME" : 1.0,
 
-        "SYS_SYNC_TYPE" : 1.0,
-        "SVIDEO_CARRIER_LEAKAGE" : -26.0
+        "SYS_SYNC_TYPE" : 1.0
     }
 }

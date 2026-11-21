@@ -1,0 +1,8 @@
+{
+    "parameters" : {
+        "CARRIER_SHAPE" : 1.0,
+        "YC_CARRIER_LEAKAGE" : -34.0,
+        "YC_IQ_GAIN_IMBALANCE" : 0.0,
+        "YC_IQ_PHASE_IMBALANCE" : 1.0
+    }
+}

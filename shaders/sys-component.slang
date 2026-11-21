@@ -294,10 +294,10 @@ void main()
                 gaussian(dt, sigma.x),
                 gaussian(dt, sigma.y),
                 gaussian(dt, sigma.z));
-            vec4 yccs = fetch_input_sample(Source, config.SourceSize.xy, output_index + dt, FrameWidth, DataLength - 1.0);
+            vec4 rgbs = fetch_input_sample(Source, config.SourceSize.xy, output_index + dt, FrameWidth, DataLength - 1.0);
 
-            vec3 ycc = rgb_to_luma_chroma(yccs.rgb);
-            ycc.r += yccs.a;
+            vec3 ycc = rgb_to_luma_chroma(rgbs.rgb);
+            ycc.r += rgbs.a;
 
             accum += coeff * ycc;
         }
@@ -314,15 +314,15 @@ void main()
             int tap_offset = n_taps - 1 - k;
             float dt = float(tap_offset);
             vec3 coeff = (1.0 - alpha) * pow(alpha, vec3(dt));
-            vec4 yccs = vec4(
+            vec4 rgbs = vec4(
                 fetch_input_sample(Source, config.SourceSize.xy, float(output_indices.x) - dt, FrameWidth, DataLength - 1.0).r,
                 fetch_input_sample(Source, config.SourceSize.xy, float(output_indices.y) - dt, FrameWidth, DataLength - 1.0).g,
                 fetch_input_sample(Source, config.SourceSize.xy, float(output_indices.z) - dt, FrameWidth, DataLength - 1.0).b,
                 fetch_input_sample(Source, config.SourceSize.xy, float(output_indices.x) - dt, FrameWidth, DataLength - 1.0).a
                 );
 
-            vec3 ycc = rgb_to_luma_chroma(yccs.rgb);
-            ycc.r += yccs.a;
+            vec3 ycc = rgb_to_luma_chroma(rgbs.rgb);
+            ycc.r += rgbs.a;
 
             accum += coeff * ycc;
             filter_gain += coeff;

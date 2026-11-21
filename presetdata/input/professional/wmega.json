@@ -4,13 +4,14 @@
   "title" : "Wondermega S-Video shader set",
   "description" : "S-Video output was available on the Wondermega, but not the American Xeye",
   "pipelines" : [
-    "sys/rgb-component-yc.json",
-    "disp/crt-rgb-sd.json",
+    "sys/rgb-yc.json",
+    "disp/crt-svideo-sd.json",
     "misc/post.json"
   ],
   "parameter_sets" : [
     "sys/md/base.json",
     "sys/md/ntsc.json",
+    "sys/cxa1145.json",
     "misc/svideo.json",
     "disp/ntscj.json",
     "disp/trinitron.json",

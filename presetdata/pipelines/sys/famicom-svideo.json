@@ -2,17 +2,116 @@
     "shaders" : {
         "frame" : "frameh",
         "special" : "famicom-rgb",
-        "amp" : "sys-rgb-amp",
-        "sys-bandlimit" : "sys-bandlimit",
+        "sync": "sys-sync",
+        "noise-dac" : "noise-dac",
+        "bandlimit" : "sys-bandlimit",
         "component" : "sys-component",
-        "svideo" : "svideo",
-        "disp-bandlimit" : "display-rgb-bandlimit",
-        "limiter" : "limiter"
+        "mod" : "sys-component-yc",
+        "amp" : "sys-yc-amp",
+        "deltav" : "send-mag-delta-v-dsp",
+        "mip1" : "send-decimate-dsp",
+        "mip2" : "send-decimate-dsp",
+        "mip3" : "send-decimate-dsp",
+        "mip4" : "send-decimate-dsp",
+        "mip5" : "send-decimate-dsp",
+        "mip6" : "send-decimate-dsp",
+        "mip7" : "send-decimate-dsp",
+        "mip8" : "send-decimate-dsp",
+        "mip9" : "send-decimate-dsp",
+        "mip10" : "send-decimate-dsp",
+        "mip11" : "send-decimate-dsp",
+        "mip12" : "send-decimate-dsp",
+        "noise-txrx" : "noise-txrx-dsp"
     },
     "options" : {
         "frame" : {
+            "scale_type" : ["absolute", "absolute"],
+            "scale" : [4096.0, 1024.0]
+        },
+        "bandlimit" : {
             "scale_type" : ["absolute", "source"],
-            "scale" : [858.0, 1.0]
+            "scale" : [2048.0, 1.0],
+            "filter_linear" : true
+        },
+        "amp" : {
+            "alias" : "SendSource"
+        },
+        "mip1" : {
+            "scale_type" : ["source", "source"],
+            "scale" : [0.5, 1.0],
+            "alias" : "Mip1",
+            "filter_linear" : true
+        },
+        "mip2" : {
+            "scale_type" : ["source", "source"],
+            "scale" : [0.5, 1.0],
+            "alias" : "Mip2",
+            "filter_linear" : true
+        },
+        "mip3" : {
+            "scale_type" : ["source", "source"],
+            "scale" : [0.5, 1.0],
+            "alias" : "Mip3",
+            "filter_linear" : true
+        },
+        "mip4" : {
+            "scale_type" : ["source", "source"],
+            "scale" : [0.5, 1.0],
+            "alias" : "Mip4",
+            "filter_linear" : true
+        },
+        "mip5" : {
+            "scale_type" : ["source", "source"],
+            "scale" : [0.5, 1.0],
+            "alias" : "Mip5",
+            "filter_linear" : true
+        },
+        "mip6" : {
+            "scale_type" : ["source", "source"],
+            "scale" : [0.5, 1.0],
+            "alias" : "Mip6",
+            "filter_linear" : true
+        },
+        "mip7" : {
+            "scale_type" : ["source", "source"],
+            "scale" : [0.5, 1.0],
+            "alias" : "Mip7",
+            "filter_linear" : true
+        },
+        "mip8" : {
+            "scale_type" : ["source", "source"],
+            "scale" : [0.5, 1.0],
+            "alias" : "Mip8",
+            "filter_linear" : true
+        },
+        "mip9" : {
+            "scale_type" : ["source", "source"],
+            "scale" : [0.5, 1.0],
+            "alias" : "Mip9",
+            "filter_linear" : true
+        },
+        "mip10" : {
+            "scale_type" : ["source", "source"],
+            "scale" : [0.5, 1.0],
+            "alias" : "Mip10",
+            "filter_linear" : true
+        },
+        "mip11" : {
+            "scale_type" : ["source", "source"],
+            "scale" : [0.5, 1.0],
+            "alias" : "Mip11",
+            "filter_linear" : true
+        },
+        "mip12" : {
+            "scale_type" : ["source", "source"],
+            "scale" : [1.0, 1.0],
+            "alias" : "Mip12",
+            "filter_linear" : true
+        },
+        "noise-txrx" : {
+            "filter_linear" : true,
+            "scale_type" : ["absolute", "source"],
+            "scale" : [4096.0, 1.0]
         }
     }
 }
