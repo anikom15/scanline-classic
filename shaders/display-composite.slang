@@ -132,17 +132,39 @@ layout(set = 0, binding = 1) uniform sampler2D Source;
 vec2 filter_notch_bandpass(float index, float composite)
 {
     vec2 accum = vec2(0.0);
+    float weight = 0.0;
+    float carrier_cos = 0.0;
+    float carrier_square = 0.0;
+    float dc_accum = 0.0;
     for (int k = 0; k < int(Taps); ++k) {
         float t = float(k) - (Taps - 1.0) / 2.0;
         float sample_cv = fetch_input_sample(
             Source, config.SourceSize.xy, index + t, FrameWidth, DataLength - 1.0).r;
         vec2 h = vec2(gaussian(t, FilterSigma.x), gaussian(t, FilterSigma.y));
         accum += h * cos(ChromaFrequency * t) * sample_cv;
+        float carrier = cos(ChromaFrequency * t);
+        weight += h.x;
+        carrier_cos += h.x * carrier;
+        carrier_square += h.x * carrier * carrier;
+        dc_accum += h.x * sample_cv;
     }
 
     vec2 band = accum / FilterGain;
-    float y = config.DISPLAY_BANDPASS_ATTEN_DB > 0.0 ? composite - band.x : composite;
-    float c = config.DISPLAY_BANDPASS_ATTEN_DB > 0.0 ? band.y : composite;
+    float notch_component = 0.0;
+    if (weight > EPS) {
+        float dc_mean = dc_accum / weight;
+        float denominator = carrier_square
+            - carrier_cos * (carrier_cos / weight);
+        if (denominator > EPS) {
+            float coefficient = (accum.x
+                - carrier_cos * dc_mean) / denominator;
+            notch_component = coefficient;
+        }
+    }
+    float y = config.DISPLAY_BANDPASS_ATTEN_DB > 0.0
+        ? composite - notch_component : composite;
+    float c = config.DISPLAY_BANDPASS_ATTEN_DB > 0.0
+        ? band.y : composite;
     return vec2(y, c);
 }
 

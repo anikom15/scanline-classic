@@ -53,6 +53,12 @@ class FilterTapTests(unittest.TestCase):
         self.assertIn('vec2 cv = vec2(yc.r + yc.g, 0.0);', shader)
         self.assertIn('yc = mix(cv, yc, SVIDEO);', shader)
 
+    def test_display_composite_uses_carrier_amplitude_scale(self):
+        shader = (ROOT / 'shaders' / 'display-composite.slang').read_text(encoding='utf-8')
+        self.assertIn('composite - notch_component', shader)
+        self.assertIn('carrier_square\n            - carrier_cos', shader)
+        self.assertIn('carrier_cos * dc_mean', shader)
+
     def test_sys_yc_filter_supports_notch_trap(self):
         shader = (ROOT / 'shaders' / 'sys-yc-filter.slang').read_text(encoding='utf-8')
         menu = (ROOT / 'shaders' / 'menus' / 'parameters' / 'sys-yc-filter.inc').read_text(encoding='utf-8')
@@ -61,8 +67,8 @@ class FilterTapTests(unittest.TestCase):
         self.assertIn('config.SYS_YC_TRAP > 0.5', shader)
         self.assertIn('yc.x -= luma_band;', shader)
         self.assertIn('luma_band_accum += h.y * carrier * y;', shader)
-        self.assertIn('luma_band_weight += h.y;', shader)
-        self.assertIn('2.0 * luma_band_accum / luma_band_weight', shader)
+        self.assertIn('luma_band_gain += h.y * carrier * carrier;', shader)
+        self.assertIn('float cos_mean = luma_band_cos_sum / luma_band_weight_sum;', shader)
         self.assertIn('config.SYS_CUTOFF_ATTEN_C > 0.0', shader)
         self.assertIn('accum.y += h.y * cos(ChromaFrequency * t) * chroma;', shader)
         self.assertIn('FilterGain = vec2(max(gain.x, EPS), max(length(carrier_response) * 0.5, EPS));', shader)

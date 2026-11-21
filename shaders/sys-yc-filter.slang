@@ -210,7 +210,10 @@ void main()
 
     vec2 accum = vec2(0.0);
     float luma_band_accum = 0.0;
-    float luma_band_weight = 0.0;
+    float luma_band_gain = 0.0;
+    float luma_band_cos_sum = 0.0;
+    float luma_band_weight_sum = 0.0;
+    float luma_dc_accum = 0.0;
     for (int k = 0; k < int(Taps); ++k) {
         float t = config.SYS_YC_FILTER_TYPE < 0.5 ? float(k) - (Taps - 1.0) / 2.0 : float(k);
         vec2 h;
@@ -248,7 +251,10 @@ void main()
             ChromaFrequency > 0.0) {
             float carrier = cos(ChromaFrequency * t);
             luma_band_accum += h.y * carrier * y;
-            luma_band_weight += h.y;
+            luma_band_gain += h.y * carrier * carrier;
+            luma_band_cos_sum += h.y * carrier;
+            luma_band_weight_sum += h.y;
+            luma_dc_accum += h.y * y;
         }
     }
 
@@ -257,9 +263,17 @@ void main()
     if (config.SYS_YC_TRAP > 0.5 &&
         config.SYS_CUTOFF_ATTEN_C > 0.0 &&
         ChromaFrequency > 0.0) {
-        if (luma_band_weight > EPS) {
-            float luma_band = 2.0 * luma_band_accum / luma_band_weight;
-            yc.x -= luma_band;
+        if (luma_band_weight_sum > EPS) {
+            float cos_mean = luma_band_cos_sum / luma_band_weight_sum;
+            float orthogonal_gain = luma_band_gain
+                - luma_band_cos_sum * cos_mean;
+            if (orthogonal_gain > EPS) {
+                float luma_band = (
+                    luma_band_accum
+                    - cos_mean * luma_dc_accum
+                ) / orthogonal_gain;
+                yc.x -= luma_band;
+            }
         }
     }
 
