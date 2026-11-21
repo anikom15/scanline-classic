@@ -30,14 +30,14 @@
 
 #include "common.inc"
 
-#include "menus/parameters/sys-component.inc"
+#include "menus/parameters/sys-yc.inc"
 #include "menus/parameters/noise-txrx.inc"
 
 #pragma include_optional "../config/options.cfg"
 
 #ifdef OPTION_DEBUG
 #pragma parameter DEBUG_SYS_YC_AMP_HEADER " —— Debug Sys YC Amp —— " 0.0 0.0 0.0 0.0
-#pragma parameter SYS_YC_AMP_BYPASS "Bypass YC Amplifier" 0 0 1 1
+#pragma parameter SYS_YC_AMP_BYPASS "Bypass YC Amplifier" 0.0 0.0 1.0 1.0
 #endif  // OPTION_DEBUG
 
 layout(push_constant) uniform Push
@@ -109,7 +109,7 @@ layout(location = 1) in vec2 gain;
 layout(location = 2) in vec2 bias;
 layout(location = 3) in vec2 imd;
 layout(location = 0) out vec4 FragColor;
-layout(set = 0, binding = 2) uniform sampler2D Source;
+layout(set = 0, binding = 1) uniform sampler2D Source;
 
 void main()
 {

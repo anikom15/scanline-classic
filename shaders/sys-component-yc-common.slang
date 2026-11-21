@@ -36,13 +36,9 @@
 #pragma include_optional "../config/options.cfg"
 
 #ifdef OPTION_DEBUG
-#ifdef SYS_COMPONENT_YC_MODE
 #pragma parameter DEBUG_SYS_COMPONENT_YC_HEADER " —— Debug Sys component to YC Modulator —— " 0.0 0.0 0.0 0.0
-#else
-#pragma parameter SYS_YC_HEADER " —— Debug Sys Y/C Modulator —— " 0.0 0.0 0.0 0.0
-#endif
-#pragma parameter SYS_COMPONENT_YC_BYPASS "Bypass Sys Y/C Modulator" 0.0 0.0 1.0 1.0
-#endif
+#pragma parameter DEBUG_SYS_COMPONENT_YC_BYPASS "Bypass Sys Y/C Modulator" 0.0 0.0 1.0 1.0
+#endif  // OPTION_DEBUG
 
 layout(push_constant) uniform Push
 {
@@ -76,7 +72,7 @@ layout(push_constant) uniform Push
     float YC_IQ_PHASE_IMBALANCE;
 
 #ifdef OPTION_DEBUG
-    float SYS_COMPONENT_YC_BYPASS;
+    float DEBUG_SYS_COMPONENT_YC_BYPASS;
 #endif
 
 } config;
@@ -108,7 +104,7 @@ layout(push_constant) uniform Push
 #define YC_IQ_PHASE_IMBALANCE config.YC_IQ_PHASE_IMBALANCE
 
 #ifdef OPTION_DEBUG
-#define SYS_COMPONENT_YC_BYPASS config.SYS_COMPONENT_YC_BYPASS
+#define DEBUG_SYS_COMPONENT_YC_BYPASS config.DEBUG_SYS_COMPONENT_YC_BYPASS
 #endif
 
 layout(std140, set = 0, binding = 0) uniform UBO
@@ -277,7 +273,7 @@ layout(set = 0, binding = 1) uniform sampler2D Source;
 void main()
 {
 #ifdef OPTION_DEBUG
-    if (SYS_COMPONENT_YC_BYPASS > 0.5) {
+    if (DEBUG_SYS_COMPONENT_YC_BYPASS > 0.5) {
         FragColor = texture(Source, vTexCoord);
         return;
     }
