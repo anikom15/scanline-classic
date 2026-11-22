@@ -199,15 +199,21 @@ vec2 modulate_sys_component_yc(
     vec2 carrier = vec2(sin(phase + iq_imbalance_phase), cos(phase));
 
     if (CARRIER_SHAPE > 0.5) {
-        vec3 phase_harmonics = vec3(
-            2.0 * PI * carrier_phase(sample_index, 3.0 * fsc, fs, initial_subcarrier_phase_frac),
-            2.0 * PI * carrier_phase(sample_index, 5.0 * fsc, fs, initial_subcarrier_phase_frac),
-            2.0 * PI * carrier_phase(sample_index, 7.0 * fsc, fs, initial_subcarrier_phase_frac)
-        );
-        carrier = vec2(
-            carrier.x + sin(phase_harmonics.x) / 3.0 + sin(phase_harmonics.y) / 5.0 + sin(phase_harmonics.z) / 7.0,
-            carrier.y + cos(phase_harmonics.x) / 3.0 + cos(phase_harmonics.y) / 5.0 + cos(phase_harmonics.z) / 7.0
-        );
+        // Generate carrier harmonics up to Nyquist frequency
+        const int MAX_I = 49;
+
+        for (int i = 1; i < MAX_I; ++i) {
+            float n = float(2 * i + 1);  // Odd harmonics
+
+            if (n * fsc > fs * 0.5)
+                break;
+
+            // Add the harmonic to the carrier
+            carrier += vec2(
+                sin(2.0 * PI * carrier_phase(sample_index, n * fsc, fs, initial_subcarrier_phase_frac) + iq_imbalance_phase) / n,
+                cos(2.0 * PI * carrier_phase(sample_index, n * fsc, fs, initial_subcarrier_phase_frac)) / n
+            );
+        }
     }
 
     float pal_v_sign = 1.0 - 2.0 * floor(mod(sample_y, 2.0)) * PAL;
