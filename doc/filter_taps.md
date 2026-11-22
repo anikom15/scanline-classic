@@ -41,6 +41,10 @@ timing at the default 32 MHz working rate.
 `display-composite.slang` - Gaussian notch and bandpass separation
 `sharpen.slang` - dual Gaussian luma bandpass enhancement
 
+The system lowpass designs share Gaussian gain and Butterworth cutoff and
+prewarped-coefficient calculations in `lowpass.inc`, while retaining their separate guards,
+tap limits and delay handling.
+
 ## SD Display DSP domain
 
 Use a reference design of 32 MHz which corresponds to a working line
@@ -61,6 +65,8 @@ The Kaiser designs use a minimum effective transition width of 0.5 MHz.
 If the requested stopband is less than 0.5 MHz above the cutoff, the
 design preserves the cutoff and uses an effective stopband of cutoff +
 0.5 MHz; the requested parameter is not changed.
+The component, S-Video, and RGB designs share Kaiser tap-count and gain
+calculations in `window.inc`; their cutoff and gain guards remain distinct.
 
 ## Build-time generation
 

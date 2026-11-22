@@ -38,6 +38,7 @@
 #pragma format R16G16B16A16_SFLOAT
 
 #include "common.inc"
+#include "lowpass.inc"
 #include "filter-taps.inc"
 #include "color.inc"
 #include "contract.inc"
@@ -233,13 +234,7 @@ void main()
 
         pfilt.taps = min(2.0 * ceil(gfilt.t_limit) + 1.0, MAX_TAPS);
 
-        // Compute gain for normalization
-        float gain = 0.0;
-        for (int k = 0; k < int(pfilt.taps); ++k) {
-            float t = float(k) - (pfilt.taps - 1.0) / 2.0;
-            gain += gaussian(t, gfilt.sigma);
-        }
-        gfilt.gain = max(gain, EPS);
+        gfilt.gain = gaussian_lowpass_gain(gfilt.sigma, pfilt.taps);
     } else {
         // First-order Butterworth filter design
         // Determine -3 dB frequency of Gaussian design
@@ -250,10 +245,11 @@ void main()
             butterworth_cutoff_freq = cutoff_freq;
         } else {
             float sigma_seconds = gaussian_sigma(cutoff_freq, cutoff_atten);
-            butterworth_cutoff_freq = sqrt(log(2)) / (2.0 * PI * sigma_seconds);
+            butterworth_cutoff_freq = butterworth_matched_cutoff(
+                cutoff_freq, cutoff_atten, sigma_seconds, 0.0);
         }
         float K = tan(PI * butterworth_cutoff_freq / fs_original);
-        float alpha = (1.0 - K) / (1.0 + K);
+        float alpha = butterworth_alpha_from_prewarp(K);
 
         gfilt.sigma = alpha; // Reuse sigma field for alpha
         pfilt.taps = min(ceil(log(FILTER_THRESHOLD_ANALOG) / log(max(alpha, EPS))), MAX_TAPS);

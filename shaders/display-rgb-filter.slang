@@ -256,23 +256,10 @@ void main()
     // FIR cutoff is the user cutoff
     kfilt.fc_norm = cutoff / fs_out;
 
-    float trans_width = display_transition_width_hz(cutoff, stopband);
-    float delta_omega = 2.0 * PI * trans_width / fs_out; // radians/sample
-    float beta_precise = kaiser_beta_from_atten(KAISER_ATTEN_DB);
-    float taps_calc = min((KAISER_ATTEN_DB - 8.0) / (2.285 * max(delta_omega, EPS)), MAX_TAPS);
-    kfilt.taps = float(int(ceil(taps_calc)) | 1); // force odd
-    kfilt.beta = beta_precise;
-
-    // Precompute gain for normalization
-    float sum = 0.0;
-    int center = int((kfilt.taps - 1.0) / 2.0);
-    for (int k = 0; k < int(kfilt.taps); ++k) {
-        int tap_offset = k - center;
-        float w = kaiser(float(tap_offset), kfilt.taps, kfilt.beta);
-        float coeff = sinc(float(tap_offset), kfilt.fc_norm) * w;
-        sum += coeff;
-    }
-    kfilt.gain = sum;
+    kfilt.beta = kaiser_beta_from_atten(KAISER_ATTEN_DB);
+    kfilt.taps = display_kaiser_taps(
+        cutoff, stopband, fs_out, KAISER_ATTEN_DB, float(MAX_TAPS));
+    kfilt.gain = kaiser_sinc_gain(kfilt.fc_norm, kfilt.taps, kfilt.beta);
 
     pfilt.taps = kfilt.taps;
 }

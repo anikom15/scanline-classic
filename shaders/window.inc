@@ -98,3 +98,23 @@ float display_transition_width_hz(float cutoff_hz, float stopband_hz)
 {
     return max(stopband_hz - cutoff_hz, DISPLAY_MIN_TRANSITION_WIDTH_HZ);
 }
+
+float display_kaiser_taps(float cutoff_hz, float stopband_hz, float sample_rate,
+                          float attenuation_db, float max_taps)
+{
+    float transition = display_transition_width_hz(cutoff_hz, stopband_hz);
+    float delta_omega = 2.0 * PI * transition / sample_rate;
+    float taps = min((attenuation_db - 8.0) / (2.285 * max(delta_omega, EPS)), max_taps);
+    return float(int(ceil(taps)) | 1);
+}
+
+float kaiser_sinc_gain(float cutoff, float taps, float beta)
+{
+    float sum = 0.0;
+    int center = int((taps - 1.0) / 2.0);
+    for (int k = 0; k < int(taps); ++k) {
+        float offset = float(k - center);
+        sum += sinc(offset, cutoff) * kaiser(offset, taps, beta);
+    }
+    return sum;
+}

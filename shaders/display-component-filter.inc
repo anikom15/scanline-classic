@@ -122,38 +122,17 @@ struct PolyphaseFilter {
 const int MAX_TAPS = DISPLAY_COMPONENT_FILTER_MAX_TAPS;
 const float KAISER_ATTEN_DB = 40.0;
 
-float compute_kaiser_gain(KaiserFilter filt)
-{
-    float sum = 0.0;
-    int center = int((filt.taps - 1.0) / 2.0);
-
-    for (int k = 0; k < int(filt.taps); ++k) {
-        int tap_offset = k - center;
-        float w = kaiser(float(tap_offset), filt.taps, filt.beta);
-        float coeff = sinc(float(tap_offset), filt.fc_norm) * w;
-        sum += coeff;
-    }
-
-    return max(sum, EPS);
-}
-
 KaiserFilter design_kaiser_filter(float cutoff_mhz, float stopband_mhz, float fs_out)
 {
     KaiserFilter filt;
 
     float cutoff = cutoff_mhz * 1.0e6;
     float stopband = stopband_mhz * 1.0e6;
-    float trans_width = display_transition_width_hz(cutoff, stopband);
-    float delta_omega = 2.0 * PI * trans_width / max(fs_out, EPS);
-
     filt.fc_norm = min(cutoff / max(fs_out, EPS), 0.5 - EPS);
     filt.beta = kaiser_beta_from_atten(KAISER_ATTEN_DB);
-
-    float taps_calc = min(
-        (KAISER_ATTEN_DB - 8.0) / (2.285 * max(delta_omega, EPS)),
-        float(MAX_TAPS));
-    filt.taps = float(int(ceil(taps_calc)) | 1);
-    filt.gain = compute_kaiser_gain(filt);
+    filt.taps = display_kaiser_taps(
+        cutoff, stopband, max(fs_out, EPS), KAISER_ATTEN_DB, float(MAX_TAPS));
+    filt.gain = max(kaiser_sinc_gain(filt.fc_norm, filt.taps, filt.beta), EPS);
 
     return filt;
 }

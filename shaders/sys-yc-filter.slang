@@ -28,6 +28,7 @@
 
 #include "common.inc"
 #include "bandpass.inc"
+#include "lowpass.inc"
 #include "filter-taps.inc"
 #include "contract.inc"
 #include "dsp.inc"
@@ -132,15 +133,11 @@ void main()
         float support = gaussian_decay_time(max(sigma_seconds.x, sigma_seconds.y), FILTER_THRESHOLD_ANALOG) * fs;
         Taps = min(2.0 * ceil(support) + 1.0, MAX_TAPS);
     } else {
-        vec2 cutoff = bandwidth;
-        if (attenuation.x > 3.0) {
-            cutoff.x = sqrt(log(2.0)) / max(2.0 * PI * sigma_seconds.x, EPS);
-        }
-        if (attenuation.y > 3.0) {
-            cutoff.y = sqrt(log(2.0)) / max(2.0 * PI * sigma_seconds.y, EPS);
-        }
+        vec2 cutoff = vec2(
+            butterworth_matched_cutoff(bandwidth.x, attenuation.x, sigma_seconds.x, EPS),
+            butterworth_matched_cutoff(bandwidth.y, attenuation.y, sigma_seconds.y, EPS));
         vec2 K = tan(PI * clamp(cutoff / max(fs, EPS), vec2(0.0), vec2(0.25)));
-        FilterParam = clamp((1.0 - K) / (1.0 + K), vec2(0.0), vec2(1.0 - EPS));
+        FilterParam = clamp(butterworth_alpha_from_prewarp(K), vec2(0.0), vec2(1.0 - EPS));
         if (attenuation.x <= 0.0) {
             FilterParam.x = 0.0;
         }

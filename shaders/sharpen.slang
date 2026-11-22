@@ -28,6 +28,7 @@
 #pragma format R16G16B16A16_SFLOAT
 
 #include "common.inc"
+#include "bandpass.inc"
 #include "filter-taps.inc"
 #include "contract.inc"
 #include "dsp.inc"
@@ -223,11 +224,11 @@ void main()
         float sample_luma = (n == 0) ? center_sample.r : fetch_input_sample(
             Source, config.SourceSize.xy, sample_index + tap_offset, FrameWidth, data_limit).r;
         if (abs(n) <= center1) {
-            float w1 = gaussian(tap_offset, emphasis_sigma) * cos(tap_offset * emphasis_phase_step);
+            float w1 = gaussian_carrier_kernel(tap_offset, emphasis_sigma, emphasis_phase_step);
             band_luma += w1 * sample_luma;
         }
         if (abs(n) <= center2) {
-            float w2 = gaussian(tap_offset, emphasis2_sigma) * cos(tap_offset * emphasis2_phase_step);
+            float w2 = gaussian_carrier_kernel(tap_offset, emphasis2_sigma, emphasis2_phase_step);
             band2_luma += w2 * sample_luma;
         }
     }

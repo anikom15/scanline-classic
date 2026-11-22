@@ -29,6 +29,7 @@
 #pragma format R16G16B16A16_SFLOAT
 
 #include "common.inc"
+#include "lowpass.inc"
 #include "filter-taps.inc"
 #include "color.inc"
 #include "contract.inc"
@@ -172,37 +173,19 @@ void main()
         sigma = sigma_seconds * fs_current;
         Taps = max(1.0, min(2.0 * ceil(t_support_seconds * fs_current) + 1.0, MAX_TAPS));
 
-        kernelGain = vec3(0.0);
-        for (int k = 0; k < int(Taps); ++k) {
-            float dt = float(k) - (Taps - 1.0) / 2.0;
-            kernelGain += vec3(
-                gaussian(dt, sigma.x),
-                gaussian(dt, sigma.y),
-                gaussian(dt, sigma.z));
-        }
-        kernelGain = max(kernelGain, vec3(EPS));
+        kernelGain = gaussian_lowpass_gain(sigma, Taps);
     } else {
         // First-order Butterworth filter
         vec2 gaussian_cutoff_freq = 1e6 * vec2(SYS_BANDWIDTH_Y, SYS_BANDWIDTH_C);
         vec2 sigma_seconds = vec2(
             gaussian_sigma(gaussian_cutoff_freq.x, SYS_CUTOFF_ATTEN_Y),
             gaussian_sigma(gaussian_cutoff_freq.y, SYS_CUTOFF_ATTEN_C));
-        vec2 butterworth_cutoff_freq;
-
-        if (SYS_CUTOFF_ATTEN_Y > 3.0) {
-            butterworth_cutoff_freq.x = sqrt(log(2)) / max((2.0 * PI * sigma_seconds.x), EPS);
-        } else {
-            butterworth_cutoff_freq.x = gaussian_cutoff_freq.x;
-        }
-
-        if (SYS_CUTOFF_ATTEN_C > 3.0) {
-            butterworth_cutoff_freq.y = sqrt(log(2)) / max((2.0 * PI * sigma_seconds.y), EPS);
-        } else {
-            butterworth_cutoff_freq.y = gaussian_cutoff_freq.y;
-        }
+        vec2 butterworth_cutoff_freq = vec2(
+            butterworth_matched_cutoff(gaussian_cutoff_freq.x, SYS_CUTOFF_ATTEN_Y, sigma_seconds.x, EPS),
+            butterworth_matched_cutoff(gaussian_cutoff_freq.y, SYS_CUTOFF_ATTEN_C, sigma_seconds.y, EPS));
 
         vec2 K = tan(PI * butterworth_cutoff_freq / fs_current);
-        vec2 alpha = (1.0 - K) / (1.0 + K);
+        vec2 alpha = butterworth_alpha_from_prewarp(K);
 
         if (SYS_CUTOFF_ATTEN_Y == 0.0) {
             alpha.x = EPS; // No filtering (DC gain = 1)
