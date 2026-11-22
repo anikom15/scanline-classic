@@ -27,6 +27,7 @@
 #pragma format R16G16_SFLOAT
 
 #include "common.inc"
+#include "bandpass.inc"
 #include "filter-taps.inc"
 #include "contract.inc"
 #include "dsp.inc"
@@ -42,6 +43,8 @@
 #ifdef OPTION_DEBUG
 #pragma parameter DEBUG_SYS_YC_FILTER_HEADER " —— Debug Sys YC Filter —— " 0.0 0.0 0.0 0.0
 #pragma parameter SYS_YC_FILTER_BYPASS "Bypass system YC filter" 0.0 0.0 1.0 1.0
+#pragma parameter SYS_YC_NOTCH_BYPASS "Bypass Y notch filter" 0.0 0.0 1.0 1.0
+#pragma parameter SYS_YC_BANDPASS_BYPASS "Bypass Y/C bandpass filtering" 0.0 0.0 1.0 1.0
 #endif  // OPTION_DEBUG
 
 layout(push_constant) uniform Push
@@ -69,6 +72,8 @@ layout(push_constant) uniform Push
 
 #ifdef OPTION_DEBUG
     float SYS_YC_FILTER_BYPASS;
+    float SYS_YC_NOTCH_BYPASS;
+    float SYS_YC_BANDPASS_BYPASS;
 #endif
 } config;
 
@@ -166,7 +171,13 @@ void main()
     }
 
     vec2 carrier_response = vec2(gain.y + image.x, image.y);
-    FilterGain = vec2(max(gain.x, EPS), max(length(carrier_response) * 0.5, EPS));
+    if (config.SYS_YC_FILTER_TYPE < 0.5) {
+        FilterGain = vec2(
+            max(gain.x, EPS),
+            gaussian_carrier_bandpass_gain(FilterParam.y, ChromaFrequency, Taps));
+    } else {
+        FilterGain = vec2(max(gain.x, EPS), max(length(carrier_response) * 0.5, EPS));
+    }
     float chroma_delay = dot(vec2(moment.y + image_moment.x, image_moment.y), carrier_response)
         / max(dot(carrier_response, carrier_response), EPS);
     if (attenuation.y <= 0.0) {
@@ -244,7 +255,11 @@ void main()
             y = mix(y0, y1, fract(y_index));
         }
         accum.x += h.x * y;
-        accum.y += h.y * cos(ChromaFrequency * t) * chroma;
+        if (config.SYS_YC_FILTER_TYPE < 0.5) {
+            accum.y += gaussian_carrier_kernel(t, FilterParam.y, ChromaFrequency) * chroma;
+        } else {
+            accum.y += h.y * cos(ChromaFrequency * t) * chroma;
+        }
 
         if (config.SYS_YC_TRAP > 0.5 &&
             config.SYS_CUTOFF_ATTEN_C > 0.0 &&
@@ -259,22 +274,30 @@ void main()
     }
 
     vec2 yc = accum / FilterGain;
+#ifdef OPTION_DEBUG
+    if (config.SYS_YC_BANDPASS_BYPASS > 0.5) {
+        vec2 original = fetch_input_sample(
+            Source, config.SourceSize.xy, index,
+            FrameWidth, DataLength - 1.0).rg;
+        yc = original;
+    }
+#endif
 
-    if (config.SYS_YC_TRAP > 0.5 &&
+    if (
+#ifdef OPTION_DEBUG
+        config.SYS_YC_NOTCH_BYPASS < 0.5 &&
+#endif
+        config.SYS_YC_TRAP > 0.5 &&
         config.SYS_CUTOFF_ATTEN_C > 0.0 &&
         ChromaFrequency > 0.0) {
-        if (luma_band_weight_sum > EPS) {
-            float cos_mean = luma_band_cos_sum / luma_band_weight_sum;
-            float orthogonal_gain = luma_band_gain
-                - luma_band_cos_sum * cos_mean;
-            if (orthogonal_gain > EPS) {
-                float luma_band = (
-                    luma_band_accum
-                    - cos_mean * luma_dc_accum
-                ) / orthogonal_gain;
-                yc.x -= luma_band;
-            }
-        }
+        float luma_band = gaussian_dc_orthogonal_notch(
+            luma_band_accum,
+            luma_dc_accum,
+            luma_band_weight_sum,
+            luma_band_cos_sum,
+            luma_band_gain);
+        if (luma_band != 0.0)
+            yc.x -= luma_band;
     }
 
     if (config.SYS_CUTOFF_ATTEN_C <= 0.0) {

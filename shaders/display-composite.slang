@@ -25,6 +25,7 @@
 #pragma format R16G16_SFLOAT
 
 #include "common.inc"
+#include "bandpass.inc"
 #include "filter-taps.inc"
 #include "contract.inc"
 #include "dsp.inc"
@@ -38,6 +39,8 @@
 #ifdef OPTION_DEBUG
 #pragma parameter DEBUG_DISPLAY_COMPOSITE_PREFILTER_HEADER " —— Debug Display Composite Prefilter —— " 0.0 0.0 0.0 0.0
 #pragma parameter DISPLAY_COMPOSITE_PREFILTER_BYPASS "Bypass display composite prefilter" 0.0 0.0 1.0 1.0
+#pragma parameter DISPLAY_NOTCH_BYPASS "Bypass display luma notch" 0.0 0.0 1.0 1.0
+#pragma parameter DISPLAY_BANDPASS_BYPASS "Bypass display chroma bandpass" 0.0 0.0 1.0 1.0
 #endif  // OPTION_DEBUG
 
 layout(push_constant) uniform Push
@@ -60,6 +63,8 @@ layout(push_constant) uniform Push
 
 #ifdef OPTION_DEBUG
     float DISPLAY_COMPOSITE_PREFILTER_BYPASS;
+    float DISPLAY_NOTCH_BYPASS;
+    float DISPLAY_BANDPASS_BYPASS;
 #endif  // OPTION_DEBUG
 } config;
 
@@ -108,13 +113,9 @@ void main()
     float support = gaussian_decay_time(max(FilterSigma.x, FilterSigma.y), FILTER_THRESHOLD_ANALOG);
     Taps = min(2.0 * ceil(support) + 1.0, float(DISPLAY_COMPOSITE_MAX_TAPS));
 
-    vec2 carrier_response = vec2(0.0);
-    for (int k = 0; k < int(Taps); ++k) {
-        float t = float(k) - (Taps - 1.0) / 2.0;
-        vec2 h = vec2(gaussian(t, FilterSigma.x), gaussian(t, FilterSigma.y));
-        carrier_response += h * cos(ChromaFrequency * t) * cos(ChromaFrequency * t);
-    }
-    FilterGain = max(carrier_response, vec2(EPS));
+    float gain_x = gaussian_inphase_bandpass_gain(FilterSigma.x, ChromaFrequency, Taps);
+    float gain_y = gaussian_inphase_bandpass_gain(FilterSigma.y, ChromaFrequency, Taps);
+    FilterGain = max(vec2(gain_x, gain_y), vec2(EPS));
 }
 
 #pragma stage fragment
@@ -131,6 +132,12 @@ layout(set = 0, binding = 1) uniform sampler2D Source;
 
 vec2 filter_notch_bandpass(float index, float composite)
 {
+#ifdef OPTION_DEBUG
+    if (config.DISPLAY_BANDPASS_BYPASS > 0.5) {
+        return vec2(composite, 0.0);
+    }
+#endif
+
     vec2 accum = vec2(0.0);
     float weight = 0.0;
     float carrier_cos = 0.0;
@@ -141,7 +148,8 @@ vec2 filter_notch_bandpass(float index, float composite)
         float sample_cv = fetch_input_sample(
             Source, config.SourceSize.xy, index + t, FrameWidth, DataLength - 1.0).r;
         vec2 h = vec2(gaussian(t, FilterSigma.x), gaussian(t, FilterSigma.y));
-        accum += h * cos(ChromaFrequency * t) * sample_cv;
+        accum.x += gaussian_carrier_kernel(t, FilterSigma.x, ChromaFrequency) * sample_cv;
+        accum.y += gaussian_carrier_kernel(t, FilterSigma.y, ChromaFrequency) * sample_cv;
         float carrier = cos(ChromaFrequency * t);
         weight += h.x;
         carrier_cos += h.x * carrier;
@@ -150,18 +158,12 @@ vec2 filter_notch_bandpass(float index, float composite)
     }
 
     vec2 band = accum / FilterGain;
-    float notch_component = 0.0;
-    if (weight > EPS) {
-        float dc_mean = dc_accum / weight;
-        float denominator = carrier_square
-            - carrier_cos * (carrier_cos / weight);
-        if (denominator > EPS) {
-            float coefficient = (accum.x
-                - carrier_cos * dc_mean) / denominator;
-            notch_component = coefficient;
-        }
-    }
+    float notch_component = gaussian_dc_orthogonal_notch(
+        accum.x, dc_accum, weight, carrier_cos, carrier_square);
     float y = config.DISPLAY_BANDPASS_ATTEN_DB > 0.0
+#ifdef OPTION_DEBUG
+        && config.DISPLAY_NOTCH_BYPASS < 0.5
+#endif
         ? composite - notch_component : composite;
     float c = config.DISPLAY_BANDPASS_ATTEN_DB > 0.0
         ? band.y : composite;

@@ -56,8 +56,8 @@ class FilterTapTests(unittest.TestCase):
     def test_display_composite_uses_carrier_amplitude_scale(self):
         shader = (ROOT / 'shaders' / 'display-composite.slang').read_text(encoding='utf-8')
         self.assertIn('composite - notch_component', shader)
-        self.assertIn('carrier_square\n            - carrier_cos', shader)
-        self.assertIn('carrier_cos * dc_mean', shader)
+        self.assertIn('gaussian_dc_orthogonal_notch(', shader)
+        self.assertIn('#include "bandpass.inc"', shader)
 
     def test_sys_yc_filter_supports_notch_trap(self):
         shader = (ROOT / 'shaders' / 'sys-yc-filter.slang').read_text(encoding='utf-8')
@@ -68,12 +68,25 @@ class FilterTapTests(unittest.TestCase):
         self.assertIn('yc.x -= luma_band;', shader)
         self.assertIn('luma_band_accum += h.y * carrier * y;', shader)
         self.assertIn('luma_band_gain += h.y * carrier * carrier;', shader)
-        self.assertIn('float cos_mean = luma_band_cos_sum / luma_band_weight_sum;', shader)
+        self.assertIn('gaussian_dc_orthogonal_notch(', shader)
+        self.assertIn('#include "bandpass.inc"', shader)
         self.assertIn('config.SYS_CUTOFF_ATTEN_C > 0.0', shader)
-        self.assertIn('accum.y += h.y * cos(ChromaFrequency * t) * chroma;', shader)
+        self.assertIn('gaussian_carrier_kernel(t, FilterParam.y, ChromaFrequency)', shader)
         self.assertIn('FilterGain = vec2(max(gain.x, EPS), max(length(carrier_response) * 0.5, EPS));', shader)
         self.assertIn('flat out float ChromaDelay;', shader)
         self.assertIn('chroma = mix(c0, c1, fract(chroma_index));', shader)
+
+    def test_individual_debug_bypass_controls_exist(self):
+        sys_shader = (ROOT / 'shaders' / 'sys-yc-filter.slang').read_text(encoding='utf-8')
+        display_shader = (ROOT / 'shaders' / 'display-composite.slang').read_text(encoding='utf-8')
+        self.assertIn('SYS_YC_NOTCH_BYPASS "Bypass Y notch filter"', sys_shader)
+        self.assertIn('SYS_YC_BANDPASS_BYPASS "Bypass Y/C bandpass filtering"', sys_shader)
+        self.assertIn('config.SYS_YC_NOTCH_BYPASS < 0.5', sys_shader)
+        self.assertIn('config.SYS_YC_BANDPASS_BYPASS > 0.5', sys_shader)
+        self.assertIn('DISPLAY_NOTCH_BYPASS "Bypass display luma notch"', display_shader)
+        self.assertIn('DISPLAY_BANDPASS_BYPASS "Bypass display chroma bandpass"', display_shader)
+        self.assertIn('config.DISPLAY_NOTCH_BYPASS < 0.5', display_shader)
+        self.assertIn('config.DISPLAY_BANDPASS_BYPASS > 0.5', display_shader)
 
     def test_threshold_and_transition_width_change_caps(self):
         original = self.results()
