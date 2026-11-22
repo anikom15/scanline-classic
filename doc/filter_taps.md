@@ -38,7 +38,8 @@ timing at the default 32 MHz working rate.
 `sys-bandlimit.slang` - Gaussian or BW polyphase lowpass
 `sys-component.slang` - Gaussian or BW lowpass
 `sys-yc-filter.slang` - Gaussian or BW lowpass and bandpass
-`display-composite.slang` - Gaussian notch and bandpass separation
+`display-composite.slang` - Gaussian notch/bandpass and line-comb separation
+`display-svideo-demod.slang` - PAL simple, delay-line, or adaptive chroma decoding
 `sharpen.slang` - dual Gaussian luma bandpass enhancement
 
 The system lowpass designs share Gaussian gain and Butterworth cutoff and

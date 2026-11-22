@@ -1,0 +1,21 @@
+{
+  "filename" : "snes-eu",
+  "type" : "consumer",
+  "title" : "SNES composite shader set (PAL)",
+  "description" : "All models included an A/V cable with the console.  French consoles included a composite to RGB converter (despite the console having native RGB output).",
+  "pipelines" : [
+    "sys/rgb-component-composite.json",
+    "disp/crt-composite-sd.json",
+    "misc/post.json"
+  ],
+  "parameter_sets" : [
+    "sys/sfc/base.json",
+    "sys/sfc/pal.json",
+    "disp/pal.json",
+    "disp/tv.json",
+    "disp/consumer-color-pal.json",
+    "disp/tvl-a-450.json"
+  ],
+  "parameter_overrides" : {
+  }
+}

@@ -29,6 +29,7 @@
 #include "filter-taps.inc"
 #include "contract.inc"
 #include "dsp.inc"
+#include "comb.inc"
 
 #include "menus/parameters/dsp.inc"
 #include "menus/parameters/display-composite.inc"
@@ -60,6 +61,8 @@ layout(push_constant) uniform Push
     float DSP_WORKING_FS;
     float DISPLAY_BANDPASS_WIDTH;
     float DISPLAY_BANDPASS_ATTEN_DB;
+    float COLOR_FILTER_MODE;
+    float COMB_FILTER_LUMA_ADAPT;
 
 #ifdef OPTION_DEBUG
     float DISPLAY_COMPOSITE_PREFILTER_BYPASS;
@@ -84,6 +87,7 @@ layout(location = 4) flat out float FrameWidth;
 layout(location = 5) flat out float FrameHeight;
 layout(location = 6) flat out float DataLength;
 layout(location = 7) flat out float Taps;
+layout(location = 8) flat out float HorizontalFrequency;
 
 void main()
 {
@@ -105,6 +109,10 @@ void main()
     DataLength = max(contract_data_length(FrameWidth, FrameHeight), 1.0);
     ChromaFrequency = 2.0 * PI * contract_subcarrier_freq_hz(
         config.OriginalFPS, config.SC_FREQ_MODE, config.SC_FREQ) / max(fs, EPS);
+    HorizontalFrequency = contract_h_frequency(
+        config.OriginalFPS, config.SC_FREQ_MODE, config.SC_FREQ,
+        config.PIXEL_CLOCK_MODE, config.PIXEL_CLOCK,
+        config.H_FREQ_MODE, config.H_FREQ);
 
     vec2 bandwidth = 0.5e6 * vec2(config.DISPLAY_BANDPASS_WIDTH, config.DISPLAY_BANDPASS_WIDTH);
     FilterSigma = fs * vec2(
@@ -127,6 +135,7 @@ layout(location = 4) flat in float FrameWidth;
 layout(location = 5) flat in float FrameHeight;
 layout(location = 6) flat in float DataLength;
 layout(location = 7) flat in float Taps;
+layout(location = 8) flat in float HorizontalFrequency;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 1) uniform sampler2D Source;
 
@@ -189,9 +198,37 @@ void main()
     }
 #endif  // OPTION_DEBUG
 
-    // Comb modes will select their own separation here; until implemented,
-    // every mode uses the notch/bandpass fallback.
-    vec2 yc = ChromaFrequency > 0.0
+    vec2 notch = ChromaFrequency > 0.0
         ? filter_notch_bandpass(index, composite) : vec2(composite, 0.0);
+    vec2 yc = notch;
+
+    bool use_comb = config.COLOR_FILTER_MODE >= 1.0;
+    bool adaptive_comb = config.COLOR_FILTER_MODE >= 1.5;
+
+    if (use_comb && ChromaFrequency > 0.0 && HorizontalFrequency > 0.0) {
+        float subcarrier_frequency = ChromaFrequency / (2.0 * PI);
+        float system_phase_shift = comb_system_phase_shift(
+            subcarrier_frequency, HorizontalFrequency);
+        float phase_offset = comb_phase_offset(PI, system_phase_shift, ChromaFrequency);
+
+        float previous_line = fetch_comb_line_sample(
+            Source, config.SourceSize.xy, pixel.x - phase_offset, pixel.y - 1.0,
+            FrameWidth, DataLength, 0);
+        float y_comb = 0.5 * (composite + previous_line);
+        float c_comb = 0.5 * (composite - previous_line);
+
+        if (adaptive_comb) {
+            float correlation = comb_point_correlation(
+                abs(composite), abs(previous_line));
+            float luma_weight = smoothstep(
+                config.COMB_FILTER_LUMA_ADAPT - 0.05,
+                config.COMB_FILTER_LUMA_ADAPT + 0.05,
+                correlation);
+            yc = vec2(mix(notch.x, y_comb, luma_weight), c_comb);
+        } else {
+            yc = vec2(y_comb, c_comb);
+        }
+    }
+
     FragColor = vec4(yc, 0.0, 1.0);
 }

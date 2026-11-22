@@ -24,6 +24,8 @@
 #include "color.inc"
 #include "bandlimit.inc"
 #include "modulation.inc"
+#include "dsp.inc"
+#include "comb.inc"
 
 #include "menus/parameters/user-video.inc"
 #include "menus/parameters/sys-timing.inc"
@@ -195,14 +197,6 @@ const float COMPOSITE_DEMOD_FILTER_BYPASS = 0.0;
 const float CORRELATION = 0.5;
 #endif  // OPTION_DEBUG
 
-// Compute correlation coefficient between two samples
-// Simple point correlation: returns similarity in [0, 1]
-float compute_point_correlation(float ref, float cmp) {
-    float diff = abs(ref - cmp);
-    float sum = ref + cmp;
-    return 1.0 - (diff / max(sum, EPS));
-}
-
 void main()
 {
     if (BYPASS_COMPOSITE_DEMOD >= 1.0) {
@@ -253,23 +247,15 @@ void main()
     // A disabled subcarrier intentionally leaves the offset at zero.
     if (DECODER_TYPE > 0.5 && use_delay_line && abs(phase_inc_px) > EPS) {
         // Calculate intrinsic system phase shift per line (independent of user hue)
-        float cycles_per_line = carrier.sc_freq_hz / carrier.h_freq_hz;
-        float frac_cycles = fract(cycles_per_line);
-        system_phase_shift = 2.0 * PI * frac_cycles;
-        if (system_phase_shift > PI) {
-            system_phase_shift -= 2.0 * PI;
-        }
+        system_phase_shift = comb_system_phase_shift(
+            carrier.sc_freq_hz, carrier.h_freq_hz);
 
         // Correct for system phase shift to achieve ideal 0° alignment
         float target_phase = 0.0;
-        float phase_correction_needed = target_phase - system_phase_shift;
 
         // Horizontal offset in pixels to achieve target phase
-        dx_phase_offset_px = phase_correction_needed / phase_inc_px;
-
-        // Reduce to one subcarrier period to avoid excessive offsets
-        float period_px = 2.0 * PI / phase_inc_px;
-        dx_phase_offset_px -= round(dx_phase_offset_px / period_px) * period_px;
+        dx_phase_offset_px = comb_phase_offset(
+            target_phase, system_phase_shift, phase_inc_px);
 
         // Scale to pixels per texel
         dx_phase_offset_px += COMB_ADJUST_X;
@@ -303,7 +289,7 @@ void main()
             vec2 dy = vec2(-dx_phase_offset_px * config.OutputSize.z, -config.OutputSize.w);
             vec3 pal_delay = texture(Source, Tex + dy).rgb;
 
-            float correlation = compute_point_correlation(chroma0, pal_delay.g);
+            float correlation = comb_point_correlation(chroma0, pal_delay.g);
             float correlation_weight = smoothstep(CORRELATION_MIN, CORRELATION_MAX, correlation);
 
             vec2 simple_uv = vec2(
@@ -381,7 +367,7 @@ void main()
                     vec2 dxy = vec2((nf - dx_phase_offset_px) * dx.x, -config.OutputSize.w);
                     vec3 pal_delay = texture(Source, Tex + dxy).rgb;
 
-                    float correlation = compute_point_correlation(chromaR, pal_delay.g);
+                    float correlation = comb_point_correlation(chromaR, pal_delay.g);
                     float correlation_weight = smoothstep(CORRELATION_MIN, CORRELATION_MAX, correlation);
 
                     vec2 simple_uv = vec2(
@@ -442,7 +428,7 @@ void main()
                     vec2 dxy = vec2((-nf - dx_phase_offset_px) * dx.x, -config.OutputSize.w);
                     vec3 pal_delay = texture(Source, Tex + dxy).rgb;
 
-                    float correlation = compute_point_correlation(chromaL, pal_delay.g);
+                    float correlation = comb_point_correlation(chromaL, pal_delay.g);
                     float correlation_weight = smoothstep(CORRELATION_MIN, CORRELATION_MAX, correlation);
 
                     vec2 simple_uv = vec2(

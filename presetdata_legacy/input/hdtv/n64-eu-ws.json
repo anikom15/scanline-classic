@@ -12,7 +12,7 @@
   "parameter_sets" : [
     "sys/n64/base.json",
     "sys/n64/pal.json",
-    "disp/palplus.json",
+    "disp/pal.json",
     "disp/tv-palplus-stretch.json",
     "disp/tvl-a-600.json"
   ],

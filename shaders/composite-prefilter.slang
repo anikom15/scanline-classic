@@ -26,6 +26,7 @@
 #include "color.inc"
 #include "contract.inc"
 #include "dsp.inc"
+#include "comb.inc"
 #include "window.inc"
 #include "zoh.inc"
 
@@ -159,14 +160,6 @@ layout(location = 3) in CarrierPhaseConfig carrier;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
-// Compute correlation coefficient between two samples
-// Simple point correlation: returns similarity in [0, 1]
-float compute_point_correlation(float ref, float cmp) {
-    float diff = abs(ref - cmp);
-    float sum = ref + cmp;
-    return 1.0 - (diff / max(sum, EPS));
-}
-
 void main()
 {
 
@@ -266,12 +259,8 @@ void main()
 
     if (COLOR_FILTER_MODE >= 1.0) {
         // Calculate intrinsic system phase shift per line (independent of user hue)
-        float cycles_per_line = carrier.sc_freq_hz / carrier.h_freq_hz;
-        float frac_cycles = fract(cycles_per_line);
-        float system_phase_shift = 2.0 * PI * frac_cycles;
-        if (system_phase_shift > PI) {
-            system_phase_shift -= 2.0 * PI;
-        }
+        float system_phase_shift = comb_system_phase_shift(
+            carrier.sc_freq_hz, carrier.h_freq_hz);
 
         // Correct for system phase shift to achieve ideal 180° alignment.
         // A disabled subcarrier keeps the horizontal phase correction at zero.
@@ -282,11 +271,8 @@ void main()
 
         if (abs(sc_phase_inc_per_px) > EPS) {
             // Horizontal offset in pixels to achieve target phase
-            dx_phase_offset_px = phase_correction_needed / sc_phase_inc_per_px;
-
-            // Reduce to one subcarrier period to avoid excessive offsets
-            float period_px = 2.0 * PI / sc_phase_inc_per_px;
-            dx_phase_offset_px -= round(dx_phase_offset_px / period_px) * period_px;
+            dx_phase_offset_px = comb_phase_offset(
+                target_phase, system_phase_shift, sc_phase_inc_per_px);
         }
 
         vec2 dxy = vec2(-dx_phase_offset_px * config.OutputSize.z, -config.OutputSize.w);
@@ -299,7 +285,8 @@ void main()
         float c1 = 0.5 * (composite0 - comb_taps_composite);
         if (COLOR_FILTER_MODE >= 1.5) {
             // Mode 2: Adaptive comb filter using magnitude-based correlation
-            float composite_corr = compute_point_correlation(abs(composite0), abs(comb_taps_composite));
+            float composite_corr = comb_point_correlation(
+                abs(composite0), abs(comb_taps_composite));
 
             // Smoothly mix using +/-0.05 transition around adapt thresholds
             float luma_w = smoothstep(COMB_FILTER_LUMA_ADAPT - 0.05, COMB_FILTER_LUMA_ADAPT + 0.05, composite_corr);

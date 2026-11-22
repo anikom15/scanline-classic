@@ -1,5 +1,6 @@
 {
     "parameters" : {
-        "SVIDEO" : 1.0
+        "SVIDEO" : 1.0,
+        "PAL_DECODER_MODE" : 0.0
     }
 }

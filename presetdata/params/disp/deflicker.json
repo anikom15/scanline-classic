@@ -1,5 +1,6 @@
 {
     "parameters" : {
-        "DOUBLE_REFRESH" : 1.0
+        "DOUBLE_REFRESH" : 1.0,
+        "PAL_DECODER_MODE" : 2.0
     }
 }
