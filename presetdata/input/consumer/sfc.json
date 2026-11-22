@@ -1,0 +1,21 @@
+{
+  "filename" : "sfc_sfcjr",
+  "type" : "consumer",
+  "title" : "Super Famicom composite shader set",
+  "description" : "All models included an A/V cable with the console.",
+  "pipelines" : [
+    "sys/rgb-component-composite.json",
+    "disp/crt-composite-sd.json",
+    "misc/post.json"
+  ],
+  "parameter_sets" : [
+    "sys/sfc/base.json",
+    "sys/sfc/ntsc.json",
+    "disp/ntscj.json",
+    "disp/trinitron.json",
+    "disp/consumer-color-ntsc.json",
+    "disp/tvl-a-450.json"
+  ],
+  "parameter_overrides" : {
+  }
+}
