@@ -205,7 +205,7 @@ layout(location = 1) flat in NoiseSVideoState vNoiseState;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 1) uniform sampler2D Source; // Mip 11 (1-pixel terminal mip)
 layout(set = 0, binding = 2) uniform sampler2D SysYPbPrYC;
-layout(set = 0, binding = 3) uniform sampler2D MagDeltaV;  // Mip 0
+layout(set = 0, binding = 3) uniform sampler2D DeltaV;  // Mip 0
 layout(set = 0, binding = 4) uniform sampler2D Mip1;
 layout(set = 0, binding = 5) uniform sampler2D Mip2;
 layout(set = 0, binding = 6) uniform sampler2D Mip3;
@@ -332,7 +332,7 @@ vec2 mag_delta_v_uv_from_index(float sample_index, NoiseSVideoState state)
     float clamped_index = clamp(sample_index, 0.0, data_limit);
     float sample_y = floor(clamped_index / max(state.frame_width, 1.0));
     float sample_x = clamped_index - sample_y * state.frame_width;
-    vec2 mag_delta_size = max(vec2(textureSize(MagDeltaV, 0)), vec2(1.0));
+    vec2 mag_delta_size = max(vec2(textureSize(DeltaV, 0)), vec2(1.0));
 
     return (vec2(sample_x, sample_y) + vec2(0.5)) / mag_delta_size;
 }
@@ -342,7 +342,7 @@ vec2 mag_delta_v_uv_from_index(float sample_index, NoiseSVideoState state)
 vec2 sample_mag_delta_v_level(vec2 mag_delta_uv, int lod_i)
 {
     if (lod_i <= 0)
-        return texture(MagDeltaV, mag_delta_uv).rg;
+        return texture(DeltaV, mag_delta_uv).rg;
     if (lod_i == 1)
         return texture(Mip1, mag_delta_uv).rg;
     if (lod_i == 2)
@@ -377,8 +377,8 @@ vec2 sample_mag_delta_v_lod(float sample_index, float lod, NoiseSVideoState stat
     int lod1_i = min(lod0_i + 1, 11);
     float lod_frac = lod_clamped - float(lod0_i);
 
-    vec2 sample0 = sample_mag_delta_v_level(mag_delta_uv, lod0_i);
-    vec2 sample1 = sample_mag_delta_v_level(mag_delta_uv, lod1_i);
+    vec2 sample0 = abs(sample_mag_delta_v_level(mag_delta_uv, lod0_i));
+    vec2 sample1 = abs(sample_mag_delta_v_level(mag_delta_uv, lod1_i));
     return mix(sample0, sample1, lod_frac);
 }
 
@@ -387,7 +387,7 @@ vec2 sample_mag_delta_v_lod(float sample_index, float lod, NoiseSVideoState stat
 ivec2 mag_delta_v_level_size(int lod_i)
 {
     if (lod_i <= 0)
-        return max(textureSize(MagDeltaV, 0), ivec2(1));
+        return max(textureSize(DeltaV, 0), ivec2(1));
     if (lod_i == 1)
         return max(textureSize(Mip1, 0), ivec2(1));
     if (lod_i == 2)
@@ -420,7 +420,7 @@ vec2 fetch_mag_delta_v_level_texel(int lod_i, ivec2 texel_coord)
     ivec2 clamped_coord = clamp(texel_coord, ivec2(0), max(level_size - ivec2(1), ivec2(0)));
 
     if (lod_i <= 0)
-        return texelFetch(MagDeltaV, clamped_coord, 0).rg;
+        return texelFetch(DeltaV, clamped_coord, 0).rg;
     if (lod_i == 1)
         return texelFetch(Mip1, clamped_coord, 0).rg;
     if (lod_i == 2)
@@ -501,7 +501,7 @@ vec2 sample_mag_delta_v_sliding_average_level(
 
         int texel_y = block_i / level_frame_width_i;
         int texel_x = block_i - texel_y * level_frame_width_i;
-        weighted_sum += overlap * fetch_mag_delta_v_level_texel(lod_i, ivec2(texel_x, texel_y));
+        weighted_sum += overlap * abs(fetch_mag_delta_v_level_texel(lod_i, ivec2(texel_x, texel_y)));
     }
 
     return weighted_sum / total_weight;
@@ -609,7 +609,7 @@ void main()
         float power = 0.0;
 
         if (lod_i <= 0)
-            power = texture(MagDeltaV, mag_delta_uv).a;
+            power = texture(DeltaV, mag_delta_uv).a;
         else if (lod_i == 1)
             power = texture(Mip1, mag_delta_uv).a;
         else if (lod_i == 2)
@@ -633,7 +633,7 @@ void main()
         else
             power = texture(Source, mag_delta_uv).a;
 
-        power /= 3.0;
+        power = abs(power) / 3.0;
         FragColor = vec4(power, power, power, 1.0);
         return;
     }
@@ -657,7 +657,7 @@ void main()
         float lod = 10.0;
         int lod_i = 10;
         vec4 mip11_sample = texture(Source, mag_delta_uv);
-        mag_delta_v_power = mip11_sample.a;
+        mag_delta_v_power = abs(mip11_sample.a);
     }
 
     // At power = 1.0, add 3 dB (multiply noise by sqrt(2)), scale linearly

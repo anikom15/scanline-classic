@@ -43,6 +43,30 @@ vec4 fetch_input_sample(sampler2D source, vec2 source_size, float sample_index, 
     return texelFetch(source, ivec2(texel_x, texel_y), 0);
 }
 
+// Sample a dyadic level whose grid restarts at each original frame row.
+// The gap between rows can be shorter than span.
+vec4 sample_row_aligned_signal(sampler2D source, int sample_index, int frame_width, int span, int data_length)
+{
+    int index = clamp(sample_index, 0, data_length - 1);
+    int row = index / frame_width;
+    int column = index - row * frame_width;
+    int texel_x = column / span;
+    int first_index = row * frame_width + texel_x * span;
+    int next_column = (texel_x + 1) * span;
+    int next_index = row * frame_width + next_column;
+    ivec2 next_coord = ivec2(texel_x + 1, row);
+    if (next_column >= frame_width) {
+        next_index = (row + 1) * frame_width;
+        next_coord = ivec2(0, row + 1);
+    }
+
+    vec4 sample0 = texelFetch(source, ivec2(texel_x, row), 0);
+    if (index == first_index || next_index >= data_length)
+        return sample0;
+    float fraction = float(index - first_index) / float(next_index - first_index);
+    return mix(sample0, texelFetch(source, next_coord, 0), fraction);
+}
+
 // Reconstructs the absolute wrapped carrier phase at a given sample index
 // Parameters:
 //   - `sample_index`: the 0-based index of the sample in the 1D stream
