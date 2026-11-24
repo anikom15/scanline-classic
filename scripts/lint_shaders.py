@@ -11,7 +11,8 @@ focused style baseline:
 - Push blocks larger than 128 bytes are forbidden in all modes because they
   exceed the runtime-safe limit for these shaders.
 - Unused includes: in strict mode, direct #include directives whose exported
-  symbols are not referenced by the host file are flagged (exempt: menu shaders).
+  symbols are not referenced by the host file are flagged unless the include
+  defines a main function (exempt: menu shaders).
 
 Notes:
 - Function declarations and shader declaration blocks (layout/uniform/struct)
@@ -52,6 +53,7 @@ BLOCK_MEMBER_PATTERN = re.compile(
 COMMENT_BLOCK_PATTERN = re.compile(r"/\*.*?\*/", re.DOTALL)
 STAGE_PATTERN = re.compile(r"^\s*#pragma\s+stage\s+(vertex|fragment)\b")
 INCLUDE_PATTERN = re.compile(r'^\s*#include\s+"([^"]+)"')
+MAIN_FUNCTION_PATTERN = re.compile(r"\bvoid\s+main\s*\([^;{}]*\)\s*\{", re.DOTALL)
 ALLOW_STAGE_LOCAL_DIRECTIVE = "lint: allow-stage-local"
 ALLOW_UNUSED_INCLUDE_DIRECTIVE = "lint: allow-unused-include"
 PRAGMA_PARAMETER_SYMBOL_PATTERN = re.compile(r'^\s*#pragma\s+parameter\s+(\w+)\b')
@@ -1782,8 +1784,17 @@ def collect_include_exports(include_path: Path) -> set[str]:
     return exports
 
 
+def include_has_main_function(include_path: Path) -> bool:
+    try:
+        lines = include_path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return False
+
+    return MAIN_FUNCTION_PATTERN.search("\n".join(strip_comments_lines(lines))) is not None
+
+
 def check_unused_includes(path: Path, lines: list[str], issues: list[LintIssue]) -> None:
-    """Flag direct #include directives whose exported symbols are not used in the host file.
+    """Flag direct #include directives whose exports are unused and define no main function.
 
     Only runs on .slang files outside of the menus/ subdirectory. Menu shaders
     aggregate #pragma parameter directives for RetroArch by design and are exempt.
@@ -1815,6 +1826,9 @@ def check_unused_includes(path: Path, lines: list[str], issues: list[LintIssue])
         directive_start = max(0, idx - 1)
         directive_window = "\n".join(lines[directive_start : idx + 1]).lower()
         if ALLOW_UNUSED_INCLUDE_DIRECTIVE in directive_window:
+            continue
+
+        if include_has_main_function(include_path):
             continue
 
         exports = collect_include_exports(include_path)
