@@ -2,7 +2,9 @@
     "parameters" : {
         "COLOR_FILTER_MODE" : 2.0,
 
-        "PIXEL_CLOCK" : 24.54545454,
+        "PIXEL_CLOCK_WHOLE" : 24.0,
+        "PIXEL_CLOCK_FRAC6" : 545454.0,
+        "PIXEL_CLOCK_FRAC11" : 54000.0,
         "H_FREQ" : 1560.0
     }
 }

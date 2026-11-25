@@ -57,9 +57,9 @@ layout(push_constant) uniform Push
     float V_FREQ_MODE;
     float V_FREQ;
     float SC_FREQ_MODE;
-    float SC_FREQ;
+    float SC_FREQ_WHOLE;
     float PIXEL_CLOCK_MODE;
-    float PIXEL_CLOCK;
+    float PIXEL_CLOCK_WHOLE;
     float H_FREQ_MODE;
     float H_FREQ;
     float DSP_WORKING_FS;
@@ -83,6 +83,10 @@ layout(push_constant) uniform Push
 layout(std140, set = 0, binding = 0) uniform UBO
 {
     mat4 MVP;
+    float SC_FREQ_FRAC6;
+    float SC_FREQ_FRAC11;
+    float PIXEL_CLOCK_FRAC6;
+    float PIXEL_CLOCK_FRAC11;
 } global;
 
 #pragma stage vertex
@@ -107,20 +111,20 @@ void main()
     vTexCoord = TexCoord;
 
     float fs = contract_working_sample_rate(
-        config.OriginalFPS, config.SC_FREQ_MODE, config.SC_FREQ,
-        config.PIXEL_CLOCK_MODE, config.PIXEL_CLOCK,
+        config.OriginalFPS, config.SC_FREQ_MODE, timing_decimal_value(vec3(config.SC_FREQ_WHOLE, global.SC_FREQ_FRAC6, global.SC_FREQ_FRAC11)),
+        config.PIXEL_CLOCK_MODE, timing_decimal_value(vec3(config.PIXEL_CLOCK_WHOLE, global.PIXEL_CLOCK_FRAC6, global.PIXEL_CLOCK_FRAC11)),
         config.H_FREQ_MODE, config.H_FREQ, config.DSP_WORKING_FS);
     FrameWidth = contract_working_frame_width(
-        config.OriginalFPS, config.SC_FREQ_MODE, config.SC_FREQ,
-        config.PIXEL_CLOCK_MODE, config.PIXEL_CLOCK,
+        config.OriginalFPS, config.SC_FREQ_MODE, timing_decimal_value(vec3(config.SC_FREQ_WHOLE, global.SC_FREQ_FRAC6, global.SC_FREQ_FRAC11)),
+        config.PIXEL_CLOCK_MODE, timing_decimal_value(vec3(config.PIXEL_CLOCK_WHOLE, global.PIXEL_CLOCK_FRAC6, global.PIXEL_CLOCK_FRAC11)),
         config.H_FREQ_MODE, config.H_FREQ, config.DSP_WORKING_FS);
     FrameHeight = contract_frame_height(
         config.OriginalSize.xy, config.OriginalFPS,
-        config.V_FREQ_MODE, config.V_FREQ, config.SC_FREQ_MODE, config.SC_FREQ,
-        config.PIXEL_CLOCK_MODE, config.PIXEL_CLOCK, config.H_FREQ_MODE, config.H_FREQ);
+        config.V_FREQ_MODE, config.V_FREQ, config.SC_FREQ_MODE, timing_decimal_value(vec3(config.SC_FREQ_WHOLE, global.SC_FREQ_FRAC6, global.SC_FREQ_FRAC11)),
+        config.PIXEL_CLOCK_MODE, timing_decimal_value(vec3(config.PIXEL_CLOCK_WHOLE, global.PIXEL_CLOCK_FRAC6, global.PIXEL_CLOCK_FRAC11)), config.H_FREQ_MODE, config.H_FREQ);
     DataLength = max(contract_data_length(FrameWidth, FrameHeight), 1.0);
     ChromaFrequency = 2.0 * PI * contract_subcarrier_freq_hz(
-        config.OriginalFPS, config.SC_FREQ_MODE, config.SC_FREQ) / max(fs, EPS);
+        config.OriginalFPS, config.SC_FREQ_MODE, timing_decimal_value(vec3(config.SC_FREQ_WHOLE, global.SC_FREQ_FRAC6, global.SC_FREQ_FRAC11))) / max(fs, EPS);
 
     vec2 bandwidth = 1.0e6 * vec2(config.SYS_BANDWIDTH_Y, config.SYS_BANDWIDTH_C);
     vec2 attenuation = vec2(config.SYS_CUTOFF_ATTEN_Y, config.SYS_CUTOFF_ATTEN_C);

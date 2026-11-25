@@ -66,6 +66,8 @@ layout(push_constant) uniform Push
     float S_CORRECTION_V;   // %
     float ASPECT;
     float H_FREQ_MODE;
+    float PIXEL_CLOCK_FRAC11;
+    float PIXEL_CLOCK_FRAC6;
 } config;
 
 #define DSP_WORKING_FS config.DSP_WORKING_FS
@@ -88,14 +90,16 @@ layout(push_constant) uniform Push
 
 layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 MVP;
+    float SC_FREQ_FRAC6;
+    float SC_FREQ_FRAC11;
 
     // Factory/service geometry controls needed here
 
     uint FrameCount;
     float OriginalFPS;
-    float PIXEL_CLOCK;
+    float PIXEL_CLOCK_WHOLE;
     float PIXEL_CLOCK_MODE;
-    float SC_FREQ;
+    float SC_FREQ_WHOLE;
     float SC_FREQ_MODE;
     float V_FREQ;
     float V_FREQ_MODE;
@@ -115,9 +119,9 @@ layout(std140, set = 0, binding = 0) uniform UBO {
 #define V_FREQ_MODE global.V_FREQ_MODE
 #define V_FREQ global.V_FREQ
 #define SC_FREQ_MODE global.SC_FREQ_MODE
-#define SC_FREQ global.SC_FREQ
+#define SC_FREQ timing_decimal_value(vec3(global.SC_FREQ_WHOLE, global.SC_FREQ_FRAC6, global.SC_FREQ_FRAC11))
 #define PIXEL_CLOCK_MODE global.PIXEL_CLOCK_MODE
-#define PIXEL_CLOCK global.PIXEL_CLOCK
+#define PIXEL_CLOCK timing_decimal_value(vec3(global.PIXEL_CLOCK_WHOLE, config.PIXEL_CLOCK_FRAC6, config.PIXEL_CLOCK_FRAC11))
 #define H_FREQ global.H_FREQ
 #define H_BLANK_FUZZ global.H_BLANK_FUZZ
 

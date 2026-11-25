@@ -280,13 +280,27 @@ These settings apply to the system, i.e. everything that happens before the sign
 
 ### Timing
 
-  * SC_FREQ_MODE - Subcarrier frequency mode (auto, NTSC, PAL, PAL-M, custom): Auto mode attempts to determine the standard from core refresh rate; NTSC, PAL, and PAL-M are fixed to standards, and custom is determined by SC_FREQ
+  * SC_FREQ_MODE - Subcarrier frequency mode (auto, NTSC, PAL, PAL-M, custom, off): Auto mode chooses from the core refresh rate; custom uses the SC_FREQ components.
 
-  * SC_FREQ - Custom subcarrier frequency (MHz): See SC_FREQ_MODE
+  * SC_FREQ_WHOLE, SC_FREQ_FRAC6, SC_FREQ_FRAC11 - Custom subcarrier frequency in MHz.
 
-  * PIXEL_CLOCK_MODE - Pixel clock mode (fixed, multiple of subcarrier): Selects whether to treat PIXEL_CLOCK as an absolute value or as a multiple of the subcarrier frequency
+  * PIXEL_CLOCK_MODE - Pixel clock mode (fixed, multiple of subcarrier): Selects whether the PIXEL_CLOCK components represent MHz or a subcarrier multiplier.
 
-  * PIXEL_CLOCK - Pixel clock frequency (MHz) / multiplier: Determines the pixel clock according to PIXEL_CLOCK_MODE; affects how horizontal frequency and line count are determined
+  * PIXEL_CLOCK_WHOLE, PIXEL_CLOCK_FRAC6, PIXEL_CLOCK_FRAC11 - Pixel clock or multiplier.
+
+  Each value is `WHOLE + FRAC6 / 1000000 + FRAC11 / 100000000000`. For example,
+  4.8 uses `4`, `800000`, and `0`. Set all three components when changing a
+  value. These replace the old `SC_FREQ` and `PIXEL_CLOCK` parameters; saved
+  presets and overrides using those names must be migrated. Components must be
+  integers in their respective menu ranges. Clock and custom subcarrier values
+  must be positive; use the off mode to disable the carrier. Invalid
+  components or a zero clock or enabled custom carrier produce a non-finite
+  phase, which the phase consumers flag with their error output.
+
+  Field-start phase uses the decimal values as rational numbers, not as measured
+  hardware frequencies. Standard carrier values are fixed by the selected
+  standard. Raster and within-field calculations still use floating-point
+  approximations, and field phase restarts if the 32-bit field counter wraps.
 
   * H_FREQ_MODE - Horizontal frequency mode (standard, pixel clock divisor, custom): Selects how to determine horizontal frequency. Standard chooses a horizontal frequency according to the detected video standard regardless of pixel clock, pixel clock divisor divides the pixel clock by H_FREQ, and custom treats H_FREQ as an absolute value
 
@@ -298,7 +312,9 @@ These settings apply to the system, i.e. everything that happens before the sign
 
   * H_BLANK_FUZZ - Horizontal blanking fuzz factor (%): Sets a factor used to recover the total horizontal pixel timing using fuzzy math. It does not need to be precise
 
-  * FIELD_ORDER - Field order (even first, odd first): Sets which field is considered first
+  * FIELD_ODD - Reverse standard field order (off, on): NTSC starts with the even field and PAL starts with the odd field; enabling this reverses the order
+
+  Interlacing is inferred when the original image is taller than the total number of lines per field; vertically scaled inputs may therefore be misclassified.
 
   * SHORTEN_ODD_FIELD_TIME - NES/SNES field time adjust (off, on): Adjusts signal timing according to interlace mode and detected video standard, specifically for the NES and SNES; should be off on any other systems
 

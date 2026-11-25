@@ -56,22 +56,26 @@ layout(push_constant) uniform Push
     float V_FREQ_MODE;
     float V_FREQ;
     float SC_FREQ_MODE;
-    float SC_FREQ;
+    float SC_FREQ_WHOLE;
     float PIXEL_CLOCK_MODE;
-    float PIXEL_CLOCK;
+    float PIXEL_CLOCK_WHOLE;
     float H_FREQ_MODE;
     float H_FREQ;
     float H_BLANK_FUZZ;
     float DAC_NOISE_AWGN_DB;
     float DAC_NOISE_JITTER_UI;
+    float PIXEL_CLOCK_FRAC11;
+    float PIXEL_CLOCK_FRAC6;
+    float SC_FREQ_FRAC11;
+    float SC_FREQ_FRAC6;
 } config;
 
 #define V_FREQ_MODE config.V_FREQ_MODE
 #define V_FREQ config.V_FREQ
 #define SC_FREQ_MODE config.SC_FREQ_MODE
-#define SC_FREQ config.SC_FREQ
+#define SC_FREQ timing_decimal_value(vec3(config.SC_FREQ_WHOLE, config.SC_FREQ_FRAC6, config.SC_FREQ_FRAC11))
 #define PIXEL_CLOCK_MODE config.PIXEL_CLOCK_MODE
-#define PIXEL_CLOCK config.PIXEL_CLOCK
+#define PIXEL_CLOCK timing_decimal_value(vec3(config.PIXEL_CLOCK_WHOLE, config.PIXEL_CLOCK_FRAC6, config.PIXEL_CLOCK_FRAC11))
 #define H_FREQ_MODE config.H_FREQ_MODE
 #define H_FREQ config.H_FREQ
 #define H_BLANK_FUZZ config.H_BLANK_FUZZ
@@ -98,6 +102,8 @@ struct NoiseDACState {
     float frame_width;
     float frame_height;
     float data_length;
+    float packed_width;
+    float texture_fits;
 };
 
 #pragma stage vertex
@@ -129,7 +135,10 @@ NoiseDACState compute_noise_state()
         PIXEL_CLOCK,
         H_FREQ_MODE,
         H_FREQ);
-    state.data_length = max(contract_data_length(state.frame_width, state.frame_height), 1.0);
+    state.data_length = max(ceil(contract_data_length(state.frame_width, state.frame_height)), 1.0);
+    state.packed_width = contract_pixel_packed_width(state.data_length);
+    state.texture_fits = contract_pixel_texture_fits(config.OutputSize.xy, state.data_length, state.packed_width) &&
+        contract_pixel_texture_fits(config.SourceSize.xy, state.data_length, state.packed_width) ? 1.0 : 0.0;
 
     return state;
 }
@@ -154,8 +163,9 @@ vec4 sample_signal_linear(float sample_index, NoiseDACState state)
     float index0 = floor(clamped_index);
     float frac = clamped_index - index0;
 
-    vec4 s0 = fetch_input_sample(Source, config.SourceSize.xy, index0, state.frame_width, state.data_length);
-    vec4 s1 = fetch_input_sample(Source, config.SourceSize.xy, min(index0 + 1.0, data_limit), state.frame_width, state.data_length);
+    float packed_width = state.packed_width;
+    vec4 s0 = fetch_input_sample(Source, config.SourceSize.xy, index0, packed_width, data_limit);
+    vec4 s1 = fetch_input_sample(Source, config.SourceSize.xy, min(index0 + 1.0, data_limit), packed_width, data_limit);
     return mix(s0, s1, frac);
 }
 
@@ -182,12 +192,18 @@ void main()
     float output_x = float(output_x_i);
     float output_y = float(output_y_i);
 
-    if (output_x >= vNoiseState.frame_width || output_y >= vNoiseState.frame_height) {
+    float packed_width = vNoiseState.packed_width;
+    if (vNoiseState.texture_fits < 0.5) {
+        FragColor = vec4(1.0, 0.0, 1.0, 1.0);
+        return;
+    }
+    float sample_index = output_y * packed_width + output_x;
+    if (output_x >= packed_width || sample_index >= vNoiseState.data_length) {
         FragColor = vec4(0.0);
         return;
     }
 
-    float sample_index = output_y * vNoiseState.frame_width + output_x;
+    int raster_y_i = int(floor(sample_index / vNoiseState.frame_width));
 
 #ifdef OPTION_DEBUG
     if (DAC_NOISE_BYPASS > 0.5) {
@@ -195,8 +211,8 @@ void main()
             Source,
             config.SourceSize.xy,
             sample_index,
-            vNoiseState.frame_width,
-            vNoiseState.data_length);
+            packed_width,
+            vNoiseState.data_length - 1.0);
         return;
     }
 #endif  // OPTION_DEBUG
@@ -207,13 +223,13 @@ void main()
         config.FrameCount,
         CURRENT_SUBFRAME,
         TOTAL_SUBFRAMES);
-    float jitter_samples = compute_jitter_samples(sample_index, output_y_i, frame, jitter_ui);
+    float jitter_samples = compute_jitter_samples(sample_index, raster_y_i, frame, jitter_ui);
     float jittered_index = sample_index + jitter_samples;
 
     vec4 jittered_sample = sample_signal_linear(jittered_index, vNoiseState);
 
     vec4 awgn_noise = gaussian_noise4(
-        uvec2(uint(output_x_i), uint(output_y_i)),
+        uvec2(uint(sample_index - float(raster_y_i) * vNoiseState.frame_width), uint(raster_y_i)),
         frame,
         0xD3ADB33Fu);
     float awgn_sigma = db_to_linear(awgn_db);

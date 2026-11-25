@@ -65,9 +65,9 @@ layout(push_constant) uniform Push
     float V_FREQ;
     float SHORTEN_ODD_FIELD_TIME;
     float SC_FREQ_MODE;
-    float SC_FREQ;
+    float SC_FREQ_WHOLE;
     float PIXEL_CLOCK_MODE;
-    float PIXEL_CLOCK;
+    float PIXEL_CLOCK_WHOLE;
     float H_FREQ_MODE;
     float H_FREQ;
     float H_BLANK_FUZZ;
@@ -97,9 +97,9 @@ const float SYS_RGB_BANDLIMIT_BYPASS = 0.0;
 #define V_FREQ config.V_FREQ
 #define SHORTEN_ODD_FIELD_TIME config.SHORTEN_ODD_FIELD_TIME
 #define SC_FREQ_MODE config.SC_FREQ_MODE
-#define SC_FREQ config.SC_FREQ
+#define SC_FREQ timing_decimal_value(vec3(config.SC_FREQ_WHOLE, global.SC_FREQ_FRAC6, global.SC_FREQ_FRAC11))
 #define PIXEL_CLOCK_MODE config.PIXEL_CLOCK_MODE
-#define PIXEL_CLOCK config.PIXEL_CLOCK
+#define PIXEL_CLOCK timing_decimal_value(vec3(config.PIXEL_CLOCK_WHOLE, global.PIXEL_CLOCK_FRAC6, global.PIXEL_CLOCK_FRAC11))
 #define H_FREQ_MODE config.H_FREQ_MODE
 #define H_FREQ config.H_FREQ
 #define H_BLANK_FUZZ config.H_BLANK_FUZZ
@@ -114,6 +114,10 @@ const float SYS_RGB_BANDLIMIT_BYPASS = 0.0;
 layout(std140, set = 0, binding = 0) uniform UBO
 {
     mat4 MVP;
+    float SC_FREQ_FRAC6;
+    float SC_FREQ_FRAC11;
+    float PIXEL_CLOCK_FRAC6;
+    float PIXEL_CLOCK_FRAC11;
 } global;
 
 struct GaussianFilter {
@@ -131,13 +135,14 @@ struct PolyphaseFilter {
 layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
-layout(location = 2) flat out float InputFrameWidth;
+layout(location = 2) flat out float InputPackedWidth;
 layout(location = 3) flat out GaussianFilter gfilt;
 layout(location = 6) flat out PolyphaseFilter pfilt;
 layout(location = 8) flat out float OutputFrameHeight;
 layout(location = 9) flat out float InputDataLength;
 layout(location = 10) flat out float OutputDataLength;
 layout(location = 11) flat out float OutputFrameWidth;
+layout(location = 12) flat out float InputTextureFits;
 
 const float MAX_TAPS = float(SYS_BANDLIMIT_MAX_TAPS);
 
@@ -163,7 +168,6 @@ void main()
         PIXEL_CLOCK,
         H_FREQ_MODE,
         H_FREQ);
-    InputFrameWidth = BaseFrameWidth;
 
     float InputFrameHeight = contract_frame_height(
         config.OriginalSize.xy,
@@ -202,8 +206,10 @@ void main()
         BaseFrameWidth,
         fs_out,
         fs_original);
-    InputDataLength = max(contract_data_length(InputFrameWidth, OutputFrameHeight), 1.0);
+    InputDataLength = max(contract_data_length(BaseFrameWidth, OutputFrameHeight), 1.0);
     OutputDataLength = max(contract_data_length(OutputFrameWidth, OutputFrameHeight), 1.0);
+    InputPackedWidth = contract_pixel_packed_width(InputDataLength);
+    InputTextureFits = contract_pixel_texture_fits(config.SourceSize.xy, InputDataLength, InputPackedWidth) ? 1.0 : 0.0;
 
     // The upstream framed signal is already ZOH-held. Normalize the analog
     // Gaussian design into pixel clocks, while still compensating for
@@ -272,21 +278,20 @@ void main()
 
 #pragma stage fragment
 layout(location = 0) in vec2 vTexCoord;
-layout(location = 2) flat in float InputFrameWidth;
+layout(location = 2) flat in float InputPackedWidth;
 layout(location = 3) flat in GaussianFilter gfilt;
 layout(location = 6) flat in PolyphaseFilter pfilt;
 layout(location = 8) flat in float OutputFrameHeight;
 layout(location = 9) flat in float InputDataLength;
 layout(location = 10) flat in float OutputDataLength;
 layout(location = 11) flat in float OutputFrameWidth;
+layout(location = 12) flat in float InputTextureFits;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
 vec4 fetch_input_sample(float sample_index, float input_frame_width, float input_data_limit)
 {
-    // `input_frame_width` is passed as float for portability, but it is
-    // integral-valued by contract, so the row/column decomposition can be
-    // performed exactly in integer arithmetic here.
+    // The packed stride is integral-valued by contract.
     int input_frame_width_i = max(int(input_frame_width + 0.5), 1);
     int input_data_limit_i = max(int(input_data_limit + 0.5), 0);
     int clamped_index_i = clamp(int(floor(clamp(sample_index, 0.0, input_data_limit))),
@@ -302,6 +307,10 @@ vec4 fetch_input_sample(float sample_index, float input_frame_width, float input
 
 void main()
 {
+    if (InputTextureFits < 0.5) {
+        FragColor = vec4(1.0, 0.0, 1.0, 1.0);
+        return;
+    }
     // Single-pass lobe-based horizontal Gaussian convolution
     vec2 UV = vTexCoord * config.OutputSize.xy;
     int output_x_i = int(floor(UV.x));
@@ -329,21 +338,21 @@ void main()
     float input_pos_floor = floor(input_sample_pos);
     int input_index_int = int(input_pos_floor);
     float frac_offset = input_sample_pos - input_pos_floor;
-    float input_data_limit = max(InputDataLength - 1.0, 0.0);
+    float input_data_limit = max(ceil(InputDataLength) - 1.0, 0.0);
 
     vec4 color = vec4(0.0);
 
 #ifdef OPTION_DEBUG
     if (SYS_RGB_BANDLIMIT_BYPASS > 0.5) {
         float sample_index = clamp(floor(input_sample_pos + 0.5), 0.0, input_data_limit);
-        FragColor = fetch_input_sample(sample_index, InputFrameWidth, input_data_limit);
+        FragColor = fetch_input_sample(sample_index, InputPackedWidth, input_data_limit);
         return;
     }
 #endif  // OPTION_DEBUG
 
 #ifdef OPTION_CRISPY
     float sample_index = clamp(floor(input_sample_pos + 0.5), 0.0, input_data_limit);
-    FragColor = fetch_input_sample(sample_index, InputFrameWidth, input_data_limit);
+    FragColor = fetch_input_sample(sample_index, InputPackedWidth, input_data_limit);
     return;
 #endif  // OPTION_CRISPY
 
@@ -355,7 +364,7 @@ void main()
             float coeff = gaussian(dt, gfilt.sigma);
 
             float sample_index = clamp(float(input_index_int + tap_offset), 0.0, input_data_limit);
-            vec4 sample_value = fetch_input_sample(sample_index, InputFrameWidth, input_data_limit);
+            vec4 sample_value = fetch_input_sample(sample_index, InputPackedWidth, input_data_limit);
 
             color += coeff * sample_value;
         }
@@ -373,7 +382,7 @@ void main()
             float coeff = (1.0 - alpha) * pow(alpha, dt);
 
             float sample_index = clamp(float(input_index_int - tap_offset), 0.0, input_data_limit);
-            vec4 sample_value = fetch_input_sample(sample_index, InputFrameWidth, input_data_limit);
+            vec4 sample_value = fetch_input_sample(sample_index, InputPackedWidth, input_data_limit);
 
             color += coeff * sample_value;
             gain += coeff;

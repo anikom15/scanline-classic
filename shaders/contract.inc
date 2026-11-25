@@ -139,6 +139,18 @@ float contract_data_length(float frame_width, float frame_height)
     return frame_width * frame_height;
 }
 
+// Pack the field into a nearly square power-of-two grid, independently of
+// the allocation size. Only the final row may be partially occupied.
+float contract_pixel_packed_width(float data_length)
+{
+    return exp2(ceil(log2(sqrt(max(ceil(data_length), 1.0)))));
+}
+
+bool contract_pixel_texture_fits(vec2 texture_size, float data_length, float width)
+{
+    return texture_size.x >= width && texture_size.y >= ceil(ceil(data_length) / width);
+}
+
 // Returns the presentation-space width used for output geometry calculations.
 float contract_display_frame_width(
     vec2 original_size,
@@ -169,6 +181,21 @@ float contract_display_frame_width(
 float contract_field(uint frame_count)
 {
     return float(frame_count);
+}
+
+// Field zero follows the video standard; FIELD_ODD reverses that order.
+float contract_field_parity(
+    uint frame_count, float field_odd,
+    float original_fps, float sc_freq_mode, float sc_freq_custom_mhz)
+{
+    float sc_freq_hz;
+    int standard;
+    compute_subcarrier_freq(sc_freq_mode, sc_freq_custom_mhz, original_fps, sc_freq_hz, standard);
+
+    bool pal_order = standard == 1 || (standard >= 3 && original_fps <= 55.0);
+    uint first_odd = pal_order ? 1u : 0u;
+    uint reversed = (field_odd > 0.5) ? 1u : 0u;
+    return float((frame_count % 2u + first_odd + reversed) % 2u);
 }
 
 // Returns the visible field height in lines.
@@ -348,11 +375,94 @@ float contract_initial_field_phase_frac(
     return float(fract(double(frame_count) * data_length_fract + double(phase_zero) / 360.0lf));
 }
 
+// The components encode an exact decimal value with eleven fractional digits.
+bool timing_valid_parts(vec3 parts, float max_whole)
+{
+    return parts.x >= 0.0 && parts.x <= max_whole && parts.x == floor(parts.x)
+        && parts.y >= 0.0 && parts.y <= 999999.0 && parts.y == floor(parts.y)
+        && parts.z >= 0.0 && parts.z <= 99999.0 && parts.z == floor(parts.z);
+}
+
+double timing_decimal_ticks(vec3 parts)
+{
+    return double(parts.x) * 100000000000.0lf
+        + double(parts.y) * 100000.0lf + double(parts.z);
+}
+
+double timing_add_mod(double a, double b, double modulus)
+{
+    return a >= modulus - b ? a - (modulus - b) : a + b;
+}
+
+double timing_remainder(double value, double modulus)
+{
+    double remainder = value - floor(value / modulus) * modulus;
+    if (remainder < 0.0lf)
+        remainder += modulus;
+    if (remainder >= modulus)
+        remainder -= modulus;
+    return remainder;
+}
+
+// All operands are integers below 2^53. Avoid an overflowing product.
+double timing_multiply_mod(double a, double b, double modulus)
+{
+    a = timing_remainder(a, modulus);
+    double result = 0.0lf;
+    for (int bit = 0; bit < 53 && b > 0.0lf; ++bit) {
+        if (timing_remainder(b, 2.0lf) != 0.0lf)
+            result = timing_add_mod(result, a, modulus);
+        b = floor(b * 0.5lf);
+        a = timing_add_mod(a, a, modulus);
+    }
+    return result;
+}
+
+// Reduce a fractional clock before applying the field count. The quotient and
+// remainder are accumulated separately so their integer products stay exact.
+double timing_fractional_clock_phase(double fraction, double numerator, double denominator)
+{
+    if (fraction == 0.0lf)
+        return 0.0lf;
+
+    double scale = 1.0lf;
+    for (int bit = 0; bit < 53 && fract(fraction) != 0.0lf; ++bit) {
+        fraction *= 2.0lf;
+        scale *= 2.0lf;
+    }
+    if (fract(fraction) != 0.0lf)
+        return double(uintBitsToFloat(0x7fc00000u));
+
+    double carrier_remainder = timing_remainder(numerator, denominator);
+    double carrier_integer = (numerator - carrier_remainder) / denominator;
+    double remaining = fraction;
+    double quotient = 0.0lf;
+    double remainder = 0.0lf;
+    double term_quotient = 0.0lf;
+    double term_remainder = carrier_remainder;
+    for (int bit = 0; bit < 53 && remaining > 0.0lf; ++bit) {
+        if (timing_remainder(remaining, 2.0lf) != 0.0lf) {
+            if (remainder >= denominator - term_remainder)
+                quotient += 1.0lf;
+            quotient += term_quotient;
+            remainder = timing_add_mod(remainder, term_remainder, denominator);
+        }
+        remaining = floor(remaining * 0.5lf);
+        if (remaining > 0.0lf) {
+            term_quotient *= 2.0lf;
+            if (term_remainder >= denominator - term_remainder)
+                term_quotient += 1.0lf;
+            term_remainder = timing_add_mod(term_remainder, term_remainder, denominator);
+        }
+    }
+    double whole = timing_multiply_mod(fraction, carrier_integer, scale);
+    whole = timing_add_mod(whole, timing_remainder(quotient, scale), scale);
+    return (whole + remainder / denominator) / scale;
+}
+
 // Returns the starting color-subcarrier phase offset for the current field.
-// This mirrors the legacy modulation path, including odd-field timing
-// adjustment and its 12-step phase stabilization. Like the field-phase helper
-// above, this value is for downstream carrier reconstruction rather than
-// storage-grid placement.
+// Physical field durations are independent of the stored raster geometry.
+// FIELD_ODD reverses the standard's initial field order.
 float contract_initial_subcarrier_phase_frac(
     vec2 original_size, float original_fps, uint frame_count,
     float pixel_clock_mode, float pixel_clock_mhz,
@@ -360,6 +470,7 @@ float contract_initial_subcarrier_phase_frac(
     float h_freq_mode, float h_freq_custom_khz,
     float v_freq_mode, float custom_v_freq,
     float shorten_odd_field_time,
+    float field_odd, vec3 pixel_clock_parts, vec3 sc_freq_parts,
     float phase_zero)
 {
     float sc_freq_hz;
@@ -384,33 +495,59 @@ float contract_initial_subcarrier_phase_frac(
         v_lines_per_frame,
         is_interlaced);
 
-    double data_length = frame_width * v_lines_per_field;
+    double even_length = double(frame_width) * double(is_interlaced ? ceil(v_lines_per_field) : v_lines_per_field);
+    double odd_length = double(frame_width) * double(is_interlaced ? floor(v_lines_per_field) : v_lines_per_field);
+    if (shorten_odd_field_time > 0.5 && standard == 0 && !is_interlaced)
+        odd_length -= 4.0lf;
+    if (shorten_odd_field_time > 0.5 && standard == 1 && is_interlaced)
+        odd_length += 4.0lf;
 
-    if (shorten_odd_field_time > 0.5) {
-        // With odd-field timing adjustment, the field length alternates between two integer values.
-        if (standard == 0) {
-            if (!is_interlaced) {
-                double sc_cycles_per_frame_fract = fract((2.0lf * data_length - 4.0lf) * (double(sc_freq_hz) / double(pixel_clock_hz)));
-                double sc_cycles_per_even_field_fract = fract(data_length * (double(sc_freq_hz) / double(pixel_clock_hz)));
+    bool pal_order = standard == 1 || (standard >= 3 && original_fps <= 55.0);
+    bool first_odd = pal_order != (field_odd > 0.5);
+    if (!timing_valid_parts(pixel_clock_parts, 500.0)
+        || !(even_length >= 0.0lf && even_length < 9007199254740992.0lf)
+        || !(odd_length >= 0.0lf && odd_length < 9007199254740992.0lf))
+        return uintBitsToFloat(0x7fc00000u);
 
-                return float(fract(fract(double(frame_count / 2u) * sc_cycles_per_frame_fract)
-                    + double(frame_count % 2u) * sc_cycles_per_even_field_fract
-                    + double(phase_zero) / 360.0lf));
-            }
-        } else {
-            if (is_interlaced) {
-                double sc_cycles_per_frame_fract = fract((2.0lf * data_length + 4.0lf) * (double(sc_freq_hz) / double(pixel_clock_hz)));
-                double sc_cycles_per_even_field_fract = fract(data_length * (double(sc_freq_hz) / double(pixel_clock_hz)));
+    double clock_ticks = timing_decimal_ticks(pixel_clock_parts);
+    if (clock_ticks <= 0.0lf)
+        return uintBitsToFloat(0x7fc00000u);
+    if (standard == 4)
+        return float(fract(double(phase_zero) / 360.0lf));
 
-                return float(fract(fract(double(frame_count / 2u) * sc_cycles_per_frame_fract)
-                    + double(frame_count % 2u) * sc_cycles_per_even_field_fract
-                    + double(phase_zero) / 360.0lf));
-            }
-        }
-    }
+    double carrier_ticks;
+    if (standard == 0)
+        carrier_ticks = 357954500000.0lf;
+    else if (standard == 1)
+        carrier_ticks = 443361875000.0lf;
+    else if (standard == 2)
+        carrier_ticks = 357561100000.0lf;
+    else if (timing_valid_parts(sc_freq_parts, 10.0))
+        carrier_ticks = timing_decimal_ticks(sc_freq_parts);
+    else
+        return uintBitsToFloat(0x7fc00000u);
 
-    double sc_cycles_per_field_fract = fract(data_length * (double(sc_freq_hz) / double(pixel_clock_hz)));
-    return float(fract(double(frame_count) * sc_cycles_per_field_fract + double(phase_zero) / 360.0lf));
+    double numerator = pixel_clock_mode >= 0.5 ? 100000000000.0lf : carrier_ticks;
+    double denominator = clock_ticks;
+    if (carrier_ticks <= 0.0lf)
+        return uintBitsToFloat(0x7fc00000u);
+
+    double even_integer = floor(even_length);
+    double odd_integer = floor(odd_length);
+    double even_ticks = timing_multiply_mod(even_integer, numerator, denominator);
+    double odd_ticks = timing_multiply_mod(odd_integer, numerator, denominator);
+    double first_ticks = first_odd ? odd_ticks : even_ticks;
+    double pair_ticks = timing_add_mod(even_ticks, odd_ticks, denominator);
+    double result_ticks = timing_multiply_mod(pair_ticks, double(frame_count / 2u), denominator);
+    if (frame_count % 2u != 0u)
+        result_ticks = timing_add_mod(result_ticks, first_ticks, denominator);
+
+    double even_fraction = timing_fractional_clock_phase(even_length - even_integer, numerator, denominator);
+    double odd_fraction = timing_fractional_clock_phase(odd_length - odd_integer, numerator, denominator);
+    double fractional_phase = fract(double(frame_count / 2u) * fract(even_fraction + odd_fraction));
+    if (frame_count % 2u != 0u)
+        fractional_phase += first_odd ? odd_fraction : even_fraction;
+    return float(fract(result_ticks / denominator + fractional_phase + double(phase_zero) / 360.0lf));
 }
 
 // Returns 1.0 for interlaced timings and 0.0 otherwise.

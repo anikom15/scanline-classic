@@ -34,9 +34,9 @@ layout(push_constant) uniform Push
     float OriginalFPS;
     uint FrameCount;
     float SC_FREQ_MODE;
-    float SC_FREQ;
+    float SC_FREQ_WHOLE;
     float PIXEL_CLOCK_MODE;
-    float PIXEL_CLOCK;
+    float PIXEL_CLOCK_WHOLE;
     float H_FREQ_MODE;
     float H_FREQ;
     float V_FREQ_MODE;
@@ -44,6 +44,10 @@ layout(push_constant) uniform Push
     float H_BLANK_FUZZ;
     float SHORTEN_ODD_FIELD_TIME;
     float PAL;
+    float PIXEL_CLOCK_FRAC11;
+    float PIXEL_CLOCK_FRAC6;
+    float SC_FREQ_FRAC11;
+    float SC_FREQ_FRAC6;
 } config;
 
 #define PAL config.PAL
@@ -73,8 +77,8 @@ void main()
         config.FrameHSize.x,
         config.OriginalFPS,
         config.SC_FREQ_MODE,
-        config.SC_FREQ,
-        config.PIXEL_CLOCK,
+        timing_decimal_value(vec3(config.SC_FREQ_WHOLE, config.SC_FREQ_FRAC6, config.SC_FREQ_FRAC11)),
+        timing_decimal_value(vec3(config.PIXEL_CLOCK_WHOLE, config.PIXEL_CLOCK_FRAC6, config.PIXEL_CLOCK_FRAC11)),
         config.PIXEL_CLOCK_MODE,
         config.H_FREQ_MODE,
         config.H_FREQ,

@@ -6,16 +6,18 @@
 - Shader passes are modular; output-stage bezel integration is wired via pipeline JSON (example: `presetdata/pipelines/misc/post.json` uses `bezel`).
 
 ## Critical workflow commands
-- Full build (recommended): `python build.py` (or `python build.py --jobs 8 -v`).
-- Optional lint-gated build: `python build.py --lint-shaders`.
-- Optional strict lint-gated build: `python build.py --lint-shaders --strict-structure`.
-- Trimmed distribution build: `python build-trim.py` (expects `out/` already generated).
+- Always run Python with the project virtual environment: `.\.venv\Scripts\python.exe` on Windows or `.venv/bin/python` on other platforms. Do not use a system `python` command.
+- Full build (recommended): `<venv-python> build.py` (or `<venv-python> build.py --jobs 8 -v`).
+- Optional lint-gated build: `<venv-python> build.py --lint-shaders`.
+- Optional strict lint-gated build: `<venv-python> build.py --lint-shaders --strict-structure`.
+- Trimmed distribution build: `<venv-python> build-trim.py` (expects `out/` already generated).
 - Local install helper: `install.bat` copies `out/*` to a user-local RetroArch path.
 - Libretro merge helper: `merge.bat` runs build + trim and copies `out-trim/*` into `../slang-shaders/bezel/scanline-classic`.
-- Build script auto-prefers `.venv/Scripts/python.exe` on Windows when present.
+- Replace `<venv-python>` with the platform-specific executable above when running these commands.
 
 ## Copilot shader authoring expectations
-- Before finalizing shader edits in `shaders/*.slang` or `shaders/*.inc`, run `python scripts/lint_shaders.py` and address reported issues for touched files when feasible.
+- Do not use `#ifndef` in shaders: the RA preprocessor does not support it.
+- Before finalizing shader edits in `shaders/*.slang` or `shaders/*.inc`, run `<venv-python> scripts/lint_shaders.py` and address reported issues for touched files when feasible.
 - Preserve shader flow and declaration conventions documented in `doc/SHADER_AUTHORING_CHECKLIST.md`.
 - For shader changes, prefer proposing edits that keep lint-compatible ordering and stage structure rather than post-hoc cleanup.
 
@@ -29,6 +31,10 @@
 ## Project-specific conventions
 - Prefer changing source-of-truth inputs (`presetdata`, `shaders`, `scripts`) over generated outputs.
 - Do not manually edit generated files in `out/` or `out-trim/` unless explicitly doing a one-off debug check.
+
+## Function documentation
+- Add concise doc comments to functions when they clarify the function's purpose, contract, or non-obvious behavior, and keep them accurate as functions change.
+- Avoid boilerplate comments for trivial or self-explanatory functions.
 
 ## DSP frame contract (`frameh` -> resamplers -> DSP -> resamplers -> `framev`)
 - Treat `shaders/frameh.slang` as the canonical start of the framed DSP section. It derives invariant timing/geometry values from uniforms via `shaders/contract.inc` and writes the horizontally framed raster.
@@ -68,9 +74,9 @@
 - `build.py` runs generation in parallel (`ThreadPoolExecutor`), so avoid introducing non-thread-safe shared mutable state in scripts.
 
 ## Validation expectations for AI edits
-- If touching preset generation or scripts, run at least: `python build.py`.
-- If changing shader code or shader-related scripts, prefer: `python build.py --lint-shaders`.
-- If shader structure/layout rules are relevant, prefer: `python build.py --lint-shaders --strict-structure`.
-- If touching trim logic, also run: `python build-trim.py`.
+- If touching preset generation or scripts, run at least: `<venv-python> build.py`.
+- If changing shader code or shader-related scripts, prefer: `<venv-python> build.py --lint-shaders`.
+- If shader structure/layout rules are relevant, prefer: `<venv-python> build.py --lint-shaders --strict-structure`.
+- If touching trim logic, also run: `<venv-python> build-trim.py`.
 - If touching bezel/glow shader params, verify both source and menu parameter includes stay aligned (for example `bezel-base.slang` push constants vs `output-bezel.inc` pragmas).
 - Keep edits minimal and preserve existing naming/layout conventions in shader params and JSON keys.

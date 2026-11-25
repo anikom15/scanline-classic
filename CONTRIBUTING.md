@@ -73,6 +73,29 @@ python scripts/lint_shaders.py
 python scripts/lint_shaders.py --strict-structure
 ```
 
+### SFC contract timing tests
+
+```bash
+python -m unittest discover -s tests -p test_contract_timings.py -v
+```
+
+These tests require `g++` and execute selected functions extracted from the
+shader in a C++ compatibility harness; they do not execute GLSL on a GPU.
+They resolve timing parameters from the NTSC SFC RGB and PAL SNES composite
+presets' pipelines and parameter sets, and supply source dimensions and average
+field rates explicitly. They also check the Famicom's NTSC progressive timing.
+Expected timing and phase values are derived independently from the clock
+counts in the [SFC timing reference](https://www.scanlineclassic.com/theory/timings.html);
+the rates on that page are rounded and may include typographical errors.
+The interlaced geometry assertions check the contract's average field height,
+not the duration of each individual field. Phase expectations use exact clock
+ratios and assume field count zero is the first reference field: even for NTSC,
+odd for PAL. Tests include reversed field order, a nonzero phase offset, and
+long-running field counts. These cases do not validate the frame texture or
+prove that every timing parameter combination is supported. Additional
+N64, Mega Drive and 3DO cases compare phase against their preset's stated
+decimal clock values, not independently verified hardware timings.
+
 ### Trim distribution
 
 ```bash

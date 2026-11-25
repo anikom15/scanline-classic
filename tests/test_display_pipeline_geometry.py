@@ -13,7 +13,9 @@ def load_json(*parts):
 def pal_mega_drive_width(sample_rate_hz):
     base = load_json('presetdata', 'params', 'sys', 'md', 'base.json')['parameters']
     pal = load_json('presetdata', 'params', 'sys', 'md', 'pal.json')['parameters']
-    return round(base['H_FREQ'] * sample_rate_hz / (pal['PIXEL_CLOCK'] * 1.0e6))
+    clock_mhz = (pal['PIXEL_CLOCK_WHOLE'] + pal['PIXEL_CLOCK_FRAC6'] * 1.0e-6
+                 + pal['PIXEL_CLOCK_FRAC11'] * 1.0e-11)
+    return round(base['H_FREQ'] * sample_rate_hz / (clock_mhz * 1.0e6))
 
 
 class DisplayPipelineGeometryTests(unittest.TestCase):

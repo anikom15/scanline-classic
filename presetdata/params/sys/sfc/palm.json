@@ -1,7 +1,9 @@
 {
     "parameters" : {
         "PAL" : 1.0,
-        "PIXEL_CLOCK" : 6.0,
+        "PIXEL_CLOCK_WHOLE" : 6.0,
+        "PIXEL_CLOCK_FRAC6" : 0.0,
+        "PIXEL_CLOCK_FRAC11" : 0.0,
         "SC_FREQ_MODE" : 3.0,
         "V_FREQ_MODE" : 3.0,
         "V_FREQ" : 262.0

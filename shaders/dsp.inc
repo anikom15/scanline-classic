@@ -24,8 +24,8 @@
 //   - `source_size`: the dimensions of the input texture in pixels
 //   - `sample_index`: the 0-based index of the sample to fetch in the 1D stream
 //   - `frame_width`: the number of samples per line in the packed grid
-//   - `input_data_limit`: the total number of valid samples in the input stream;
-//     out-of-range indices are clamped to the valid range with repeat-edge behavior
+//   - `input_data_limit`: the inclusive index of the last valid sample;
+//     out-of-range indices are clamped with repeat-edge behavior
 //
 // Returns: the RGBA sample value at the requested index
 vec4 fetch_input_sample(sampler2D source, vec2 source_size, float sample_index, float frame_width, float input_data_limit)
@@ -43,28 +43,32 @@ vec4 fetch_input_sample(sampler2D source, vec2 source_size, float sample_index, 
     return texelFetch(source, ivec2(texel_x, texel_y), 0);
 }
 
-// Sample a dyadic level whose grid restarts at each original frame row.
-// The gap between rows can be shorter than span.
-vec4 sample_row_aligned_signal(sampler2D source, int sample_index, int frame_width, int span, int data_length)
+// Return the highest usable LOD: stop at one sample, the eight supported
+// mip levels, or `sample_count` (which includes the base level), whichever
+// comes first. `data_length` counts original samples, rounded up by the caller.
+int pyramid_max_lod(int data_length, int sample_count)
+{
+    int remaining = max(data_length, 1);
+    int lod = 0;
+    while (remaining > 1 && lod < 8) {
+        remaining = remaining / 2 + remaining % 2;
+        lod += 1;
+    }
+    return min(lod, sample_count - 1);
+}
+
+// Fetch a continuously packed dyadic level at an original-stream index.
+// `sample_index` and `data_length` are in original samples. `span` is the
+// number of original sample intervals between adjacent level samples (2^LOD);
+// sample j corresponds to original index j * span. Indices between grid points
+// select the preceding sample. `width` is the packed stride in texels, not the
+// raster line width. Indices outside the stream repeat the nearest edge.
+vec4 sample_pyramid_signal(sampler2D source, int sample_index, int width, int span, int data_length)
 {
     int index = clamp(sample_index, 0, data_length - 1);
-    int row = index / frame_width;
-    int column = index - row * frame_width;
-    int texel_x = column / span;
-    int first_index = row * frame_width + texel_x * span;
-    int next_column = (texel_x + 1) * span;
-    int next_index = row * frame_width + next_column;
-    ivec2 next_coord = ivec2(texel_x + 1, row);
-    if (next_column >= frame_width) {
-        next_index = (row + 1) * frame_width;
-        next_coord = ivec2(0, row + 1);
-    }
-
-    vec4 sample0 = texelFetch(source, ivec2(texel_x, row), 0);
-    if (index == first_index || next_index >= data_length)
-        return sample0;
-    float fraction = float(index - first_index) / float(next_index - first_index);
-    return mix(sample0, texelFetch(source, next_coord, 0), fraction);
+    int level_index = index / span;
+    width = max(width, 1);
+    return texelFetch(source, ivec2(level_index % width, level_index / width), 0);
 }
 
 // Reconstructs the absolute wrapped carrier phase at a given sample index

@@ -20,8 +20,12 @@
 // Input: voltage
 // Output: voltage
 //
-// Adds simple MagDeltaV-driven crosstalk to the framed 1D
-// raster between `frameh.slang` and `framev.slang`.
+// Adds DeltaV-driven feedback and crosstalk to a framed 1D signal.
+// DeltaV is the signed difference between consecutive SendSource samples.
+// Each mip averages consecutive DeltaV samples over twice the previous span;
+// LOD 0 is DeltaV, and LOD k has one sample per 2^k original samples.
+// The noise estimate sums the absolute values from the selected discrete
+// levels, then applies the feedback and per-channel crosstalk gains.
 // Pixel variants run before sys-bandlimit; DSP variants run after it.
 
 #pragma name NoiseTxRx
@@ -30,7 +34,6 @@
 #include "common.inc"
 #include "contract.inc"
 #include "dsp.inc"
-#include "subframe.inc"
 
 #include "menus/parameters/dsp.inc"
 #include "menus/parameters/noise-txrx.inc"
@@ -38,11 +41,21 @@
 
 #pragma include_optional "../config/options.cfg"
 
+#ifdef OPTION_XTALK_SAMPLE_COUNT
+#else
+#define OPTION_XTALK_SAMPLE_COUNT 9
+#endif
+
+#if OPTION_XTALK_SAMPLE_COUNT < 1 || OPTION_XTALK_SAMPLE_COUNT > 9
+#error OPTION_XTALK_SAMPLE_COUNT must be between 1 and 9
+#endif
+
 #ifdef OPTION_DEBUG
 #pragma parameter DEBUG_RGB_NOISE_HEADER " —— Debug Tx/Rx Noise —— " 0.0 0.0 0.0 0.0
 #pragma parameter TXRX_NOISE_BYPASS "Bypass Tx/Rx noise" 0.0 0.0 1.0 1.0
 #pragma parameter TXRX_NOISE_VIEW_MAG_DELTAV "View signed DeltaV" 0.0 0.0 1.0 1.0
-#pragma parameter TXRX_NOISE_MAG_DELTAV_MIP_LOD "DeltaV mip LOD" 0.0 0.0 12.0 1.0
+#pragma parameter TXRX_NOISE_MAG_DELTAV_MIP_LOD "DeltaV mip LOD" 0.0 0.0 8.0 1.0
+#pragma parameter TXRX_NOISE_INTERPOLATE_MIPS "Interpolate DeltaV samples in field time" 0.0 0.0 1.0 1.0
 #pragma parameter TXRX_NOISE_GAIN "Tx/Rx Noise Gain" 1.0 1.0 10.0 0.1
 #endif  // OPTION_DEBUG
 
@@ -51,19 +64,15 @@ layout(push_constant) uniform Push
     vec4 OriginalSize;
     vec4 SendSourceSize;
     vec4 OutputSize;
-    uint FrameCount;
     float OriginalFPS;
-    uint CurrentSubFrame;
-    uint TotalSubFrames;
     float V_FREQ_MODE;
     float V_FREQ;
     float SC_FREQ_MODE;
-    float SC_FREQ;
+    float SC_FREQ_WHOLE;
     float PIXEL_CLOCK_MODE;
-    float PIXEL_CLOCK;
+    float PIXEL_CLOCK_WHOLE;
     float H_FREQ_MODE;
     float H_FREQ;
-    float H_BLANK_FUZZ;
     float DSP_WORKING_FS;
 
     float TXRX_NOISE_FEEDBACK_DB;
@@ -73,21 +82,23 @@ layout(push_constant) uniform Push
     float TXRX_NOISE_BYPASS;
     float TXRX_NOISE_VIEW_MAG_DELTAV;
     float TXRX_NOISE_MAG_DELTAV_MIP_LOD;
+    float TXRX_NOISE_INTERPOLATE_MIPS;
     float TXRX_NOISE_GAIN;
 #endif  // OPTION_DEBUG
+    float PIXEL_CLOCK_FRAC11;
+    float PIXEL_CLOCK_FRAC6;
+    float SC_FREQ_FRAC11;
 } config;
 
 #define V_FREQ_MODE config.V_FREQ_MODE
 #define V_FREQ config.V_FREQ
 #define SC_FREQ_MODE config.SC_FREQ_MODE
-#define SC_FREQ config.SC_FREQ
+#define SC_FREQ timing_decimal_value(vec3(config.SC_FREQ_WHOLE, global.SC_FREQ_FRAC6, config.SC_FREQ_FRAC11))
 #define PIXEL_CLOCK_MODE config.PIXEL_CLOCK_MODE
-#define PIXEL_CLOCK config.PIXEL_CLOCK
+#define PIXEL_CLOCK timing_decimal_value(vec3(config.PIXEL_CLOCK_WHOLE, config.PIXEL_CLOCK_FRAC6, config.PIXEL_CLOCK_FRAC11))
 #define H_FREQ_MODE config.H_FREQ_MODE
 #define H_FREQ config.H_FREQ
 #define DSP_WORKING_FS config.DSP_WORKING_FS
-#define CURRENT_SUBFRAME config.CurrentSubFrame
-#define TOTAL_SUBFRAMES config.TotalSubFrames
 
 #define TXRX_NOISE_FEEDBACK_DB config.TXRX_NOISE_FEEDBACK_DB
 #define TXRX_NOISE_XTALK_DB config.TXRX_NOISE_XTALK_DB
@@ -95,20 +106,26 @@ layout(push_constant) uniform Push
 layout(std140, set = 0, binding = 0) uniform UBO
 {
     mat4 MVP;
+    float SC_FREQ_FRAC6;
 } global;
 
 #ifdef OPTION_DEBUG
 #define TXRX_NOISE_BYPASS config.TXRX_NOISE_BYPASS
 #define TXRX_NOISE_VIEW_MAG_DELTAV config.TXRX_NOISE_VIEW_MAG_DELTAV
 #define TXRX_NOISE_MAG_DELTAV_MIP_LOD config.TXRX_NOISE_MAG_DELTAV_MIP_LOD
+#define TXRX_NOISE_INTERPOLATE_MIPS config.TXRX_NOISE_INTERPOLATE_MIPS
 #define TXRX_NOISE_GAIN config.TXRX_NOISE_GAIN
+#else
+#define TXRX_NOISE_GAIN 1.0
 #endif  // OPTION_DEBUG
 
 struct NoiseTxRxState {
-    float frame_width;
+    float frame_width; // Logical raster line width in the current domain.
     float frame_height;
-    float data_length;
-    float tau; // Horizontal period in samples.
+    float data_length; // Number of original-domain samples in the field.
+    float storage_width; // Base signal stride; differs from frame_width when packed.
+    float texture_fits; // Pixel-domain input and output capacity check.
+    float max_lod; // Limited by quality, available levels and field length.
 };
 
 #pragma stage vertex
@@ -117,6 +134,9 @@ layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
 layout(location = 1) flat out NoiseTxRxState vNoiseState;
 
+// Derive the logical line width, field length, storage stride and usable LOD
+// once per vertex. Raster width determines time; storage width maps samples
+// to texels and may include a different row arrangement.
 NoiseTxRxState compute_noise_state()
 {
     NoiseTxRxState state;
@@ -167,7 +187,19 @@ NoiseTxRxState compute_noise_state()
         PIXEL_CLOCK,
         H_FREQ_MODE,
         H_FREQ);
+#ifdef SEND_PIXEL_DOMAIN
+    state.data_length = max(ceil(contract_data_length(state.frame_width, state.frame_height)), 1.0);
+#else
     state.data_length = max(contract_data_length(state.frame_width, state.frame_height), 1.0);
+#endif
+    state.storage_width = state.frame_width;
+    state.texture_fits = 1.0;
+#ifdef SEND_PIXEL_DOMAIN
+    state.storage_width = contract_pixel_packed_width(state.data_length);
+    state.texture_fits = contract_pixel_texture_fits(config.OutputSize.xy, state.data_length, state.storage_width) &&
+        contract_pixel_texture_fits(config.SendSourceSize.xy, state.data_length, state.storage_width) ? 1.0 : 0.0;
+#endif
+    state.max_lod = float(pyramid_max_lod(int(ceil(state.data_length)), OPTION_XTALK_SAMPLE_COUNT));
     float horizontal_frequency = contract_h_frequency(
         config.OriginalFPS,
         SC_FREQ_MODE,
@@ -176,7 +208,6 @@ NoiseTxRxState compute_noise_state()
         PIXEL_CLOCK,
         H_FREQ_MODE,
         H_FREQ);
-    state.tau = sample_rate / max(horizontal_frequency, EPS);
 
     return state;
 }
@@ -192,76 +223,102 @@ void main()
 layout(location = 0) in vec2 vTexCoord;
 layout(location = 1) flat in NoiseTxRxState vNoiseState;
 layout(location = 0) out vec4 FragColor;
-layout(set = 0, binding = 1) uniform sampler2D Source;  // Mip 12 (1-pixel terminal mip)
-layout(set = 0, binding = 2) uniform sampler2D SendSource;
-layout(set = 0, binding = 3) uniform sampler2D DeltaV;  // Mip 0
-layout(set = 0, binding = 4) uniform sampler2D Mip1;
-layout(set = 0, binding = 5) uniform sampler2D Mip2;
-layout(set = 0, binding = 6) uniform sampler2D Mip3;
-layout(set = 0, binding = 7) uniform sampler2D Mip4;
-layout(set = 0, binding = 8) uniform sampler2D Mip5;
-layout(set = 0, binding = 9) uniform sampler2D Mip6;
-layout(set = 0, binding = 10) uniform sampler2D Mip7;
-layout(set = 0, binding = 11) uniform sampler2D Mip8;
-layout(set = 0, binding = 12) uniform sampler2D Mip9;
-layout(set = 0, binding = 13) uniform sampler2D Mip10;
-layout(set = 0, binding = 14) uniform sampler2D Mip11;
-
-#ifdef OPTION_XTALK_SAMPLE_COUNT
-const int XTALK_SAMPLE_COUNT = OPTION_XTALK_SAMPLE_COUNT;
-#else
-const int XTALK_SAMPLE_COUNT = 13;
+layout(set = 0, binding = 1) uniform sampler2D SendSource;
+layout(set = 0, binding = 2) uniform sampler2D DeltaV;  // Mip 0
+#if OPTION_XTALK_SAMPLE_COUNT > 1
+layout(set = 0, binding = 3) uniform sampler2D Mip1;
 #endif
+#if OPTION_XTALK_SAMPLE_COUNT > 2
+layout(set = 0, binding = 4) uniform sampler2D Mip2;
+#endif
+#if OPTION_XTALK_SAMPLE_COUNT > 3
+layout(set = 0, binding = 5) uniform sampler2D Mip3;
+#endif
+#if OPTION_XTALK_SAMPLE_COUNT > 4
+layout(set = 0, binding = 6) uniform sampler2D Mip4;
+#endif
+#if OPTION_XTALK_SAMPLE_COUNT > 5
+layout(set = 0, binding = 7) uniform sampler2D Mip5;
+#endif
+#if OPTION_XTALK_SAMPLE_COUNT > 6
+layout(set = 0, binding = 8) uniform sampler2D Mip6;
+#endif
+#if OPTION_XTALK_SAMPLE_COUNT > 7
+layout(set = 0, binding = 9) uniform sampler2D Mip7;
+#endif
+#if OPTION_XTALK_SAMPLE_COUNT > 8
+layout(set = 0, binding = 10) uniform sampler2D Source;  // Mip 8
+#endif
+const int XTALK_SAMPLE_COUNT = OPTION_XTALK_SAMPLE_COUNT;
 
-// Interpolate between row-aligned samples, including across row boundaries.
+// The base level uses the signal's storage stride; reduced levels use their
+// own packed texture width. Normally, align lookup boundaries to the raster
+// line and fetch the preceding sample. The debug option instead interpolates
+// adjacent samples at the unshifted field-relative time.
 vec4 sample_packed_delta_v(sampler2D level, int sample_index, int lod_i, NoiseTxRxState state)
 {
-    return sample_row_aligned_signal(level, sample_index, int(state.frame_width),
-        1 << lod_i, max(int(ceil(state.data_length)), 1));
+    int width = lod_i == 0 ? int(state.storage_width) : textureSize(level, 0).x;
+    int span = 1 << lod_i;  // exp2(lod_i)
+    int data_length = max(int(ceil(state.data_length)), 1);
+    int index = clamp(sample_index, 0, data_length - 1);
+#ifdef OPTION_DEBUG
+    if (TXRX_NOISE_INTERPOLATE_MIPS > 0.5) {
+        int remainder = index % span;
+        vec4 current = sample_pyramid_signal(level, index, width, span, data_length);
+        if (remainder == 0)
+            return current;
+        vec4 next = sample_pyramid_signal(level, min(index + span, data_length - 1), width, span, data_length);
+        return mix(current, next, float(remainder) / float(span));
+    }
+#endif  // OPTION_DEBUG
+    int raster_width = max(int(state.frame_width), 1);
+    int line_start = (index / raster_width) * raster_width;
+    int aligned_index = index - line_start % span;
+
+    return sample_pyramid_signal(level, aligned_index, width, span, data_length);
 }
 
+// Select one discrete mip texture at a field-relative original-sample index.
+// Each level is sampled independently, without interpolation between LODs.
+// Source is the final mip pass; earlier mips are addressed by alias. Unknown
+// levels return magenta as an error color.
 vec4 sample_delta_v_level(int sample_index, int lod_i, NoiseTxRxState state)
 {
     if (lod_i <= 0)
         return sample_packed_delta_v(DeltaV, sample_index, lod_i, state);
+#if OPTION_XTALK_SAMPLE_COUNT > 1
     if (lod_i == 1)
         return sample_packed_delta_v(Mip1, sample_index, lod_i, state);
+#endif
+#if OPTION_XTALK_SAMPLE_COUNT > 2
     if (lod_i == 2)
         return sample_packed_delta_v(Mip2, sample_index, lod_i, state);
+#endif
+#if OPTION_XTALK_SAMPLE_COUNT > 3
     if (lod_i == 3)
         return sample_packed_delta_v(Mip3, sample_index, lod_i, state);
+#endif
+#if OPTION_XTALK_SAMPLE_COUNT > 4
     if (lod_i == 4)
         return sample_packed_delta_v(Mip4, sample_index, lod_i, state);
+#endif
+#if OPTION_XTALK_SAMPLE_COUNT > 5
     if (lod_i == 5)
         return sample_packed_delta_v(Mip5, sample_index, lod_i, state);
+#endif
+#if OPTION_XTALK_SAMPLE_COUNT > 6
     if (lod_i == 6)
         return sample_packed_delta_v(Mip6, sample_index, lod_i, state);
+#endif
+#if OPTION_XTALK_SAMPLE_COUNT > 7
     if (lod_i == 7)
         return sample_packed_delta_v(Mip7, sample_index, lod_i, state);
+#endif
+#if OPTION_XTALK_SAMPLE_COUNT > 8
     if (lod_i == 8)
-        return sample_packed_delta_v(Mip8, sample_index, lod_i, state);
-    if (lod_i == 9)
-        return sample_packed_delta_v(Mip9, sample_index, lod_i, state);
-    if (lod_i == 10)
-        return sample_packed_delta_v(Mip10, sample_index, lod_i, state);
-    if (lod_i == 11)
-        return sample_packed_delta_v(Mip11, sample_index, lod_i, state);
-
-    return sample_packed_delta_v(Source, sample_index, lod_i, state);
-}
-
-vec4 sample_delta_v_lod(int sample_index, float lod, NoiseTxRxState state)
-{
-    float lod_clamped = clamp(lod, 0.0, 12.0);
-    int lod0_i = int(floor(lod_clamped));
-    int lod1_i = min(lod0_i + 1, 12);
-    float lod_frac = lod_clamped - float(lod0_i);
-
-    vec4 sample0 = sample_delta_v_level(sample_index, lod0_i, state);
-    if (lod_frac == 0.0)
-        return sample0;
-    vec4 sample1 = sample_delta_v_level(sample_index, lod1_i, state);
-    return mix(sample0, sample1, lod_frac);
+        return sample_packed_delta_v(Source, sample_index, lod_i, state);
+#endif
+    return vec4(1.0, 0.0, 1.0, 1.0);
 }
 
 void main()
@@ -272,13 +329,32 @@ void main()
     float output_x = float(output_x_i);
     float output_y = float(output_y_i);
 
+#ifdef SEND_PIXEL_DOMAIN
+    float storage_width = vNoiseState.storage_width;
+    if (vNoiseState.texture_fits < 0.5) {
+        FragColor = vec4(1.0, 0.0, 1.0, 1.0);
+        return;
+    }
+    int sample_index_i = output_y_i * int(storage_width) + output_x_i;
+    if (output_x >= storage_width || float(sample_index_i) >= vNoiseState.data_length) {
+        FragColor = vec4(0.0);
+        return;
+    }
+#else
+    float storage_width = vNoiseState.frame_width;
     if (output_x >= vNoiseState.frame_width || output_y >= vNoiseState.frame_height) {
         FragColor = vec4(0.0);
         return;
     }
 
     int sample_index_i = output_y_i * int(vNoiseState.frame_width) + output_x_i;
+#endif
     float sample_index = float(sample_index_i);
+#ifdef SEND_PIXEL_DOMAIN
+    float input_limit = vNoiseState.data_length - 1.0;
+#else
+    float input_limit = vNoiseState.data_length;
+#endif
 
 #ifdef OPTION_DEBUG
     if (TXRX_NOISE_BYPASS > 0.5) {
@@ -286,42 +362,38 @@ void main()
             SendSource,
             config.SendSourceSize.xy,
             sample_index,
-            vNoiseState.frame_width,
-            vNoiseState.data_length);
+            storage_width,
+            input_limit);
         return;
     }
 
     if (TXRX_NOISE_VIEW_MAG_DELTAV > 0.5) {
-        vec4 debug_delta_v = sample_delta_v_lod(
+        int debug_lod = int(floor(clamp(TXRX_NOISE_MAG_DELTAV_MIP_LOD, 0.0, vNoiseState.max_lod)));
+        vec4 debug_delta_v = sample_delta_v_level(
             sample_index_i,
-            TXRX_NOISE_MAG_DELTAV_MIP_LOD,
+            debug_lod,
             vNoiseState);
-        FragColor = debug_delta_v;
+        FragColor = debug_delta_v * exp2(float(debug_lod));
         return;
     }
 #endif  // OPTION_DEBUG
 
-    uint frame = temporal_frame_index(
-        config.FrameCount,
-        CURRENT_SUBFRAME,
-        TOTAL_SUBFRAMES);
     vec4 sample_signal = fetch_input_sample(
         SendSource,
         config.SendSourceSize.xy,
         sample_index,
-        vNoiseState.frame_width,
-        vNoiseState.data_length);
+        storage_width,
+        input_limit);
     vec4 mag_delta = vec4(0.0);
-    int max_lod = int(floor(log2(vNoiseState.frame_width)));
+    int max_lod = int(vNoiseState.max_lod);
 
     int i = 0;
     for (i = 0; i < XTALK_SAMPLE_COUNT; ++i) {
         if (i > max_lod)
             break;
-        float w = exp(-pow(2.0, float(i)) / vNoiseState.tau);
 
-        vec4 delta_sample = sample_delta_v_lod(sample_index_i, float(i), vNoiseState);
-        mag_delta += w * abs(delta_sample);
+        vec4 delta_sample = sample_delta_v_level(sample_index_i, i, vNoiseState);
+        mag_delta += abs(delta_sample);
     }
 
     float feedback_gain = db_to_linear(TXRX_NOISE_FEEDBACK_DB);

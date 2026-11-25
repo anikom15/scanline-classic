@@ -19,14 +19,14 @@
 //
 // Horizontal frame storage
 // ------------------------
-// Maps active raster data into a framed field buffer stored in the
-// top-left of a 2x-sized intermediate texture.
+// Maps active raster data into a framed field buffer.
 //
 // The output is a true clock-domain raster: each line spans `ClocksPerLine`
 // samples, active source texels are held for `ClockFactor` clock samples, and
-// blanking remains at 1-sample clock resolution. RGB stores the raster sample
-// value for each clock sample, while A stores `phase_rel_sample`. The packed
-// data grid stays anchored to geometry / line carry; any field-dependent
+// blanking remains at 1-sample clock resolution. The linear stream is packed
+// horizontally using the data-length-derived power-of-two width, regardless
+// of the physical texture dimensions. RGB stores the sample and A is 1.
+// The data grid stays anchored to geometry / line carry; any field-dependent
 // timebase phase is reconstructed downstream from the contract API rather than
 // baked into the storage placement or a texture-carried metadata payload.
 
@@ -42,9 +42,9 @@
 
 #ifdef OPTION_DEBUG
 #pragma parameter DEBUG_FRAME_HEADER " —— Debug Frame —— " 0.0 0.0 0.0 0.0
-#pragma parameter FRAME_VIZ_ACTIVE "Show active content" 1.0 0.0 1.0 1.0
-#pragma parameter FRAME_VIZ_BLANKING "Show frame blanking (yellow)" 0.0 0.0 1.0 1.0
-#pragma parameter FRAME_VIZ_PADDING "Show padding (magenta)" 0.0 0.0 1.0 1.0
+#pragma parameter DEBUG_FRAME_ACTIVE "Show active content" 1.0 0.0 1.0 1.0
+#pragma parameter DEBUG_FRAME_BLANKING "Show frame blanking (yellow)" 0.0 0.0 1.0 1.0
+#pragma parameter DEBUG_FRAME_PADDING "Show padding (magenta)" 0.0 0.0 1.0 1.0
 #endif  // OPTION_DEBUG
 
 // Push constants
@@ -58,9 +58,9 @@ layout(push_constant) uniform Push
     float V_FREQ_MODE;
     float V_FREQ;
     float SC_FREQ_MODE;
-    float SC_FREQ;
+    float SC_FREQ_WHOLE;
     float PIXEL_CLOCK_MODE;
-    float PIXEL_CLOCK;
+    float PIXEL_CLOCK_WHOLE;
     float H_FREQ_MODE;
     float H_FREQ;
     float H_BLANK_FUZZ;
@@ -72,9 +72,9 @@ layout(push_constant) uniform Push
     float BLANKING_COLOR_B;
 
 #ifdef OPTION_DEBUG
-    float FRAME_VIZ_ACTIVE;
-    float FRAME_VIZ_BLANKING;
-    float FRAME_VIZ_PADDING;
+    float DEBUG_FRAME_ACTIVE;
+    float DEBUG_FRAME_BLANKING;
+    float DEBUG_FRAME_PADDING;
 #endif  // OPTION_DEBUG
 
 } config;
@@ -82,17 +82,17 @@ layout(push_constant) uniform Push
 #define FieldCount config.FrameCount
 
 #ifdef OPTION_DEBUG
-#define FRAME_VIZ_ACTIVE config.FRAME_VIZ_ACTIVE
-#define FRAME_VIZ_BLANKING config.FRAME_VIZ_BLANKING
-#define FRAME_VIZ_PADDING config.FRAME_VIZ_PADDING
+#define DEBUG_FRAME_ACTIVE config.DEBUG_FRAME_ACTIVE
+#define DEBUG_FRAME_BLANKING config.DEBUG_FRAME_BLANKING
+#define DEBUG_FRAME_PADDING config.DEBUG_FRAME_PADDING
 #endif  // OPTION_DEBUG
 
 #define V_FREQ_MODE config.V_FREQ_MODE
 #define V_FREQ config.V_FREQ
 #define SC_FREQ_MODE config.SC_FREQ_MODE
-#define SC_FREQ config.SC_FREQ
+#define SC_FREQ timing_decimal_value(vec3(config.SC_FREQ_WHOLE, global.SC_FREQ_FRAC6, global.SC_FREQ_FRAC11))
 #define PIXEL_CLOCK_MODE config.PIXEL_CLOCK_MODE
-#define PIXEL_CLOCK config.PIXEL_CLOCK
+#define PIXEL_CLOCK timing_decimal_value(vec3(config.PIXEL_CLOCK_WHOLE, global.PIXEL_CLOCK_FRAC6, global.PIXEL_CLOCK_FRAC11))
 #define H_FREQ_MODE config.H_FREQ_MODE
 #define H_FREQ config.H_FREQ
 #define H_BLANK_FUZZ config.H_BLANK_FUZZ
@@ -105,6 +105,10 @@ layout(push_constant) uniform Push
 layout(std140, set = 0, binding = 0) uniform UBO
 {
     mat4 MVP;
+    float SC_FREQ_FRAC6;
+    float SC_FREQ_FRAC11;
+    float PIXEL_CLOCK_FRAC6;
+    float PIXEL_CLOCK_FRAC11;
 } global;
 
 #pragma stage vertex
@@ -119,6 +123,9 @@ layout(location = 6) flat out float IsInterlaced;
 layout(location = 7) flat out float Field;
 layout(location = 8) flat out float ClocksPerLine;
 layout(location = 9) flat out float ClockFactor;
+layout(location = 10) flat out float PackedWidth;
+layout(location = 11) flat out float DataLength;
+layout(location = 12) flat out float TextureFits;
 
 void main()
 {
@@ -197,7 +204,10 @@ void main()
         H_FREQ_MODE,
         H_FREQ);
 
-    Field = contract_field(FieldCount);
+    Field = contract_field_parity(FieldCount, FIELD_ODD, config.OriginalFPS, SC_FREQ_MODE, SC_FREQ);
+    DataLength = ceil(contract_data_length(FrameWidth, FrameHeight));
+    PackedWidth = contract_pixel_packed_width(DataLength);
+    TextureFits = contract_pixel_texture_fits(config.OutputSize.xy, DataLength, PackedWidth) ? 1.0 : 0.0;
 }
 
 #pragma stage fragment
@@ -209,12 +219,15 @@ layout(location = 6) flat in float IsInterlaced;
 layout(location = 7) flat in float Field;
 layout(location = 8) flat in float ClocksPerLine;
 layout(location = 9) flat in float ClockFactor;
+layout(location = 10) flat in float PackedWidth;
+layout(location = 11) flat in float DataLength;
+layout(location = 12) flat in float TextureFits;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
 float current_field_parity()
 {
-    return (IsInterlaced > 0.5) ? mod(Field + FIELD_ODD, 2.0) : 0.0;
+    return (IsInterlaced > 0.5) ? Field : 0.0;
 }
 
 bool sample_maps_to_active_time(
@@ -290,15 +303,18 @@ void main()
     float output_x = floor(vTexCoord.x * config.OutputSize.x);
     float output_y = floor(vTexCoord.y * config.OutputSize.y);
 
-    float frame_width_int = ceil(FrameWidth);
-    float frame_height_int = ceil(FrameHeight);
-    bool in_frame_x = (output_x >= 0.0 && output_x < frame_width_int);
-    bool in_frame_y = (output_y >= 0.0 && output_y < frame_height_int);
-    bool in_frame = in_frame_x && in_frame_y;
+    if (TextureFits < 0.5) {
+        FragColor = vec4(1.0, 0.0, 1.0, 1.0);
+        return;
+    }
+    float sample_index = output_y * PackedWidth + output_x;
+    bool in_frame = output_x < PackedWidth && sample_index < DataLength;
+    float raster_y = floor(sample_index / FrameWidth);
+    float raster_x = sample_index - raster_y * FrameWidth;
 
     if (!in_frame) {
 #ifdef OPTION_DEBUG
-        if (FRAME_VIZ_PADDING > 0.5) {
+        if (DEBUG_FRAME_PADDING > 0.5) {
             FragColor = vec4(vec3(1.0, 0.0, 1.0) * 0.5, 0.0);
         } else {
             FragColor = vec4(0.0);
@@ -310,14 +326,14 @@ void main()
     }
 
     vec2 source_sample_pos;
-    bool in_active = sample_maps_to_active_time(output_x, output_y, source_sample_pos);
+    bool in_active = sample_maps_to_active_time(raster_x, raster_y, source_sample_pos);
 
     vec3 color = in_active ? sample_active_content(source_sample_pos) : BLANKING_COLOR;
 
 #ifdef OPTION_DEBUG
-    if (!in_active && in_frame && FRAME_VIZ_BLANKING > 0.5) {
+    if (!in_active && in_frame && DEBUG_FRAME_BLANKING > 0.5) {
         color = vec3(1.0, 1.0, 0.0) * 0.5;
-    } else if (!in_frame && FRAME_VIZ_PADDING > 0.5) {
+    } else if (!in_frame && DEBUG_FRAME_PADDING > 0.5) {
         color = vec3(1.0, 0.0, 1.0) * 0.5;
     }
 #endif  // OPTION_DEBUG

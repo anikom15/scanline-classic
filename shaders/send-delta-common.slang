@@ -48,20 +48,24 @@ layout(push_constant) uniform Push
     float V_FREQ_MODE;
     float V_FREQ;
     float SC_FREQ_MODE;
-    float SC_FREQ;
+    float SC_FREQ_WHOLE;
     float PIXEL_CLOCK_MODE;
-    float PIXEL_CLOCK;
+    float PIXEL_CLOCK_WHOLE;
     float H_FREQ_MODE;
     float H_FREQ;
     float DSP_WORKING_FS;
+    float PIXEL_CLOCK_FRAC11;
+    float PIXEL_CLOCK_FRAC6;
+    float SC_FREQ_FRAC11;
+    float SC_FREQ_FRAC6;
 } config;
 
 #define V_FREQ_MODE config.V_FREQ_MODE
 #define V_FREQ config.V_FREQ
 #define SC_FREQ_MODE config.SC_FREQ_MODE
-#define SC_FREQ config.SC_FREQ
+#define SC_FREQ timing_decimal_value(vec3(config.SC_FREQ_WHOLE, config.SC_FREQ_FRAC6, config.SC_FREQ_FRAC11))
 #define PIXEL_CLOCK_MODE config.PIXEL_CLOCK_MODE
-#define PIXEL_CLOCK config.PIXEL_CLOCK
+#define PIXEL_CLOCK timing_decimal_value(vec3(config.PIXEL_CLOCK_WHOLE, config.PIXEL_CLOCK_FRAC6, config.PIXEL_CLOCK_FRAC11))
 #define H_FREQ_MODE config.H_FREQ_MODE
 #define H_FREQ config.H_FREQ
 #define DSP_WORKING_FS config.DSP_WORKING_FS
@@ -75,6 +79,8 @@ struct DeltaVState {
     float frame_width;
     float frame_height;
     float data_length;
+    float storage_width;
+    float texture_fits;
 };
 
 #pragma stage vertex
@@ -119,6 +125,14 @@ DeltaVState compute_delta_v_state()
         H_FREQ_MODE,
         H_FREQ);
     state.data_length = max(contract_data_length(state.frame_width, state.frame_height), 1.0);
+    state.storage_width = state.frame_width;
+    state.texture_fits = 1.0;
+#ifdef SEND_PIXEL_DOMAIN
+    state.data_length = ceil(state.data_length);
+    state.storage_width = contract_pixel_packed_width(state.data_length);
+    state.texture_fits = contract_pixel_texture_fits(config.OutputSize.xy, state.data_length, state.storage_width) &&
+        contract_pixel_texture_fits(config.SourceSize.xy, state.data_length, state.storage_width) ? 1.0 : 0.0;
+#endif
 
     return state;
 }
@@ -158,12 +172,25 @@ void main()
     float output_x = floor(UV.x);
     float output_y = floor(UV.y);
 
+#ifdef SEND_PIXEL_DOMAIN
+    float storage_width = vDeltaVState.storage_width;
+    if (vDeltaVState.texture_fits < 0.5) {
+        FragColor = vec4(1.0, 0.0, 1.0, 1.0);
+        return;
+    }
+    if (output_x >= storage_width) {
+        FragColor = vec4(0.0);
+        return;
+    }
+#else
+    float storage_width = vDeltaVState.frame_width;
     if (output_x >= vDeltaVState.frame_width || output_y >= vDeltaVState.frame_height) {
         FragColor = vec4(0.0);
         return;
     }
+#endif
 
-    float field_output_index = output_y * vDeltaVState.frame_width + output_x;
+    float field_output_index = output_y * storage_width + output_x;
     if (field_output_index >= vDeltaVState.data_length) {
         FragColor = vec4(0.0);
         return;
@@ -172,8 +199,8 @@ void main()
     float input_data_limit = max(vDeltaVState.data_length - 1.0, 0.0);
     float prev_index = max(field_output_index - 1.0, 0.0);
 
-    vec4 current_signal = fetch_signal_sample(field_output_index, vDeltaVState.frame_width, input_data_limit);
-    vec4 previous_signal = fetch_signal_sample(prev_index, vDeltaVState.frame_width, input_data_limit);
+    vec4 current_signal = fetch_signal_sample(field_output_index, storage_width, input_data_limit);
+    vec4 previous_signal = fetch_signal_sample(prev_index, storage_width, input_data_limit);
 
     FragColor = current_signal - previous_signal;
 }

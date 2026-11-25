@@ -15,7 +15,9 @@
         "COLOR_FILTER_MODE" : 0.0,
 
         "PIXEL_CLOCK_MODE" : 0.0,
-        "PIXEL_CLOCK" : 24.167829,
+        "PIXEL_CLOCK_WHOLE" : 24.0,
+        "PIXEL_CLOCK_FRAC6" : 167829.0,
+        "PIXEL_CLOCK_FRAC11" : 0.0,
         "H_FREQ_MODE" : 1.0,
         "H_FREQ" : 1536.0
     }

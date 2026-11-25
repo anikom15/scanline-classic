@@ -13,6 +13,45 @@ This document maps the canonical preset `professional/famicom.slangp` to the HDR
 
 The goal is to make stage boundaries explicit so SDR/WCG/HDR variants remain predictable and maintainable.
 
+## Pixel-domain storage contract
+
+`frameh` flattens the clock-domain raster in time order and packs it left to
+right into a texture. With `N = ceil(frame_width * field_height)` samples,
+the packed width is `2^ceil(log2(sqrt(N)))` and the occupied height is
+`ceil(N / packed_width)`. The allocation can be larger than these dimensions;
+its width does not change the packed stride. For example, 357,386 samples
+occupy 1024 by 350 texels and fit in a 1024 by 512 power-of-two allocation.
+An undersized pixel-domain allocation produces magenta.
+
+`sys-bandlimit` reads this packed pixel stream and emits the existing
+line-aligned DSP-domain raster. Its output allocation must therefore be sized
+for the DSP line width and field height, not the packed input dimensions.
+The pixel and DSP delta pyramids pack each reduced level as a continuous
+stream. Their 8 stages alternate the halved texture axis; DSP input and
+output remain line-aligned. The crosstalk quality setting counts the base
+level plus up to 8 mip levels. The consumer stops at the first level
+containing one sample; later fixed preset passes write zero. For crosstalk and
+the debug view, each level subtracts `(line * frame_width) % span` from the
+field-relative index, aligning the lookup grid to the raster line. The consumer
+selects the preceding stored sample without interpolation; the correction can
+select a sample from before the line start. The producer remains field-relative:
+each produced sample averages the previous level at that time and one
+previous-level span earlier. The debug option "Interpolate DeltaV samples in
+field time" replaces the phase-aligned lookup with linear interpolation at the
+unshifted field-relative time, for both crosstalk and the debug view. LODs are
+sampled discretely in either mode; fractional debug
+selections round down after clamping. The debug view scales the selected level
+by 2^LOD.
+
+To migrate DSP-domain shaders to packed storage later, derive the packed
+width from their own sample count at the working or output sample rate, use
+that width for sample-index/texture-coordinate conversion, and retain the
+timing-derived raster width separately for line phase, sync, and presentation.
+Update resamplers, neighborhood sampling and dyadic pyramid sizing together;
+do not use texture width as the signal line width. Outside the delta pyramid,
+DSP-domain shaders remain line-aligned. Other older consumers of `frameh` that bypass
+`sys-bandlimit` also require migration to understand the new layout.
+
 ## Compact diagram (at a glance)
 
 ```text

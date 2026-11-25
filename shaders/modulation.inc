@@ -29,6 +29,11 @@ const float NTSC_V_FREQ = 59.94;
 const float PAL_V_FREQ = 50.0;
 const float PAL_M_V_FREQ = 59.94;
 
+float timing_decimal_value(vec3 parts)
+{
+    return parts.x + parts.y * 1.0e-6 + parts.z * 1.0e-11;
+}
+
 // Timebase and subcarrier configuration
 struct TimebaseConfig {
     float field;
@@ -228,8 +233,9 @@ void compute_v_lines_per_field(
         raw_v_lines_per_field = custom_v_freq;
     }
 
-    float interlace_ratio = original_height / raw_v_lines_per_field;
-    is_interlaced = (interlace_ratio > 1.5);
+    // A source taller than the total lines in one field cannot fit in a
+    // progressive field at the configured horizontal and vertical rates.
+    is_interlaced = (original_height > raw_v_lines_per_field);
 
     float adjusted_v_lines_per_field = raw_v_lines_per_field;
     if (is_interlaced) {
@@ -251,9 +257,7 @@ void detect_scan_mode(
     float core_refresh_hz,
     out bool is_interlaced, out bool is_ntsc, out bool is_pal)
 {
-    // Detect interlacing: original height significantly larger than lines per field
-    float interlace_ratio = original_height / v_lines_per_field;
-    is_interlaced = (interlace_ratio > 1.5);
+    is_interlaced = (original_height > v_lines_per_field);
 
     // Detect NTSC vs PAL based on vertical frequency
     is_ntsc = (core_refresh_hz > 55.0 && v_lines_per_field < 350.0);

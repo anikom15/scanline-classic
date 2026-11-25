@@ -2,8 +2,12 @@
     "parameters" : {
         "PAL" : 1.0,
         "SC_FREQ_MODE" : 4.0,
-        "SC_FREQ" : 4.43361866667,
+        "SC_FREQ_WHOLE" : 4.0,
+        "SC_FREQ_FRAC6" : 433618.0,
+        "SC_FREQ_FRAC11" : 66667.0,
         "PIXEL_CLOCK_MODE" : 0.0,
-        "PIXEL_CLOCK" : 53.203424
+        "PIXEL_CLOCK_WHOLE" : 53.0,
+        "PIXEL_CLOCK_FRAC6" : 203424.0,
+        "PIXEL_CLOCK_FRAC11" : 0.0
     }
 }

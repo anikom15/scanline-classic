@@ -1,7 +1,9 @@
 {
     "parameters" : {
         "ENCODER_SETUP" : 1.0,
-        "PIXEL_CLOCK" : 15.0,
+        "PIXEL_CLOCK_WHOLE" : 15.0,
+        "PIXEL_CLOCK_FRAC6" : 0.0,
+        "PIXEL_CLOCK_FRAC11" : 0.0,
         "H_FREQ" : 3413.0
     }
 }

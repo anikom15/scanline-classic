@@ -56,9 +56,9 @@ layout(push_constant) uniform Push
     uint FrameCount;
     float WORKING_BITS;
     float SC_FREQ_MODE;
-    float SC_FREQ;
+    float SC_FREQ_WHOLE;
     float PIXEL_CLOCK_MODE;
-    float PIXEL_CLOCK;
+    float PIXEL_CLOCK_WHOLE;
     float H_FREQ_MODE;
     float H_FREQ;
     float V_FREQ_MODE;
@@ -71,6 +71,10 @@ layout(push_constant) uniform Push
     float DIGITAL_COMPOSITE_MOD_BYPASS;
 #endif  // OPTION_DEBUG
 
+    float PIXEL_CLOCK_FRAC11;
+    float PIXEL_CLOCK_FRAC6;
+    float SC_FREQ_FRAC11;
+    float SC_FREQ_FRAC6;
 } config;
 
 #ifdef OPTION_DEBUG
@@ -79,9 +83,9 @@ layout(push_constant) uniform Push
 
 #define WORKING_BITS config.WORKING_BITS
 #define SC_FREQ_MODE config.SC_FREQ_MODE
-#define SC_FREQ config.SC_FREQ
+#define SC_FREQ timing_decimal_value(vec3(config.SC_FREQ_WHOLE, config.SC_FREQ_FRAC6, config.SC_FREQ_FRAC11))
 #define PIXEL_CLOCK_MODE config.PIXEL_CLOCK_MODE
-#define PIXEL_CLOCK config.PIXEL_CLOCK
+#define PIXEL_CLOCK timing_decimal_value(vec3(config.PIXEL_CLOCK_WHOLE, config.PIXEL_CLOCK_FRAC6, config.PIXEL_CLOCK_FRAC11))
 #define H_FREQ_MODE config.H_FREQ_MODE
 #define H_FREQ config.H_FREQ
 #define V_FREQ_MODE config.V_FREQ_MODE

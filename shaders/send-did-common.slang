@@ -19,8 +19,8 @@
 // ----------------------------------
 // Input:  Packed signed 1D derivative samples in RGBA
 // Output: Causal averages of adjacent input-level samples, with the first
-//         sample extended to the left. Each level is aligned to the original
-//         row grid; interpolation bridges row boundaries in the 1D signal.
+//         sample extended to the left. Levels after DeltaV are packed as a
+//         continuous 1D stream for both pixel and DSP inputs.
 // Pixel variants run before sys-bandlimit; DSP variants run after it.
 
 #pragma name SendDID
@@ -45,20 +45,24 @@ layout(push_constant) uniform Push
     float V_FREQ_MODE;
     float V_FREQ;
     float SC_FREQ_MODE;
-    float SC_FREQ;
+    float SC_FREQ_WHOLE;
     float PIXEL_CLOCK_MODE;
-    float PIXEL_CLOCK;
+    float PIXEL_CLOCK_WHOLE;
     float H_FREQ_MODE;
     float H_FREQ;
     float DSP_WORKING_FS;
+    float PIXEL_CLOCK_FRAC11;
+    float PIXEL_CLOCK_FRAC6;
+    float SC_FREQ_FRAC11;
+    float SC_FREQ_FRAC6;
 } config;
 
 #define V_FREQ_MODE config.V_FREQ_MODE
 #define V_FREQ config.V_FREQ
 #define SC_FREQ_MODE config.SC_FREQ_MODE
-#define SC_FREQ config.SC_FREQ
+#define SC_FREQ timing_decimal_value(vec3(config.SC_FREQ_WHOLE, config.SC_FREQ_FRAC6, config.SC_FREQ_FRAC11))
 #define PIXEL_CLOCK_MODE config.PIXEL_CLOCK_MODE
-#define PIXEL_CLOCK config.PIXEL_CLOCK
+#define PIXEL_CLOCK timing_decimal_value(vec3(config.PIXEL_CLOCK_WHOLE, config.PIXEL_CLOCK_FRAC6, config.PIXEL_CLOCK_FRAC11))
 #define H_FREQ_MODE config.H_FREQ_MODE
 #define H_FREQ config.H_FREQ
 #define DSP_WORKING_FS config.DSP_WORKING_FS
@@ -74,6 +78,7 @@ struct SendDIDState {
     float input_span;
     float output_frame_width;
     float data_length;
+    float texture_fits;
 };
 
 #pragma stage vertex
@@ -118,11 +123,30 @@ SendDIDState compute_send_did_state()
         H_FREQ,
         DSP_WORKING_FS);
 #endif
-    float base_storage_width = max(config.SendSourceSize.x, 1.0);
-    state.base_frame_width = base_frame_width;
-    state.input_span = max(round(base_storage_width / max(config.SourceSize.x, 1.0)), 1.0);
-    state.output_frame_width = max(ceil(base_frame_width / (2.0 * state.input_span)), 1.0);
     state.data_length = max(ceil(contract_data_length(base_frame_width, state.frame_height)), 1.0);
+#ifdef SEND_PIXEL_DOMAIN
+    state.base_frame_width = contract_pixel_packed_width(state.data_length);
+    state.texture_fits = contract_pixel_texture_fits(config.SendSourceSize.xy, state.data_length, state.base_frame_width) ? 1.0 : 0.0;
+#else
+    state.base_frame_width = base_frame_width;
+    state.texture_fits = config.SendSourceSize.x >= base_frame_width &&
+        config.SendSourceSize.y >= ceil(state.data_length / base_frame_width) ? 1.0 : 0.0;
+#endif
+    float base_area = config.SendSourceSize.x * config.SendSourceSize.y;
+    float source_area = max(config.SourceSize.x * config.SourceSize.y, 1.0);
+    state.input_span = exp2(round(log2(max(base_area / source_area, 1.0))));
+    state.output_frame_width = config.OutputSize.x;
+    if (state.input_span == 1.0)
+        state.texture_fits = state.texture_fits > 0.5 &&
+            config.SourceSize.x >= state.base_frame_width &&
+            config.SourceSize.y >= ceil(state.data_length / state.base_frame_width) ? 1.0 : 0.0;
+    else
+        state.texture_fits = state.texture_fits > 0.5 &&
+            source_area >= ceil(state.data_length / state.input_span) ? 1.0 : 0.0;
+    float output_count = ceil(state.data_length / (2.0 * state.input_span));
+    if (state.input_span < state.data_length &&
+        config.OutputSize.x * config.OutputSize.y < output_count)
+        state.texture_fits = 0.0;
 
     return state;
 }
@@ -146,33 +170,27 @@ void main()
     float output_x = floor(UV.x);
     float output_y = floor(UV.y);
 
-    if (output_x >= vSendDIDState.output_frame_width ||
-        output_y >= vSendDIDState.frame_height) {
+    if (vSendDIDState.texture_fits < 0.5) {
+        FragColor = vec4(1.0, 0.0, 1.0, 1.0);
+        return;
+    }
+    if (vSendDIDState.input_span >= vSendDIDState.data_length) {
         FragColor = vec4(0.0);
         return;
     }
-
     int frame_width = int(vSendDIDState.base_frame_width);
     int input_span = int(vSendDIDState.input_span);
     int data_length = int(vSendDIDState.data_length);
-    int input_index = int(output_y) * frame_width + int(output_x) * 2 * input_span;
+    int output_width = int(vSendDIDState.output_frame_width);
+    int input_index = (int(output_y) * output_width + int(output_x)) * 2 * input_span;
     if (input_index >= data_length) {
         FragColor = vec4(0.0);
         return;
     }
-
-    vec4 sample0 = sample_row_aligned_signal(
-        Source,
-        input_index,
-        frame_width,
-        input_span,
-        data_length);
-    vec4 sample1 = sample_row_aligned_signal(
-        Source,
-        input_index - input_span,
-        frame_width,
-        input_span,
-        data_length);
+    int input_width = input_span == 1 ? frame_width : int(config.SourceSize.x);
+    // Both indices lie on the input level's grid; the first repeats at the field start.
+    vec4 sample0 = sample_pyramid_signal(Source, input_index, input_width, input_span, data_length);
+    vec4 sample1 = sample_pyramid_signal(Source, input_index - input_span, input_width, input_span, data_length);
 
     FragColor = 0.5 * (sample0 + sample1);
 }

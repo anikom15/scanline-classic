@@ -49,22 +49,26 @@ layout(push_constant) uniform Push
     float V_FREQ_MODE;
     float V_FREQ;
     float SC_FREQ_MODE;
-    float SC_FREQ;
+    float SC_FREQ_WHOLE;
     float PIXEL_CLOCK_MODE;
-    float PIXEL_CLOCK;
+    float PIXEL_CLOCK_WHOLE;
     float H_FREQ_MODE;
     float H_FREQ;
     float H_BLANK_FUZZ;
     float FIELD_ODD;
     float SYS_SYNC_TYPE;
+    float PIXEL_CLOCK_FRAC11;
+    float PIXEL_CLOCK_FRAC6;
+    float SC_FREQ_FRAC11;
+    float SC_FREQ_FRAC6;
 } config;
 
 #define V_FREQ_MODE config.V_FREQ_MODE
 #define V_FREQ config.V_FREQ
 #define SC_FREQ_MODE config.SC_FREQ_MODE
-#define SC_FREQ config.SC_FREQ
+#define SC_FREQ timing_decimal_value(vec3(config.SC_FREQ_WHOLE, config.SC_FREQ_FRAC6, config.SC_FREQ_FRAC11))
 #define PIXEL_CLOCK_MODE config.PIXEL_CLOCK_MODE
-#define PIXEL_CLOCK config.PIXEL_CLOCK
+#define PIXEL_CLOCK timing_decimal_value(vec3(config.PIXEL_CLOCK_WHOLE, config.PIXEL_CLOCK_FRAC6, config.PIXEL_CLOCK_FRAC11))
 #define H_FREQ_MODE config.H_FREQ_MODE
 #define H_FREQ config.H_FREQ
 #define H_BLANK_FUZZ config.H_BLANK_FUZZ
@@ -84,6 +88,9 @@ struct SyncState {
     float active_source_height;
     float clock_factor;
     float clocks_per_line;
+    float data_length;
+    float packed_width;
+    float texture_fits;
 };
 
 #pragma stage vertex
@@ -115,6 +122,10 @@ SyncState compute_sync_state()
         PIXEL_CLOCK,
         H_FREQ_MODE,
         H_FREQ);
+    state.data_length = ceil(contract_data_length(state.base_frame_width, state.frame_height));
+    state.packed_width = contract_pixel_packed_width(state.data_length);
+    state.texture_fits = contract_pixel_texture_fits(config.OutputSize.xy, state.data_length, state.packed_width) &&
+        contract_pixel_texture_fits(config.SourceSize.xy, state.data_length, state.packed_width) ? 1.0 : 0.0;
     state.clocks_per_line = contract_clocks_per_line(
         config.OriginalFPS,
         SC_FREQ_MODE,
@@ -146,8 +157,9 @@ SyncState compute_sync_state()
         PIXEL_CLOCK,
         H_FREQ_MODE,
         H_FREQ);
-    float field = contract_field(config.FrameCount);
-    float field_parity = (is_interlaced > 0.5) ? mod(field + FIELD_ODD, 2.0) : 0.0;
+    float field_parity = (is_interlaced > 0.5)
+        ? contract_field_parity(config.FrameCount, FIELD_ODD, config.OriginalFPS, SC_FREQ_MODE, SC_FREQ)
+        : 0.0;
 
     state.active_source_height = (is_interlaced > 0.5)
         ? max(floor((config.OriginalSize.y - field_parity + 1.0) * 0.5), 0.0)
@@ -191,6 +203,19 @@ void main()
     float output_y = floor(UV.y);
 
     vec4 sample_in = fetch_source_texel(output_x_i, output_y_i);
+
+    if (vSyncState.texture_fits < 0.5) {
+        FragColor = vec4(1.0, 0.0, 1.0, 1.0);
+        return;
+    }
+    float sample_index = output_y * vSyncState.packed_width + output_x;
+    if (output_x >= vSyncState.packed_width || sample_index >= vSyncState.data_length) {
+        FragColor = vec4(0.0);
+        return;
+    }
+    output_y = floor(sample_index / vSyncState.base_frame_width);
+    output_x = sample_index - output_y * vSyncState.base_frame_width;
+    output_y_i = int(output_y);
 
     float frame_height_int = ceil(vSyncState.frame_height);
     bool in_frame_x = output_x >= 0.0 && output_x < vSyncState.base_frame_width;
