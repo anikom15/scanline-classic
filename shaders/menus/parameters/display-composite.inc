@@ -1,7 +1,7 @@
 #pragma parameter COMPOSITE_HEADER " —— Service: Composite Input —— " 0.0 0.0 0.0 0.0
 
 #pragma parameter DECODER_SETUP "Setup (off, on)" 1.0 0.0 1.0 1.0
-#pragma parameter DECODER_TYPE "Decoder type (NTSC, PAL)" 0.0 0.0 1.0 1.0
+#pragma parameter PAL_DECODER_MODE "PAL Decoder Mode (simple, delay-line, adaptive)" 1.0 0.0 2.0 1.0
 
 #pragma parameter BW_MODE "Monitor mode (off, Y, B-Y, R-Y, Y+B-Y, Y+R-Y, B-Y+R-Y)" 0.0 0.0 6.0 1.0
 

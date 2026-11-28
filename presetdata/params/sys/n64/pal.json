@@ -1,6 +1,5 @@
 {
     "parameters" : {
-        "PAL" : 1.0,
         "PIXEL_CLOCK_WHOLE" : 11.0,
         "PIXEL_CLOCK_FRAC6" : 200000.0,
         "PIXEL_CLOCK_FRAC11" : 0.0,

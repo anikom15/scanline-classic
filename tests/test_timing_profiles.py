@@ -16,6 +16,7 @@ from test_contract_timings import (
     CPP_HEADER, CPP_MAIN, FIELD_COUNTS, OUTPUT_MODES, REFERENCES, ROOT,
     cpp_shader_source, phase_distance,
 )
+from test_dyadic_pyramid import shader_function
 
 
 class TimingProfileGenerationTests(unittest.TestCase):
@@ -187,6 +188,57 @@ int main() {
     def test_psx_selection(self):
         self.assertEqual(self.run_selection(2, 320, 240, 60), (4, 0, 0))
         self.assertEqual(self.run_selection(2, 320, 288, 50, palm=True), (5, 0, 1))
+
+    def test_signal_standard_tracks_profile_refresh_and_debug_override(self):
+        compiler = shutil.which('g++')
+        profiles = (ROOT / 'shaders' / 'timing-profiles.inc').read_text(encoding='utf-8')
+        standard = (ROOT / 'shaders' / 'signal-standard.inc').read_text(encoding='utf-8')
+        source = re.sub(r'(?<=\d)lf\b', '', profiles)
+        function = shader_function(standard, 'float signal_pal(')
+        checks = r'''
+int main() {
+    float profile, fps, debug_pal;
+    while (std::cin >> profile >> fps >> debug_pal) {
+        int mode = timing_profile_select(profile, vec2{320, 240}, fps);
+        std::cout << signal_pal(mode, fps, debug_pal) << '\n';
+    }
+}
+'''
+        cases = (
+            (1, 60, 0, 0, 1),
+            (1, 50, 0, 1, 1),
+            (1, 55, 0, 1, 1),
+            (1, 55.01, 0, 0, 1),
+            (2, 60, 0, 0, 0),
+            (2, 50, 0, 1, 1),
+            (0, 60, 0, 0, 0),
+            (0, 50, 0, 1, 1),
+            (0, 55, 0, 1, 1),
+            (0, 55.01, 0, 0, 0),
+            (0, 60, 1, 1, 1),
+            (2, 60, 1, 1, 1),
+            (3, 60, 0, math.nan, math.nan),
+            (3, 60, 1, math.nan, math.nan),
+        )
+        with tempfile.TemporaryDirectory() as temp:
+            for palm in (False, True):
+                cpp = Path(temp) / f'decoder-{palm}.cpp'
+                executable = Path(temp) / f'decoder-{palm}'
+                define = '#define OPTION_REPLACE_NTSC_PALM\n' if palm else ''
+                cpp.write_text(CPP_HEADER + define + source + function + checks, encoding='utf-8')
+                subprocess.run([compiler, '-std=c++17', '-O2', str(cpp), '-o', str(executable)], check=True)
+                for profile, fps, debug_pal, normal, replaced in cases:
+                    with self.subTest(palm=palm, profile=profile, fps=fps, debug_pal=debug_pal):
+                        result = subprocess.run(
+                            [str(executable)], input=f'{profile} {fps} {debug_pal}\n',
+                            text=True, capture_output=True, check=True,
+                        )
+                        actual = float(result.stdout)
+                        expected = replaced if palm else normal
+                        if math.isnan(expected):
+                            self.assertTrue(math.isnan(actual))
+                        else:
+                            self.assertEqual(actual, expected)
 
     def test_psx_geometry_and_exact_phase(self):
         compiler = shutil.which('g++')
@@ -513,6 +565,28 @@ int main() {
 
 
 class TimingProfilePresetTests(unittest.TestCase):
+    def test_signal_shaders_use_shared_standard_and_debug_parameter(self):
+        for name in ('display-svideo-demod.slang', 'composite-demod.slang',
+                     'composite-mod.slang', 'digital-svideo.slang', 'famicom-special.slang'):
+            source = (ROOT / 'shaders' / name).read_text(encoding='utf-8')
+            with self.subTest(shader=name):
+                self.assertIn('#pragma parameter DEBUG_PAL ', source)
+                self.assertIn('signal_pal(TIMING_PROFILE_MODE, config.OriginalFPS, ', source)
+                self.assertNotRegex(source, r'\b(?:config|global)\.PAL\b')
+        common = (ROOT / 'shaders' / 'sys-component-yc-common.slang').read_text(encoding='utf-8')
+        self.assertIn('signal_pal(TIMING_PROFILE_MODE, config.OriginalFPS, ', common)
+        for name in ('sys-yc.slang', 'sys-component-yc.slang'):
+            source = (ROOT / 'shaders' / name).read_text(encoding='utf-8')
+            self.assertIn('#pragma parameter DEBUG_PAL ', source)
+
+    def test_unprofiled_palm_parameter_sets_fall_back_to_ntsc(self):
+        for system in ('sfc', 'md'):
+            root = ROOT / 'presetdata' / 'params' / 'sys' / system
+            with self.subTest(system=system):
+                ntsc = json.loads((root / 'ntsc.json').read_text(encoding='utf-8'))
+                palm = json.loads((root / 'palm.json').read_text(encoding='utf-8'))
+                self.assertEqual(palm, ntsc)
+
     def test_profile_pipeline_timing_passes_resolve_profiles(self):
         names = set()
         for preset_name in ('sfc-rgb', 'sfc-svideo', 'sfc-composite', 'snes-eu-composite', 'psx-rgb'):
@@ -557,6 +631,7 @@ class TimingProfilePresetTests(unittest.TestCase):
                 ('sfc-rgb', 'sfc', {'TIMING_PROFILE': 1.0}),
                 ('snes-eu-composite', 'snes-eu', {'TIMING_PROFILE': 1.0}),
                 ('psx-rgb', 'psx', {'TIMING_PROFILE': 2.0}),
+                ('3do-eu-svideo', '3do-eu', {}),
                 ('famicom-c1', 'famicom-c1', {'H_FREQ': 1364.0, 'SHORTEN_ODD_FIELD_TIME': 1.0}),
             ):
                 command = [
@@ -574,6 +649,8 @@ class TimingProfilePresetTests(unittest.TestCase):
                 with self.subTest(preset=name):
                     for key, value in expected.items():
                         self.assertEqual(float(values[key]), value)
+                    self.assertNotIn('DECODER_TYPE', values)
+                    self.assertNotIn('PAL', values)
                     if name in ('sfc-rgb', 'snes-eu-composite'):
                         self.assertNotIn('H_FREQ', values)
 

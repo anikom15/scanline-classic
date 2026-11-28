@@ -34,12 +34,14 @@
 #pragma include_optional "../config/options.cfg"
 
 #include "timing-profiles.inc"
+#include "signal-standard.inc"
 #define TIMING_PROFILE_MODE timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS)
 
 #ifdef OPTION_DEBUG
 #pragma parameter DEBUG_COMPOSITE_DEMOD_HEADER " —— Debug Composite Demod —— " 0.0 0.0 0.0 0.0
 #pragma parameter BYPASS_COMPOSITE_DEMOD "Bypass composite demodulation (off, on)" 0.0 0.0 1.0 1.0
 #pragma parameter COMPOSITE_DEMOD_FILTER_BYPASS "Bypass composite demodulation filter (off, on)" 0.0 0.0 1.0 1.0
+#pragma parameter DEBUG_PAL "Force PAL phase alternation (off, on)" 0.0 0.0 1.0 1.0
 #pragma parameter CORRELATION "Correlation" 0.5 0.0 1.0 0.01
 #pragma parameter COMB_ADJUST_X "Comb filter phase adjustment X (texels)" 0.0 -10.0 10.0 0.01
 #pragma parameter COMB_ADJUST_Y "Comb filter phase adjustment Y (texels)" 0.0 -10.0 10.0 0.01
@@ -71,7 +73,6 @@ layout(push_constant) uniform Push
 #endif  // OPTION_DEBUG
 
     float DECODER_SETUP;
-    float DECODER_TYPE; // Decoder type
     float PAL_DECODER_MODE; // PAL decoder mode (0=simple, 1=delay-line, 2=adaptive)
     float USER_MONOCHROME; // Monochrome mode (off, B&W, sepia)
 } config;
@@ -99,7 +100,6 @@ const float BYPASS_COMPOSITE_DEMOD = 0.0;
 
 #define BW_MODE config.BW_MODE
 #define PAL_DECODER_MODE config.PAL_DECODER_MODE
-#define DECODER_TYPE config.DECODER_TYPE
 #define DECODER_SETUP config.DECODER_SETUP
 #define USER_MONOCHROME config.USER_MONOCHROME
 
@@ -126,6 +126,9 @@ layout(std140, set = 0, binding = 0) uniform UBO
     float DISPLAY_BANDWIDTH_Y;
     float DISPLAY_CUTOFF_ATTEN_C;
     float DISPLAY_CUTOFF_ATTEN_Y;
+#ifdef OPTION_DEBUG
+    float DEBUG_PAL;
+#endif
 } global;
 
 #define DISPLAY_BANDWIDTH_Y global.DISPLAY_BANDWIDTH_Y
@@ -244,8 +247,14 @@ void main()
     // Compute phase-neutral carrier (PAL delay line handles alternation via add/subtract)
     vec2 carrier0 = sincos_phase_raw(phase0_full);
 
+    float debug_pal = 0.0;
+#ifdef OPTION_DEBUG
+    debug_pal = global.DEBUG_PAL;
+#endif
+    float decoder_pal = signal_pal(TIMING_PROFILE_MODE, config.OriginalFPS, debug_pal);
+
     // PAL V polarity correction: delay line subtraction produces alternating sign
-    float pal_v_sign = 1.0 - 2.0 * floor(mod(line, 2.0)) * step(0.5, DECODER_TYPE);
+    float pal_v_sign = 1.0 - 2.0 * floor(mod(line, 2.0)) * step(0.5, decoder_pal);
 
     // Delay-line control flags and offsets
     bool use_delay_line = PAL_DECODER_MODE > 0.5;
@@ -254,7 +263,7 @@ void main()
 
     // Compute phase offset correction for delay-line (constant per system).
     // A disabled subcarrier intentionally leaves the offset at zero.
-    if (DECODER_TYPE > 0.5 && use_delay_line && abs(phase_inc_px) > EPS) {
+    if (decoder_pal > 0.5 && use_delay_line && abs(phase_inc_px) > EPS) {
         // Calculate intrinsic system phase shift per line (independent of user hue)
         system_phase_shift = comb_system_phase_shift(
             carrier.sc_freq_hz, carrier.h_freq_hz);
@@ -284,7 +293,7 @@ void main()
     const float PHASE_ERROR_MAX = 0.087266; // 5 degrees in radians
 
     // PAL decoder mode selection (phase-corrected delay-line, simple, or adaptive)
-    if (DECODER_TYPE > 0.5) {
+    if (decoder_pal > 0.5) {
         // ADAPTIVE: blend delay-line with correlation based on phase error magnitude
         if (PAL_DECODER_MODE > 1.5) {
             // Check for external phase error (e.g., incorrect hue knob)
@@ -363,7 +372,7 @@ void main()
             float chromaR = pixelR.g;
             vec3 demodR;
 
-            if (DECODER_TYPE > 0.5) {
+            if (decoder_pal > 0.5) {
                 // ADAPTIVE: blend delay-line with correlation based on phase error magnitude
                 if (PAL_DECODER_MODE > 1.5) {
                     // Check for external phase error at this sample position
@@ -424,7 +433,7 @@ void main()
             float chromaL = pixelL.g;
             vec3 demodL;
 
-            if (DECODER_TYPE > 0.5) {
+            if (decoder_pal > 0.5) {
                 // ADAPTIVE: blend delay-line with correlation based on phase error magnitude
                 if (PAL_DECODER_MODE > 1.5) {
                     // Check for external phase error at this sample position

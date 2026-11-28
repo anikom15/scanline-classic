@@ -41,11 +41,14 @@
 #pragma include_optional "../config/options.cfg"
 
 #include "timing-profiles.inc"
+#include "signal-standard.inc"
+
 #define TIMING_PROFILE_MODE timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS)
 
 #ifdef OPTION_DEBUG
 #pragma parameter DEBUG_DISPLAY_SVIDEO_DEMOD_HEADER " —— Debug Display S-Video Demodulator —— " 0.0 0.0 0.0 0.0
 #pragma parameter DISPLAY_SVIDEO_DEMOD_BYPASS "Bypass display S-Video stage" 0.0 0.0 1.0 1.0
+#pragma parameter DEBUG_PAL "Force PAL phase alternation (off, on)" 0.0 0.0 1.0 1.0
 #pragma parameter CORRELATION "PAL delay-line correlation" 0.5 0.0 1.0 0.01
 #pragma parameter COMB_ADJUST_X "PAL delay-line phase adjustment X (samples)" 0.0 -10.0 10.0 0.01
 #endif  // OPTION_DEBUG
@@ -71,7 +74,6 @@ layout(push_constant) uniform Push
     float DSP_WORKING_FS;
 
     float DECODER_SETUP;
-    float DECODER_TYPE;
     float PAL_DECODER_MODE;
 
     float USER_COLOR;
@@ -102,7 +104,6 @@ layout(push_constant) uniform Push
 #define DSP_WORKING_FS config.DSP_WORKING_FS
 
 #define DECODER_SETUP config.DECODER_SETUP
-#define DECODER_TYPE config.DECODER_TYPE
 #define PAL_DECODER_MODE config.PAL_DECODER_MODE
 
 #define USER_COLOR config.USER_COLOR
@@ -119,6 +120,9 @@ layout(std140, binding = 0) uniform UBO
     float SC_FREQ_FRAC6;
     float SC_FREQ_FRAC11;
     float PIXEL_CLOCK_FRAC6;
+#ifdef OPTION_DEBUG
+    float DEBUG_PAL;
+#endif
 } global;
 
 #pragma stage vertex
@@ -266,7 +270,12 @@ void main()
     // PAL V-axis alternation is applied after delay-line component separation.
     vec2 raster = timing_profile_raster_position(TIMING_PROFILE_MODE, config.OriginalSize.y,
         config.FrameCount, FIELD_ODD, sample_index, FrameWidth);
-    float pal_v_sign = 1.0 - 2.0 * floor(mod(raster.y, 2.0)) * DECODER_TYPE;
+    float debug_pal = 0.0;
+#ifdef OPTION_DEBUG
+    debug_pal = global.DEBUG_PAL;
+#endif
+    float decoder_pal = signal_pal(TIMING_PROFILE_MODE, config.OriginalFPS, debug_pal);
+    float pal_v_sign = 1.0 - 2.0 * floor(mod(raster.y, 2.0)) * decoder_pal;
 
     float c_gain = 0.01 * (2.0 * USER_COLOR);
     float c_phase = PI * USER_TINT / 180.0;
@@ -276,7 +285,7 @@ void main()
         pal_v_sign * 2.0 * yc.g * cos(phase_with_hue));
     vec2 chroma_components = simple_components;
 
-    if (DECODER_TYPE > 0.5 && PAL_DECODER_MODE > 0.5 &&
+    if (decoder_pal > 0.5 && PAL_DECODER_MODE > 0.5 &&
         Fsc > 0.0 && Fs > 0.0 && HorizontalFrequency > 0.0) {
         float phase_inc_per_sample = 2.0 * PI * Fsc / Fs;
         float previous_y = max(raster.y - 1.0, 0.0);

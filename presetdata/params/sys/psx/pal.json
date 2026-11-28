@@ -1,7 +1,6 @@
 {
     "parameters" : {
         "ENCODER_SETUP" : 0.0,
-        "PAL" : 1.0,
         "PIXEL_CLOCK_WHOLE" : 12.0,
         "PIXEL_CLOCK_FRAC6" : 0.0,
         "PIXEL_CLOCK_FRAC11" : 0.0,

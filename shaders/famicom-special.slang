@@ -28,8 +28,13 @@
 #pragma include_optional "../config/options.cfg"
 
 #include "timing-profiles.inc"
+#include "signal-standard.inc"
 #define TIMING_PROFILE_MODE timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS)
 #include "menus/parameters/famicom.inc"
+
+#ifdef OPTION_DEBUG
+#pragma parameter DEBUG_PAL "Force PAL phase alternation (off, on)" 0.0 0.0 1.0 1.0
+#endif
 
 layout(push_constant) uniform Push
 {
@@ -48,20 +53,26 @@ layout(push_constant) uniform Push
     float V_FREQ;
     float H_BLANK_FUZZ;
     float SHORTEN_ODD_FIELD_TIME;
-    float PAL;
     float PIXEL_CLOCK_FRAC11;
     float PIXEL_CLOCK_FRAC6;
     float SC_FREQ_FRAC11;
     float SC_FREQ_FRAC6;
 } config;
 
-#define PAL timing_profile_pal(TIMING_PROFILE_MODE, config.PAL)
+#ifdef OPTION_DEBUG
+#define PAL signal_pal(TIMING_PROFILE_MODE, config.OriginalFPS, global.DEBUG_PAL)
+#else
+#define PAL signal_pal(TIMING_PROFILE_MODE, config.OriginalFPS, 0.0)
+#endif
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
     float FIELD_ODD;
     float TIMING_PROFILE;
     mat4 MVP;
+#ifdef OPTION_DEBUG
+    float DEBUG_PAL;
+#endif
 } global;
 
 #pragma stage vertex

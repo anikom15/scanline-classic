@@ -129,8 +129,15 @@ To use global options:
 Global options are compile-time toggles, so they affect shader behavior globally rather than per-preset.
 
 For SFC/SNES profiles, `OPTION_REPLACE_NTSC_PALM` selects PAL-M instead of
-NTSC for 60 Hz sources; 50 Hz sources continue to use PAL. Display settings
-remain independent, so choose a display preset suitable for the signal.
+NTSC for 60 Hz sources; 50 Hz sources continue to use PAL. Profiles without
+PAL-M, including PSX and unprofiled systems, use NTSC for 60 Hz sources.
+Encoders and composite/S-Video decoders follow the selected standard; legacy
+systems use PAL at 55 Hz or below and NTSC above 55 Hz. `OPTION_DEBUG` enables
+`DEBUG_PAL`, which forces PAL phase alternation when enabled. Saved `PAL` and
+`DECODER_TYPE` settings no longer select the standard. Other display settings,
+including setup and colorimetry, remain independent.
+Regenerate saved legacy PAL-M presets to replace their old custom timing values
+with the NTSC fallback; `DEBUG_PAL` does not change carrier frequency or timing.
 Existing saved SFC/SNES and PSX presets should be regenerated to use their
 timing profiles. Legacy timing controls remain available for systems not yet
 migrated and are ignored by those profiles. PSX display mode is inferred from

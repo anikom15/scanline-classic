@@ -33,11 +33,13 @@
 #pragma include_optional "../config/options.cfg"
 
 #include "timing-profiles.inc"
+#include "signal-standard.inc"
 #define TIMING_PROFILE_MODE timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS)
 
 #ifdef OPTION_DEBUG
 #pragma parameter DEBUG_COMPOSITE_MOD_HEADER " —— Debug Composite Mod —— " 0.0 0.0 0.0 0.0
 #pragma parameter COMPOSITE_MOD_BYPASS "Composite Modulation Bypass" 0.0 0.0 1.0 1.0
+#pragma parameter DEBUG_PAL "Force PAL phase alternation (off, on)" 0.0 0.0 1.0 1.0
 #endif  // OPTION_DEBUG
 
 layout(push_constant) uniform Push
@@ -58,7 +60,6 @@ layout(push_constant) uniform Push
     float H_FREQ;
     float H_BLANK_FUZZ;
     float ENCODER_SETUP;
-    float PAL;
 
 #ifdef OPTION_DEBUG
     float COMPOSITE_MOD_BYPASS;
@@ -81,7 +82,11 @@ layout(push_constant) uniform Push
 #define H_FREQ timing_profile_h_freq(TIMING_PROFILE_MODE, config.H_FREQ)
 #define H_BLANK_FUZZ config.H_BLANK_FUZZ
 #define ENCODER_SETUP config.ENCODER_SETUP
-#define PAL timing_profile_pal(TIMING_PROFILE_MODE, config.PAL)
+#ifdef OPTION_DEBUG
+#define PAL signal_pal(TIMING_PROFILE_MODE, config.OriginalFPS, global.DEBUG_PAL)
+#else
+#define PAL signal_pal(TIMING_PROFILE_MODE, config.OriginalFPS, 0.0)
+#endif
 
 #ifdef OPTION_DEBUG
 #define COMPOSITE_MOD_BYPASS config.COMPOSITE_MOD_BYPASS
@@ -92,6 +97,9 @@ layout(std140, set = 0, binding = 0) uniform UBO
     float FIELD_ODD;
     float TIMING_PROFILE;
     mat4 MVP;
+#ifdef OPTION_DEBUG
+    float DEBUG_PAL;
+#endif
 } global;
 
 #pragma stage vertex

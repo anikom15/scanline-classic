@@ -66,9 +66,9 @@ Emphasis bits are modeled as phase-selective attenuation behavior (except protec
 
 In practical terms, emphasis modifies waveform level tables before final high/low output selection, which later affects decoded hue and saturation.
 
-### PAL Toggle for Phase Alternation
+### PAL Phase Alternation
 
-`PAL` support modifies phase sign behavior line-to-line and applies a PAL-specific offset. This allows the same synthesis model to feed PAL-like downstream decoding in appropriate pipelines (e.g., NES EU variants).
+PAL mode modifies phase sign behavior line-to-line and applies a PAL-specific offset. It is selected from the timing profile or source refresh rate; `DEBUG_PAL` can force it on in debug mode.
 
 ## `famicom-rgb.slang`: Palette Decode Path
 

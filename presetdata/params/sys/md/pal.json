@@ -1,6 +1,5 @@
 {
     "parameters" : {
-        "PAL" : 1.0,
         "SC_FREQ_MODE" : 4.0,
         "SC_FREQ_WHOLE" : 4.0,
         "SC_FREQ_FRAC6" : 433618.0,

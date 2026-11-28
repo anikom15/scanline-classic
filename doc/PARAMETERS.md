@@ -136,7 +136,7 @@ Represents controls available either through the service menu, from the back of 
 
   * DECODER_SETUP - Setup (off, on): When enabled, the decoder will pull down the luminance level by 7.5 IRE and then normalize gain after processing
 
-  * DECODER_TYPE - Decoder type (NTSC, PAL): Selects the decoder standard for the incoming Y/C signal; use PAL only when the source actually uses PAL encoding
+  * PAL_DECODER_MODE - PAL Decoder Mode (simple, delay-line, adaptive): Selects the PAL line decoding method. The decoder follows the system timing profile, or the source refresh rate for legacy systems; `DEBUG_PAL` forces PAL phase alternation in debug mode.
 
   * BW_MODE - Monitor mode (off, BW, Y, C, Y+C): Used for calibration; the technician connects the S-Video cable to a breakout and remixes: BW displays a composite-like sum, Y displays the luminance only, C displays the chroma, Y+C displays both as separate channels
 
@@ -152,13 +152,13 @@ Represents controls available either through the service menu, from the back of 
 
   * DECODER_SETUP - Setup (off, on): See S-Video Input
 
-  * DECODER_TYPE - Decoder type (NTSC, PAL): Selects the composite decoder standard; PAL enables the PAL line decoder path
+  * The decoder standard is selected automatically as described under S-Video Input.
 
   * PAL_DECODER_MODE - PAL Decoder Mode (simple, delay-line, adaptive): Selects the PAL line decoding method; adaptive is usually the most robust, while simple can better resemble low-cost sets
 
   * BW_MODE - Monitor mode (off, BW, Y, C, Y+C): Practically the same as the S-Video setting, but represents feeding off the encoder hardware directly
 
-  * COLOR_FILTER_MODE - Filter mode (notch, simple comb, adaptive comb): Comb filtering is not yet implemented in the new display prefilter; all modes use notch/bandpass separation
+  * COLOR_FILTER_MODE - Filter mode (notch, simple comb, adaptive comb): Selects composite luma/chroma separation.
 
   * NOTCH_WIDTH - Luma notch filter full width (MHz): Increasing this value reduces color bleeding at the expense of sharpness
 
@@ -344,7 +344,7 @@ These settings are identical in purpose to Display RGB, but apply at the system 
 
   * ENCODER_SETUP - Setup (off, on): Pushes the luminance level by 7.5 IRE and normalizes gain before encoding
 
-  * PAL - Phase alternating line (off, on): Enables PAL line encoding for phase recovery
+  * PAL phase alternation is selected automatically; `DEBUG_PAL` forces it on in debug mode.
 
 ### Famicom/NES Filter
 
