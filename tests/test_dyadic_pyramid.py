@@ -319,7 +319,7 @@ int main() {
             self.skipTest('g++ is required to exercise shader functions')
 
         dsp = (ROOT / 'shaders' / 'dsp.inc').read_text(encoding='utf-8')
-        consumer = (ROOT / 'shaders' / 'noise-txrx-common.slang').read_text(encoding='utf-8')
+        consumer = (ROOT / 'shaders' / 'noise-txrx-common.inc').read_text(encoding='utf-8')
         fragment = consumer.split('#pragma stage fragment', 1)[1]
         main = shader_function(fragment, 'void main()').replace('void main()', 'void render_sample()', 1)
         main = main.split('    float feedback_gain =', 1)[0] + '    FragColor = mag_delta;\n}\n'

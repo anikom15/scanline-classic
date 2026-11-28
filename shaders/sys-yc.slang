@@ -9,4 +9,4 @@
 #pragma parameter DEBUG_PAL "Force PAL phase alternation (off, on)" 0.0 0.0 1.0 1.0
 #endif
 
-#include "sys-component-yc-common.slang"
+#include "sys-component-yc-common.inc"

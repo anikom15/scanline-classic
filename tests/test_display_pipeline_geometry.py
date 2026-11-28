@@ -93,7 +93,7 @@ int main() {
         compiler = shutil.which('g++')
         if compiler is None:
             self.skipTest('g++ is required to exercise shader functions')
-        shader = (ROOT / 'shaders' / 'sys-component-yc-common.slang').read_text(encoding='utf-8')
+        shader = (ROOT / 'shaders' / 'sys-component-yc-common.inc').read_text(encoding='utf-8')
         dsp = (ROOT / 'shaders' / 'dsp.inc').read_text(encoding='utf-8')
         functions = '\n'.join((
             shader_function(dsp, 'float carrier_phase('),
@@ -239,7 +239,7 @@ int main() {
         compiler = shutil.which('g++')
         if compiler is None:
             self.skipTest('g++ is required to exercise shader functions')
-        shader = (ROOT / 'shaders' / 'sys-component-yc-common.slang').read_text(encoding='utf-8')
+        shader = (ROOT / 'shaders' / 'sys-component-yc-common.inc').read_text(encoding='utf-8')
         profiles = timing_profile_source()
         fragment = shader.split('#pragma stage fragment', 1)[1]
         harness = r'''

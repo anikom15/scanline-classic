@@ -6,4 +6,4 @@
 
 #define SEND_PIXEL_DOMAIN
 // lint: allow-unused-include
-#include "noise-txrx-common.slang"
+#include "noise-txrx-common.inc"

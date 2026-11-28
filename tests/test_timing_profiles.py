@@ -912,7 +912,7 @@ class TimingProfilePresetTests(unittest.TestCase):
                 vertex, fragment = source.split('#pragma stage vertex', 1)[1].split('#pragma stage fragment', 1)
                 self.assertIn('signal_pal(', vertex)
                 self.assertNotIn('signal_pal(', fragment)
-        common = (ROOT / 'shaders' / 'sys-component-yc-common.slang').read_text(encoding='utf-8')
+        common = (ROOT / 'shaders' / 'sys-component-yc-common.inc').read_text(encoding='utf-8')
         self.assertIn('signal_pal(TIMING_PROFILE_MODE, config.OriginalFPS, ', common)
         vertex, fragment = common.split('#pragma stage vertex', 1)[1].split('#pragma stage fragment', 1)
         self.assertIn('signal_pal(', vertex)

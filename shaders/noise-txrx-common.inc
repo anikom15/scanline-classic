@@ -1,4 +1,4 @@
-// Filename: noise-txrx-common.slang
+// Filename: noise-txrx-common.inc
 //
 // Copyright (C) 2026 W. M. Martinez
 //

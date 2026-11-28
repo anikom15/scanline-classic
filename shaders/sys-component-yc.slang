@@ -10,4 +10,4 @@
 #endif
 
 #define SYS_COMPONENT_YC_MODE
-#include "sys-component-yc-common.slang"
+#include "sys-component-yc-common.inc"

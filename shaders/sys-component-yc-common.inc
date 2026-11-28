@@ -1,4 +1,4 @@
-// Filename: sys-component-yc-common.slang
+// Filename: sys-component-yc-common.inc
 //
 // Copyright (C) 2026 W. M. Martinez
 //
