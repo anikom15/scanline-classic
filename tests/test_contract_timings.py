@@ -13,6 +13,7 @@ from test_dyadic_pyramid import shader_function
 
 ROOT = Path(__file__).resolve().parent.parent
 TIMING_PARAMETERS = (
+    'TIMING_PROFILE',
     'SC_FREQ_MODE', 'SC_FREQ_WHOLE', 'SC_FREQ_FRAC6', 'SC_FREQ_FRAC11',
     'PIXEL_CLOCK_MODE', 'PIXEL_CLOCK_WHOLE', 'PIXEL_CLOCK_FRAC6', 'PIXEL_CLOCK_FRAC11',
     'H_FREQ_MODE', 'H_FREQ', 'V_FREQ_MODE', 'V_FREQ',
@@ -20,7 +21,7 @@ TIMING_PARAMETERS = (
 )
 
 # https://www.scanlineclassic.com/theory/timings.html, SFC/SNES.
-# Field lengths are ordered by the reference's first field: NTSC even, PAL odd.
+# Field lengths are ordered by the reference's first field: NTSC/PAL-M even, PAL odd.
 REFERENCES = {
     'ntsc': {
         'preset': 'sfc-rgb.json',
@@ -38,12 +39,21 @@ REFERENCES = {
         'field_clocks': {False: (425_568, 425_568), True: (425_572, 426_932)},
         'lines': {False: (312, 312), True: (312, 313)},
     },
+    'palm': {
+        'preset': 'sfc-rgb.json',
+        'subcarrier_hz': Fraction(3_575_611),
+        # The reference's 21.45367 MHz clock is rounded; use its stated 6x ratio.
+        'clock_hz': 21_453_666,
+        'carrier_per_clock': Fraction(1, 6),
+        'field_clocks': {False: (357_368, 357_364), True: (358_732, 357_368)},
+        'lines': {False: (262, 262), True: (263, 262)},
+    },
 }
 NORMAL_LINE_CLOCKS = 1364
 FIELD_COUNTS = (0, 1, 2, 3, 7, 100, 10_000, 16_777_216, 16_777_217, 4_294_967_295)
-PHASE_OFFSETS = (0, 90)
-MODES = ((256, 224), (256, 239), (512, 224), (512, 239),
-         (256, 448), (256, 478), (512, 448), (512, 478))
+PHASE_OFFSETS = (0, 90, 359)
+OUTPUT_MODES = ((256, 224), (256, 239), (512, 224), (512, 239),
+                (256, 448), (256, 478), (512, 448), (512, 478))
 
 
 def load_sfc_timing_parameters(preset_name):
@@ -73,7 +83,7 @@ def load_sfc_timing_parameters(preset_name):
     return parameters
 
 
-def cpp_shader_source():
+def cpp_shader_source(profile_source=None):
     common = (ROOT / 'shaders' / 'common.inc').read_text(encoding='utf-8')
     modulation = (ROOT / 'shaders' / 'modulation.inc').read_text(encoding='utf-8')
     contract = (ROOT / 'shaders' / 'contract.inc').read_text(encoding='utf-8')
@@ -100,7 +110,7 @@ def cpp_shader_source():
         for signature in (
             'bool timing_valid_parts(', 'double timing_decimal_ticks(', 'double timing_add_mod(',
             'double timing_remainder(', 'double timing_multiply_mod(',
-            'double timing_fractional_clock_phase(',
+            'double timing_rational_clock_phase(', 'double timing_fractional_clock_phase(',
             'float contract_subcarrier_freq_hz(', 'float contract_pixel_clock(',
             'float contract_fs_original(', 'float contract_h_frequency(',
             'float contract_clocks_per_line(', 'float contract_frame_width(',
@@ -110,7 +120,9 @@ def cpp_shader_source():
             'float contract_initial_subcarrier_phase_frac(',
         )
     )
-    source = '\n'.join(declarations + functions)
+    profiles = profile_source if profile_source is not None else (
+        ROOT / 'shaders' / 'timing-profiles.inc').read_text(encoding='utf-8')
+    source = '\n'.join(declarations + [profiles] + functions)
     source = re.sub(r'\bout (float|int|bool)\s+(\w+)', r'\1& \2', source)
     # GLSL decimal literals are float unless explicitly suffixed with lf.
     return re.sub(
@@ -130,9 +142,29 @@ using std::max;
 using std::round;
 using std::ceil;
 using std::floor;
+using std::isinf;
 using uint = unsigned int;
-struct vec2 { float x, y; };
-struct vec3 { float x, y, z; };
+struct vec2 {
+    float x, y;
+    explicit vec2(float value) : x(value), y(value) {}
+    vec2(float x, float y) : x(x), y(y) {}
+};
+struct vec3 {
+    float x, y, z;
+    vec3() = default;
+    vec3(float x, float y, float z) : x(x), y(y), z(z) {}
+    explicit vec3(float value) : x(value), y(value), z(value) {}
+};
+struct dvec2 {
+    double x, y;
+    explicit dvec2(double value) : x(value), y(value) {}
+    dvec2(double x, double y) : x(x), y(y) {}
+};
+struct dvec4 {
+    double x, y, z, w;
+    explicit dvec4(double value) : x(value), y(value), z(value), w(value) {}
+    dvec4(double x, double y, double z, double w) : x(x), y(y), z(z), w(w) {}
+};
 float uintBitsToFloat(uint) { return std::numeric_limits<float>::quiet_NaN(); }
 float fract(float x) { return x - std::floor(x); }
 double fract(double x) { return x - std::floor(x); }
@@ -140,14 +172,24 @@ double fract(double x) { return x - std::floor(x); }
 
 CPP_MAIN = r'''
 int main() {
-    float width, height, fps, sc_mode, pc_mode, h_mode, h, v_mode, v, shorten, field_odd, phase;
+    float width, height, fps, profile, sc_mode, pc_mode, h_mode, h, v_mode, v, shorten, field_odd, phase;
+    uint geometry_field;
     vec3 sc_parts, pc_parts;
-    if (!(std::cin >> width >> height >> fps >> sc_mode >> sc_parts.x >> sc_parts.y >> sc_parts.z
+    if (!(std::cin >> width >> height >> fps >> profile >> sc_mode >> sc_parts.x >> sc_parts.y >> sc_parts.z
                    >> pc_mode >> pc_parts.x >> pc_parts.y >> pc_parts.z
-                   >> h_mode >> h >> v_mode >> v >> shorten >> field_odd >> phase)) return 1;
-    float sc = sc_parts.x + sc_parts.y * 1.0e-6f + sc_parts.z * 1.0e-11f;
-    float pc = pc_parts.x + pc_parts.y * 1.0e-6f + pc_parts.z * 1.0e-11f;
+                   >> h_mode >> h >> v_mode >> v >> shorten >> field_odd >> phase >> geometry_field)) return 1;
     vec2 size{width, height};
+    int mode = timing_profile_select(profile, size, fps);
+    sc_mode = timing_profile_sc_mode(mode, sc_mode);
+    pc_mode = timing_profile_pixel_mode(mode, pc_mode);
+    h_mode = timing_profile_h_mode(mode, h_mode);
+    h = timing_profile_h_freq(mode, h);
+    v_mode = timing_profile_v_mode(mode, height, v_mode);
+    v = timing_profile_v_freq(mode, height, geometry_field, field_odd, v);
+    shorten = timing_profile_field_adjustment(mode, shorten);
+    phase += timing_profile_initial_phase(mode, 0.0);
+    float sc = sc_parts.x + sc_parts.y * 1.0e-6f + sc_parts.z * 1.0e-11f;
+    float pc = timing_profile_pixel_value(mode, pc_parts.x + pc_parts.y * 1.0e-6f + pc_parts.z * 1.0e-11f);
     std::cout << std::setprecision(17)
         << contract_subcarrier_freq_hz(fps, sc_mode, sc) << ' '
         << contract_pixel_clock(pc_mode, pc, sc_mode, sc, fps) << ' '
@@ -156,16 +198,19 @@ int main() {
         << contract_clocks_per_line(fps, sc_mode, sc, pc_mode, pc, h_mode, h) << ' '
         << contract_frame_width(fps, sc_mode, sc, pc_mode, pc, h_mode, h) << ' '
         << contract_frame_height(size, fps, v_mode, v, sc_mode, sc, pc_mode, pc, h_mode, h) << ' '
-        << contract_full_frame_height(size, fps, v_mode, v, sc_mode, sc, pc_mode, pc, h_mode, h) << ' '
+        << timing_profile_full_frame_height(mode, height,
+            contract_full_frame_height(size, fps, v_mode, v, sc_mode, sc, pc_mode, pc, h_mode, h)) << ' '
         << contract_is_interlaced(size, fps, v_mode, v, sc_mode, sc, pc_mode, pc, h_mode, h);
     uint field;
     while (std::cin >> field) {
         std::cout << ' ' << contract_initial_subcarrier_phase_frac(
             size, fps, field, pc_mode, pc, sc_mode, sc, h_mode, h, v_mode, v, shorten, field_odd,
-            pc_parts, sc_parts, phase)
+            pc_parts, sc_parts, timing_profile_pixel_ratio(mode), phase, timing_profile_field_clock_numerators(mode),
+            timing_profile_field_clock_denominators(mode), timing_profile_first_field_odd(mode, -1.0))
             << ' ' << contract_initial_field_phase_frac(
             size, fps, field, pc_mode, pc, sc_mode, sc, h_mode, h, v_mode, v, phase)
-            << ' ' << contract_field_parity(field, field_odd, fps, sc_mode, sc);
+            << ' ' << contract_field_parity(field, field_odd, fps, sc_mode, sc,
+                                             timing_profile_first_field_odd(mode, -1.0));
     }
     std::cout << '\n';
 }
@@ -176,7 +221,7 @@ def reference_phase(region, interlaced, field_count, phase_zero=0, reverse=False
     reference = REFERENCES[region]
     first, second = reference['field_clocks'][interlaced]
     if not shorten:
-        if region == 'ntsc' and not interlaced:
+        if region in ('ntsc', 'palm') and not interlaced:
             second += 4
         if region == 'pal' and interlaced:
             first -= 4
@@ -200,33 +245,54 @@ class SfcContractTimingTests(unittest.TestCase):
             region: load_sfc_timing_parameters(reference['preset'])
             for region, reference in REFERENCES.items()
         }
+        cls.legacy_parameters = {}
+        for region in REFERENCES:
+            parameters = dict(cls.parameters[region])
+            parameters['TIMING_PROFILE'] = 0
+            for name in ('legacy', region):
+                path = ROOT / 'presetdata' / 'params' / 'sys' / 'sfc' / f'{name}.json'
+                parameters.update({
+                    key: value for key, value in json.loads(path.read_text(encoding='utf-8'))['parameters'].items()
+                    if key in TIMING_PARAMETERS
+                })
+            cls.legacy_parameters[region] = parameters
         temporary = tempfile.TemporaryDirectory()
         cls.addClassCleanup(temporary.cleanup)
-        source = Path(temporary.name) / 'contract.cpp'
-        cls.executable = Path(temporary.name) / 'contract-test'
-        source.write_text(CPP_HEADER + cpp_shader_source() + CPP_MAIN, encoding='utf-8')
-        subprocess.run([compiler, '-std=c++17', '-O2', str(source), '-o', str(cls.executable)], check=True)
+        cls.executables = {}
+        for palm in (False, True):
+            source = Path(temporary.name) / f'contract-{palm}.cpp'
+            executable = Path(temporary.name) / f'contract-{palm}'
+            define = '#define OPTION_REPLACE_NTSC_PALM\n' if palm else ''
+            source.write_text(CPP_HEADER + define + cpp_shader_source() + CPP_MAIN, encoding='utf-8')
+            subprocess.run([compiler, '-std=c++17', '-O2', str(source), '-o', str(executable)], check=True)
+            cls.executables[palm] = executable
+        cls.executable = cls.executables[False]
 
         cls.results = {}
         for region in REFERENCES:
-            for mode in MODES:
+            for mode in OUTPUT_MODES:
                 for offset in PHASE_OFFSETS:
                     for reverse in (False, True):
                         cls.results[(region, mode, offset, reverse)] = cls.run_case(region, mode, offset, reverse)
 
     @classmethod
-    def run_case(cls, region, mode, offset=0, reverse=False, parameters=None):
+    def run_case(cls, region, mode, offset=0, reverse=False, parameters=None, fps=None, palm_option=None,
+                 executable=None, geometry_field=0):
         reference = REFERENCES[region]
         interlaced = mode[1] > 300
-        fps = 2 * reference['clock_hz'] / sum(reference['field_clocks'][interlaced])
+        if fps is None:
+            fps = 2 * reference['clock_hz'] / sum(reference['field_clocks'][interlaced])
+        if palm_option is None:
+            palm_option = region == 'palm'
         settings = dict(cls.parameters[region] if parameters is None else parameters)
         settings['PHASE_ZERO'] = (settings['PHASE_ZERO'] + offset) % 360
         settings['FIELD_ODD'] = float(reverse)
         inputs = [*mode, fps]
         inputs.extend(settings[name] for name in TIMING_PARAMETERS)
+        inputs.append(geometry_field)
         inputs.extend(FIELD_COUNTS)
         output = subprocess.run(
-            [str(cls.executable)], input=' '.join(map(str, inputs)), text=True,
+            [str(executable or cls.executables[palm_option])], input=' '.join(map(str, inputs)), text=True,
             capture_output=True, check=True,
         ).stdout
         values = [float(value) for value in output.split()]
@@ -252,6 +318,8 @@ class SfcContractTimingTests(unittest.TestCase):
             ('ntsc', True): (0, Fraction(2, 3), 0, Fraction(2, 3)),
             ('pal', False): (0, 0, 0, 0),
             ('pal', True): (0, Fraction(5, 6), 0, Fraction(5, 6)),
+            ('palm', False): (0, Fraction(1, 3), 0, Fraction(1, 3)),
+            ('palm', True): (0, Fraction(2, 3), 0, Fraction(2, 3)),
         }
         for (region, interlaced), phases in examples.items():
             for field, expected in enumerate(phases):
@@ -260,6 +328,7 @@ class SfcContractTimingTests(unittest.TestCase):
         for region, interlaced, expected in (
             ('ntsc', False, Fraction(2, 3)), ('ntsc', True, Fraction(1, 3)),
             ('pal', False, 0), ('pal', True, Fraction(1, 6)),
+            ('palm', False, Fraction(2, 3)), ('palm', True, Fraction(1, 3)),
         ):
             with self.subTest(region=region, interlaced=interlaced, reverse=True):
                 self.assertAlmostEqual(reference_phase(region, interlaced, 1, reverse=True), float(expected))
@@ -279,6 +348,19 @@ class SfcContractTimingTests(unittest.TestCase):
                     expected = (field % 2 + (region == 'pal') + reverse) % 2
                     self.assertEqual(values[11 + 3 * index], expected)
 
+    def test_profile_geometry_tracks_current_field(self):
+        for region in REFERENCES:
+            for interlaced, height in ((False, 224), (True, 448)):
+                lines = REFERENCES[region]['lines'][interlaced]
+                for reverse in (False, True):
+                    for field in (0, 1, 2, 4_294_967_295):
+                        with self.subTest(region=region, interlaced=interlaced, reverse=reverse, field=field):
+                            values = self.run_case(region, (256, height), reverse=reverse, geometry_field=field)
+                            expected = lines[(field % 2 + reverse) % 2]
+                            self.assertEqual(values[6], expected)
+                            self.assertEqual(values[7], sum(lines) if interlaced else expected)
+                            self.assertEqual(values[5] * values[6], 1364 * expected)
+
     def test_interlace_detection_uses_field_capacity(self):
         for region in REFERENCES:
             for height, expected in ((256, 0), (320, 1)):
@@ -286,10 +368,76 @@ class SfcContractTimingTests(unittest.TestCase):
                     values = self.run_case(region, (256, height))
                     self.assertEqual(values[8], expected)
 
+    def test_rounded_frontend_rates_preserve_profile_timings(self):
+        cases = (
+            ('ntsc', (59.94, 60.0, 60.10)),
+            ('pal', (49.80, 50.0, 50.01)),
+            ('palm', (59.94, 60.0, 60.10)),
+        )
+        for region, rates in cases:
+            for mode in ((256, 224), (512, 478)):
+                interlaced = mode[1] > 300
+                lines = REFERENCES[region]['lines'][interlaced]
+                for fps in rates:
+                    for reverse in (False, True):
+                        values = self.run_case(region, mode, reverse=reverse, fps=fps)
+                        with self.subTest(region=region, mode=mode, fps=fps, reverse=reverse):
+                            self.assertAlmostEqual(values[1], REFERENCES[region]['clock_hz'], delta=2.0)
+                            self.assertEqual(values[6], lines[int(reverse)])
+                            self.assertEqual(values[8], float(interlaced))
+                            for index, field in enumerate(FIELD_COUNTS):
+                                expected = reference_phase(region, interlaced, field, reverse=reverse)
+                                self.assertLessEqual(phase_distance(values[9 + 3 * index], expected), 1e-5)
+
+    def test_profile_selection_boundary_and_palm_override(self):
+        for fps, palm_option, region in (
+            (55.0, False, 'pal'),
+            (55.0, True, 'pal'),
+            (55.01, False, 'ntsc'),
+            (55.01, True, 'palm'),
+        ):
+            with self.subTest(fps=fps, palm_option=palm_option):
+                values = self.run_case(region, (256, 224), fps=fps, palm_option=palm_option)
+                self.assertAlmostEqual(values[0], float(REFERENCES[region]['subcarrier_hz']), delta=0.5)
+                self.assertAlmostEqual(values[1], REFERENCES[region]['clock_hz'], delta=2.0)
+                self.assertEqual(values[6], REFERENCES[region]['lines'][False][0])
+
+    def test_slightly_cropped_source_sizes_keep_field_timing(self):
+        for region, mode, fps in (
+            ('ntsc', (254, 220), 60.0),
+            ('ntsc', (508, 444), 60.0),
+            ('pal', (254, 220), 50.0),
+            ('pal', (508, 468), 50.0),
+            ('palm', (254, 220), 60.0),
+            ('palm', (508, 444), 60.0),
+        ):
+            with self.subTest(region=region, mode=mode):
+                values = self.run_case(region, mode, fps=fps)
+                interlaced = mode[1] > 300
+                self.assertEqual(values[8], float(interlaced))
+                self.assertEqual(values[6], REFERENCES[region]['lines'][interlaced][0])
+                for index, field in enumerate(FIELD_COUNTS):
+                    expected = reference_phase(region, interlaced, field)
+                    self.assertLessEqual(phase_distance(values[9 + 3 * index], expected), 1e-5)
+
+    def test_mode_switch_uses_current_mode_virtual_history(self):
+        for region, mode, fps, palm_option in (
+            ('ntsc', (256, 224), 60.0, False),
+            ('pal', (256, 478), 50.0, False),
+            ('palm', (256, 224), 60.0, True),
+            ('ntsc', (256, 478), 60.0, False),
+            ('ntsc', (256, 224), 60.0, False),
+        ):
+            values = self.run_case(region, mode, fps=fps, palm_option=palm_option)
+            for index, field in enumerate(FIELD_COUNTS):
+                with self.subTest(region=region, mode=mode, field=field):
+                    expected = reference_phase(region, mode[1] > 300, field)
+                    self.assertLessEqual(phase_distance(values[9 + 3 * index], expected), 1e-5)
+
     def test_field_adjustment_can_be_disabled(self):
-        for region, mode in (('ntsc', (256, 224)), ('pal', (256, 478))):
+        for region, mode in (('ntsc', (256, 224)), ('pal', (256, 478)), ('palm', (256, 224))):
             for reverse in (False, True):
-                parameters = dict(self.parameters[region])
+                parameters = dict(self.legacy_parameters[region])
                 parameters['SHORTEN_ODD_FIELD_TIME'] = 0
                 values = self.run_case(region, mode, reverse=reverse, parameters=parameters)
                 for index, field in enumerate(FIELD_COUNTS):
@@ -307,18 +455,8 @@ class SfcContractTimingTests(unittest.TestCase):
                         expected = reference_phase('ntsc', False, field, reverse=reverse)
                         self.assertLessEqual(phase_distance(values[9 + 3 * index], expected), 1e-5)
 
-    def test_phase_wraps_at_nonzero_offset(self):
-        for region in REFERENCES:
-            for mode in ((256, 224), (256, 478)):
-                for reverse in (False, True):
-                    values = self.run_case(region, mode, 359, reverse)
-                    for index, field in enumerate(FIELD_COUNTS[:4]):
-                        with self.subTest(region=region, mode=mode, reverse=reverse, field=field):
-                            expected = reference_phase(region, mode[1] > 300, field, 359, reverse)
-                            self.assertLessEqual(phase_distance(values[9 + 3 * index], expected), 1e-5)
-
     def test_fixed_pixel_clock_uses_physical_field_lengths(self):
-        parameters = dict(self.parameters['pal'])
+        parameters = dict(self.legacy_parameters['pal'])
         parameters['PIXEL_CLOCK_MODE'] = 0
         parameters['PIXEL_CLOCK_WHOLE'] = 21
         parameters['PIXEL_CLOCK_FRAC6'] = 281370
@@ -342,7 +480,7 @@ class SfcContractTimingTests(unittest.TestCase):
             ('ntsc', ('3do', 'base'), ('3do', 'ntsc'), Fraction(357954500, 2454545454), 1560, 262),
         )
         for standard, base, preset, ratio, width, lines in cases:
-            parameters = dict(self.parameters[standard])
+            parameters = dict(self.legacy_parameters[standard])
             for parts in (base, preset):
                 path = ROOT.joinpath('presetdata', 'params', 'sys', *parts).with_suffix('.json')
                 parameters.update(json.loads(path.read_text(encoding='utf-8'))['parameters'])
@@ -367,7 +505,7 @@ class SfcContractTimingTests(unittest.TestCase):
                             self.assertLessEqual(phase_distance(values[9 + 3 * index], expected), 1e-5)
 
     def test_fractional_clock_field_length(self):
-        parameters = dict(self.parameters['pal'])
+        parameters = dict(self.legacy_parameters['pal'])
         parameters.update(V_FREQ_MODE=3, V_FREQ=312.125, SHORTEN_ODD_FIELD_TIME=0)
         values = self.run_case('pal', (256, 224), parameters=parameters)
         for index, field in enumerate(FIELD_COUNTS):
@@ -404,7 +542,7 @@ int main() {
             dict(PIXEL_CLOCK_FRAC6=1.5),
             dict(SC_FREQ_MODE=4, SC_FREQ_WHOLE=0, SC_FREQ_FRAC6=0, SC_FREQ_FRAC11=0),
         ):
-            parameters = dict(self.parameters['pal'])
+            parameters = dict(self.legacy_parameters['pal'])
             parameters.update(overrides)
             with self.subTest(overrides=overrides):
                 values = self.run_case('pal', (256, 224), parameters=parameters)
@@ -412,7 +550,7 @@ int main() {
 
     def test_disabled_subcarrier_preserves_initial_phase(self):
         for region in REFERENCES:
-            parameters = dict(self.parameters[region])
+            parameters = dict(self.legacy_parameters[region])
             parameters['SC_FREQ_MODE'] = 5
             for reverse in (False, True):
                 values = self.run_case(region, (256, 478), 90, reverse, parameters)
@@ -439,14 +577,14 @@ def make_geometry_test(region, mode, index):
     def test_geometry(self):
         interlaced = mode[1] > 300
         lines = REFERENCES[region]['lines'][interlaced]
-        expected = (sum(lines) / 2, sum(lines) if interlaced else lines[0], float(interlaced))
+        expected = (lines[0], sum(lines) if interlaced else lines[0], float(interlaced))
         actual = self.results[(region, mode, 0, False)][6 + index]
         self.assertEqual(actual, expected[index], f'{region} {mode}: geometry property {index}')
     return test_geometry
 
 
 for region in REFERENCES:
-    for mode in MODES:
+    for mode in OUTPUT_MODES:
         for index, name in enumerate(('field_height', 'full_height', 'interlaced')):
             test = make_geometry_test(region, mode, index)
             setattr(SfcContractTimingTests, f'test_{name}_{region}_{mode[0]}x{mode[1]}', test)

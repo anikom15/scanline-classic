@@ -12,6 +12,7 @@
         "sys/famicom/base.json",
         "sys/famicom/svideo.json",
         "sys/sfc/base.json",
+        "sys/sfc/legacy.json",
         "sys/sfc/ntsc.json",
         "misc/svideo.json",
         "disp/ntscj.json",

@@ -39,6 +39,9 @@
 
 #pragma include_optional "../config/options.cfg"
 
+#include "timing-profiles.inc"
+#define TIMING_PROFILE_MODE timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS)
+
 #ifdef OPTION_DEBUG
 #pragma parameter DEBUG_DAC_NOISE_HEADER " —— Debug DAC Noise —— " 0.0 0.0 0.0 0.0
 #pragma parameter DAC_NOISE_BYPASS "Bypass DAC noise" 0.0 0.0 1.0 1.0
@@ -70,14 +73,14 @@ layout(push_constant) uniform Push
     float SC_FREQ_FRAC6;
 } config;
 
-#define V_FREQ_MODE config.V_FREQ_MODE
-#define V_FREQ config.V_FREQ
-#define SC_FREQ_MODE config.SC_FREQ_MODE
+#define V_FREQ_MODE timing_profile_v_mode(TIMING_PROFILE_MODE, config.OriginalSize.y, config.V_FREQ_MODE)
+#define V_FREQ timing_profile_v_freq(TIMING_PROFILE_MODE, config.OriginalSize.y, config.FrameCount, global.FIELD_ODD, config.V_FREQ)
+#define SC_FREQ_MODE timing_profile_sc_mode(TIMING_PROFILE_MODE, config.SC_FREQ_MODE)
 #define SC_FREQ timing_decimal_value(vec3(config.SC_FREQ_WHOLE, config.SC_FREQ_FRAC6, config.SC_FREQ_FRAC11))
-#define PIXEL_CLOCK_MODE config.PIXEL_CLOCK_MODE
-#define PIXEL_CLOCK timing_decimal_value(vec3(config.PIXEL_CLOCK_WHOLE, config.PIXEL_CLOCK_FRAC6, config.PIXEL_CLOCK_FRAC11))
-#define H_FREQ_MODE config.H_FREQ_MODE
-#define H_FREQ config.H_FREQ
+#define PIXEL_CLOCK_MODE timing_profile_pixel_mode(TIMING_PROFILE_MODE, config.PIXEL_CLOCK_MODE)
+#define PIXEL_CLOCK timing_profile_pixel_value(TIMING_PROFILE_MODE, timing_decimal_value(vec3(config.PIXEL_CLOCK_WHOLE, config.PIXEL_CLOCK_FRAC6, config.PIXEL_CLOCK_FRAC11)))
+#define H_FREQ_MODE timing_profile_h_mode(TIMING_PROFILE_MODE, config.H_FREQ_MODE)
+#define H_FREQ timing_profile_h_freq(TIMING_PROFILE_MODE, config.H_FREQ)
 #define H_BLANK_FUZZ config.H_BLANK_FUZZ
 #define CURRENT_SUBFRAME config.CurrentSubFrame
 #define TOTAL_SUBFRAMES config.TotalSubFrames
@@ -87,6 +90,8 @@ layout(push_constant) uniform Push
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
+    float FIELD_ODD;
+    float TIMING_PROFILE;
     mat4 MVP;
 
 #ifdef OPTION_DEBUG
@@ -135,7 +140,9 @@ NoiseDACState compute_noise_state()
         PIXEL_CLOCK,
         H_FREQ_MODE,
         H_FREQ);
-    state.data_length = max(ceil(contract_data_length(state.frame_width, state.frame_height)), 1.0);
+    state.data_length = max(timing_profile_storage_length(TIMING_PROFILE_MODE, config.OriginalSize.y,
+        config.FrameCount, global.FIELD_ODD, state.frame_width,
+        ceil(contract_data_length(state.frame_width, state.frame_height))), 1.0);
     state.packed_width = contract_pixel_packed_width(state.data_length);
     state.texture_fits = contract_pixel_texture_fits(config.OutputSize.xy, state.data_length, state.packed_width) &&
         contract_pixel_texture_fits(config.SourceSize.xy, state.data_length, state.packed_width) ? 1.0 : 0.0;
@@ -203,7 +210,9 @@ void main()
         return;
     }
 
-    int raster_y_i = int(floor(sample_index / vNoiseState.frame_width));
+    vec2 raster = timing_profile_raster_position(TIMING_PROFILE_MODE, config.OriginalSize.y,
+        config.FrameCount, global.FIELD_ODD, sample_index, vNoiseState.frame_width);
+    int raster_y_i = int(raster.y);
 
 #ifdef OPTION_DEBUG
     if (DAC_NOISE_BYPASS > 0.5) {
@@ -229,7 +238,7 @@ void main()
     vec4 jittered_sample = sample_signal_linear(jittered_index, vNoiseState);
 
     vec4 awgn_noise = gaussian_noise4(
-        uvec2(uint(sample_index - float(raster_y_i) * vNoiseState.frame_width), uint(raster_y_i)),
+        uvec2(uint(raster.x), uint(raster_y_i)),
         frame,
         0xD3ADB33Fu);
     float awgn_sigma = db_to_linear(awgn_db);

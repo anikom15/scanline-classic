@@ -37,6 +37,9 @@
 
 #pragma include_optional "../config/options.cfg"
 
+#include "timing-profiles.inc"
+#define TIMING_PROFILE_MODE timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, global.OriginalFPS)
+
 #ifdef OPTION_DEBUG
 #pragma parameter DEBUG_BEAM_HEADER " —— Debug Beam —— " 0.0 0.0 0.0 0.0
 #pragma parameter GEOMETRY_BYPASS "Bypass beam geometry" 0.0 0.0 1.0 1.0
@@ -84,11 +87,13 @@ layout(push_constant) uniform Push
 #define DEFLECTION_ANGLE config.DEFLECTION_ANGLE
 #define UNDERSCAN config.UNDERSCAN
 #define ASPECT config.ASPECT
-#define H_FREQ_MODE config.H_FREQ_MODE
+#define H_FREQ_MODE timing_profile_h_mode(TIMING_PROFILE_MODE, config.H_FREQ_MODE)
 #define S_CORRECTION_H config.S_CORRECTION_H
 #define S_CORRECTION_V config.S_CORRECTION_V
 
 layout(std140, set = 0, binding = 0) uniform UBO {
+    float FIELD_ODD;
+    float TIMING_PROFILE;
     mat4 MVP;
     float SC_FREQ_FRAC6;
     float SC_FREQ_FRAC11;
@@ -116,13 +121,13 @@ layout(std140, set = 0, binding = 0) uniform UBO {
 
 } global;
 
-#define V_FREQ_MODE global.V_FREQ_MODE
-#define V_FREQ global.V_FREQ
-#define SC_FREQ_MODE global.SC_FREQ_MODE
+#define V_FREQ_MODE timing_profile_v_mode(TIMING_PROFILE_MODE, config.OriginalSize.y, global.V_FREQ_MODE)
+#define V_FREQ timing_profile_v_freq(TIMING_PROFILE_MODE, config.OriginalSize.y, global.FrameCount, global.FIELD_ODD, global.V_FREQ)
+#define SC_FREQ_MODE timing_profile_sc_mode(TIMING_PROFILE_MODE, global.SC_FREQ_MODE)
 #define SC_FREQ timing_decimal_value(vec3(global.SC_FREQ_WHOLE, global.SC_FREQ_FRAC6, global.SC_FREQ_FRAC11))
-#define PIXEL_CLOCK_MODE global.PIXEL_CLOCK_MODE
-#define PIXEL_CLOCK timing_decimal_value(vec3(global.PIXEL_CLOCK_WHOLE, config.PIXEL_CLOCK_FRAC6, config.PIXEL_CLOCK_FRAC11))
-#define H_FREQ global.H_FREQ
+#define PIXEL_CLOCK_MODE timing_profile_pixel_mode(TIMING_PROFILE_MODE, global.PIXEL_CLOCK_MODE)
+#define PIXEL_CLOCK timing_profile_pixel_value(TIMING_PROFILE_MODE, timing_decimal_value(vec3(global.PIXEL_CLOCK_WHOLE, config.PIXEL_CLOCK_FRAC6, config.PIXEL_CLOCK_FRAC11)))
+#define H_FREQ timing_profile_h_freq(TIMING_PROFILE_MODE, global.H_FREQ)
 #define H_BLANK_FUZZ global.H_BLANK_FUZZ
 
 #define BEAM_BLOOM global.BEAM_BLOOM
@@ -145,6 +150,17 @@ layout(location = 4) flat out float OriginalFullFrameHeight;
 layout(location = 5) flat out float IsInterlaced;
 layout(location = 6) flat out float OutputFrameWidth;
 layout(location = 7) flat out float OutputFrameHeight;
+layout(location = 8) flat out vec2 ActiveCenterOffset;
+
+vec2 active_center_offset(
+    float width, float height, float source_width, float source_height,
+    float clock_factor, float top, float left, bool interlaced)
+{
+    float full_height = height * (interlaced ? 2.0 : 1.0);
+    float top_full = top * (interlaced ? 2.0 : 1.0);
+    return vec2((left + source_width * clock_factor * 0.5) / width - 0.5,
+                (top_full + source_height * 0.5) / full_height - 0.5);
+}
 
 void main()
 {
@@ -204,12 +220,6 @@ void main()
         H_FREQ_MODE,
         H_FREQ);
 
-    float FrameHeight = OriginalFrameHeight;
-    float frame_scale = max(floor(config.SourceSize.y / FrameHeight), 1.0);
-
-    OutputFrameWidth = FrameWidth;
-    OutputFrameHeight = FrameHeight * frame_scale;
-
     OriginalFullFrameHeight = contract_full_frame_height(
         config.OriginalSize.xy,
         global.OriginalFPS,
@@ -221,6 +231,7 @@ void main()
         PIXEL_CLOCK,
         H_FREQ_MODE,
         H_FREQ);
+    OriginalFullFrameHeight = timing_profile_full_frame_height(TIMING_PROFILE_MODE, config.OriginalSize.y, OriginalFullFrameHeight);
 
     IsInterlaced = contract_is_interlaced(
         config.OriginalSize.xy,
@@ -233,6 +244,26 @@ void main()
         PIXEL_CLOCK,
         H_FREQ_MODE,
         H_FREQ);
+    if (IsInterlaced > 0.5)
+        OriginalFrameHeight = OriginalFullFrameHeight * 0.5;
+
+    float presentation_height = (IsInterlaced > 0.5) ? OriginalFullFrameHeight : OriginalFrameHeight;
+    float frame_scale = max(floor(config.SourceSize.y / max(presentation_height, 1.0)), 1.0);
+    OutputFrameWidth = FrameWidth;
+    OutputFrameHeight = presentation_height * frame_scale;
+
+    ActiveCenterOffset = vec2(0.0);
+    if (TIMING_PROFILE_MODE > 0) {
+        float clocks_per_line = contract_clocks_per_line(
+            global.OriginalFPS, SC_FREQ_MODE, SC_FREQ, PIXEL_CLOCK_MODE, PIXEL_CLOCK, H_FREQ_MODE, H_FREQ);
+        float clock_factor = contract_clock_factor(
+            config.OriginalSize.x, global.OriginalFPS, SC_FREQ_MODE, SC_FREQ,
+            PIXEL_CLOCK_MODE, PIXEL_CLOCK, H_FREQ_MODE, H_FREQ, H_BLANK_FUZZ);
+        ActiveCenterOffset = active_center_offset(
+            clocks_per_line, OriginalFrameHeight, config.OriginalSize.x, config.OriginalSize.y,
+            clock_factor, timing_profile_top_blank_lines(TIMING_PROFILE_MODE, 0.0),
+            timing_profile_left_blank_cycles(TIMING_PROFILE_MODE, 0.0), IsInterlaced > 0.5);
+    }
 }
 
 #pragma stage fragment
@@ -244,6 +275,7 @@ layout(location = 4) flat in float OriginalFullFrameHeight;
 layout(location = 5) flat in float IsInterlaced;
 layout(location = 6) flat in float OutputFrameWidth;
 layout(location = 7) flat in float OutputFrameHeight;
+layout(location = 8) flat in vec2 ActiveCenterOffset;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 1) uniform sampler2D Source;
 
@@ -437,7 +469,7 @@ void main()
     vec2 stored_frame_size = min(vec2(OutputFrameWidth, OutputFrameHeight), source_tex_size);
     vec2 frame_uv_scale = stored_frame_size / source_tex_size;
     vec2 data_center = frame_uv_scale * 0.5;
-    vec2 input_uv = (geometry_uv - 0.5) * frame_uv_scale + data_center;
+    vec2 input_uv = (geometry_uv - 0.5 + ActiveCenterOffset) * frame_uv_scale + data_center;
 
     // Bloom
     // Derive integrated field power from the terminal mip level (full-field average).
@@ -459,7 +491,7 @@ void main()
     geometry_uv /= 1.0 + integrated_bloom;
     geometry_uv = geometry_uv * 0.5 + 0.5;
 
-    input_uv = clamp01((geometry_uv - 0.5) * frame_uv_scale + data_center);
+    input_uv = clamp01((geometry_uv - 0.5 + ActiveCenterOffset) * frame_uv_scale + data_center);
 
     // Bicubic resample from input texture using BEAM_FOCUS
     float focus = clamp(BEAM_FOCUS * 0.01, 0.0, 1.0);

@@ -46,6 +46,9 @@
 
 #pragma include_optional "../config/options.cfg"
 
+#include "timing-profiles.inc"
+#define TIMING_PROFILE_MODE timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS)
+
 #ifdef OPTION_DEBUG
 #pragma parameter DEBUG_COMPOSITE_NOISE_HEADER " —— Debug Composite Noise —— " 0.0 0.0 0.0 0.0
 #pragma parameter COMPOSITE_NOISE_BYPASS "Bypass Composite noise" 0.0 0.0 1.0 1.0
@@ -79,14 +82,14 @@ layout(push_constant) uniform Push
     float PIXEL_CLOCK_FRAC11;
 } config;
 
-#define V_FREQ_MODE config.V_FREQ_MODE
-#define V_FREQ config.V_FREQ
-#define SC_FREQ_MODE config.SC_FREQ_MODE
+#define V_FREQ_MODE timing_profile_v_mode(TIMING_PROFILE_MODE, config.OriginalSize.y, config.V_FREQ_MODE)
+#define V_FREQ timing_profile_v_freq(TIMING_PROFILE_MODE, config.OriginalSize.y, config.FrameCount, global.FIELD_ODD, config.V_FREQ)
+#define SC_FREQ_MODE timing_profile_sc_mode(TIMING_PROFILE_MODE, config.SC_FREQ_MODE)
 #define SC_FREQ timing_decimal_value(vec3(config.SC_FREQ_WHOLE, global.SC_FREQ_FRAC6, global.SC_FREQ_FRAC11))
-#define PIXEL_CLOCK_MODE config.PIXEL_CLOCK_MODE
-#define PIXEL_CLOCK timing_decimal_value(vec3(config.PIXEL_CLOCK_WHOLE, global.PIXEL_CLOCK_FRAC6, config.PIXEL_CLOCK_FRAC11))
-#define H_FREQ_MODE config.H_FREQ_MODE
-#define H_FREQ config.H_FREQ
+#define PIXEL_CLOCK_MODE timing_profile_pixel_mode(TIMING_PROFILE_MODE, config.PIXEL_CLOCK_MODE)
+#define PIXEL_CLOCK timing_profile_pixel_value(TIMING_PROFILE_MODE, timing_decimal_value(vec3(config.PIXEL_CLOCK_WHOLE, global.PIXEL_CLOCK_FRAC6, config.PIXEL_CLOCK_FRAC11)))
+#define H_FREQ_MODE timing_profile_h_mode(TIMING_PROFILE_MODE, config.H_FREQ_MODE)
+#define H_FREQ timing_profile_h_freq(TIMING_PROFILE_MODE, config.H_FREQ)
 #define H_BLANK_FUZZ config.H_BLANK_FUZZ
 #define DSP_WORKING_FS config.DSP_WORKING_FS
 #define CURRENT_SUBFRAME config.CurrentSubFrame
@@ -100,6 +103,8 @@ layout(push_constant) uniform Push
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
+    float FIELD_ODD;
+    float TIMING_PROFILE;
     mat4 MVP;
     float SC_FREQ_FRAC6;
     float SC_FREQ_FRAC11;
@@ -112,8 +117,8 @@ layout(std140, set = 0, binding = 0) uniform UBO
 #endif  // OPTION_DEBUG
 } global;
 
-#define PHASE_ZERO global.PHASE_ZERO
-#define SHORTEN_ODD_FIELD_TIME global.SHORTEN_ODD_FIELD_TIME
+#define PHASE_ZERO (global.PHASE_ZERO + timing_profile_initial_phase(TIMING_PROFILE_MODE, 0.0))
+#define SHORTEN_ODD_FIELD_TIME timing_profile_field_adjustment(TIMING_PROFILE_MODE, global.SHORTEN_ODD_FIELD_TIME)
 
 #ifdef OPTION_DEBUG
 #define COMPOSITE_NOISE_BYPASS global.COMPOSITE_NOISE_BYPASS
@@ -161,7 +166,9 @@ NoiseCompositeState compute_noise_state()
         PIXEL_CLOCK,
         H_FREQ_MODE,
         H_FREQ);
-    state.data_length = max(contract_data_length(state.frame_width, state.frame_height), 1.0);
+    state.data_length = max(timing_profile_storage_length(TIMING_PROFILE_MODE, config.OriginalSize.y,
+        config.FrameCount, global.FIELD_ODD, state.frame_width,
+        contract_data_length(state.frame_width, state.frame_height)), 1.0);
     state.fs_current = contract_working_sample_rate(
         config.OriginalFPS,
         SC_FREQ_MODE,
@@ -337,12 +344,14 @@ void main()
     float output_x = float(output_x_i);
     float output_y = float(output_y_i);
 
-    if (output_x >= vNoiseState.frame_width || output_y >= vNoiseState.frame_height) {
+    if (output_x >= vNoiseState.frame_width || output_y * vNoiseState.frame_width + output_x >= vNoiseState.data_length) {
         FragColor = vec4(0.0);
         return;
     }
 
     float sample_index = output_y * vNoiseState.frame_width + output_x;
+    vec2 raster = timing_profile_raster_position(TIMING_PROFILE_MODE, config.OriginalSize.y,
+        config.FrameCount, global.FIELD_ODD, sample_index, vNoiseState.frame_width);
 
 #ifdef OPTION_DEBUG
         if (COMPOSITE_NOISE_BYPASS > 0.5) {
@@ -356,7 +365,7 @@ void main()
         config.FrameCount,
         CURRENT_SUBFRAME,
         TOTAL_SUBFRAMES);
-    float jitter_samples = compute_jitter_samples(sample_index, output_y_i, frame, grade.jitter_ui);
+    float jitter_samples = compute_jitter_samples(sample_index, int(raster.y), frame, grade.jitter_ui);
     float jittered_index = sample_index + jitter_samples;
 
     vec4 jittered_sample = sample_signal_linear(jittered_index, vNoiseState);
@@ -375,7 +384,7 @@ void main()
     );
     float ground_bounce_amount = ground_bounce_share * ground_bounce_shape;
 
-    uvec2 noise_seed = uvec2(uint(output_x_i), uint(output_y_i));
+    uvec2 noise_seed = uvec2(uint(raster.x), uint(raster.y));
     float awgn_noise = gaussian_noise2(noise_seed, frame, 0xD3ADB33Fu).x;
 
     float composite_signal = jittered_sample.r + awgn_sigma * awgn_noise + ground_bounce_amount;

@@ -44,6 +44,9 @@
 
 #pragma include_optional "../config/options.cfg"
 
+#include "timing-profiles.inc"
+#define TIMING_PROFILE_MODE timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS)
+
 #ifdef OPTION_DEBUG
 #pragma parameter DEBUG_DESKEW_HEADER " —— Debug Deskew —— " 0.0 0.0 0.0 0.0
 #pragma parameter DESKEW_BYPASS "Bypass deskew" 0.0 0.0 1.0 1.0
@@ -72,20 +75,23 @@ layout(push_constant) uniform Push
     float SC_FREQ_FRAC6;
 } config;
 
-#define V_FREQ_MODE config.V_FREQ_MODE
-#define V_FREQ config.V_FREQ
-#define SC_FREQ_MODE config.SC_FREQ_MODE
+#define V_FREQ_MODE timing_profile_v_mode(TIMING_PROFILE_MODE, config.OriginalSize.y, config.V_FREQ_MODE)
+#define V_FREQ timing_profile_v_freq(TIMING_PROFILE_MODE, config.OriginalSize.y, global.FrameCount, global.FIELD_ODD, config.V_FREQ)
+#define SC_FREQ_MODE timing_profile_sc_mode(TIMING_PROFILE_MODE, config.SC_FREQ_MODE)
 #define SC_FREQ timing_decimal_value(vec3(config.SC_FREQ_WHOLE, config.SC_FREQ_FRAC6, config.SC_FREQ_FRAC11))
-#define PIXEL_CLOCK_MODE config.PIXEL_CLOCK_MODE
-#define PIXEL_CLOCK timing_decimal_value(vec3(config.PIXEL_CLOCK_WHOLE, config.PIXEL_CLOCK_FRAC6, config.PIXEL_CLOCK_FRAC11))
-#define H_FREQ_MODE config.H_FREQ_MODE
-#define H_FREQ config.H_FREQ
+#define PIXEL_CLOCK_MODE timing_profile_pixel_mode(TIMING_PROFILE_MODE, config.PIXEL_CLOCK_MODE)
+#define PIXEL_CLOCK timing_profile_pixel_value(TIMING_PROFILE_MODE, timing_decimal_value(vec3(config.PIXEL_CLOCK_WHOLE, config.PIXEL_CLOCK_FRAC6, config.PIXEL_CLOCK_FRAC11)))
+#define H_FREQ_MODE timing_profile_h_mode(TIMING_PROFILE_MODE, config.H_FREQ_MODE)
+#define H_FREQ timing_profile_h_freq(TIMING_PROFILE_MODE, config.H_FREQ)
 #define H_BLANK_FUZZ config.H_BLANK_FUZZ
 #define DSP_WORKING_FS config.DSP_WORKING_FS
 #define DSP_OUTPUT_FS config.DSP_OUTPUT_FS
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
+    uint FrameCount;
+    float FIELD_ODD;
+    float TIMING_PROFILE;
     mat4 MVP;
 
 #ifdef OPTION_DEBUG

@@ -38,6 +38,9 @@
 
 #pragma include_optional "../config/options.cfg"
 
+#include "timing-profiles.inc"
+#define TIMING_PROFILE_MODE timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS)
+
 #ifdef OPTION_DEBUG
 #pragma parameter DEBUG_DIGITAL_YCC_FILTER_HEADER " —— Debug Digital YCC Filter —— " 0.0 0.0 0.0 0.0
 #pragma parameter DIGITAL_YC_FILTER_BYPASS "Bypass digital YC filter" 0.0 0.0 1.0 1.0
@@ -82,19 +85,21 @@ layout(push_constant) uniform Push
 #define DIGITAL_Y_FILTER_DECIMATION config.DIGITAL_Y_FILTER_DECIMATION
 #define DIGITAL_Cb_FILTER_DECIMATION config.DIGITAL_Cb_FILTER_DECIMATION
 #define DIGITAL_Cr_FILTER_DECIMATION config.DIGITAL_Cr_FILTER_DECIMATION
-#define SC_FREQ_MODE config.SC_FREQ_MODE
+#define SC_FREQ_MODE timing_profile_sc_mode(TIMING_PROFILE_MODE, config.SC_FREQ_MODE)
 #define SC_FREQ timing_decimal_value(vec3(config.SC_FREQ_WHOLE, global.SC_FREQ_FRAC6, config.SC_FREQ_FRAC11))
-#define PIXEL_CLOCK_MODE config.PIXEL_CLOCK_MODE
-#define PIXEL_CLOCK timing_decimal_value(vec3(config.PIXEL_CLOCK_WHOLE, config.PIXEL_CLOCK_FRAC6, config.PIXEL_CLOCK_FRAC11))
-#define H_FREQ_MODE config.H_FREQ_MODE
-#define H_FREQ config.H_FREQ
-#define V_FREQ_MODE config.V_FREQ_MODE
-#define V_FREQ config.V_FREQ
-#define SHORTEN_ODD_FIELD_TIME config.SHORTEN_ODD_FIELD_TIME
+#define PIXEL_CLOCK_MODE timing_profile_pixel_mode(TIMING_PROFILE_MODE, config.PIXEL_CLOCK_MODE)
+#define PIXEL_CLOCK timing_profile_pixel_value(TIMING_PROFILE_MODE, timing_decimal_value(vec3(config.PIXEL_CLOCK_WHOLE, config.PIXEL_CLOCK_FRAC6, config.PIXEL_CLOCK_FRAC11)))
+#define H_FREQ_MODE timing_profile_h_mode(TIMING_PROFILE_MODE, config.H_FREQ_MODE)
+#define H_FREQ timing_profile_h_freq(TIMING_PROFILE_MODE, config.H_FREQ)
+#define V_FREQ_MODE timing_profile_v_mode(TIMING_PROFILE_MODE, config.OriginalSize.y, config.V_FREQ_MODE)
+#define V_FREQ timing_profile_v_freq(TIMING_PROFILE_MODE, config.OriginalSize.y, config.FrameCount, global.FIELD_ODD, config.V_FREQ)
+#define SHORTEN_ODD_FIELD_TIME timing_profile_field_adjustment(TIMING_PROFILE_MODE, config.SHORTEN_ODD_FIELD_TIME)
 #define H_BLANK_FUZZ config.H_BLANK_FUZZ
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
+    float FIELD_ODD;
+    float TIMING_PROFILE;
     mat4 MVP;
     float SC_FREQ_FRAC6;
 } global;

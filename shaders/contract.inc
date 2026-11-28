@@ -183,22 +183,27 @@ float contract_field(uint frame_count)
     return float(frame_count);
 }
 
-// Field zero follows the video standard; FIELD_ODD reverses that order.
+// Field zero follows the profile or legacy video standard; FIELD_ODD reverses it.
 float contract_field_parity(
     uint frame_count, float field_odd,
-    float original_fps, float sc_freq_mode, float sc_freq_custom_mhz)
+    float original_fps, float sc_freq_mode, float sc_freq_custom_mhz,
+    float profile_first_odd)
 {
     float sc_freq_hz;
     int standard;
     compute_subcarrier_freq(sc_freq_mode, sc_freq_custom_mhz, original_fps, sc_freq_hz, standard);
 
-    bool pal_order = standard == 1 || (standard >= 3 && original_fps <= 55.0);
-    uint first_odd = pal_order ? 1u : 0u;
+    if (!(profile_first_odd == -1.0 || profile_first_odd == 0.0 || profile_first_odd == 1.0))
+        return uintBitsToFloat(0x7fc00000u);
+    bool first_is_odd = profile_first_odd < 0.0
+        ? standard == 1 || (standard >= 3 && original_fps <= 55.0)
+        : profile_first_odd > 0.5;
+    uint first_odd = first_is_odd ? 1u : 0u;
     uint reversed = (field_odd > 0.5) ? 1u : 0u;
     return float((frame_count % 2u + first_odd + reversed) % 2u);
 }
 
-// Returns the visible field height in lines.
+// Returns the current field's storage height in lines.
 float contract_frame_height(
     vec2 original_size,
     float original_fps,
@@ -418,20 +423,11 @@ double timing_multiply_mod(double a, double b, double modulus)
     return result;
 }
 
-// Reduce a fractional clock before applying the field count. The quotient and
-// remainder are accumulated separately so their integer products stay exact.
-double timing_fractional_clock_phase(double fraction, double numerator, double denominator)
+// Compute the phase of a rational fraction of one clock without large products.
+double timing_rational_clock_phase(double fraction, double scale, double numerator, double denominator)
 {
     if (fraction == 0.0lf)
         return 0.0lf;
-
-    double scale = 1.0lf;
-    for (int bit = 0; bit < 53 && fract(fraction) != 0.0lf; ++bit) {
-        fraction *= 2.0lf;
-        scale *= 2.0lf;
-    }
-    if (fract(fraction) != 0.0lf)
-        return double(uintBitsToFloat(0x7fc00000u));
 
     double carrier_remainder = timing_remainder(numerator, denominator);
     double carrier_integer = (numerator - carrier_remainder) / denominator;
@@ -460,6 +456,21 @@ double timing_fractional_clock_phase(double fraction, double numerator, double d
     return (whole + remainder / denominator) / scale;
 }
 
+// Reduce a binary fractional clock before applying the field count.
+double timing_fractional_clock_phase(double fraction, double numerator, double denominator)
+{
+    if (fraction == 0.0lf)
+        return 0.0lf;
+    double scale = 1.0lf;
+    for (int bit = 0; bit < 53 && fract(fraction) != 0.0lf; ++bit) {
+        fraction *= 2.0lf;
+        scale *= 2.0lf;
+    }
+    if (fract(fraction) != 0.0lf)
+        return double(uintBitsToFloat(0x7fc00000u));
+    return timing_rational_clock_phase(fraction, scale, numerator, denominator);
+}
+
 // Returns the starting color-subcarrier phase offset for the current field.
 // Physical field durations are independent of the stored raster geometry.
 // FIELD_ODD reverses the standard's initial field order.
@@ -470,8 +481,9 @@ float contract_initial_subcarrier_phase_frac(
     float h_freq_mode, float h_freq_custom_khz,
     float v_freq_mode, float custom_v_freq,
     float shorten_odd_field_time,
-    float field_odd, vec3 pixel_clock_parts, vec3 sc_freq_parts,
-    float phase_zero)
+    float field_odd, vec3 pixel_clock_parts, vec3 sc_freq_parts, dvec2 profile_pixel_ratio,
+    float phase_zero, dvec4 profile_clock_numerators, dvec4 profile_clock_denominators,
+    float profile_first_odd)
 {
     float sc_freq_hz;
     int standard;
@@ -495,23 +507,67 @@ float contract_initial_subcarrier_phase_frac(
         v_lines_per_frame,
         is_interlaced);
 
-    double even_length = double(frame_width) * double(is_interlaced ? ceil(v_lines_per_field) : v_lines_per_field);
-    double odd_length = double(frame_width) * double(is_interlaced ? floor(v_lines_per_field) : v_lines_per_field);
-    if (shorten_odd_field_time > 0.5 && standard == 0 && !is_interlaced)
-        odd_length -= 4.0lf;
-    if (shorten_odd_field_time > 0.5 && standard == 1 && is_interlaced)
-        odd_length += 4.0lf;
+    bool legacy = profile_clock_numerators.x == -1.0lf;
+    double even_length;
+    double odd_length;
+    double even_remainder = 0.0lf;
+    double odd_remainder = 0.0lf;
+    double even_scale = 1.0lf;
+    double odd_scale = 1.0lf;
+    if (legacy) {
+        even_length = double(frame_width) * double(is_interlaced ? ceil(v_lines_per_field) : v_lines_per_field);
+        odd_length = double(frame_width) * double(is_interlaced ? floor(v_lines_per_field) : v_lines_per_field);
+        if (shorten_odd_field_time > 0.5 && (standard == 0 || standard == 2) && !is_interlaced)
+            odd_length -= 4.0lf;
+        if (shorten_odd_field_time > 0.5 && standard == 1 && is_interlaced)
+            odd_length += 4.0lf;
+    } else {
+        double even_numerator = is_interlaced ? profile_clock_numerators.z : profile_clock_numerators.x;
+        double odd_numerator = is_interlaced ? profile_clock_numerators.w : profile_clock_numerators.y;
+        even_scale = is_interlaced ? profile_clock_denominators.z : profile_clock_denominators.x;
+        odd_scale = is_interlaced ? profile_clock_denominators.w : profile_clock_denominators.y;
+        if (!(even_numerator > 0.0lf && even_numerator < 4503599627370496.0lf
+              && odd_numerator > 0.0lf && odd_numerator < 4503599627370496.0lf
+              && even_scale >= 1.0lf && even_scale <= 1048576.0lf
+              && odd_scale >= 1.0lf && odd_scale <= 1048576.0lf
+              && even_numerator == floor(even_numerator) && odd_numerator == floor(odd_numerator)
+              && even_scale == floor(even_scale) && odd_scale == floor(odd_scale)))
+            return uintBitsToFloat(0x7fc00000u);
+        even_length = floor(even_numerator / even_scale);
+        odd_length = floor(odd_numerator / odd_scale);
+        even_remainder = timing_remainder(even_numerator, even_scale);
+        odd_remainder = timing_remainder(odd_numerator, odd_scale);
+    }
 
-    bool pal_order = standard == 1 || (standard >= 3 && original_fps <= 55.0);
-    bool first_odd = pal_order != (field_odd > 0.5);
-    if (!timing_valid_parts(pixel_clock_parts, 500.0)
-        || !(even_length >= 0.0lf && even_length < 9007199254740992.0lf)
+    if (!(profile_first_odd == -1.0 || profile_first_odd == 0.0 || profile_first_odd == 1.0))
+        return uintBitsToFloat(0x7fc00000u);
+    bool standard_first_odd = standard == 1 || (standard >= 3 && original_fps <= 55.0);
+    bool first_odd = (profile_first_odd < 0.0 ? standard_first_odd : profile_first_odd > 0.5)
+        != (field_odd > 0.5);
+    if (!(even_length >= 0.0lf && even_length < 9007199254740992.0lf)
         || !(odd_length >= 0.0lf && odd_length < 9007199254740992.0lf))
         return uintBitsToFloat(0x7fc00000u);
 
-    double clock_ticks = timing_decimal_ticks(pixel_clock_parts);
-    if (clock_ticks <= 0.0lf)
-        return uintBitsToFloat(0x7fc00000u);
+    double numerator;
+    double denominator;
+    if (legacy) {
+        if (!(profile_pixel_ratio.x == -1.0lf && profile_pixel_ratio.y == 1.0lf)
+            || !timing_valid_parts(pixel_clock_parts, 500.0))
+            return uintBitsToFloat(0x7fc00000u);
+        denominator = timing_decimal_ticks(pixel_clock_parts);
+        if (denominator <= 0.0lf)
+            return uintBitsToFloat(0x7fc00000u);
+    } else {
+        if (!(pixel_clock_mode >= 0.5
+              && profile_pixel_ratio.x > 0.0lf && profile_pixel_ratio.x <= 16777216.0lf
+              && profile_pixel_ratio.y > 0.0lf && profile_pixel_ratio.y <= 16777216.0lf
+              && profile_pixel_ratio.x == floor(profile_pixel_ratio.x)
+              && profile_pixel_ratio.y == floor(profile_pixel_ratio.y)
+              && profile_pixel_ratio.x <= 500.0lf * profile_pixel_ratio.y))
+            return uintBitsToFloat(0x7fc00000u);
+        numerator = profile_pixel_ratio.y;
+        denominator = profile_pixel_ratio.x;
+    }
     if (standard == 4)
         return float(fract(double(phase_zero) / 360.0lf));
 
@@ -527,10 +583,10 @@ float contract_initial_subcarrier_phase_frac(
     else
         return uintBitsToFloat(0x7fc00000u);
 
-    double numerator = pixel_clock_mode >= 0.5 ? 100000000000.0lf : carrier_ticks;
-    double denominator = clock_ticks;
     if (carrier_ticks <= 0.0lf)
         return uintBitsToFloat(0x7fc00000u);
+    if (legacy)
+        numerator = pixel_clock_mode >= 0.5 ? 100000000000.0lf : carrier_ticks;
 
     double even_integer = floor(even_length);
     double odd_integer = floor(odd_length);
@@ -542,8 +598,12 @@ float contract_initial_subcarrier_phase_frac(
     if (frame_count % 2u != 0u)
         result_ticks = timing_add_mod(result_ticks, first_ticks, denominator);
 
-    double even_fraction = timing_fractional_clock_phase(even_length - even_integer, numerator, denominator);
-    double odd_fraction = timing_fractional_clock_phase(odd_length - odd_integer, numerator, denominator);
+    double even_fraction = legacy
+        ? timing_fractional_clock_phase(even_length - even_integer, numerator, denominator)
+        : timing_rational_clock_phase(even_remainder, even_scale, numerator, denominator);
+    double odd_fraction = legacy
+        ? timing_fractional_clock_phase(odd_length - odd_integer, numerator, denominator)
+        : timing_rational_clock_phase(odd_remainder, odd_scale, numerator, denominator);
     double fractional_phase = fract(double(frame_count / 2u) * fract(even_fraction + odd_fraction));
     if (frame_count % 2u != 0u)
         fractional_phase += first_odd ? odd_fraction : even_fraction;

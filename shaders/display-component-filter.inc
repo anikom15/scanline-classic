@@ -29,6 +29,9 @@
 // applied, the signal is decoded to RGB, and the final RGB amplifier plus
 // blue-only toggle are applied.
 
+#include "timing-profiles.inc"
+#define TIMING_PROFILE_MODE timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS)
+
 layout(push_constant) uniform Push
 {
     vec4 OriginalSize;
@@ -58,14 +61,14 @@ layout(push_constant) uniform Push
     float PIXEL_CLOCK_FRAC6;
 } config;
 
-#define V_FREQ_MODE config.V_FREQ_MODE
-#define V_FREQ config.V_FREQ
-#define SC_FREQ_MODE config.SC_FREQ_MODE
+#define V_FREQ_MODE timing_profile_v_mode(TIMING_PROFILE_MODE, config.OriginalSize.y, config.V_FREQ_MODE)
+#define V_FREQ timing_profile_v_freq(TIMING_PROFILE_MODE, config.OriginalSize.y, config.FrameCount, global.FIELD_ODD, config.V_FREQ)
+#define SC_FREQ_MODE timing_profile_sc_mode(TIMING_PROFILE_MODE, config.SC_FREQ_MODE)
 #define SC_FREQ timing_decimal_value(vec3(config.SC_FREQ_WHOLE, global.SC_FREQ_FRAC6, global.SC_FREQ_FRAC11))
-#define PIXEL_CLOCK_MODE config.PIXEL_CLOCK_MODE
-#define PIXEL_CLOCK timing_decimal_value(vec3(config.PIXEL_CLOCK_WHOLE, config.PIXEL_CLOCK_FRAC6, config.PIXEL_CLOCK_FRAC11))
-#define H_FREQ_MODE config.H_FREQ_MODE
-#define H_FREQ config.H_FREQ
+#define PIXEL_CLOCK_MODE timing_profile_pixel_mode(TIMING_PROFILE_MODE, config.PIXEL_CLOCK_MODE)
+#define PIXEL_CLOCK timing_profile_pixel_value(TIMING_PROFILE_MODE, timing_decimal_value(vec3(config.PIXEL_CLOCK_WHOLE, config.PIXEL_CLOCK_FRAC6, config.PIXEL_CLOCK_FRAC11)))
+#define H_FREQ_MODE timing_profile_h_mode(TIMING_PROFILE_MODE, config.H_FREQ_MODE)
+#define H_FREQ timing_profile_h_freq(TIMING_PROFILE_MODE, config.H_FREQ)
 #define H_BLANK_FUZZ config.H_BLANK_FUZZ
 #define DSP_WORKING_FS config.DSP_WORKING_FS
 #define DSP_OUTPUT_FS config.DSP_OUTPUT_FS
@@ -79,6 +82,8 @@ layout(push_constant) uniform Push
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
+    float FIELD_ODD;
+    float TIMING_PROFILE;
     mat4 MVP;
     float SC_FREQ_FRAC6;
     float SC_FREQ_FRAC11;
@@ -223,9 +228,14 @@ void main()
         DSP_WORKING_FS,
         DSP_OUTPUT_FS);
 
-    InputDataLength = max(contract_data_length(InputFrameWidth, OutputFrameHeight), 1.0);
-    OutputDataLength = max(contract_data_length(OutputFrameWidth, OutputFrameHeight), 1.0);
-    pfilt.Delta = OutputDataLength / max(InputDataLength, 1.0);
+    InputDataLength = max(timing_profile_storage_length(TIMING_PROFILE_MODE, config.OriginalSize.y,
+        config.FrameCount, global.FIELD_ODD, InputFrameWidth,
+        contract_data_length(InputFrameWidth, OutputFrameHeight)), 1.0);
+    OutputDataLength = max(timing_profile_storage_length(TIMING_PROFILE_MODE, config.OriginalSize.y,
+        config.FrameCount, global.FIELD_ODD, OutputFrameWidth,
+        contract_data_length(OutputFrameWidth, OutputFrameHeight)), 1.0);
+    pfilt.Delta = TIMING_PROFILE_MODE == 0 ? OutputDataLength / max(InputDataLength, 1.0)
+        : OutputFrameWidth / max(InputFrameWidth, 1.0);
 
     float OutputSampleRate = contract_output_sample_rate(
         config.OriginalFPS,
@@ -296,7 +306,9 @@ void main()
     float output_x = float(output_x_i);
     float output_y = float(output_y_i);
 
-    if (output_x >= OutputFrameWidth || output_y >= OutputFrameHeight) {
+    vec2 line_range = timing_profile_line_range(TIMING_PROFILE_MODE, config.OriginalSize.y,
+        config.FrameCount, global.FIELD_ODD, output_y, OutputFrameWidth);
+    if (output_x >= min(OutputFrameWidth, line_range.y) || output_y >= OutputFrameHeight) {
         FragColor = vec4(0.0);
         return;
     }
@@ -304,7 +316,7 @@ void main()
     float row_shift_output = compute_row_shift_output_samples(output_y_i);
     float deskewed_output_x = output_x + row_shift_output;
 
-    float field_output_index = output_y * OutputFrameWidth + deskewed_output_x;
+    float field_output_index = line_range.x + deskewed_output_x;
     if (field_output_index < 0.0 || field_output_index >= OutputDataLength) {
         FragColor = vec4(0.0);
         return;

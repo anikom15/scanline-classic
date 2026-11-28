@@ -10,7 +10,7 @@
   ],
   "parameter_sets" : [
     "sys/sfc/base.json",
-    "sys/sfc/ntsc.json",
+    "sys/sfc/profile.json",
     "disp/ntscj.json",
     "disp/trinitron.json",
     "disp/consumer-color-ntsc.json",

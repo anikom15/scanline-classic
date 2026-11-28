@@ -49,6 +49,9 @@
 
 #pragma include_optional "../config/options.cfg"
 
+#include "timing-profiles.inc"
+#define TIMING_PROFILE_MODE timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS)
+
 #ifdef OPTION_DEBUG
 #pragma parameter DEBUG_SYS_BANDLIMIT_HEADER " —— Debug Sys Bandlimit —— " 0.0 0.0 0.0 0.0
 #pragma parameter SYS_RGB_BANDLIMIT_BYPASS "System RGB bandlimit bypass" 0.0 0.0 1.0 1.0
@@ -93,17 +96,17 @@ layout(push_constant) uniform Push
 const float SYS_RGB_BANDLIMIT_BYPASS = 0.0;
 #endif  // OPTION_DEBUG
 
-#define V_FREQ_MODE config.V_FREQ_MODE
-#define V_FREQ config.V_FREQ
-#define SHORTEN_ODD_FIELD_TIME config.SHORTEN_ODD_FIELD_TIME
-#define SC_FREQ_MODE config.SC_FREQ_MODE
+#define V_FREQ_MODE timing_profile_v_mode(TIMING_PROFILE_MODE, config.OriginalSize.y, config.V_FREQ_MODE)
+#define V_FREQ timing_profile_v_freq(TIMING_PROFILE_MODE, config.OriginalSize.y, config.FrameCount, global.FIELD_ODD, config.V_FREQ)
+#define SHORTEN_ODD_FIELD_TIME timing_profile_field_adjustment(TIMING_PROFILE_MODE, config.SHORTEN_ODD_FIELD_TIME)
+#define SC_FREQ_MODE timing_profile_sc_mode(TIMING_PROFILE_MODE, config.SC_FREQ_MODE)
 #define SC_FREQ timing_decimal_value(vec3(config.SC_FREQ_WHOLE, global.SC_FREQ_FRAC6, global.SC_FREQ_FRAC11))
-#define PIXEL_CLOCK_MODE config.PIXEL_CLOCK_MODE
-#define PIXEL_CLOCK timing_decimal_value(vec3(config.PIXEL_CLOCK_WHOLE, global.PIXEL_CLOCK_FRAC6, global.PIXEL_CLOCK_FRAC11))
-#define H_FREQ_MODE config.H_FREQ_MODE
-#define H_FREQ config.H_FREQ
+#define PIXEL_CLOCK_MODE timing_profile_pixel_mode(TIMING_PROFILE_MODE, config.PIXEL_CLOCK_MODE)
+#define PIXEL_CLOCK timing_profile_pixel_value(TIMING_PROFILE_MODE, timing_decimal_value(vec3(config.PIXEL_CLOCK_WHOLE, global.PIXEL_CLOCK_FRAC6, global.PIXEL_CLOCK_FRAC11)))
+#define H_FREQ_MODE timing_profile_h_mode(TIMING_PROFILE_MODE, config.H_FREQ_MODE)
+#define H_FREQ timing_profile_h_freq(TIMING_PROFILE_MODE, config.H_FREQ)
 #define H_BLANK_FUZZ config.H_BLANK_FUZZ
-#define PHASE_ZERO config.PHASE_ZERO
+#define PHASE_ZERO (config.PHASE_ZERO + timing_profile_initial_phase(TIMING_PROFILE_MODE, 0.0))
 #define SYS_FILTER_DECIMATION config.SYS_FILTER_DECIMATION
 #define SYS_FILTER_ATTEN config.SYS_FILTER_ATTEN
 #define COMPENSATE_SINC_ROLLOFF config.COMPENSATE_SINC_ROLLOFF
@@ -113,6 +116,8 @@ const float SYS_RGB_BANDLIMIT_BYPASS = 0.0;
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
+    float FIELD_ODD;
+    float TIMING_PROFILE;
     mat4 MVP;
     float SC_FREQ_FRAC6;
     float SC_FREQ_FRAC11;
@@ -206,8 +211,12 @@ void main()
         BaseFrameWidth,
         fs_out,
         fs_original);
-    InputDataLength = max(contract_data_length(BaseFrameWidth, OutputFrameHeight), 1.0);
-    OutputDataLength = max(contract_data_length(OutputFrameWidth, OutputFrameHeight), 1.0);
+    InputDataLength = max(timing_profile_storage_length(TIMING_PROFILE_MODE, config.OriginalSize.y,
+        config.FrameCount, global.FIELD_ODD, BaseFrameWidth,
+        contract_data_length(BaseFrameWidth, OutputFrameHeight)), 1.0);
+    OutputDataLength = max(timing_profile_storage_length(TIMING_PROFILE_MODE, config.OriginalSize.y,
+        config.FrameCount, global.FIELD_ODD, OutputFrameWidth,
+        contract_data_length(OutputFrameWidth, OutputFrameHeight)), 1.0);
     InputPackedWidth = contract_pixel_packed_width(InputDataLength);
     InputTextureFits = contract_pixel_texture_fits(config.SourceSize.xy, InputDataLength, InputPackedWidth) ? 1.0 : 0.0;
 
@@ -215,8 +224,8 @@ void main()
     // Gaussian design into pixel clocks, while still compensating for
     // the source ZOH sinc rolloff in the target frequency response.
 
-    // Polyphase resampler ratio is data-length driven rather than texture-size driven.
-    float Delta = OutputDataLength / max(InputDataLength, 1.0);
+    float Delta = TIMING_PROFILE_MODE == 0 ? OutputDataLength / max(InputDataLength, 1.0)
+        : OutputFrameWidth / max(BaseFrameWidth, 1.0);
 
     pfilt.Delta = Delta;
 
@@ -318,7 +327,7 @@ void main()
     float output_x = float(output_x_i);
     float output_y = float(output_y_i);
 
-    if (output_x >= OutputFrameWidth || output_y >= OutputFrameHeight) {
+    if (output_x >= OutputFrameWidth) {
         FragColor = vec4(0.0);
         return;
     }

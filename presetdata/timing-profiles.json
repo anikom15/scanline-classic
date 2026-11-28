@@ -1,0 +1,107 @@
+{
+  "profiles": [
+    {
+      "id": 1,
+      "name": "sfc",
+      "primary": "ntsc",
+      "default": "ntsc",
+      "reference": "https://www.scanlineclassic.com/theory/timings.html",
+      "modes": [
+        {
+          "name": "ntsc",
+          "standard": "ntsc",
+          "subcarrier_hz": 3579545,
+          "pixel_clock_multiplier": [6, 1],
+          "clocks_per_line": 1364,
+          "raster": {
+            "interlace_height_threshold": 262,
+            "top_blank_lines": 1,
+            "left_blank_cycles": 88
+          },
+          "field_lines": {
+            "progressive": {"even": 262, "odd": 262},
+            "interlaced": {"even": 263, "odd": 262}
+          },
+          "field_clocks": {
+            "progressive": {"even": 357368, "odd": 357364},
+            "interlaced": {"even": 358732, "odd": 357368}
+          },
+          "line_overrides": [
+            {"scan": "progressive", "field": "odd", "line": 241, "clocks": 1360}
+          ],
+          "first_field": "even",
+          "field_adjustment": true,
+          "initial_phase_degrees": 0
+        },
+        {
+          "name": "pal",
+          "standard": "pal",
+          "subcarrier_hz": 4433618.75,
+          "pixel_clock_multiplier": [24, 5],
+          "clocks_per_line": 1364,
+          "raster": {
+            "interlace_height_threshold": 312,
+            "top_blank_lines": 1,
+            "left_blank_cycles": 88
+          },
+          "field_lines": {
+            "progressive": {"even": 312, "odd": 312},
+            "interlaced": {"even": 313, "odd": 312}
+          },
+          "field_clocks": {
+            "progressive": {"even": 425568, "odd": 425568},
+            "interlaced": {"even": 426932, "odd": 425572}
+          },
+          "line_overrides": [
+            {"scan": "interlaced", "field": "odd", "line": 312, "clocks": 1368}
+          ],
+          "first_field": "odd",
+          "field_adjustment": true,
+          "initial_phase_degrees": 0
+        },
+        {
+          "name": "palm",
+          "standard": "palm",
+          "subcarrier_hz": 3575611,
+          "pixel_clock_multiplier": [6, 1],
+          "clocks_per_line": 1364,
+          "raster": {
+            "interlace_height_threshold": 262,
+            "top_blank_lines": 1,
+            "left_blank_cycles": 88
+          },
+          "field_lines": {
+            "progressive": {"even": 262, "odd": 262},
+            "interlaced": {"even": 263, "odd": 262}
+          },
+          "field_clocks": {
+            "progressive": {"even": 357368, "odd": 357364},
+            "interlaced": {"even": 358732, "odd": 357368}
+          },
+          "line_overrides": [
+            {"scan": "progressive", "field": "odd", "line": 241, "clocks": 1360}
+          ],
+          "first_field": "even",
+          "field_adjustment": true,
+          "initial_phase_degrees": 0
+        }
+      ],
+      "rules": [
+        {"priority": 1, "mode": "pal", "max_fps": 55}
+      ],
+      "output_modes": [
+        {"size": [256, 224], "interlaced": false, "timing_modes": ["ntsc", "pal", "palm"]},
+        {"size": [256, 239], "interlaced": false, "timing_modes": ["ntsc", "pal", "palm"]},
+        {"size": [512, 224], "interlaced": false, "timing_modes": ["ntsc", "pal", "palm"]},
+        {"size": [512, 239], "interlaced": false, "timing_modes": ["ntsc", "pal", "palm"]},
+        {"size": [256, 448], "interlaced": true, "timing_modes": ["ntsc", "pal", "palm"]},
+        {"size": [256, 478], "interlaced": true, "timing_modes": ["ntsc", "pal", "palm"]},
+        {"size": [512, 448], "interlaced": true, "timing_modes": ["ntsc", "pal", "palm"]},
+        {"size": [512, 478], "interlaced": true, "timing_modes": ["ntsc", "pal", "palm"]}
+      ],
+      "remaps": [
+        {"option": "OPTION_REPLACE_NTSC_PALM", "from": "ntsc", "to": "palm"}
+      ]
+    }
+  ]
+}

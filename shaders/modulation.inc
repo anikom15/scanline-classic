@@ -226,6 +226,13 @@ void compute_v_lines_per_field(
     out float v_lines_per_frame,
     out bool is_interlaced)
 {
+    if (v_freq_mode > 4.5) {
+        is_interlaced = v_freq_mode > 5.5;
+        v_lines_per_field = custom_v_freq;
+        v_lines_per_frame = custom_v_freq * 2.0;
+        return;
+    }
+
     float raw_v_lines_per_field;
     if (v_freq_mode < 2.5 || v_freq_mode > 3.5) {
         raw_v_lines_per_field = round(h_freq_hz / core_refresh_hz);
@@ -269,7 +276,7 @@ float compute_v_freq(
     float v_freq_mode, float h_freq_hz, float v_lines_per_field,
     float custom_v_freq)
 {
-    if (v_freq_mode < 0.5) {
+    if (v_freq_mode > 4.5 || v_freq_mode < 0.5) {
         return h_freq_hz / v_lines_per_field;
     } else if (v_freq_mode < 1.5) {
         return NTSC_V_FREQ;

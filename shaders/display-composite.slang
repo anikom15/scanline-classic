@@ -37,6 +37,9 @@
 
 #pragma include_optional "../config/options.cfg"
 
+#include "timing-profiles.inc"
+#define TIMING_PROFILE_MODE timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS)
+
 #ifdef OPTION_DEBUG
 #pragma parameter DEBUG_DISPLAY_COMPOSITE_PREFILTER_HEADER " —— Debug Display Composite Prefilter —— " 0.0 0.0 0.0 0.0
 #pragma parameter DISPLAY_COMPOSITE_PREFILTER_BYPASS "Bypass display composite prefilter" 0.0 0.0 1.0 1.0
@@ -76,6 +79,9 @@ layout(push_constant) uniform Push
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
+    uint FrameCount;
+    float FIELD_ODD;
+    float TIMING_PROFILE;
     mat4 MVP;
     float SC_FREQ_FRAC6;
 } global;
@@ -99,24 +105,25 @@ void main()
     vTexCoord = TexCoord;
 
     float fs = contract_working_sample_rate(
-        config.OriginalFPS, config.SC_FREQ_MODE, timing_decimal_value(vec3(config.SC_FREQ_WHOLE, global.SC_FREQ_FRAC6, config.SC_FREQ_FRAC11)),
-        config.PIXEL_CLOCK_MODE, timing_decimal_value(vec3(config.PIXEL_CLOCK_WHOLE, config.PIXEL_CLOCK_FRAC6, config.PIXEL_CLOCK_FRAC11)),
-        config.H_FREQ_MODE, config.H_FREQ, config.DSP_WORKING_FS);
+        config.OriginalFPS, timing_profile_sc_mode(TIMING_PROFILE_MODE, config.SC_FREQ_MODE), timing_decimal_value(vec3(config.SC_FREQ_WHOLE, global.SC_FREQ_FRAC6, config.SC_FREQ_FRAC11)),
+        timing_profile_pixel_mode(TIMING_PROFILE_MODE, config.PIXEL_CLOCK_MODE), timing_profile_pixel_value(TIMING_PROFILE_MODE, timing_decimal_value(vec3(config.PIXEL_CLOCK_WHOLE, config.PIXEL_CLOCK_FRAC6, config.PIXEL_CLOCK_FRAC11))),
+        timing_profile_h_mode(TIMING_PROFILE_MODE, config.H_FREQ_MODE), timing_profile_h_freq(TIMING_PROFILE_MODE, config.H_FREQ), config.DSP_WORKING_FS);
     FrameWidth = contract_working_frame_width(
-        config.OriginalFPS, config.SC_FREQ_MODE, timing_decimal_value(vec3(config.SC_FREQ_WHOLE, global.SC_FREQ_FRAC6, config.SC_FREQ_FRAC11)),
-        config.PIXEL_CLOCK_MODE, timing_decimal_value(vec3(config.PIXEL_CLOCK_WHOLE, config.PIXEL_CLOCK_FRAC6, config.PIXEL_CLOCK_FRAC11)),
-        config.H_FREQ_MODE, config.H_FREQ, config.DSP_WORKING_FS);
+        config.OriginalFPS, timing_profile_sc_mode(TIMING_PROFILE_MODE, config.SC_FREQ_MODE), timing_decimal_value(vec3(config.SC_FREQ_WHOLE, global.SC_FREQ_FRAC6, config.SC_FREQ_FRAC11)),
+        timing_profile_pixel_mode(TIMING_PROFILE_MODE, config.PIXEL_CLOCK_MODE), timing_profile_pixel_value(TIMING_PROFILE_MODE, timing_decimal_value(vec3(config.PIXEL_CLOCK_WHOLE, config.PIXEL_CLOCK_FRAC6, config.PIXEL_CLOCK_FRAC11))),
+        timing_profile_h_mode(TIMING_PROFILE_MODE, config.H_FREQ_MODE), timing_profile_h_freq(TIMING_PROFILE_MODE, config.H_FREQ), config.DSP_WORKING_FS);
     FrameHeight = contract_frame_height(
         config.OriginalSize.xy, config.OriginalFPS,
-        config.V_FREQ_MODE, config.V_FREQ, config.SC_FREQ_MODE, timing_decimal_value(vec3(config.SC_FREQ_WHOLE, global.SC_FREQ_FRAC6, config.SC_FREQ_FRAC11)),
-        config.PIXEL_CLOCK_MODE, timing_decimal_value(vec3(config.PIXEL_CLOCK_WHOLE, config.PIXEL_CLOCK_FRAC6, config.PIXEL_CLOCK_FRAC11)), config.H_FREQ_MODE, config.H_FREQ);
-    DataLength = max(contract_data_length(FrameWidth, FrameHeight), 1.0);
+        timing_profile_v_mode(TIMING_PROFILE_MODE, config.OriginalSize.y, config.V_FREQ_MODE), timing_profile_v_freq(TIMING_PROFILE_MODE, config.OriginalSize.y, global.FrameCount, global.FIELD_ODD, config.V_FREQ), timing_profile_sc_mode(TIMING_PROFILE_MODE, config.SC_FREQ_MODE), timing_decimal_value(vec3(config.SC_FREQ_WHOLE, global.SC_FREQ_FRAC6, config.SC_FREQ_FRAC11)),
+        timing_profile_pixel_mode(TIMING_PROFILE_MODE, config.PIXEL_CLOCK_MODE), timing_profile_pixel_value(TIMING_PROFILE_MODE, timing_decimal_value(vec3(config.PIXEL_CLOCK_WHOLE, config.PIXEL_CLOCK_FRAC6, config.PIXEL_CLOCK_FRAC11))), timing_profile_h_mode(TIMING_PROFILE_MODE, config.H_FREQ_MODE), timing_profile_h_freq(TIMING_PROFILE_MODE, config.H_FREQ));
+    DataLength = max(timing_profile_storage_length(TIMING_PROFILE_MODE, config.OriginalSize.y,
+        global.FrameCount, global.FIELD_ODD, FrameWidth, contract_data_length(FrameWidth, FrameHeight)), 1.0);
     ChromaFrequency = 2.0 * PI * contract_subcarrier_freq_hz(
-        config.OriginalFPS, config.SC_FREQ_MODE, timing_decimal_value(vec3(config.SC_FREQ_WHOLE, global.SC_FREQ_FRAC6, config.SC_FREQ_FRAC11))) / max(fs, EPS);
+        config.OriginalFPS, timing_profile_sc_mode(TIMING_PROFILE_MODE, config.SC_FREQ_MODE), timing_decimal_value(vec3(config.SC_FREQ_WHOLE, global.SC_FREQ_FRAC6, config.SC_FREQ_FRAC11))) / max(fs, EPS);
     HorizontalFrequency = contract_h_frequency(
-        config.OriginalFPS, config.SC_FREQ_MODE, timing_decimal_value(vec3(config.SC_FREQ_WHOLE, global.SC_FREQ_FRAC6, config.SC_FREQ_FRAC11)),
-        config.PIXEL_CLOCK_MODE, timing_decimal_value(vec3(config.PIXEL_CLOCK_WHOLE, config.PIXEL_CLOCK_FRAC6, config.PIXEL_CLOCK_FRAC11)),
-        config.H_FREQ_MODE, config.H_FREQ);
+        config.OriginalFPS, timing_profile_sc_mode(TIMING_PROFILE_MODE, config.SC_FREQ_MODE), timing_decimal_value(vec3(config.SC_FREQ_WHOLE, global.SC_FREQ_FRAC6, config.SC_FREQ_FRAC11)),
+        timing_profile_pixel_mode(TIMING_PROFILE_MODE, config.PIXEL_CLOCK_MODE), timing_profile_pixel_value(TIMING_PROFILE_MODE, timing_decimal_value(vec3(config.PIXEL_CLOCK_WHOLE, config.PIXEL_CLOCK_FRAC6, config.PIXEL_CLOCK_FRAC11))),
+        timing_profile_h_mode(TIMING_PROFILE_MODE, config.H_FREQ_MODE), timing_profile_h_freq(TIMING_PROFILE_MODE, config.H_FREQ));
 
     vec2 bandwidth = 0.5e6 * vec2(config.DISPLAY_BANDPASS_WIDTH, config.DISPLAY_BANDPASS_WIDTH);
     FilterSigma = fs * vec2(
@@ -187,7 +194,7 @@ void main()
 {
     vec2 pixel = floor(vTexCoord * config.OutputSize.xy);
     float index = pixel.y * FrameWidth + pixel.x;
-    if (pixel.x >= FrameWidth || pixel.y >= FrameHeight || index >= DataLength) {
+    if (pixel.x >= FrameWidth || index >= DataLength) {
         FragColor = vec4(0.0);
         return;
     }
@@ -210,13 +217,20 @@ void main()
     bool adaptive_comb = config.COLOR_FILTER_MODE >= 1.5;
 
     if (use_comb && ChromaFrequency > 0.0 && HorizontalFrequency > 0.0) {
+        vec2 raster = timing_profile_raster_position(TIMING_PROFILE_MODE, config.OriginalSize.y,
+            global.FrameCount, global.FIELD_ODD, index, FrameWidth);
+        float previous_y = max(raster.y - 1.0, 0.0);
+        vec2 previous_range = timing_profile_line_range(TIMING_PROFILE_MODE, config.OriginalSize.y,
+            global.FrameCount, global.FIELD_ODD, previous_y, FrameWidth);
         float subcarrier_frequency = ChromaFrequency / (2.0 * PI);
         float system_phase_shift = comb_system_phase_shift(
             subcarrier_frequency, HorizontalFrequency);
+        if (TIMING_PROFILE_MODE > 0)
+            system_phase_shift = comb_system_phase_shift(subcarrier_frequency, 1.0 / previous_range.y);
         float phase_offset = comb_phase_offset(PI, system_phase_shift, ChromaFrequency);
 
         float previous_line = fetch_comb_line_sample(
-            Source, config.SourceSize.xy, pixel.x - phase_offset, pixel.y - 1.0,
+            Source, config.SourceSize.xy, raster.x - phase_offset, previous_range,
             FrameWidth, DataLength, 0);
         float y_comb = 0.5 * (composite + previous_line);
         float c_comb = 0.5 * (composite - previous_line);

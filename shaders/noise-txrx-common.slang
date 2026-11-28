@@ -41,6 +41,9 @@
 
 #pragma include_optional "../config/options.cfg"
 
+#include "timing-profiles.inc"
+#define TIMING_PROFILE_MODE timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS)
+
 #ifdef OPTION_XTALK_SAMPLE_COUNT
 #else
 #define OPTION_XTALK_SAMPLE_COUNT 9
@@ -90,14 +93,14 @@ layout(push_constant) uniform Push
     float SC_FREQ_FRAC11;
 } config;
 
-#define V_FREQ_MODE config.V_FREQ_MODE
-#define V_FREQ config.V_FREQ
-#define SC_FREQ_MODE config.SC_FREQ_MODE
+#define V_FREQ_MODE timing_profile_v_mode(TIMING_PROFILE_MODE, config.OriginalSize.y, config.V_FREQ_MODE)
+#define V_FREQ timing_profile_v_freq(TIMING_PROFILE_MODE, config.OriginalSize.y, global.FrameCount, global.FIELD_ODD, config.V_FREQ)
+#define SC_FREQ_MODE timing_profile_sc_mode(TIMING_PROFILE_MODE, config.SC_FREQ_MODE)
 #define SC_FREQ timing_decimal_value(vec3(config.SC_FREQ_WHOLE, global.SC_FREQ_FRAC6, config.SC_FREQ_FRAC11))
-#define PIXEL_CLOCK_MODE config.PIXEL_CLOCK_MODE
-#define PIXEL_CLOCK timing_decimal_value(vec3(config.PIXEL_CLOCK_WHOLE, config.PIXEL_CLOCK_FRAC6, config.PIXEL_CLOCK_FRAC11))
-#define H_FREQ_MODE config.H_FREQ_MODE
-#define H_FREQ config.H_FREQ
+#define PIXEL_CLOCK_MODE timing_profile_pixel_mode(TIMING_PROFILE_MODE, config.PIXEL_CLOCK_MODE)
+#define PIXEL_CLOCK timing_profile_pixel_value(TIMING_PROFILE_MODE, timing_decimal_value(vec3(config.PIXEL_CLOCK_WHOLE, config.PIXEL_CLOCK_FRAC6, config.PIXEL_CLOCK_FRAC11)))
+#define H_FREQ_MODE timing_profile_h_mode(TIMING_PROFILE_MODE, config.H_FREQ_MODE)
+#define H_FREQ timing_profile_h_freq(TIMING_PROFILE_MODE, config.H_FREQ)
 #define DSP_WORKING_FS config.DSP_WORKING_FS
 
 #define TXRX_NOISE_FEEDBACK_DB config.TXRX_NOISE_FEEDBACK_DB
@@ -105,6 +108,9 @@ layout(push_constant) uniform Push
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
+    uint FrameCount;
+    float FIELD_ODD;
+    float TIMING_PROFILE;
     mat4 MVP;
     float SC_FREQ_FRAC6;
 } global;
@@ -188,10 +194,12 @@ NoiseTxRxState compute_noise_state()
         H_FREQ_MODE,
         H_FREQ);
 #ifdef SEND_PIXEL_DOMAIN
-    state.data_length = max(ceil(contract_data_length(state.frame_width, state.frame_height)), 1.0);
+    float nominal_data_length = ceil(contract_data_length(state.frame_width, state.frame_height));
 #else
-    state.data_length = max(contract_data_length(state.frame_width, state.frame_height), 1.0);
+    float nominal_data_length = contract_data_length(state.frame_width, state.frame_height);
 #endif
+    state.data_length = max(timing_profile_storage_length(TIMING_PROFILE_MODE, config.OriginalSize.y,
+        global.FrameCount, global.FIELD_ODD, state.frame_width, nominal_data_length), 1.0);
     state.storage_width = state.frame_width;
     state.texture_fits = 1.0;
 #ifdef SEND_PIXEL_DOMAIN
@@ -271,8 +279,9 @@ vec4 sample_packed_delta_v(sampler2D level, int sample_index, int lod_i, NoiseTx
         return mix(current, next, float(remainder) / float(span));
     }
 #endif  // OPTION_DEBUG
-    int raster_width = max(int(state.frame_width), 1);
-    int line_start = (index / raster_width) * raster_width;
+    vec2 raster = timing_profile_raster_position(TIMING_PROFILE_MODE, config.OriginalSize.y,
+        global.FrameCount, global.FIELD_ODD, float(index), state.frame_width);
+    int line_start = index - int(raster.x);
     int aligned_index = index - line_start % span;
 
     return sample_pyramid_signal(level, aligned_index, width, span, data_length);
@@ -342,12 +351,16 @@ void main()
     }
 #else
     float storage_width = vNoiseState.frame_width;
-    if (output_x >= vNoiseState.frame_width || output_y >= vNoiseState.frame_height) {
+    if (output_x >= vNoiseState.frame_width) {
         FragColor = vec4(0.0);
         return;
     }
 
     int sample_index_i = output_y_i * int(vNoiseState.frame_width) + output_x_i;
+    if (float(sample_index_i) >= vNoiseState.data_length) {
+        FragColor = vec4(0.0);
+        return;
+    }
 #endif
     float sample_index = float(sample_index_i);
 #ifdef SEND_PIXEL_DOMAIN

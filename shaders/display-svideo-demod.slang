@@ -40,6 +40,9 @@
 
 #pragma include_optional "../config/options.cfg"
 
+#include "timing-profiles.inc"
+#define TIMING_PROFILE_MODE timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS)
+
 #ifdef OPTION_DEBUG
 #pragma parameter DEBUG_DISPLAY_SVIDEO_DEMOD_HEADER " —— Debug Display S-Video Demodulator —— " 0.0 0.0 0.0 0.0
 #pragma parameter DISPLAY_SVIDEO_DEMOD_BYPASS "Bypass display S-Video stage" 0.0 0.0 1.0 1.0
@@ -83,17 +86,17 @@ layout(push_constant) uniform Push
     float PIXEL_CLOCK_FRAC11;
 } config;
 
-#define PIXEL_CLOCK_MODE config.PIXEL_CLOCK_MODE
-#define PIXEL_CLOCK timing_decimal_value(vec3(config.PIXEL_CLOCK_WHOLE, global.PIXEL_CLOCK_FRAC6, config.PIXEL_CLOCK_FRAC11))
-#define SC_FREQ_MODE config.SC_FREQ_MODE
+#define PIXEL_CLOCK_MODE timing_profile_pixel_mode(TIMING_PROFILE_MODE, config.PIXEL_CLOCK_MODE)
+#define PIXEL_CLOCK timing_profile_pixel_value(TIMING_PROFILE_MODE, timing_decimal_value(vec3(config.PIXEL_CLOCK_WHOLE, global.PIXEL_CLOCK_FRAC6, config.PIXEL_CLOCK_FRAC11)))
+#define SC_FREQ_MODE timing_profile_sc_mode(TIMING_PROFILE_MODE, config.SC_FREQ_MODE)
 #define SC_FREQ timing_decimal_value(vec3(config.SC_FREQ_WHOLE, global.SC_FREQ_FRAC6, global.SC_FREQ_FRAC11))
-#define H_FREQ_MODE config.H_FREQ_MODE
-#define H_FREQ config.H_FREQ
+#define H_FREQ_MODE timing_profile_h_mode(TIMING_PROFILE_MODE, config.H_FREQ_MODE)
+#define H_FREQ timing_profile_h_freq(TIMING_PROFILE_MODE, config.H_FREQ)
 #define H_BLANK_FUZZ config.H_BLANK_FUZZ
-#define V_FREQ_MODE config.V_FREQ_MODE
-#define V_FREQ config.V_FREQ
-#define PHASE_ZERO config.PHASE_ZERO
-#define SHORTEN_ODD_FIELD_TIME config.SHORTEN_ODD_FIELD_TIME
+#define V_FREQ_MODE timing_profile_v_mode(TIMING_PROFILE_MODE, config.OriginalSize.y, config.V_FREQ_MODE)
+#define V_FREQ timing_profile_v_freq(TIMING_PROFILE_MODE, config.OriginalSize.y, config.FrameCount, FIELD_ODD, config.V_FREQ)
+#define PHASE_ZERO (config.PHASE_ZERO + timing_profile_initial_phase(TIMING_PROFILE_MODE, 0.0))
+#define SHORTEN_ODD_FIELD_TIME timing_profile_field_adjustment(TIMING_PROFILE_MODE, config.SHORTEN_ODD_FIELD_TIME)
 #define FIELD_ODD config.FIELD_ODD
 
 #define DSP_WORKING_FS config.DSP_WORKING_FS
@@ -111,6 +114,7 @@ layout(push_constant) uniform Push
 
 layout(std140, binding = 0) uniform UBO
 {
+    float TIMING_PROFILE;
     mat4 MVP;
     float SC_FREQ_FRAC6;
     float SC_FREQ_FRAC11;
@@ -144,7 +148,11 @@ void main()
         FIELD_ODD,
         vec3(config.PIXEL_CLOCK_WHOLE, global.PIXEL_CLOCK_FRAC6, config.PIXEL_CLOCK_FRAC11),
         vec3(config.SC_FREQ_WHOLE, global.SC_FREQ_FRAC6, global.SC_FREQ_FRAC11),
-        PHASE_ZERO
+        timing_profile_pixel_ratio(TIMING_PROFILE_MODE),
+        PHASE_ZERO,
+        timing_profile_field_clock_numerators(TIMING_PROFILE_MODE),
+        timing_profile_field_clock_denominators(TIMING_PROFILE_MODE),
+        timing_profile_first_field_odd(TIMING_PROFILE_MODE, -1.0)
     );
 
     FrameWidth = contract_working_frame_width(
@@ -163,7 +171,8 @@ void main()
         H_FREQ_MODE, H_FREQ
     );
 
-    DataLength = max(contract_data_length(FrameWidth, FrameHeight), 1.0);
+    DataLength = max(timing_profile_storage_length(TIMING_PROFILE_MODE, config.OriginalSize.y,
+        config.FrameCount, FIELD_ODD, FrameWidth, contract_data_length(FrameWidth, FrameHeight)), 1.0);
 
     Fs = contract_working_sample_rate(
         config.OriginalFPS,
@@ -224,7 +233,7 @@ void main()
     float sample_x = floor(UV.x);
     float sample_y = floor(UV.y);
 
-    if (sample_x >= FrameWidth || sample_y >= FrameHeight) {
+    if (sample_x >= FrameWidth) {
         FragColor = vec4(0.0);
         return;
     }
@@ -244,7 +253,9 @@ void main()
     );
 
     // PAL V-axis alternation is applied after delay-line component separation.
-    float pal_v_sign = 1.0 - 2.0 * floor(mod(sample_y, 2.0)) * DECODER_TYPE;
+    vec2 raster = timing_profile_raster_position(TIMING_PROFILE_MODE, config.OriginalSize.y,
+        config.FrameCount, FIELD_ODD, sample_index, FrameWidth);
+    float pal_v_sign = 1.0 - 2.0 * floor(mod(raster.y, 2.0)) * DECODER_TYPE;
 
     float c_gain = 0.01 * (2.0 * USER_COLOR);
     float c_phase = PI * USER_TINT / 180.0;
@@ -257,12 +268,17 @@ void main()
     if (DECODER_TYPE > 0.5 && PAL_DECODER_MODE > 0.5 &&
         Fsc > 0.0 && Fs > 0.0 && HorizontalFrequency > 0.0) {
         float phase_inc_per_sample = 2.0 * PI * Fsc / Fs;
+        float previous_y = max(raster.y - 1.0, 0.0);
+        vec2 previous_range = timing_profile_line_range(TIMING_PROFILE_MODE, config.OriginalSize.y,
+            config.FrameCount, FIELD_ODD, previous_y, FrameWidth);
         float system_phase_shift = comb_system_phase_shift(Fsc, HorizontalFrequency);
+        if (TIMING_PROFILE_MODE > 0)
+            system_phase_shift = comb_system_phase_shift(Fsc, Fs / previous_range.y);
         float phase_offset = comb_phase_offset(0.0, system_phase_shift, phase_inc_per_sample);
         phase_offset += COMB_ADJUST_X;
 
         float pal_delay = fetch_comb_line_sample(
-            Source, config.OutputSize.xy, sample_x - phase_offset, sample_y - 1.0,
+            Source, config.OutputSize.xy, raster.x - phase_offset, previous_range,
             FrameWidth, DataLength, 1);
         vec2 delay_components = vec2(
             (yc.g + pal_delay) * sin(phase_with_hue),
@@ -270,7 +286,7 @@ void main()
 
         if (PAL_DECODER_MODE > 1.5) {
             float previous_phase = 2.0 * PI * carrier_phase(
-                sample_index - FrameWidth,
+                sample_index - previous_range.y,
                 Fsc, Fs, InitialSubcarrierPhaseFrac);
             float actual_phase_shift = normalize_phase(phase - previous_phase);
             float phase_error = normalize_phase(actual_phase_shift - system_phase_shift);

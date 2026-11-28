@@ -21,17 +21,15 @@ float fetch_comb_line_sample(
     sampler2D source,
     vec2 source_size,
     float x,
-    float line,
+    vec2 line_range,
     float frame_width,
     float data_length,
     int channel)
 {
-    float sample_x = clamp(x, 0.0, max(frame_width - 1.0, 0.0));
-    float line_count = ceil(data_length / max(frame_width, 1.0));
-    float sample_y = clamp(line, 0.0, max(line_count - 1.0, 0.0));
+    float sample_x = clamp(x, 0.0, max(line_range.y - 1.0, 0.0));
     float x0 = floor(sample_x);
-    float index = sample_y * frame_width + x0;
-    float index_next = sample_y * frame_width + min(x0 + 1.0, frame_width - 1.0);
+    float index = line_range.x + x0;
+    float index_next = line_range.x + min(x0 + 1.0, line_range.y - 1.0);
     float a = fetch_input_sample(
         source, source_size, index, frame_width, data_length - 1.0)[channel];
     float b = fetch_input_sample(

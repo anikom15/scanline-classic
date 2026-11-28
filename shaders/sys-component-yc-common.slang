@@ -35,6 +35,9 @@
 
 #pragma include_optional "../config/options.cfg"
 
+#include "timing-profiles.inc"
+#define TIMING_PROFILE_MODE timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS)
+
 #ifdef OPTION_DEBUG
 #pragma parameter DEBUG_SYS_COMPONENT_YC_HEADER " —— Debug Sys component to YC Modulator —— " 0.0 0.0 0.0 0.0
 #pragma parameter DEBUG_SYS_COMPONENT_YC_BYPASS "Bypass Sys Y/C Modulator" 0.0 0.0 1.0 1.0
@@ -79,24 +82,24 @@ layout(push_constant) uniform Push
     float PIXEL_CLOCK_FRAC11;
 } config;
 
-#define PIXEL_CLOCK_MODE config.PIXEL_CLOCK_MODE
-#define PIXEL_CLOCK timing_decimal_value(vec3(config.PIXEL_CLOCK_WHOLE, global.PIXEL_CLOCK_FRAC6, config.PIXEL_CLOCK_FRAC11))
-#define SC_FREQ_MODE config.SC_FREQ_MODE
+#define PIXEL_CLOCK_MODE timing_profile_pixel_mode(TIMING_PROFILE_MODE, config.PIXEL_CLOCK_MODE)
+#define PIXEL_CLOCK timing_profile_pixel_value(TIMING_PROFILE_MODE, timing_decimal_value(vec3(config.PIXEL_CLOCK_WHOLE, global.PIXEL_CLOCK_FRAC6, config.PIXEL_CLOCK_FRAC11)))
+#define SC_FREQ_MODE timing_profile_sc_mode(TIMING_PROFILE_MODE, config.SC_FREQ_MODE)
 #define SC_FREQ timing_decimal_value(vec3(config.SC_FREQ_WHOLE, global.SC_FREQ_FRAC6, global.SC_FREQ_FRAC11))
-#define H_FREQ_MODE config.H_FREQ_MODE
-#define H_FREQ config.H_FREQ
+#define H_FREQ_MODE timing_profile_h_mode(TIMING_PROFILE_MODE, config.H_FREQ_MODE)
+#define H_FREQ timing_profile_h_freq(TIMING_PROFILE_MODE, config.H_FREQ)
 #define H_BLANK_FUZZ config.H_BLANK_FUZZ
-#define V_FREQ_MODE config.V_FREQ_MODE
-#define V_FREQ config.V_FREQ
-#define PHASE_ZERO config.PHASE_ZERO
-#define SHORTEN_ODD_FIELD_TIME config.SHORTEN_ODD_FIELD_TIME
+#define V_FREQ_MODE timing_profile_v_mode(TIMING_PROFILE_MODE, config.OriginalSize.y, config.V_FREQ_MODE)
+#define V_FREQ timing_profile_v_freq(TIMING_PROFILE_MODE, config.OriginalSize.y, config.FrameCount, FIELD_ODD, config.V_FREQ)
+#define PHASE_ZERO (config.PHASE_ZERO + timing_profile_initial_phase(TIMING_PROFILE_MODE, 0.0))
+#define SHORTEN_ODD_FIELD_TIME timing_profile_field_adjustment(TIMING_PROFILE_MODE, config.SHORTEN_ODD_FIELD_TIME)
 #define FIELD_ODD config.FIELD_ODD
 
 #define DSP_WORKING_FS config.DSP_WORKING_FS
 
 #define ENCODER_SETUP config.ENCODER_SETUP
 #define CARRIER_SHAPE config.CARRIER_SHAPE
-#define PAL config.PAL
+#define PAL timing_profile_pal(TIMING_PROFILE_MODE, config.PAL)
 
 #ifdef SYS_COMPONENT_YC_MODE
 #define SVIDEO config.SVIDEO
@@ -112,6 +115,7 @@ layout(push_constant) uniform Push
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
+    float TIMING_PROFILE;
     mat4 MVP;
     float SC_FREQ_FRAC6;
     float SC_FREQ_FRAC11;
@@ -145,7 +149,11 @@ SysComponentYCState compute_sys_component_yc_state()
         FIELD_ODD,
         vec3(config.PIXEL_CLOCK_WHOLE, global.PIXEL_CLOCK_FRAC6, config.PIXEL_CLOCK_FRAC11),
         vec3(config.SC_FREQ_WHOLE, global.SC_FREQ_FRAC6, global.SC_FREQ_FRAC11),
-        PHASE_ZERO
+        timing_profile_pixel_ratio(TIMING_PROFILE_MODE),
+        PHASE_ZERO,
+        timing_profile_field_clock_numerators(TIMING_PROFILE_MODE),
+        timing_profile_field_clock_denominators(TIMING_PROFILE_MODE),
+        timing_profile_first_field_odd(TIMING_PROFILE_MODE, -1.0)
     );
 
     state.frame_width = contract_working_frame_width(
@@ -164,7 +172,9 @@ SysComponentYCState compute_sys_component_yc_state()
         H_FREQ_MODE, H_FREQ
     );
 
-    state.data_length = max(contract_data_length(state.frame_width, state.frame_height), 1.0);
+    state.data_length = max(timing_profile_storage_length(TIMING_PROFILE_MODE, config.OriginalSize.y,
+        config.FrameCount, FIELD_ODD, state.frame_width,
+        contract_data_length(state.frame_width, state.frame_height)), 1.0);
 
     state.fs = contract_working_sample_rate(
         config.OriginalFPS,
@@ -303,7 +313,7 @@ void main()
     float sample_x = floor(UV.x);
     float sample_y = floor(UV.y);
 
-    if (sample_x >= FrameWidth || sample_y >= FrameHeight) {
+    if (sample_x >= FrameWidth) {
         FragColor = vec4(0.0);
         return;
     }
@@ -322,8 +332,10 @@ void main()
     component.r += rgbs.a;
 #endif
 
+    vec2 raster = timing_profile_raster_position(TIMING_PROFILE_MODE, config.OriginalSize.y,
+        config.FrameCount, FIELD_ODD, sample_index, FrameWidth);
     vec2 yc = modulate_sys_component_yc(
-        component, sample_index, sample_y,
+        component, sample_index, raster.y,
         Fsc, Fs, InitialSubcarrierPhaseFrac,
         c_leakage, g_iq, p_iq
     );

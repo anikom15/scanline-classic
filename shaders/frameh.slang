@@ -21,8 +21,8 @@
 // ------------------------
 // Maps active raster data into a framed field buffer.
 //
-// The output is a true clock-domain raster: each line spans `ClocksPerLine`
-// samples, active source texels are held for `ClockFactor` clock samples, and
+// The output is a clock-domain field: line lengths follow the timing profile,
+// active source texels are held for `ClockFactor` clock samples, and
 // blanking remains at 1-sample clock resolution. The linear stream is packed
 // horizontally using the data-length-derived power-of-two width, regardless
 // of the physical texture dimensions. RGB stores the sample and A is 1.
@@ -39,6 +39,9 @@
 #include "menus/parameters/sys-timing.inc"
 
 #pragma include_optional "../config/options.cfg"
+
+#include "timing-profiles.inc"
+#define TIMING_PROFILE_MODE timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS)
 
 #ifdef OPTION_DEBUG
 #pragma parameter DEBUG_FRAME_HEADER " —— Debug Frame —— " 0.0 0.0 0.0 0.0
@@ -87,23 +90,24 @@ layout(push_constant) uniform Push
 #define DEBUG_FRAME_PADDING config.DEBUG_FRAME_PADDING
 #endif  // OPTION_DEBUG
 
-#define V_FREQ_MODE config.V_FREQ_MODE
-#define V_FREQ config.V_FREQ
-#define SC_FREQ_MODE config.SC_FREQ_MODE
+#define V_FREQ_MODE timing_profile_v_mode(TIMING_PROFILE_MODE, config.OriginalSize.y, config.V_FREQ_MODE)
+#define V_FREQ timing_profile_v_freq(TIMING_PROFILE_MODE, config.OriginalSize.y, config.FrameCount, FIELD_ODD, config.V_FREQ)
+#define SC_FREQ_MODE timing_profile_sc_mode(TIMING_PROFILE_MODE, config.SC_FREQ_MODE)
 #define SC_FREQ timing_decimal_value(vec3(config.SC_FREQ_WHOLE, global.SC_FREQ_FRAC6, global.SC_FREQ_FRAC11))
-#define PIXEL_CLOCK_MODE config.PIXEL_CLOCK_MODE
-#define PIXEL_CLOCK timing_decimal_value(vec3(config.PIXEL_CLOCK_WHOLE, global.PIXEL_CLOCK_FRAC6, global.PIXEL_CLOCK_FRAC11))
-#define H_FREQ_MODE config.H_FREQ_MODE
-#define H_FREQ config.H_FREQ
+#define PIXEL_CLOCK_MODE timing_profile_pixel_mode(TIMING_PROFILE_MODE, config.PIXEL_CLOCK_MODE)
+#define PIXEL_CLOCK timing_profile_pixel_value(TIMING_PROFILE_MODE, timing_decimal_value(vec3(config.PIXEL_CLOCK_WHOLE, global.PIXEL_CLOCK_FRAC6, global.PIXEL_CLOCK_FRAC11)))
+#define H_FREQ_MODE timing_profile_h_mode(TIMING_PROFILE_MODE, config.H_FREQ_MODE)
+#define H_FREQ timing_profile_h_freq(TIMING_PROFILE_MODE, config.H_FREQ)
 #define H_BLANK_FUZZ config.H_BLANK_FUZZ
-#define SHORTEN_ODD_FIELD_TIME config.SHORTEN_ODD_FIELD_TIME
-#define PHASE_ZERO config.PHASE_ZERO
+#define SHORTEN_ODD_FIELD_TIME timing_profile_field_adjustment(TIMING_PROFILE_MODE, config.SHORTEN_ODD_FIELD_TIME)
+#define PHASE_ZERO (config.PHASE_ZERO + timing_profile_initial_phase(TIMING_PROFILE_MODE, 0.0))
 #define FIELD_ODD config.FIELD_ODD
 
 #define BLANKING_COLOR vec3(config.BLANKING_COLOR_R, config.BLANKING_COLOR_G, config.BLANKING_COLOR_B)
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
+    float TIMING_PROFILE;
     mat4 MVP;
     float SC_FREQ_FRAC6;
     float SC_FREQ_FRAC11;
@@ -131,6 +135,21 @@ void main()
 {
     gl_Position = global.MVP * Position;
     vTexCoord = TexCoord;
+
+    if (TIMING_PROFILE_MODE < 0) {
+        FS_ORIGINAL = 0.0;
+        ClocksPerLine = 1.0;
+        ClockFactor = 1.0;
+        FrameWidth = 1.0;
+        FrameHeight = 1.0;
+        FullFrameHeight = 1.0;
+        IsInterlaced = 0.0;
+        Field = 0.0;
+        DataLength = 1.0;
+        PackedWidth = 1.0;
+        TextureFits = 0.0;
+        return;
+    }
 
     FS_ORIGINAL = contract_fs_original(
         config.OriginalFPS,
@@ -191,6 +210,7 @@ void main()
         PIXEL_CLOCK,
         H_FREQ_MODE,
         H_FREQ);
+    FullFrameHeight = timing_profile_full_frame_height(TIMING_PROFILE_MODE, config.OriginalSize.y, FullFrameHeight);
 
     IsInterlaced = contract_is_interlaced(
         config.OriginalSize.xy,
@@ -204,10 +224,19 @@ void main()
         H_FREQ_MODE,
         H_FREQ);
 
-    Field = contract_field_parity(FieldCount, FIELD_ODD, config.OriginalFPS, SC_FREQ_MODE, SC_FREQ);
-    DataLength = ceil(contract_data_length(FrameWidth, FrameHeight));
+    Field = contract_field_parity(FieldCount, FIELD_ODD, config.OriginalFPS, SC_FREQ_MODE, SC_FREQ,
+                                  timing_profile_first_field_odd(TIMING_PROFILE_MODE, -1.0));
+    DataLength = timing_profile_storage_length(TIMING_PROFILE_MODE, config.OriginalSize.y,
+        config.FrameCount, FIELD_ODD, FrameWidth, ceil(contract_data_length(FrameWidth, FrameHeight)));
     PackedWidth = contract_pixel_packed_width(DataLength);
     TextureFits = contract_pixel_texture_fits(config.OutputSize.xy, DataLength, PackedWidth) ? 1.0 : 0.0;
+    if (TIMING_PROFILE_MODE > 0) {
+        float active_height = IsInterlaced > 0.5
+            ? floor((config.SourceSize.y - Field + 1.0) * 0.5) : config.SourceSize.y;
+        if (timing_profile_left_blank_cycles(TIMING_PROFILE_MODE, 0.0) + config.SourceSize.x * ClockFactor > FrameWidth
+            || timing_profile_top_blank_lines(TIMING_PROFILE_MODE, 0.0) + active_height > FrameHeight)
+            TextureFits = 0.0;
+    }
 }
 
 #pragma stage fragment
@@ -246,8 +275,8 @@ bool sample_maps_to_active_time(
     int clock_factor_int = max(int(floor(ClockFactor + 0.5)), 1);
     float clock_factor = float(clock_factor_int);
     float active_width = config.SourceSize.x * clock_factor;
-    float active_left = (FrameWidth - active_width) * 0.5;
-    float active_top = floor((frame_height_int - active_source_height) * 0.5);
+    float active_left = timing_profile_left_blank_cycles(TIMING_PROFILE_MODE, (FrameWidth - active_width) * 0.5);
+    float active_top = timing_profile_top_blank_lines(TIMING_PROFILE_MODE, floor((frame_height_int - active_source_height) * 0.5));
 
     // Keep the wrapped line-carry in integer clock space so the storage grid
     // stays field-stable and does not drift across wrap boundaries when
@@ -255,7 +284,7 @@ bool sample_maps_to_active_time(
     // the contract helpers and is intentionally not baked into `source_x`.
     int phase_step_clocks_int = int(floor(ClocksPerLine + 0.5)) % clock_factor_int;
     int row_phase_clocks_int = (line_index_int * phase_step_clocks_int) % clock_factor_int;
-    float phase_clocks = float(row_phase_clocks_int);
+    float phase_clocks = TIMING_PROFILE_MODE == 0 ? float(row_phase_clocks_int) : 0.0;
 
     // Output samples live directly in the pixel-clock domain. Active source
     // texels are held for `ClockFactor` clocks, while blanking remains at the
@@ -309,9 +338,6 @@ void main()
     }
     float sample_index = output_y * PackedWidth + output_x;
     bool in_frame = output_x < PackedWidth && sample_index < DataLength;
-    float raster_y = floor(sample_index / FrameWidth);
-    float raster_x = sample_index - raster_y * FrameWidth;
-
     if (!in_frame) {
 #ifdef OPTION_DEBUG
         if (DEBUG_FRAME_PADDING > 0.5) {
@@ -325,8 +351,10 @@ void main()
         return;
     }
 
+    vec2 raster = timing_profile_raster_position(TIMING_PROFILE_MODE, config.OriginalSize.y,
+        config.FrameCount, FIELD_ODD, sample_index, FrameWidth);
     vec2 source_sample_pos;
-    bool in_active = sample_maps_to_active_time(raster_x, raster_y, source_sample_pos);
+    bool in_active = sample_maps_to_active_time(raster.x, raster.y, source_sample_pos);
 
     vec3 color = in_active ? sample_active_content(source_sample_pos) : BLANKING_COLOR;
 

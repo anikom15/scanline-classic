@@ -76,25 +76,64 @@ python scripts/lint_shaders.py --strict-structure
 ### SFC contract timing tests
 
 ```bash
-python -m unittest discover -s tests -p test_contract_timings.py -v
+python -m unittest discover -s tests -p "test_*timing*.py" -v
 ```
 
 These tests require `g++` and execute selected functions extracted from the
 shader in a C++ compatibility harness; they do not execute GLSL on a GPU.
-They resolve timing parameters from the NTSC SFC RGB and PAL SNES composite
-presets' pipelines and parameter sets, and supply source dimensions and average
-field rates explicitly. They also check the Famicom's NTSC progressive timing.
+They resolve the SFC timing profile from the RGB and PAL composite presets,
+with and without the PAL-M option. They supply source dimensions and both exact
+and rounded frontend field rates explicitly. They also check the Famicom's NTSC
+progressive timing using legacy parameters.
 Expected timing and phase values are derived independently from the clock
 counts in the [SFC timing reference](https://www.scanlineclassic.com/theory/timings.html);
 the rates on that page are rounded and may include typographical errors.
-The interlaced geometry assertions check the contract's average field height,
-not the duration of each individual field. Phase expectations use exact clock
-ratios and assume field count zero is the first reference field: even for NTSC,
-odd for PAL. Tests include reversed field order, a nonzero phase offset, and
+The interlaced geometry assertions check the current field's line count and
+the combined frame height. Phase expectations use exact clock
+ratios and assume field count zero is the first reference field: even for NTSC
+and PAL-M, odd for PAL. PAL-M's 6:1 pixel-clock-to-carrier ratio determines its
+clock from the given carrier frequency. The reference's displayed rates appear
+to use the rounded clock and can differ in their last digits from rates derived
+from the 6:1 ratio. PAL-M timings are extrapolated in the reference, not measured.
+Tests include reversed field order, nonzero phase offsets, mode changes, and
 long-running field counts. These cases do not validate the frame texture or
 prove that every timing parameter combination is supported. Additional
 N64, Mega Drive and 3DO cases compare phase against their preset's stated
 decimal clock values, not independently verified hardware timings.
+
+Timing profiles are defined in `presetdata/timing-profiles.json`; `build.py`
+validates them and regenerates `shaders/timing-profiles.inc`. Profile ID 0
+retains the legacy timing parameters. SFC uses ID 1, which selects PAL at
+55 Hz or below and NTSC above 55 Hz; the PAL-M option remaps only NTSC. The
+profile fixes timing values independently of the reported rate. Interlace is
+inferred from source height, so cropping across the field-height threshold is
+ambiguous. Other systems have not yet been migrated to profiles.
+Each `pixel_clock_multiplier` is a positive `[numerator, denominator]` ratio
+to the subcarrier; reduced components are at most 2^24 and the ratio at most
+500. Phase calculation uses the exact reciprocal rather than a decimal
+approximation.
+
+Each timing mode supplies even and odd physical field line counts in
+`field_lines`. For SFC NTSC interlace these are 263 even and 262 odd.
+`raster` specifies the interlace detection threshold. The shaders use the
+selected field's line count for geometry and `field_clocks` for phase.
+It also specifies `top_blank_lines` and `left_blank_cycles`: SFC uses one
+line and 88 pixel clocks. Bottom and right blanking are the remaining field
+space; presentation centers the active area independently of storage padding.
+`line_overrides` records exceptional line lengths by scan type, field parity,
+and one-based line number. SFC NTSC/PAL-M progressive odd line 241 has
+1,360 clocks; PAL interlaced odd line 312 has 1,368. The generator checks
+overridden fields against `field_clocks`, and the packed signal follows those
+line boundaries until the display resampler maps it to presentation rows.
+Fractional-clock field durations are supported for phase, not yet as a general
+sub-clock storage format.
+Durations are pixel-clock counts: either positive integers
+or `[numerator, denominator]` pairs. Reduced numerators must be less than
+2^52 and denominators at most 2^20. `first_field` specifies the field-zero
+parity; `FIELD_ODD` reverses it. Tests include equal half-line fields and
+fractional clocks at long field counts. The older `compute_timebase` paths
+still use approximate legacy phase and the profile's `field_adjustment`
+compatibility flag, rather than these explicit durations.
 
 ### Trim distribution
 

@@ -1,0 +1,8 @@
+{
+    "parameters" : {
+        "PIXEL_CLOCK_MODE" : 1.0,
+        "H_FREQ_MODE" : 1.0,
+        "H_FREQ" : 1364.0,
+        "SHORTEN_ODD_FIELD_TIME" : 1.0
+    }
+}

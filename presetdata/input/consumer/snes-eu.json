@@ -10,7 +10,7 @@
   ],
   "parameter_sets" : [
     "sys/sfc/base.json",
-    "sys/sfc/pal.json",
+    "sys/sfc/profile.json",
     "disp/pal.json",
     "disp/tv.json",
     "disp/consumer-color-pal.json",

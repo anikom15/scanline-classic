@@ -11,6 +11,7 @@
     "parameter_sets" : [
         "sys/famicom/base.json",
         "sys/sfc/base.json",
+        "sys/sfc/legacy.json",
         "sys/sfc/ntsc.json",
         "disp/ntscj.json",
         "disp/tv.json",

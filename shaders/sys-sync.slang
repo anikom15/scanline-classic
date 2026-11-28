@@ -37,6 +37,11 @@
 #include "contract.inc"
 
 #include "menus/parameters/sys-timing.inc"
+
+#pragma include_optional "../config/options.cfg"
+
+#include "timing-profiles.inc"
+#define TIMING_PROFILE_MODE timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS)
 #include "menus/parameters/sys-sync.inc"
 
 layout(push_constant) uniform Push
@@ -63,20 +68,21 @@ layout(push_constant) uniform Push
     float SC_FREQ_FRAC6;
 } config;
 
-#define V_FREQ_MODE config.V_FREQ_MODE
-#define V_FREQ config.V_FREQ
-#define SC_FREQ_MODE config.SC_FREQ_MODE
+#define V_FREQ_MODE timing_profile_v_mode(TIMING_PROFILE_MODE, config.OriginalSize.y, config.V_FREQ_MODE)
+#define V_FREQ timing_profile_v_freq(TIMING_PROFILE_MODE, config.OriginalSize.y, config.FrameCount, FIELD_ODD, config.V_FREQ)
+#define SC_FREQ_MODE timing_profile_sc_mode(TIMING_PROFILE_MODE, config.SC_FREQ_MODE)
 #define SC_FREQ timing_decimal_value(vec3(config.SC_FREQ_WHOLE, config.SC_FREQ_FRAC6, config.SC_FREQ_FRAC11))
-#define PIXEL_CLOCK_MODE config.PIXEL_CLOCK_MODE
-#define PIXEL_CLOCK timing_decimal_value(vec3(config.PIXEL_CLOCK_WHOLE, config.PIXEL_CLOCK_FRAC6, config.PIXEL_CLOCK_FRAC11))
-#define H_FREQ_MODE config.H_FREQ_MODE
-#define H_FREQ config.H_FREQ
+#define PIXEL_CLOCK_MODE timing_profile_pixel_mode(TIMING_PROFILE_MODE, config.PIXEL_CLOCK_MODE)
+#define PIXEL_CLOCK timing_profile_pixel_value(TIMING_PROFILE_MODE, timing_decimal_value(vec3(config.PIXEL_CLOCK_WHOLE, config.PIXEL_CLOCK_FRAC6, config.PIXEL_CLOCK_FRAC11)))
+#define H_FREQ_MODE timing_profile_h_mode(TIMING_PROFILE_MODE, config.H_FREQ_MODE)
+#define H_FREQ timing_profile_h_freq(TIMING_PROFILE_MODE, config.H_FREQ)
 #define H_BLANK_FUZZ config.H_BLANK_FUZZ
 #define FIELD_ODD config.FIELD_ODD
 #define SYS_SYNC_TYPE config.SYS_SYNC_TYPE
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
+    float TIMING_PROFILE;
     mat4 MVP;
 } global;
 
@@ -122,7 +128,9 @@ SyncState compute_sync_state()
         PIXEL_CLOCK,
         H_FREQ_MODE,
         H_FREQ);
-    state.data_length = ceil(contract_data_length(state.base_frame_width, state.frame_height));
+    state.data_length = timing_profile_storage_length(TIMING_PROFILE_MODE, config.OriginalSize.y,
+        config.FrameCount, FIELD_ODD, state.base_frame_width,
+        ceil(contract_data_length(state.base_frame_width, state.frame_height)));
     state.packed_width = contract_pixel_packed_width(state.data_length);
     state.texture_fits = contract_pixel_texture_fits(config.OutputSize.xy, state.data_length, state.packed_width) &&
         contract_pixel_texture_fits(config.SourceSize.xy, state.data_length, state.packed_width) ? 1.0 : 0.0;
@@ -158,16 +166,20 @@ SyncState compute_sync_state()
         H_FREQ_MODE,
         H_FREQ);
     float field_parity = (is_interlaced > 0.5)
-        ? contract_field_parity(config.FrameCount, FIELD_ODD, config.OriginalFPS, SC_FREQ_MODE, SC_FREQ)
+        ? contract_field_parity(config.FrameCount, FIELD_ODD, config.OriginalFPS, SC_FREQ_MODE, SC_FREQ,
+                                timing_profile_first_field_odd(TIMING_PROFILE_MODE, -1.0))
         : 0.0;
 
     state.active_source_height = (is_interlaced > 0.5)
         ? max(floor((config.OriginalSize.y - field_parity + 1.0) * 0.5), 0.0)
         : config.OriginalSize.y;
-    state.active_top = floor((frame_height_int - state.active_source_height) * 0.5);
+    state.active_top = timing_profile_top_blank_lines(TIMING_PROFILE_MODE, floor((frame_height_int - state.active_source_height) * 0.5));
 
     float active_width_base = config.OriginalSize.x * max(state.clock_factor, 1.0);
-    state.active_left_base = (state.base_frame_width - active_width_base) * 0.5;
+    state.active_left_base = timing_profile_left_blank_cycles(TIMING_PROFILE_MODE, (state.base_frame_width - active_width_base) * 0.5);
+    if (TIMING_PROFILE_MODE > 0 && (state.active_left_base + active_width_base > state.base_frame_width
+        || state.active_top + state.active_source_height > state.frame_height))
+        state.texture_fits = 0.0;
     return state;
 }
 
@@ -213,19 +225,21 @@ void main()
         FragColor = vec4(0.0);
         return;
     }
-    output_y = floor(sample_index / vSyncState.base_frame_width);
-    output_x = sample_index - output_y * vSyncState.base_frame_width;
+    vec2 raster = timing_profile_raster_position(TIMING_PROFILE_MODE, config.OriginalSize.y,
+        config.FrameCount, FIELD_ODD, sample_index, vSyncState.base_frame_width);
+    output_x = raster.x;
+    output_y = raster.y;
     output_y_i = int(output_y);
 
     float frame_height_int = ceil(vSyncState.frame_height);
-    bool in_frame_x = output_x >= 0.0 && output_x < vSyncState.base_frame_width;
+    bool in_frame_x = output_x >= 0.0;
     bool in_frame_y = output_y >= 0.0 && output_y < frame_height_int;
     bool in_frame = in_frame_x && in_frame_y;
 
     int clock_factor_int = max(int(floor(vSyncState.clock_factor + 0.5)), 1);
     int phase_step_clocks_int = int(floor(vSyncState.clocks_per_line + 0.5)) % clock_factor_int;
     int row_phase_clocks_int = (output_y_i * phase_step_clocks_int) % clock_factor_int;
-    float phase_clocks = float(row_phase_clocks_int);
+    float phase_clocks = TIMING_PROFILE_MODE == 0 ? float(row_phase_clocks_int) : 0.0;
 
     float base_x = output_x;
     float source_x_base = (base_x - vSyncState.active_left_base - phase_clocks) / max(vSyncState.clock_factor, 1.0);

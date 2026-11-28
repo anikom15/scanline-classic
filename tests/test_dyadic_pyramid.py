@@ -1,4 +1,5 @@
 import json
+import re
 import shutil
 import subprocess
 import tempfile
@@ -21,6 +22,180 @@ def shader_function(source, signature):
 
 
 class DyadicPyramidTests(unittest.TestCase):
+    def test_sync_tracks_exceptional_physical_line_boundaries(self):
+        compiler = shutil.which('g++')
+        if compiler is None:
+            self.skipTest('g++ is required to exercise shader functions')
+        sync = (ROOT / 'shaders' / 'sys-sync.slang').read_text(encoding='utf-8')
+        profiles = (ROOT / 'shaders' / 'timing-profiles.inc').read_text(encoding='utf-8')
+        state = re.search(r'struct SyncState\s*\{[^}]+\};', sync)
+        if state is None:
+            raise ValueError('Missing SyncState')
+        fragment = sync.split('#pragma stage fragment', 1)[1]
+        shader_code = '\n'.join((
+            state.group(),
+            shader_function(profiles, 'vec2 timing_profile_raster_position('),
+            shader_function(fragment, 'vec4 fetch_source_texel('),
+            shader_function(fragment, 'void main()').replace('void main()', 'void render_sample()', 1),
+        ))
+        harness = r'''
+#include <algorithm>
+#include <cmath>
+#include <limits>
+#include <stdexcept>
+using std::ceil; using std::floor; using std::max;
+using uint = unsigned int;
+float max(float x, double y) { return std::max(x,float(y)); }
+struct vec2 {
+    float x,y;
+    vec2(float a=0,float b=0): x(a),y(b) {}
+};
+vec2 operator*(vec2 a,vec2 b) { return {a.x*b.x,a.y*b.y}; }
+struct vec3 { float r,g,b; vec3(float a,float c,float d): r(a),g(c),b(d) {} };
+struct vec4 {
+    vec3 rgb; float a;
+    vec4(float v): rgb(v,v,v),a(v) {}
+    vec4(float a,float b,float c,float d): rgb(a,b,c),a(d) {}
+    vec4(vec3 c,float d): rgb(c),a(d) {}
+};
+struct ivec2 { int x,y; ivec2(int a,int b): x(a),y(b) {} };
+struct Size { float x,y; vec2 xy; };
+struct { Size OriginalSize, OutputSize, SourceSize; uint FrameCount; } config;
+vec2 vTexCoord; vec4 FragColor(0); int Source;
+int mode; float field_odd;
+#define TIMING_PROFILE_MODE mode
+#define FIELD_ODD field_odd
+#define SYS_SYNC_TYPE 0.0
+const float BLANKING_APPROX_FRACTION=0.07f;
+float uintBitsToFloat(uint) { return std::numeric_limits<float>::quiet_NaN(); }
+vec4 texelFetch(int, ivec2, int) { return vec4(0.1f,0.2f,0.3f,1); }
+'''
+        checks = r'''
+int main() {
+    config.OutputSize={1024,512,{1024,512}};
+    config.SourceSize=config.OutputSize;
+    vSyncState.base_frame_width=1364; vSyncState.frame_height=262;
+    vSyncState.active_left_base=88; vSyncState.active_top=1;
+    vSyncState.active_source_height=239; vSyncState.clock_factor=4;
+    vSyncState.clocks_per_line=1364; vSyncState.packed_width=1024;
+    vSyncState.texture_fits=1; mode=1; field_odd=0; config.FrameCount=1;
+    config.OriginalSize={256,239,{256,239}};
+    vSyncState.data_length=357364;
+    auto sample = [](int index, float expected) {
+        int x=index%1024, y=index/1024;
+        vTexCoord=vec2((x+0.5f)/1024,(y+0.5f)/512);
+        render_sample();
+        if (std::abs(FragColor.a-expected)>1e-5f)
+            throw std::runtime_error("sync differs at physical line boundary");
+    };
+    for (int line : {239,240,241,242,261}) {
+        int start=line*1364-(line>240 ? 4 : 0);
+        sample(start, -0.4f);
+        sample(start+87, -0.4f);
+        sample(start+88, 0.0f);
+    }
+    sample(357364, 0.0f);
+    mode=2; config.FrameCount=0; config.OriginalSize={256,478,{256,478}};
+    vSyncState.frame_height=312; vSyncState.active_source_height=239;
+    vSyncState.data_length=425572;
+    sample(311*1364, -0.4f);
+    sample(425571, 0.0f);
+    sample(425572, 0.0f);
+}
+'''
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / 'sync-raster.cpp'
+            executable = Path(temp) / 'sync-raster'
+            path.write_text(harness + state.group() + '\nSyncState vSyncState;\n'
+                            + shader_code[len(state.group()):] + checks, encoding='utf-8')
+            subprocess.run([compiler, '-std=c++17', '-O2', str(path), '-o', str(executable)], check=True)
+            subprocess.run([str(executable)], check=True)
+
+    def test_sync_uses_profile_blanking_and_rejects_overflow(self):
+        compiler = shutil.which('g++')
+        if compiler is None:
+            self.skipTest('g++ is required to exercise shader functions')
+        sync = (ROOT / 'shaders' / 'sys-sync.slang').read_text(encoding='utf-8')
+        profiles = (ROOT / 'shaders' / 'timing-profiles.inc').read_text(encoding='utf-8')
+        state = re.search(r'struct SyncState\s*\{[^}]+\};', sync)
+        if state is None:
+            raise ValueError('Missing SyncState')
+        shader_code = '\n'.join((
+            state.group(),
+            shader_function(profiles, 'float timing_profile_top_blank_lines('),
+            shader_function(profiles, 'float timing_profile_left_blank_cycles('),
+            shader_function(profiles, 'float timing_profile_storage_length('),
+            shader_function(sync, 'SyncState compute_sync_state()'),
+        ))
+        harness = r'''
+#include <algorithm>
+#include <cmath>
+#include <limits>
+using std::ceil; using std::floor; using std::max;
+using uint = unsigned int;
+float max(float x, double y) { return std::max(x,float(y)); }
+struct vec2 { float x, y; };
+struct Size { float x, y; vec2 xy; };
+struct { Size OriginalSize, OutputSize, SourceSize; float OriginalFPS; unsigned FrameCount; } config;
+int mode; float height, factor, parity; bool interlaced;
+float uintBitsToFloat(unsigned int) { return std::numeric_limits<float>::quiet_NaN(); }
+template<typename... T> float contract_frame_width(T...) { return 1364; }
+template<typename... T> float contract_frame_height(T...) { return height; }
+float contract_data_length(float width, float lines) { return width * lines; }
+float contract_pixel_packed_width(float) { return 1024; }
+bool contract_pixel_texture_fits(vec2, float, float) { return true; }
+template<typename... T> float contract_clocks_per_line(T...) { return 1364; }
+template<typename... T> float contract_clock_factor(T...) { return factor; }
+template<typename... T> float contract_is_interlaced(T...) { return interlaced ? 1 : 0; }
+template<typename... T> float contract_field_parity(T...) { return parity; }
+float timing_profile_first_field_odd(int, float) { return 0; }
+#define TIMING_PROFILE_MODE mode
+#define V_FREQ_MODE 0
+#define V_FREQ 0
+#define SC_FREQ_MODE 0
+#define SC_FREQ 0
+#define PIXEL_CLOCK_MODE 0
+#define PIXEL_CLOCK 0
+#define H_FREQ_MODE 0
+#define H_FREQ 0
+#define H_BLANK_FUZZ 0
+#define FIELD_ODD 0
+'''
+        checks = r'''
+#include <stdexcept>
+int main() {
+    config.OriginalSize={256,224,{256,224}};
+    height=262; factor=4; interlaced=false; parity=0; mode=1;
+    SyncState s=compute_sync_state();
+    if (s.active_top!=1 || s.active_left_base!=88 || s.texture_fits!=1)
+        throw std::runtime_error("profile blanking mismatch");
+    config.OriginalSize={512,478,{512,478}};
+    height=262; factor=2; interlaced=true; parity=1;
+    s=compute_sync_state();
+    if (s.active_top!=1 || s.active_left_base!=88 || s.active_source_height!=239)
+        throw std::runtime_error("interlaced profile blanking mismatch");
+    config.OriginalSize={400,224,{400,224}};
+    factor=4; interlaced=false;
+    if (compute_sync_state().texture_fits!=0)
+        throw std::runtime_error("oversized picture was not rejected");
+    config.OriginalSize={256,224,{256,224}};
+    height=224;
+    if (compute_sync_state().texture_fits!=0)
+        throw std::runtime_error("oversized field picture was not rejected");
+    height=262;
+    mode=0;
+    s=compute_sync_state();
+    if (s.active_top!=19 || s.active_left_base!=170)
+        throw std::runtime_error("legacy centering changed");
+}
+'''
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / 'sync.cpp'
+            executable = Path(temp) / 'sync-test'
+            path.write_text(harness + shader_code + checks, encoding='utf-8')
+            subprocess.run([compiler, '-std=c++17', '-O2', str(path), '-o', str(executable)], check=True)
+            subprocess.run([str(executable)], check=True)
+
     def test_pipeline_levels_cover_full_allocation(self):
         root = ROOT / 'presetdata' / 'pipelines' / 'sys'
         pipelines = (
@@ -63,10 +238,13 @@ class DyadicPyramidTests(unittest.TestCase):
 
         dsp = (ROOT / 'shaders' / 'dsp.inc').read_text(encoding='utf-8')
         contract = (ROOT / 'shaders' / 'contract.inc').read_text(encoding='utf-8')
+        profiles = (ROOT / 'shaders' / 'timing-profiles.inc').read_text(encoding='utf-8')
         producer = (ROOT / 'shaders' / 'send-did-common.slang').read_text(encoding='utf-8')
         consumer = (ROOT / 'shaders' / 'noise-txrx-common.slang').read_text(encoding='utf-8')
         fragment = producer.split('#pragma stage fragment', 1)[1]
         shader_code = '\n'.join((
+            shader_function(profiles, 'float timing_profile_storage_length('),
+            shader_function(profiles, 'vec2 timing_profile_raster_position('),
             shader_function(contract, 'float contract_pixel_packed_width('),
             shader_function(contract, 'bool contract_pixel_texture_fits('),
             shader_function(dsp, 'int pyramid_max_lod('),
@@ -85,13 +263,18 @@ class DyadicPyramidTests(unittest.TestCase):
 #include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 #include <vector>
 using std::ceil; using std::floor; using std::max; using std::min; using std::clamp; using std::round;
 using std::sqrt; using std::log2; using std::exp2;
+using uint = unsigned int;
 float max(float x, double y) { return std::max(x,float(y)); }
 float clamp(float x, double a, double b) { return std::clamp(x,float(a),float(b)); }
-struct vec2 { float x, y; };
+struct vec2 {
+    float x, y;
+    vec2(float a=0, float b=0): x(a), y(b) {}
+};
 vec2 operator*(vec2 a, vec2 b) { return {a.x*b.x, a.y*b.y}; }
 struct vec4 {
     float x, y, z, w;
@@ -114,6 +297,10 @@ vec4 texelFetch(sampler2D t, ivec2 p, int) {
 }
 struct Size { float x, y; vec2 xy; };
 struct { Size OutputSize, OriginalSize, SendSourceSize, SourceSize; float OriginalFPS; } config;
+struct { unsigned FrameCount; float FIELD_ODD; } global;
+int profile_mode;
+#define TIMING_PROFILE_MODE profile_mode
+float uintBitsToFloat(uint) { return std::numeric_limits<float>::quiet_NaN(); }
 struct SendDIDState { float frame_height, base_frame_width, input_span, output_frame_width, data_length, texture_fits; };
 SendDIDState vSendDIDState;
 struct NoiseTxRxState { float frame_width, frame_height, data_length, tau, storage_width, texture_fits, max_lod; };
@@ -148,6 +335,10 @@ vec4 reference_consumer_sample(const std::vector<Point>& points, int index,
                                int length, int raster_width, int span) {
     index = clamp(index, 0, length-1);
     int line_start = (index / raster_width) * raster_width;
+    if (profile_mode==1 && index>=241*1364-4)
+        line_start=((index+4)/raster_width)*raster_width-4;
+    else if (profile_mode==2 && index>=312*1364)
+        line_start=311*1364;
     int aligned_index = line_start - line_start % span +
                         ((index - line_start) / span) * span;
     return reference_sample(points, aligned_index);
@@ -171,8 +362,11 @@ vec4 source_value(int index, int width) {
     float value = float((x >= width/3) + (x >= 2*width/3));
     return vec4(value, -value, value*0.25f, value*0.5f);
 }
-void run_case(int length, int storage_width, int storage_height, int raster_width) {
-    float height = float(length) / raster_width;
+void run_case(int length, int storage_width, int storage_height, int raster_width, int profile=0) {
+    profile_mode=profile;
+    config.OriginalSize.y=profile==2 ? 478 : 239;
+    global.FrameCount=profile==2 ? 0 : 1;
+    float height = float(length+(profile==1 ? 4 : profile==2 ? -4 : 0)) / raster_width;
 #ifdef SEND_PIXEL_DOMAIN
     int data_width = int(contract_pixel_packed_width(float(length)));
 #else
@@ -244,7 +438,8 @@ void run_case(int length, int storage_width, int storage_height, int raster_widt
     for (int index : {0, raster_width/3-1, raster_width/3,
                       raster_width-1, raster_width, raster_width+1,
                       raster_width+raster_width/3-1, raster_width+raster_width/3,
-                      2*raster_width+raster_width/3, length-1}) {
+                      2*raster_width+raster_width/3, 241*1364-5, 241*1364-4,
+                      241*1364-3, length-1}) {
         if (index < 0 || index >= length) continue;
         for (float lod : {-1.0f, 0.0f, 0.5f, 1.0f, 3.5f, 8.0f, 10.0f}) {
             int effective_lod = int(floor(std::clamp(lod, 0.0f, float(max_lod))));
@@ -335,6 +530,8 @@ int main() {
     for (int length : {1,2,3,7,8,9,13,16,17})
         run_case(length,16,8,5);
     run_case(357386,2048,2048,1364);
+    run_case(357364,2048,2048,1364,1);
+    run_case(425572,2048,2048,1364,2);
     run_case(2097153,2048,2048,2048);
     std::cout << "pyramid and sampling checks passed\n";
 }
@@ -359,8 +556,12 @@ int main() {
             self.skipTest('g++ is required to exercise shader functions')
 
         source = (ROOT / 'shaders' / 'frameh.slang').read_text(encoding='utf-8')
+        profiles = (ROOT / 'shaders' / 'timing-profiles.inc').read_text(encoding='utf-8')
         fragment = source.split('#pragma stage fragment', 1)[1]
         shader_code = '\n'.join((
+            shader_function(profiles, 'float timing_profile_top_blank_lines('),
+            shader_function(profiles, 'float timing_profile_left_blank_cycles('),
+            shader_function(profiles, 'vec2 timing_profile_raster_position('),
             shader_function(fragment, 'float current_field_parity()'),
             shader_function(fragment, 'bool sample_maps_to_active_time(').replace('out vec2', 'vec2&'),
             shader_function(fragment, 'vec3 fetch_source_sample('),
@@ -370,8 +571,10 @@ int main() {
         harness = r'''
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 using std::ceil; using std::floor; using std::max;
+using uint = unsigned int;
 float max(float x, double y) { return std::max(x,float(y)); }
 float mod(float a, float b) { return a-b*floor(a/b); }
 struct vec2 {
@@ -393,27 +596,38 @@ struct vec4 {
     vec4(vec3 c,float w) : rgb(c),a(w) {}
 };
 struct Size { float x,y; vec2 zw; };
-struct { Size SourceSize, OutputSize; } config;
+struct { Size SourceSize, OutputSize, OriginalSize; uint FrameCount; } config;
 vec2 vTexCoord;
 vec4 FragColor;
 float FrameWidth, FrameHeight, IsInterlaced, Field, ClocksPerLine, ClockFactor;
 float PackedWidth, DataLength, TextureFits, field_odd;
+int profile_mode;
+#define TIMING_PROFILE_MODE profile_mode
 #define FIELD_ODD field_odd
 #define BLANKING_COLOR vec3(-1,-1,-1)
+float uintBitsToFloat(unsigned int) { return std::numeric_limits<float>::quiet_NaN(); }
 int Source;
 vec4 texture(int,vec2 uv) {
     return vec4(floor(uv.x*config.SourceSize.x),floor(uv.y*config.SourceSize.y),1,1);
 }
 '''
         checks = r'''
-void run_case(float height, bool interlaced, float parity, int output_width, int output_height) {
-    FrameWidth=1365; FrameHeight=height; ClocksPerLine=1365; ClockFactor=4;
+void run_case(float height, bool interlaced, float parity, int output_width, int output_height,
+              int profile, int width, int source_width, int source_height, int factor) {
+    profile_mode=profile;
+    FrameWidth=float(width); FrameHeight=height; ClocksPerLine=float(width); ClockFactor=float(factor);
     IsInterlaced=interlaced ? 1 : 0; Field=parity; field_odd=0;
-    PackedWidth=1024; DataLength=ceil(FrameWidth*height); TextureFits=1;
-    config.SourceSize={256,200,vec2(1.0f/256,1.0f/200)};
+    config.OriginalSize.y=float(source_height);
+    config.FrameCount=profile == 2 ? uint(1-parity) : uint(parity);
+    int delta=profile && parity && ((!interlaced && (profile==1 || profile==3)) ||
+                                      (interlaced && profile==2)) ? (profile==2 ? 4 : -4) : 0;
+    int special_line=profile==2 ? 312 : 241;
+    PackedWidth=1024; DataLength=ceil(FrameWidth*height)+delta; TextureFits=1;
+    config.SourceSize={float(source_width),float(source_height),vec2(1.0f/source_width,1.0f/source_height)};
     config.OutputSize={float(output_width),float(output_height),vec2()};
-    int active_height=interlaced ? int(floor((200-parity+1)*0.5f)) : 200;
-    int top=int(floor((ceil(height)-active_height)*0.5f));
+    int active_height=interlaced ? int(floor((source_height-parity+1)*0.5f)) : source_height;
+    int top=profile ? 1 : int(floor((ceil(height)-active_height)*0.5f));
+    float left=profile ? 88 : (width-source_width*factor)*0.5f;
     for (int y=0;y<output_height;++y) for (int x=0;x<output_width;++x) {
         vTexCoord=vec2((x+0.5f)/output_width,(y+0.5f)/output_height);
         render_sample();
@@ -422,9 +636,12 @@ void run_case(float height, bool interlaced, float parity, int output_width, int
             if (FragColor.a != 0) throw std::runtime_error("padding not cleared");
             continue;
         }
-        int line=index/1365, clock=index%1365;
-        float sx=(clock-(1365-256*4)*0.5f-(line%4))/4;
-        bool active=line>=top && line<top+active_height && sx>=0 && sx<256;
+        int line, clock;
+        int start=(special_line-1)*width, end=special_line*width+delta;
+        if (delta && index>=start && index<end) { line=special_line-1; clock=index-start; }
+        else { int normal=index-(delta && index>=end ? delta : 0); line=normal/width; clock=normal%width; }
+        float sx=(clock-left-(profile ? 0 : (line*(width%factor))%factor))/factor;
+        bool active=line>=top && line<top+active_height && sx>=0 && sx<source_width;
         float expected_x=active ? floor(sx) : -1;
         float expected_y=active ? (interlaced ? (line-top)*2+parity : line-top) : -1;
         if (FragColor.rgb.x!=expected_x || FragColor.rgb.y!=expected_y || FragColor.a!=1)
@@ -437,8 +654,15 @@ void run_case(float height, bool interlaced, float parity, int output_width, int
         throw std::runtime_error("missing overflow color");
 }
 int main() {
-    run_case(262,false,0,2048,512);
-    run_case(262.5f,true,1,1024,512);
+    run_case(262,false,0,2048,512,0,1365,256,200,4);
+    run_case(262.5f,true,1,1024,512,0,1365,256,200,4);
+    run_case(263,true,0,1024,512,1,1364,256,448,4);
+    run_case(262,true,1,1024,512,1,1364,512,478,2);
+    run_case(312,false,0,1024,512,2,1364,256,239,4);
+    run_case(262,false,0,1024,512,3,1364,256,224,4);
+    run_case(262,false,1,1024,512,1,1364,256,239,4);
+    run_case(262,false,1,1024,512,3,1364,512,239,2);
+    run_case(312,true,1,1024,512,2,1364,256,478,4);
 }
 '''
         with tempfile.TemporaryDirectory() as temp:

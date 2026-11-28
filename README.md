@@ -128,6 +128,13 @@ To use global options:
 
 Global options are compile-time toggles, so they affect shader behavior globally rather than per-preset.
 
+For SFC/SNES profiles, `OPTION_REPLACE_NTSC_PALM` selects PAL-M instead of
+NTSC for 60 Hz sources; 50 Hz sources continue to use PAL. Display settings
+remain independent, so choose a display preset suitable for the signal.
+Existing saved presets that specify legacy timing parameters should be
+regenerated to use the SFC timing profile. Legacy timing controls remain
+available for systems not yet migrated and are ignored by the SFC profile.
+
 Available options in the skeleton include:
 
 - `OPTION_DEBUG`: enables debug parameters in shaders

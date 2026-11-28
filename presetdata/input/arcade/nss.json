@@ -10,6 +10,7 @@
   ],
   "parameter_sets" : [
     "sys/sfc/base.json",
+    "sys/sfc/legacy.json",
     "sys/sfc/ntsc.json",
     "disp/ntscj.json",
     "disp/arcade-tvstyle.json",

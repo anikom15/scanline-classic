@@ -7,6 +7,7 @@ import subprocess
 import sys
 
 from scripts.generate_filter_taps import generate_filter_taps
+from scripts.generate_timing_profiles import generate_timing_profiles
 
 # Paths
 ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -201,6 +202,7 @@ def main():
         sys.exit(2)
 
     generate_filter_taps(ROOT)
+    generate_timing_profiles(ROOT)
 
     if args.lint_shaders:
         run_shader_lint(verbose=verbose, strict_structure=args.strict_structure)

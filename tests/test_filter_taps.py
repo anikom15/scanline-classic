@@ -198,6 +198,12 @@ class FilterTapTests(unittest.TestCase):
 
     def test_build_generates_before_copy_and_reports_caps(self):
         output = self.root / 'out'
+        catalog = self.root / 'presetdata' / 'timing-profiles.json'
+        catalog.parent.mkdir()
+        shutil.copy2(ROOT / 'presetdata' / 'timing-profiles.json', catalog)
+        (self.root / 'config').mkdir()
+        shutil.copy2(ROOT / 'config' / 'options.skel.cfg', self.root / 'config')
+        (self.root / 'shaders' / 'timing-profiles.inc').write_text('stale\n', encoding='utf-8')
         log = io.StringIO()
         with patch.object(build, 'ROOT', str(self.root)), \
                 patch.object(build, 'OUT', str(output)), \
@@ -212,6 +218,10 @@ class FilterTapTests(unittest.TestCase):
         source = self.root / 'shaders' / 'filter-taps.inc'
         self.assertEqual(source.read_text(encoding='utf-8'),
                          (output / 'shaders' / 'filter-taps.inc').read_text(encoding='utf-8'))
+        profiles = self.root / 'shaders' / 'timing-profiles.inc'
+        self.assertEqual(profiles.read_text(encoding='utf-8'),
+                         (output / 'shaders' / 'timing-profiles.inc').read_text(encoding='utf-8'))
+        self.assertNotEqual(profiles.read_text(encoding='utf-8'), 'stale\n')
         for shader, designs in self.results().items():
             self.assertIn(f'{shader}: {max(designs.values())}', log.getvalue())
         self.assertIn('display-component.slang and display-svideo-filter.slang', log.getvalue())

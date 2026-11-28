@@ -2,6 +2,7 @@
 
 #pragma parameter TIMING_HEADER " —— System: Timing —— " 0.0 0.0 0.0 0.0
 
+#pragma parameter TIMING_PROFILE "System timing profile (legacy, SFC)" 0.0 0.0 1.0 1.0
 #pragma parameter SC_FREQ_MODE "Subcarrier frequency mode (auto, NTSC, PAL, PAL-M, custom, off)" 0.0 0.0 5.0 1.0
 #pragma parameter SC_FREQ_WHOLE "Custom subcarrier frequency, whole MHz" 3.0 0.0 10.0 1.0
 #pragma parameter SC_FREQ_FRAC6 "Custom subcarrier frequency, first 6 decimal digits" 579545.0 0.0 999999.0 1.0

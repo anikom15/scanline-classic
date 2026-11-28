@@ -35,6 +35,9 @@
 
 #pragma include_optional "../config/options.cfg"
 
+#include "timing-profiles.inc"
+#define TIMING_PROFILE_MODE timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS)
+
 layout(push_constant) uniform Push
 {
     vec4 OriginalSize;
@@ -57,18 +60,21 @@ layout(push_constant) uniform Push
     float SC_FREQ_FRAC6;
 } config;
 
-#define V_FREQ_MODE config.V_FREQ_MODE
-#define V_FREQ config.V_FREQ
-#define SC_FREQ_MODE config.SC_FREQ_MODE
+#define V_FREQ_MODE timing_profile_v_mode(TIMING_PROFILE_MODE, config.OriginalSize.y, config.V_FREQ_MODE)
+#define V_FREQ timing_profile_v_freq(TIMING_PROFILE_MODE, config.OriginalSize.y, global.FrameCount, global.FIELD_ODD, config.V_FREQ)
+#define SC_FREQ_MODE timing_profile_sc_mode(TIMING_PROFILE_MODE, config.SC_FREQ_MODE)
 #define SC_FREQ timing_decimal_value(vec3(config.SC_FREQ_WHOLE, config.SC_FREQ_FRAC6, config.SC_FREQ_FRAC11))
-#define PIXEL_CLOCK_MODE config.PIXEL_CLOCK_MODE
-#define PIXEL_CLOCK timing_decimal_value(vec3(config.PIXEL_CLOCK_WHOLE, config.PIXEL_CLOCK_FRAC6, config.PIXEL_CLOCK_FRAC11))
-#define H_FREQ_MODE config.H_FREQ_MODE
-#define H_FREQ config.H_FREQ
+#define PIXEL_CLOCK_MODE timing_profile_pixel_mode(TIMING_PROFILE_MODE, config.PIXEL_CLOCK_MODE)
+#define PIXEL_CLOCK timing_profile_pixel_value(TIMING_PROFILE_MODE, timing_decimal_value(vec3(config.PIXEL_CLOCK_WHOLE, config.PIXEL_CLOCK_FRAC6, config.PIXEL_CLOCK_FRAC11)))
+#define H_FREQ_MODE timing_profile_h_mode(TIMING_PROFILE_MODE, config.H_FREQ_MODE)
+#define H_FREQ timing_profile_h_freq(TIMING_PROFILE_MODE, config.H_FREQ)
 #define DSP_WORKING_FS config.DSP_WORKING_FS
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
+    uint FrameCount;
+    float FIELD_ODD;
+    float TIMING_PROFILE;
     mat4 MVP;
 } global;
 
@@ -123,7 +129,9 @@ SendDIDState compute_send_did_state()
         H_FREQ,
         DSP_WORKING_FS);
 #endif
-    state.data_length = max(ceil(contract_data_length(base_frame_width, state.frame_height)), 1.0);
+    state.data_length = max(timing_profile_storage_length(TIMING_PROFILE_MODE, config.OriginalSize.y,
+        global.FrameCount, global.FIELD_ODD, base_frame_width,
+        ceil(contract_data_length(base_frame_width, state.frame_height))), 1.0);
 #ifdef SEND_PIXEL_DOMAIN
     state.base_frame_width = contract_pixel_packed_width(state.data_length);
     state.texture_fits = contract_pixel_texture_fits(config.SendSourceSize.xy, state.data_length, state.base_frame_width) ? 1.0 : 0.0;
