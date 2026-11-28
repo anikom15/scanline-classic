@@ -105,9 +105,12 @@ Timing profiles are defined in `presetdata/timing-profiles.json`; `build.py`
 validates them and regenerates `shaders/timing-profiles.inc`. Profile ID 0
 retains the legacy timing parameters. SFC uses ID 1, which selects PAL at
 55 Hz or below and NTSC above 55 Hz; the PAL-M option remaps only NTSC. The
-profile fixes timing values independently of the reported rate. Interlace is
-inferred from source height, so cropping across the field-height threshold is
-ambiguous. Other systems have not yet been migrated to profiles.
+profile fixes timing values independently of the reported rate. PSX uses ID 2
+and the same 55 Hz NTSC/PAL boundary. Its NTSC field alternates 3,412 and
+3,413 clocks per line, starting with 3,412 on line 1; PAL lines are 3,405
+clocks. Interlace is inferred from source height, so cropping or overscan
+across the field-height threshold is ambiguous. Other systems have not yet
+been migrated to profiles.
 Each `pixel_clock_multiplier` is a positive `[numerator, denominator]` ratio
 to the subcarrier; reduced components are at most 2^24 and the ratio at most
 500. Phase calculation uses the exact reciprocal rather than a decimal
@@ -133,6 +136,18 @@ NTSC/PAL-M progressive odd line 259 has 1,360 clocks; PAL interlaced odd line
 numbering. The generator checks
 overridden fields against `field_clocks`, and the packed signal follows those
 line boundaries until the display resampler maps it to presentation rows.
+The resampler corrects the fractional displacement between the physical
+H-sync boundary and the first stored sample of each presentation row. The
+debug deskew bypass leaves those rounded boundaries uncorrected.
+PSX's nominal picture starts on line 13 after one vertical sync and 11
+back-porch lines. Horizontal sync is 100 clocks; the front porch is 100 clocks
+on the first line and 101 on the longer NTSC lines, keeping the picture aligned
+to H-sync. Nominal heights are 240 NTSC or 288 PAL lines. Source images are
+centered on the nominal picture and clipped at physical field boundaries.
+Horizontal mode inference chooses the largest supported width not exceeding
+the reported width (256 minimum); cropping or overscan can select the wrong
+mode. See `doc/TIMING_PROFILES_PLAN.md` for the supported widths, field
+patterns and detection thresholds.
 Fractional-clock field durations are supported for phase, not yet as a general
 sub-clock storage format.
 Durations are pixel-clock counts: either positive integers

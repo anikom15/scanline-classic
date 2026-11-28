@@ -165,6 +165,7 @@ layout(location = 19) flat out float LineCarryClocksOut;
 layout(location = 20) flat out float ClockFactorOut;
 layout(location = 21) flat out float InputPackedWidth;
 layout(location = 22) flat out float InputTextureFits;
+layout(location = 23) flat out float BaseFrameWidthOut;
 
 void main()
 {
@@ -197,6 +198,10 @@ void main()
         H_FREQ_MODE,
         H_FREQ,
         H_BLANK_FUZZ);
+    if (TIMING_PROFILE_MODE > 0)
+        LineCarryClocks = 0.0;
+    BaseFrameWidthOut = contract_frame_width(
+        config.OriginalFPS, SC_FREQ_MODE, SC_FREQ, PIXEL_CLOCK_MODE, PIXEL_CLOCK, H_FREQ_MODE, H_FREQ);
 
     OutputFrameHeight = contract_frame_height(
         config.OriginalSize.xy,
@@ -286,6 +291,7 @@ layout(location = 19) flat in float LineCarryClocksOut;
 layout(location = 20) flat in float ClockFactorOut;
 layout(location = 21) flat in float InputPackedWidth;
 layout(location = 22) flat in float InputTextureFits;
+layout(location = 23) flat in float BaseFrameWidthOut;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 1) uniform sampler2D Source;
 
@@ -325,9 +331,18 @@ void main()
     }
 
     float row_shift_output = compute_row_shift_output_samples(output_y_i);
-    float deskewed_output_x = output_x + row_shift_output;
-
-    float field_output_index = line_range.x + deskewed_output_x;
+    if (TIMING_PROFILE_MODE > 0) {
+        float clock_start = timing_profile_line_range(TIMING_PROFILE_MODE, config.OriginalSize.y,
+            config.FrameCount, global.FIELD_ODD, output_y, BaseFrameWidthOut).x;
+        float sync_shift = contract_hsync_sample_offset(clock_start, BaseFrameWidthOut, OutputFrameWidth, line_range.x);
+#ifdef OPTION_DEBUG
+        sync_shift = mix(sync_shift, 0.0, DESKEW_BYPASS);
+#endif
+        row_shift_output += sync_shift;
+    }
+    double field_output_index = TIMING_PROFILE_MODE > 0
+        ? double(line_range.x) + double(output_x) + double(row_shift_output)
+        : double(line_range.x + (output_x + row_shift_output));
     if (field_output_index < 0.0 || field_output_index >= OutputDataLength) {
         FragColor = vec4(0.0);
         return;
@@ -335,12 +350,14 @@ void main()
 
     float Delta = pfilt.Delta;
     float invDelta = 1.0 / max(Delta, EPS);
-    float input_sample_pos = field_output_index * invDelta;
-    float input_pos_floor = floor(input_sample_pos);
+    double input_sample_pos = TIMING_PROFILE_MODE > 0
+        ? field_output_index * double(InputFrameWidth) / double(OutputFrameWidth)
+        : double(float(field_output_index) * invDelta);
+    double input_pos_floor = floor(input_sample_pos);
     int input_index_int = int(input_pos_floor);
-    float frac_offset = input_sample_pos - input_pos_floor;
+    float frac_offset = float(input_sample_pos - input_pos_floor);
     float input_data_limit = max(ceil(InputDataLength) - 1.0, 0.0);
-    float nearest_sample_index = clamp(floor(input_sample_pos + 0.5), 0.0, input_data_limit);
+    float nearest_sample_index = clamp(float(floor(input_sample_pos + 0.5)), 0.0, input_data_limit);
     vec4 center_sample = fetch_input_sample(Source, config.SourceSize.xy, nearest_sample_index, input_storage_width, input_data_limit);
 
 #ifdef OPTION_DEBUG

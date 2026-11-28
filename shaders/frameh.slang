@@ -177,6 +177,7 @@ void main()
         H_FREQ_MODE,
         H_FREQ,
         H_BLANK_FUZZ);
+    ClockFactor = timing_profile_clock_factor(TIMING_PROFILE_MODE, config.OriginalSize.x, ClockFactor);
 
     FrameWidth = contract_frame_width(
         config.OriginalFPS,
@@ -230,7 +231,7 @@ void main()
         config.FrameCount, FIELD_ODD, FrameWidth, ceil(contract_data_length(FrameWidth, FrameHeight)));
     PackedWidth = contract_pixel_packed_width(DataLength);
     TextureFits = contract_pixel_texture_fits(config.OutputSize.xy, DataLength, PackedWidth) ? 1.0 : 0.0;
-    if (TIMING_PROFILE_MODE > 0) {
+    if (TIMING_PROFILE_MODE > 0 && timing_profile_centered_overscan(TIMING_PROFILE_MODE, 0.0) < 0.5) {
         float active_height = IsInterlaced > 0.5
             ? floor((config.SourceSize.y - Field + 1.0) * 0.5) : config.SourceSize.y;
         if (timing_profile_left_blank_cycles(TIMING_PROFILE_MODE, 0.0) + config.SourceSize.x * ClockFactor > FrameWidth
@@ -277,6 +278,13 @@ bool sample_maps_to_active_time(
     float active_width = config.SourceSize.x * clock_factor;
     float active_left = timing_profile_left_blank_cycles(TIMING_PROFILE_MODE, (FrameWidth - active_width) * 0.5);
     float active_top = timing_profile_top_blank_lines(TIMING_PROFILE_MODE, floor((frame_height_int - active_source_height) * 0.5));
+    active_top = timing_profile_active_top(TIMING_PROFILE_MODE, active_source_height, active_top);
+    if (timing_profile_centered_overscan(TIMING_PROFILE_MODE, 0.0) > 0.5) {
+        float line_width = timing_profile_line_range(TIMING_PROFILE_MODE, config.OriginalSize.y,
+            config.FrameCount, FIELD_ODD, line_index, FrameWidth).y;
+        active_left = timing_profile_active_left(TIMING_PROFILE_MODE, line_width, config.SourceSize.x,
+            clock_factor, active_left);
+    }
 
     // Keep the wrapped line-carry in integer clock space so the storage grid
     // stays field-stable and does not drift across wrap boundaries when

@@ -131,9 +131,10 @@ Global options are compile-time toggles, so they affect shader behavior globally
 For SFC/SNES profiles, `OPTION_REPLACE_NTSC_PALM` selects PAL-M instead of
 NTSC for 60 Hz sources; 50 Hz sources continue to use PAL. Display settings
 remain independent, so choose a display preset suitable for the signal.
-Existing saved presets that specify legacy timing parameters should be
-regenerated to use the SFC timing profile. Legacy timing controls remain
-available for systems not yet migrated and are ignored by the SFC profile.
+Existing saved SFC/SNES and PSX presets should be regenerated to use their
+timing profiles. Legacy timing controls remain available for systems not yet
+migrated and are ignored by those profiles. PSX display mode is inferred from
+source dimensions, so unusually cropped or oversized images can be ambiguous.
 
 Available options in the skeleton include:
 

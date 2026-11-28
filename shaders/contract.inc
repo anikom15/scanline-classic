@@ -130,7 +130,7 @@ float contract_clocks_per_line(
     float h_freq_hz = compute_h_freq(h_freq_mode, standard, h_freq_custom_khz, pixel_clock_hz, original_fps);
     float total_cycles = pixel_clock_hz / max(h_freq_hz, EPS);
 
-    return max(1.0, round(total_cycles));
+    return compute_stored_line_width(h_freq_mode, h_freq_custom_khz, total_cycles);
 }
 
 // Returns the total number of stored samples in a framed 2D raster.
@@ -170,7 +170,7 @@ float contract_display_frame_width(
     float pixel_clock_hz = compute_pixel_clock(pixel_clock_mode, pixel_clock_mhz, sc_freq_hz);
     float h_freq_hz = compute_h_freq(h_freq_mode, standard, h_freq_custom_khz, pixel_clock_hz, original_fps);
     float total_cycles = pixel_clock_hz / max(h_freq_hz, EPS);
-    float clocks_per_line = max(1.0, round(total_cycles));
+    float clocks_per_line = compute_stored_line_width(h_freq_mode, h_freq_custom_khz, total_cycles);
     float fuzz_frac = h_blank_fuzz / 100.0;
     float clock_factor = max(1.0, round(total_cycles * fuzz_frac / max(original_size.x, 1.0)));
 
@@ -256,7 +256,7 @@ float contract_frame_width(
     float pixel_clock_hz = compute_pixel_clock(pixel_clock_mode, pixel_clock_mhz, sc_freq_hz);
     float h_freq_hz = compute_h_freq(h_freq_mode, standard, h_freq_custom_khz, pixel_clock_hz, original_fps);
 
-    return max(1.0, round(pixel_clock_hz / max(h_freq_hz, EPS)));
+    return compute_stored_line_width(h_freq_mode, h_freq_custom_khz, pixel_clock_hz / max(h_freq_hz, EPS));
 }
 
 // Returns the stored line width that corresponds to a given sample rate.
@@ -270,6 +270,14 @@ float contract_frame_width_at_sample_rate(
 
     return max(1.0,
         round(safe_base_frame_width * max(sample_rate, EPS) / safe_fs_original));
+}
+
+// Offset from the first stored sample to the exact physical line boundary.
+float contract_hsync_sample_offset(
+    float clock_line_start, float base_width, float output_width, float stored_line_start)
+{
+    return float(double(clock_line_start) * double(output_width) / double(base_width)
+        - double(stored_line_start));
 }
 
 // Returns the framed-signal sample rate emitted by `frameh.slang`.
@@ -360,7 +368,7 @@ float contract_initial_field_phase_frac(
     float pixel_clock_hz = compute_pixel_clock(pixel_clock_mode, pixel_clock_mhz, sc_freq_hz);
     float h_freq_hz = compute_h_freq(h_freq_mode, standard, h_freq_custom_khz, pixel_clock_hz, original_fps);
 
-    float frame_width = round(pixel_clock_hz / max(h_freq_hz, EPS));
+    float frame_width = compute_stored_line_width(h_freq_mode, h_freq_custom_khz, pixel_clock_hz / max(h_freq_hz, EPS));
 
     float v_lines_per_field;
     float v_lines_per_frame;
@@ -492,7 +500,7 @@ float contract_initial_subcarrier_phase_frac(
     float pixel_clock_hz = compute_pixel_clock(pixel_clock_mode, pixel_clock_mhz, sc_freq_hz);
     float h_freq_hz = compute_h_freq(h_freq_mode, standard, h_freq_custom_khz, pixel_clock_hz, original_fps);
 
-    float frame_width = round(pixel_clock_hz / max(h_freq_hz, EPS));
+    float frame_width = compute_stored_line_width(h_freq_mode, h_freq_custom_khz, pixel_clock_hz / max(h_freq_hz, EPS));
 
     float v_lines_per_field;
     float v_lines_per_frame;
@@ -665,7 +673,7 @@ float contract_line_carry_clocks(
     float pixel_clock_hz = compute_pixel_clock(pixel_clock_mode, pixel_clock_mhz, sc_freq_hz);
     float h_freq_hz = compute_h_freq(h_freq_mode, standard, h_freq_custom_khz, pixel_clock_hz, original_fps);
     float total_cycles = pixel_clock_hz / max(h_freq_hz, EPS);
-    float clocks_per_line = max(1.0, round(total_cycles));
+    float clocks_per_line = compute_stored_line_width(h_freq_mode, h_freq_custom_khz, total_cycles);
     float fuzz_frac = h_blank_fuzz / 100.0;
     float clock_factor = max(1.0, round(total_cycles * fuzz_frac / max(original_size.x, 1.0)));
 
@@ -690,7 +698,7 @@ float contract_output_frame_width(
 
     float fs_original = max(compute_pixel_clock(pixel_clock_mode, pixel_clock_mhz, sc_freq_hz), EPS);
     float h_freq_hz = compute_h_freq(h_freq_mode, standard, h_freq_custom_khz, fs_original, original_fps);
-    float base_frame_width = max(1.0, round(fs_original / max(h_freq_hz, EPS)));
+    float base_frame_width = compute_stored_line_width(h_freq_mode, h_freq_custom_khz, fs_original / max(h_freq_hz, EPS));
 
     float working_requested = (dsp_working_fs > 0.0)
         ? (dsp_working_fs * 1.0e6)
@@ -725,7 +733,7 @@ float contract_output_sample_rate(
 
     float fs_original = max(compute_pixel_clock(pixel_clock_mode, pixel_clock_mhz, sc_freq_hz), EPS);
     float h_freq_hz = compute_h_freq(h_freq_mode, standard, h_freq_custom_khz, fs_original, original_fps);
-    float base_frame_width = max(1.0, round(fs_original / max(h_freq_hz, EPS)));
+    float base_frame_width = compute_stored_line_width(h_freq_mode, h_freq_custom_khz, fs_original / max(h_freq_hz, EPS));
 
     float working_requested = (dsp_working_fs > 0.0)
         ? (dsp_working_fs * 1.0e6)
@@ -805,7 +813,7 @@ float contract_working_frame_width(
 
     float fs_original = max(compute_pixel_clock(pixel_clock_mode, pixel_clock_mhz, sc_freq_hz), EPS);
     float h_freq_hz = compute_h_freq(h_freq_mode, standard, h_freq_custom_khz, fs_original, original_fps);
-    float base_frame_width = max(1.0, round(fs_original / max(h_freq_hz, EPS)));
+    float base_frame_width = compute_stored_line_width(h_freq_mode, h_freq_custom_khz, fs_original / max(h_freq_hz, EPS));
     float requested_sample_rate = (dsp_working_fs > 0.0)
         ? (dsp_working_fs * 1.0e6)
         : fs_original;
@@ -831,7 +839,7 @@ float contract_working_sample_rate(
 
     float fs_original = max(compute_pixel_clock(pixel_clock_mode, pixel_clock_mhz, sc_freq_hz), EPS);
     float h_freq_hz = compute_h_freq(h_freq_mode, standard, h_freq_custom_khz, fs_original, original_fps);
-    float base_frame_width = max(1.0, round(fs_original / max(h_freq_hz, EPS)));
+    float base_frame_width = compute_stored_line_width(h_freq_mode, h_freq_custom_khz, fs_original / max(h_freq_hz, EPS));
     float requested_sample_rate = (dsp_working_fs > 0.0)
         ? (dsp_working_fs * 1.0e6)
         : fs_original;

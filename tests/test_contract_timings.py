@@ -102,7 +102,7 @@ def cpp_shader_source(profile_source=None):
         shader_function(modulation, signature)
         for signature in (
             'void compute_subcarrier_freq(', 'float compute_pixel_clock(',
-            'float compute_h_freq(', 'void compute_v_lines_per_field(',
+            'float compute_h_freq(', 'float compute_stored_line_width(', 'void compute_v_lines_per_field(',
         )
     ]
     functions.extend(

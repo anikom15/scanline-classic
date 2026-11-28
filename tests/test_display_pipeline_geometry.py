@@ -30,6 +30,10 @@ class DisplayPipelineGeometryTests(unittest.TestCase):
             self.skipTest('g++ is required to exercise shader functions')
         shader = (ROOT / 'shaders' / 'sys-bandlimit.slang').read_text(encoding='utf-8')
         fragment = shader.split('#pragma stage fragment', 1)[1]
+        main = shader_function(fragment, 'void main()').replace('void main()', 'void render_sample()', 1)
+        main = main.replace('    float input_data_limit =',
+                            '    captured_floor = input_index_int; captured_fraction = frac_offset;\n'
+                            '    float input_data_limit =')
         harness = r'''
 #include <algorithm>
 #include <cmath>
@@ -53,10 +57,12 @@ struct { Size OutputSize,SourceSize; } config;
 struct { float Delta,taps; } pfilt;
 struct { float sigma,t_limit,gain; } gfilt;
 float InputPackedWidth,OutputPackedWidth,InputDataLength,OutputDataLength,InputTextureFits;
-float OutputFrameWidth,OutputFrameHeight;
+float OutputFrameWidth,OutputFrameHeight,InputFrameWidth,captured_floor,captured_fraction;
+int profile_mode;
 int Source; vec2 vTexCoord; vec4 FragColor;
 #define OPTION_CRISPY
 #define SYS_FILTER_TYPE 0.0
+#define TIMING_PROFILE_MODE profile_mode
 #define EPS 1.0e-6f
 float gaussian(float,float) { return 1; }
 vec4 texelFetch(int,ivec2 p,int) { return vec4(float(p.y*1024+p.x)); }
@@ -82,6 +88,13 @@ int main() {
     OutputFrameWidth=4092; OutputDataLength=1072092; OutputPackedWidth=2048; pfilt.Delta=3;
     sample(2047,682); sample(2048,683); sample(4092,1364);
     sample(1072091,357363); sample(1072092,0);
+    profile_mode=4; InputFrameWidth=3413; OutputFrameWidth=2034; OutputDataLength=600000;
+    InputDataLength=897487;
+    double expected=260000.0*3413/2034;
+    sample(260000,float(std::floor(expected+0.5)));
+    if (captured_floor!=std::floor(expected) ||
+        std::abs(captured_fraction-(expected-std::floor(expected)))>0.0001)
+        throw std::runtime_error("working resampler lost the physical sample phase");
     InputTextureFits=0; render_sample();
     if (FragColor.r!=1 || FragColor.g!=0 || FragColor.b!=1)
         throw std::runtime_error("insufficient storage was not reported");
@@ -89,7 +102,7 @@ int main() {
 '''
         code = '\n'.join((
             shader_function(fragment, 'vec4 fetch_input_sample('),
-            shader_function(fragment, 'void main()').replace('void main()', 'void render_sample()', 1),
+            main,
         ))
         with tempfile.TemporaryDirectory() as temp:
             source = Path(temp) / 'working-resampler.cpp'
@@ -174,15 +187,12 @@ int main() {
         compiler = shutil.which('g++')
         if compiler is None:
             self.skipTest('g++ is required to exercise shader functions')
-        source = (ROOT / 'shaders' / 'display-rgb-filter.slang').read_text(encoding='utf-8')
         profiles = (ROOT / 'shaders' / 'timing-profiles.inc').read_text(encoding='utf-8')
         contract = (ROOT / 'shaders' / 'contract.inc').read_text(encoding='utf-8')
-        fragment = source.split('#pragma stage fragment', 1)[1]
-        main = shader_function(fragment, 'void main()').replace('void main()', 'void render_sample()', 1)
-        main = main.split('    if (BW_MODE < 0.5)', 1)[0] + '    FragColor = vec4(color, 1.0);\n}\n'
         harness = r'''
 #include <algorithm>
 #include <cmath>
+#include <iostream>
 #include <limits>
 #include <stdexcept>
 using std::ceil; using std::floor; using std::min; using std::max;
@@ -216,7 +226,8 @@ struct { uint FrameCount; float FIELD_ODD; } global;
 struct { float Delta, taps; } pfilt;
 float OutputFrameHeight, InputDataLength, OutputDataLength, InputFrameWidth, OutputFrameWidth;
 float InputPackedWidth, InputTextureFits;
-float DeskewSampleRatio, LineCarryClocksOut, ClockFactorOut;
+float DeskewSampleRatio, LineCarryClocksOut, ClockFactorOut, BaseFrameWidthOut;
+float captured_floor, captured_fraction;
 vec2 vTexCoord; vec4 FragColor; int Source, profile_mode;
 #define TIMING_PROFILE_MODE profile_mode
 #define OPTION_DEBUG
@@ -235,8 +246,10 @@ vec4 fetch_input_sample(int,vec2,float index,float width,float) {
 void sample(int x,int y,float expected,bool padding=false) {
     vTexCoord=vec2((x+0.5f)/2048,(y+0.5f)/512);
     render_sample();
-    if (padding ? FragColor.a!=0 : (FragColor.a!=1 || FragColor.rgb.r!=expected))
+    if (padding ? FragColor.a!=0 : (FragColor.a!=1 || FragColor.rgb.r!=expected)) {
+        std::cerr << "at " << x << "," << y << " got " << FragColor.rgb.r << " expected " << expected << '\n';
         throw std::runtime_error("display row does not map to the physical stream");
+    }
 }
 int main() {
     config.OutputSize={2048,512,{2048,512}};
@@ -244,6 +257,7 @@ int main() {
     config.OriginalSize={256,239,{256,239}};
     profile_mode=1; global.FrameCount=1; global.FIELD_ODD=0;
     OutputFrameHeight=262; InputFrameWidth=1364; OutputFrameWidth=1364;
+    BaseFrameWidthOut=1364;
     InputDataLength=OutputDataLength=357364; pfilt.Delta=1; pfilt.taps=1;
     InputPackedWidth=1024; InputTextureFits=1;
     ClockFactorOut=4; LineCarryClocksOut=0; DeskewSampleRatio=1;
@@ -264,18 +278,46 @@ int main() {
     sample(0,18,18*1364+4);
     sample(0,311,311*1364+4);
     sample(1363,311,312*1364+3);
+    profile_mode=4; global.FrameCount=0; config.OriginalSize.y=240;
+    BaseFrameWidthOut=3413;
+    OutputFrameHeight=263; OutputFrameWidth=InputFrameWidth=2047;
+    InputDataLength=OutputDataLength=std::ceil(897487.0*2047/3413);
+    pfilt.Delta=1; LineCarryClocksOut=0;
+    sample(2045,2,6138);
+    sample(2046,2,0,true);
+    sample(0,3,6140);
+    config.OriginalSize.y=480; InputFrameWidth=2047; OutputFrameWidth=1017;
+    for (int frame : {0,1}) for (int line=0;line<(frame ? 262 : 263);++line) {
+        global.FrameCount=frame;
+        int clock_start=(line/2)*6825+(line%2)*3412;
+        double expected=double(clock_start)*2047/3413;
+        sample(0,line,float(std::floor(expected+0.5)));
+        if (captured_floor!=std::floor(expected) ||
+            std::abs(captured_fraction-(expected-std::floor(expected)))>0.0001)
+            throw std::runtime_error("RGB horizontal sync phase mismatch");
+    }
 }
 '''
         with tempfile.TemporaryDirectory() as temp:
-            path = Path(temp) / 'display-raster.cpp'
-            executable = Path(temp) / 'display-raster'
-            code = '\n'.join((shader_function(contract, 'float contract_pixel_packed_width('),
-                              shader_function(contract, 'bool contract_pixel_texture_fits('),
-                              shader_function(profiles, 'vec2 timing_profile_line_range('),
-                              shader_function(fragment, 'float compute_row_shift_output_samples('), main))
-            path.write_text(harness + code + checks, encoding='utf-8')
-            subprocess.run([compiler, '-std=c++17', '-O2', str(path), '-o', str(executable)], check=True)
-            subprocess.run([str(executable)], check=True)
+            for name in ('display-rgb-filter', 'hd-rgb-filter'):
+                with self.subTest(shader=name):
+                    source = (ROOT / 'shaders' / f'{name}.slang').read_text(encoding='utf-8')
+                    fragment = source.split('#pragma stage fragment', 1)[1]
+                    main = shader_function(fragment, 'void main()').replace('void main()', 'void render_sample()', 1)
+                    main = main.split('    if (BW_MODE < 0.5)', 1)[0] + '    FragColor = vec4(color, 1.0);\n}\n'
+                    main = main.replace('    vec3 color =',
+                                        '    captured_floor = input_index_int; captured_fraction = frac_offset;\n'
+                                        '    vec3 color =')
+                    path = Path(temp) / 'display-raster.cpp'
+                    executable = Path(temp) / 'display-raster'
+                    code = '\n'.join((shader_function(contract, 'float contract_pixel_packed_width('),
+                                      shader_function(contract, 'bool contract_pixel_texture_fits('),
+                                      shader_function(contract, 'float contract_hsync_sample_offset('),
+                                      shader_function(profiles, 'vec2 timing_profile_line_range('),
+                                      shader_function(fragment, 'float compute_row_shift_output_samples('), main))
+                    path.write_text(harness + code + checks, encoding='utf-8')
+                    subprocess.run([compiler, '-std=c++17', '-O2', str(path), '-o', str(executable)], check=True)
+                    subprocess.run([str(executable)], check=True)
 
     def test_svideo_filter_deskews_packed_input_in_presentation_rows(self):
         compiler = shutil.which('g++')
@@ -287,7 +329,9 @@ int main() {
         fragment = shader.split('#pragma stage fragment', 1)[1]
         main = shader_function(fragment, 'void main()').replace('void main()', 'void render_sample()', 1)
         main = main.split('    if (DISPLAY_COMPONENT_FILTER_BYPASS > 0.5)', 1)[0] + '#endif\n}\n'
-        main = main.replace('    vec4 center_sample =', '    captured_fraction = frac_offset;\n    vec4 center_sample =')
+        main = main.replace('    vec4 center_sample =',
+                            '    captured_fraction = frac_offset; captured_floor = input_index_int;\n'
+                            '    vec4 center_sample =')
         harness = r'''
 #include <algorithm>
 #include <cmath>
@@ -312,8 +356,8 @@ struct { float FIELD_ODD; } global;
 struct { float Delta; } pfilt;
 float OutputFrameHeight,InputDataLength,OutputDataLength,InputFrameWidth,OutputFrameWidth;
 float InputPackedWidth,InputTextureFits;
-float DeskewSampleRatio,LineCarryClocksOut,ClockFactorOut;
-float deskew_bypass,captured_fraction; int profile_mode,Source; vec2 vTexCoord; vec4 FragColor;
+float DeskewSampleRatio,LineCarryClocksOut,ClockFactorOut,BaseFrameWidthOut;
+float deskew_bypass,captured_fraction,captured_floor; int profile_mode,Source; vec2 vTexCoord; vec4 FragColor;
 #define TIMING_PROFILE_MODE profile_mode
 #define OPTION_DEBUG
 #define DISPLAY_COMPONENT_BYPASS 1.0
@@ -338,6 +382,7 @@ int main() {
     config.OriginalSize={256,239,{256,239}};
     config.FrameCount=1; global.FIELD_ODD=0; profile_mode=1;
     InputFrameWidth=OutputFrameWidth=1364; OutputFrameHeight=262;
+    BaseFrameWidthOut=1364;
     InputDataLength=OutputDataLength=357364; pfilt.Delta=1;
     InputPackedWidth=1024; InputTextureFits=1;
     ClockFactorOut=4; LineCarryClocksOut=3; DeskewSampleRatio=1.5f;
@@ -346,11 +391,56 @@ int main() {
     sample(1360,258,0,true);
     deskew_bypass=1;
     sample(0,259,259*1364-4);
+    profile_mode=4; config.OriginalSize={640,480,{640,480}};
+    InputFrameWidth=2047; OutputFrameWidth=1017; BaseFrameWidthOut=3413;
+    OutputFrameHeight=263; InputDataLength=538239; OutputDataLength=267455;
+    LineCarryClocksOut=0; deskew_bypass=0;
+    for (int frame : {0,1}) for (int line=0;line<(frame ? 262 : 263);++line) {
+        config.FrameCount=frame;
+        int clock_start=(line/2)*6825+(line%2)*3412;
+        double expected=double(clock_start)*2047/3413;
+        sample(0,line,float(std::floor(expected+0.5)));
+        if (captured_floor!=std::floor(expected) ||
+            std::abs(captured_fraction-(expected-std::floor(expected)))>0.0001)
+            throw std::runtime_error("PSX horizontal sync phase mismatch");
+    }
+    deskew_bypass=1;
+    sample(0,1,2047);
+    if (captured_fraction!=0) throw std::runtime_error("deskew bypass did not preserve stored boundary");
+    deskew_bypass=0;
+    for (int mode : {1,2,3,5}) for (int frame : {0,1}) {
+        profile_mode=mode; config.FrameCount=frame; config.OriginalSize.y=mode==5 ? 576 : 478;
+        BaseFrameWidthOut=mode==5 ? 3405 : 1364;
+        OutputFrameHeight=mode==5 ? (frame==0 ? 312 : 313) : (mode==2 ? (frame==0 ? 312 : 313) : (frame==0 ? 263 : 262));
+        InputDataLength=OutputDataLength=1000000;
+        for (int line=0;line<int(OutputFrameHeight);++line) {
+            int clock_start=line*int(BaseFrameWidthOut);
+            if (mode==2 && frame==0 && line>=18) clock_start+=4;
+            double expected=double(clock_start)*2047/BaseFrameWidthOut;
+            sample(0,line,float(std::floor(expected+0.5)));
+            if (captured_floor!=std::floor(expected) ||
+                std::abs(captured_fraction-(expected-std::floor(expected)))>0.0001)
+                throw std::runtime_error("profile horizontal sync phase mismatch");
+        }
+    }
+    for (int mode : {1,3}) {
+        profile_mode=mode; config.FrameCount=1; config.OriginalSize.y=239;
+        BaseFrameWidthOut=1364;
+        for (int line=258;line<262;++line) {
+            int clock_start=line*1364-(line>=259 ? 4 : 0);
+            double expected=double(clock_start)*2047/1364;
+            sample(0,line,float(std::floor(expected+0.5)));
+            if (captured_floor!=std::floor(expected) ||
+                std::abs(captured_fraction-(expected-std::floor(expected)))>0.0001)
+                throw std::runtime_error("shortened SFC line sync phase mismatch");
+        }
+    }
 }
 '''
         code = '\n'.join((
             shader_function(contract, 'float contract_pixel_packed_width('),
             shader_function(contract, 'bool contract_pixel_texture_fits('),
+            shader_function(contract, 'float contract_hsync_sample_offset('),
             shader_function(profiles, 'vec2 timing_profile_line_range('),
             shader_function(fragment, 'float compute_row_shift_output_samples('),
             main,
@@ -358,6 +448,73 @@ int main() {
         with tempfile.TemporaryDirectory() as temp:
             source = Path(temp) / 'svideo-deskew.cpp'
             executable = Path(temp) / 'svideo-deskew'
+            source.write_text(harness + code + checks, encoding='utf-8')
+            subprocess.run([compiler, '-std=c++17', '-O2', str(source), '-o', str(executable)], check=True)
+            subprocess.run([str(executable)], check=True)
+
+    def test_standalone_deskew_tracks_physical_hsync(self):
+        compiler = shutil.which('g++')
+        if compiler is None:
+            self.skipTest('g++ is required to exercise shader functions')
+        shader = (ROOT / 'shaders' / 'deskew.slang').read_text(encoding='utf-8')
+        profiles = (ROOT / 'shaders' / 'timing-profiles.inc').read_text(encoding='utf-8')
+        contract = (ROOT / 'shaders' / 'contract.inc').read_text(encoding='utf-8')
+        fragment = shader.split('#pragma stage fragment', 1)[1]
+        harness = r'''
+#include <algorithm>
+#include <cmath>
+#include <limits>
+#include <stdexcept>
+using std::ceil; using std::floor;
+using uint = unsigned int;
+struct vec2 {
+    float x,y;
+    vec2(float v=0): x(v),y(v) {}
+    vec2(float x,float y): x(x),y(y) {}
+};
+vec2 operator+(vec2 a,vec2 b) { return {a.x+b.x,a.y+b.y}; }
+vec2 operator*(vec2 a,vec2 b) { return {a.x*b.x,a.y*b.y}; }
+struct vec3 { float x,y,z; vec3(float v=0):x(v),y(v),z(v) {} };
+struct vec4 { vec3 rgb; };
+struct Size { float x,y; vec2 zw; };
+struct { Size OriginalSize,SourceSize; } config;
+struct { uint FrameCount; float FIELD_ODD; } global;
+float LineCarryClocksOut,ClockFactorOut,SampleRatio,BaseFrameWidthOut,deskew_bypass;
+int profile_mode,Source;
+#define TIMING_PROFILE_MODE profile_mode
+#define DESKEW_BYPASS deskew_bypass
+float mix(float a,float b,float t) { return a*(1-t)+b*t; }
+float uintBitsToFloat(uint) { return std::numeric_limits<float>::quiet_NaN(); }
+vec4 texture(int,vec2 uv) { return {vec3(uv.x*config.SourceSize.x-0.5f)}; }
+'''
+        checks = r'''
+int main() {
+    config.OriginalSize.y=480; config.SourceSize={2048,512,{1.0f/2048,1.0f/512}};
+    profile_mode=4; BaseFrameWidthOut=3413; ClockFactorOut=4; SampleRatio=1;
+    for (int line=0;line<263;++line) {
+        int clocks=(line/2)*6825+(line%2)*3412;
+        double exact=double(clocks)*1017/3413;
+        double shift=exact-std::ceil(exact);
+        float actual=sample_deskewed(100,line,1017).x;
+        if (std::abs(actual-(100+shift))>0.0001)
+            throw std::runtime_error("standalone physical sync shift mismatch");
+    }
+    deskew_bypass=1;
+    if (sample_deskewed(100,1,1017).x!=100)
+        throw std::runtime_error("standalone deskew bypass mismatch");
+    deskew_bypass=0; profile_mode=0; LineCarryClocksOut=3;
+    if (sample_deskewed(100,3,1017).x!=101)
+        throw std::runtime_error("legacy deskew changed");
+}
+'''
+        code = '\n'.join((
+            shader_function(contract, 'float contract_hsync_sample_offset('),
+            shader_function(profiles, 'vec2 timing_profile_line_range('),
+            shader_function(fragment, 'vec3 sample_deskewed('),
+        ))
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / 'standalone-deskew.cpp'
+            executable = Path(temp) / 'standalone-deskew'
             source.write_text(harness + code + checks, encoding='utf-8')
             subprocess.run([compiler, '-std=c++17', '-O2', str(source), '-o', str(executable)], check=True)
             subprocess.run([str(executable)], check=True)
@@ -451,6 +608,10 @@ float contract_clocks_per_line(float,float,float,float,float,float,float) { retu
 float contract_clock_factor(float,float,float,float,float,float,float,float,float) { return 4; }
 float timing_profile_top_blank_lines(int, float) { return 18; }
 float timing_profile_left_blank_cycles(int, float) { return 252; }
+float timing_profile_clock_factor(int, float, float legacy) { return legacy; }
+float timing_profile_active_top(int, float, float legacy) { return legacy; }
+float timing_profile_active_left(int, float, float, float, float legacy) { return legacy; }
+float timing_profile_centered_overscan(int, float) { return 0; }
 '''
         checks = r'''
 void check(int mode, float source_height, float field_height, float expected_full, float expected_output) {

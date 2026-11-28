@@ -149,6 +149,7 @@ layout(location = 10) flat out float OutputDataLength;
 layout(location = 11) flat out float OutputFrameWidth;
 layout(location = 12) flat out float InputTextureFits;
 layout(location = 13) flat out float OutputPackedWidth;
+layout(location = 14) flat out float InputFrameWidth;
 
 const float MAX_TAPS = float(SYS_BANDLIMIT_MAX_TAPS);
 
@@ -174,6 +175,7 @@ void main()
         PIXEL_CLOCK,
         H_FREQ_MODE,
         H_FREQ);
+    InputFrameWidth = BaseFrameWidth;
 
     float InputFrameHeight = contract_frame_height(
         config.OriginalSize.xy,
@@ -299,6 +301,7 @@ layout(location = 10) flat in float OutputDataLength;
 layout(location = 11) flat in float OutputFrameWidth;
 layout(location = 12) flat in float InputTextureFits;
 layout(location = 13) flat in float OutputPackedWidth;
+layout(location = 14) flat in float InputFrameWidth;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
@@ -347,24 +350,26 @@ void main()
         return;
     }
 
-    float input_sample_pos = field_output_index * invDelta;
-    float input_pos_floor = floor(input_sample_pos);
+    double input_sample_pos = TIMING_PROFILE_MODE > 0
+        ? double(field_output_index) * double(InputFrameWidth) / double(OutputFrameWidth)
+        : double(field_output_index * invDelta);
+    double input_pos_floor = floor(input_sample_pos);
     int input_index_int = int(input_pos_floor);
-    float frac_offset = input_sample_pos - input_pos_floor;
+    float frac_offset = float(input_sample_pos - input_pos_floor);
     float input_data_limit = max(ceil(InputDataLength) - 1.0, 0.0);
 
     vec4 color = vec4(0.0);
 
 #ifdef OPTION_DEBUG
     if (SYS_RGB_BANDLIMIT_BYPASS > 0.5) {
-        float sample_index = clamp(floor(input_sample_pos + 0.5), 0.0, input_data_limit);
+        float sample_index = clamp(float(floor(input_sample_pos + 0.5)), 0.0, input_data_limit);
         FragColor = fetch_input_sample(sample_index, InputPackedWidth, input_data_limit);
         return;
     }
 #endif  // OPTION_DEBUG
 
 #ifdef OPTION_CRISPY
-    float sample_index = clamp(floor(input_sample_pos + 0.5), 0.0, input_data_limit);
+    float sample_index = clamp(float(floor(input_sample_pos + 0.5)), 0.0, input_data_limit);
     FragColor = fetch_input_sample(sample_index, InputPackedWidth, input_data_limit);
     return;
 #endif  // OPTION_CRISPY

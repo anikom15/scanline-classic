@@ -49,6 +49,18 @@ def _field_clocks(value, name):
     return fraction
 
 
+def _line_clock_sum(mode, scan, parity, line):
+    pair = mode['line_clocks']
+    result = (f'(floor({line} / 2.0) * {_glsl(pair["odd"] + pair["even"])}'
+              f' + ({line} - floor({line} / 2.0) * 2.0) * {_glsl(pair["odd"])})')
+    for override in mode.get('line_overrides', []):
+        if override['scan'] == scan and override['field'] == parity:
+            original = pair['odd' if override['line'] % 2 else 'even']
+            delta = override['clocks'] - original
+            result += f' + ({line} >= {_glsl(override["line"])} ? {_glsl(delta)} : 0.0)'
+    return result
+
+
 def generate_source(data):
     profiles = data['profiles']
     if not isinstance(profiles, list) or not profiles:
@@ -86,23 +98,52 @@ def generate_source(data):
                 raise ValueError(f'Clock multiplier exceeds shader limits for {name}/{mode_name}')
             if type(mode['clocks_per_line']) is not int or mode['clocks_per_line'] <= 0:
                 raise ValueError(f'Invalid clocks_per_line for {name}/{mode_name}')
+            pair = mode.get('line_clocks')
+            if pair is not None and (not isinstance(pair, dict) or set(pair) != {'odd', 'even'}
+                    or any(type(value) is not int or not 1 <= value <= mode['clocks_per_line']
+                           for value in pair.values())
+                    or max(pair.values()) != mode['clocks_per_line']):
+                raise ValueError(f'Invalid alternating line clocks for {name}/{mode_name}')
             raster = mode['raster']
             if _number(raster['interlace_height_threshold'], f'{name}/{mode_name} interlace height threshold') <= 0:
                 raise ValueError(f'Invalid interlace height threshold for {name}/{mode_name}')
+            porch_keys = {'horizontal_front_porch_cycles', 'horizontal_back_porch_cycles'} & raster.keys()
+            if len(porch_keys) != 1:
+                raise ValueError(f'Exactly one horizontal porch is required for {name}/{mode_name}')
             for key in ('vertical_sync_lines', 'vertical_back_porch_lines',
-                        'horizontal_sync_cycles', 'horizontal_back_porch_cycles'):
+                        'horizontal_sync_cycles', *porch_keys):
                 if type(raster[key]) is not int or raster[key] < 0:
                     raise ValueError(f'Invalid {key} for {name}/{mode_name}')
-            left_blank = raster['horizontal_sync_cycles'] + raster['horizontal_back_porch_cycles']
+            left_blank = raster['horizontal_sync_cycles'] + raster.get('horizontal_back_porch_cycles', 0)
             top_blank = raster['vertical_sync_lines'] + raster['vertical_back_porch_lines']
-            if left_blank >= mode['clocks_per_line']:
+            minimum_line = min(pair.values()) if pair else mode['clocks_per_line']
+            if left_blank >= minimum_line:
                 raise ValueError(f'Left blanking exceeds line length for {name}/{mode_name}')
+            if 'horizontal_front_porch_cycles' in raster:
+                horizontal_modes = raster['horizontal_modes']
+                if (type(raster['active_field_lines']) is not int or raster['active_field_lines'] <= 0
+                        or not isinstance(horizontal_modes, list) or not horizontal_modes):
+                    raise ValueError(f'Invalid active raster for {name}/{mode_name}')
+                previous_width = 0
+                for output in horizontal_modes:
+                    if (not isinstance(output, dict) or set(output) != {'width', 'clock_factor'}
+                            or type(output['width']) is not int or output['width'] <= previous_width
+                            or type(output['clock_factor']) is not int or output['clock_factor'] <= 0
+                            or output['width'] * output['clock_factor'] + raster['horizontal_sync_cycles']
+                            + raster['horizontal_front_porch_cycles'] > minimum_line):
+                        raise ValueError(f'Invalid horizontal mode for {name}/{mode_name}')
+                    previous_width = output['width']
             for scan in ('progressive', 'interlaced'):
                 for parity in ('even', 'odd'):
                     if _number(mode['field_lines'][scan][parity], f'{name}/{mode_name} {scan} {parity} lines') <= 0:
                         raise ValueError(f'Invalid field lines for {name}/{mode_name}')
                     if top_blank >= mode['field_lines'][scan][parity]:
                         raise ValueError(f'Top blanking exceeds field length for {name}/{mode_name}')
+                    if pair and type(mode['field_lines'][scan][parity]) is not int:
+                        raise ValueError(f'Alternating line clocks require whole field lines for {name}/{mode_name}')
+                    if ('active_field_lines' in raster and
+                            top_blank + raster['active_field_lines'] > mode['field_lines'][scan][parity]):
+                        raise ValueError(f'Active picture exceeds field length for {name}/{mode_name}')
                     _field_clocks(mode['field_clocks'][scan][parity], f'{name}/{mode_name} {scan} {parity}')
             overrides = mode.get('line_overrides', [])
             if not isinstance(overrides, list):
@@ -121,9 +162,13 @@ def generate_source(data):
             for scan in ('progressive', 'interlaced'):
                 for parity in ('even', 'odd'):
                     changes = [entry for entry in overrides if entry['scan'] == scan and entry['field'] == parity]
-                    if changes:
-                        expected = mode['clocks_per_line'] * mode['field_lines'][scan][parity]
-                        expected += sum(entry['clocks'] - mode['clocks_per_line'] for entry in changes)
+                    if changes or pair:
+                        count = mode['field_lines'][scan][parity]
+                        expected = (count // 2 * (pair['odd'] + pair['even']) + count % 2 * pair['odd']
+                                    if pair else mode['clocks_per_line'] * count)
+                        expected += sum(entry['clocks'] - (pair['odd' if entry['line'] % 2 else 'even']
+                                                           if pair else mode['clocks_per_line'])
+                                        for entry in changes)
                         if _field_clocks(mode['field_clocks'][scan][parity], 'field clocks') != expected:
                             raise ValueError(f'Line overrides contradict field clocks for {name}/{mode_name}')
             if mode['first_field'] not in ('even', 'odd'):
@@ -220,16 +265,19 @@ def generate_source(data):
     properties = (
         ('sc_mode', lambda mode: _glsl(STANDARDS[mode['standard']][0])),
         ('pixel_mode', lambda mode: '1.0'),
-        ('h_mode', lambda mode: '1.0'),
-        ('h_freq', lambda mode: _glsl(mode['clocks_per_line'])),
+        ('h_mode', lambda mode: '3.0' if 'line_clocks' in mode else '1.0'),
+        ('h_freq', lambda mode: _glsl(sum(mode['line_clocks'].values()) / 2)
+         if 'line_clocks' in mode else _glsl(mode['clocks_per_line'])),
         ('top_blank_lines', lambda mode: _glsl(mode['raster']['vertical_sync_lines'] + mode['raster']['vertical_back_porch_lines'])),
-        ('left_blank_cycles', lambda mode: _glsl(mode['raster']['horizontal_sync_cycles'] + mode['raster']['horizontal_back_porch_cycles'])),
+        ('left_blank_cycles', lambda mode: _glsl(mode['raster']['horizontal_sync_cycles'] + mode['raster']['horizontal_back_porch_cycles'])
+         if 'horizontal_back_porch_cycles' in mode['raster'] else 'legacy'),
         ('vertical_sync_lines', lambda mode: _glsl(mode['raster']['vertical_sync_lines'])),
         ('horizontal_sync_cycles', lambda mode: _glsl(mode['raster']['horizontal_sync_cycles'])),
         ('field_adjustment', lambda mode: '1.0' if mode['field_adjustment'] else '0.0'),
         ('first_field_odd', lambda mode: '1.0' if mode['first_field'] == 'odd' else '0.0'),
         ('initial_phase', lambda mode: _glsl(mode['initial_phase_degrees'])),
         ('pal', lambda mode: '0.0' if mode['standard'] == 'ntsc' else '1.0'),
+        ('centered_overscan', lambda mode: '1.0' if 'horizontal_front_porch_cycles' in mode['raster'] else '0.0'),
     )
     for prop, value in properties:
         lines += [f'float timing_profile_{prop}(int mode, float legacy)', '{',
@@ -237,6 +285,46 @@ def generate_source(data):
         for index, mode in enumerate(modes, 1):
             lines += [f'    if (mode == {index})', f'        return {value(mode)};']
         lines += ['    return uintBitsToFloat(0x7fc00000u);', '}', '']
+    for prop in ('nominal_width', 'clock_factor'):
+        lines += [f'float timing_profile_{prop}(int mode, float width, float legacy)', '{',
+                  '    if (mode == 0)', '        return legacy;']
+        for index, mode in enumerate(modes, 1):
+            outputs = mode['raster'].get('horizontal_modes')
+            lines += [f'    if (mode == {index}) {{']
+            if outputs:
+                for output in reversed(outputs[1:]):
+                    value = output['width' if prop == 'nominal_width' else 'clock_factor']
+                    lines += [f'        if (width >= {_glsl(output["width"])})', f'            return {_glsl(value)};']
+                value = outputs[0]['width' if prop == 'nominal_width' else 'clock_factor']
+                lines += [f'        return {_glsl(value)};']
+            else:
+                lines += ['        return legacy;']
+            lines += ['    }']
+        lines += ['    return uintBitsToFloat(0x7fc00000u);', '}', '']
+    lines += ['float timing_profile_active_top(int mode, float source_height, float legacy)', '{',
+              '    if (mode == 0)', '        return legacy;']
+    for index, mode in enumerate(modes, 1):
+        raster = mode['raster']
+        lines += [f'    if (mode == {index})']
+        if 'active_field_lines' in raster:
+            top = raster['vertical_sync_lines'] + raster['vertical_back_porch_lines']
+            lines += [f"        return {_glsl(top)} + floor(({_glsl(raster['active_field_lines'])} - source_height) * 0.5);"]
+        else:
+            lines += ['        return legacy;']
+    lines += ['    return uintBitsToFloat(0x7fc00000u);', '}', '']
+    lines += ['float timing_profile_active_left(int mode, float line_width, float source_width,',
+              '    float clock_factor, float legacy)', '{', '    if (mode == 0)', '        return legacy;']
+    for index, mode in enumerate(modes, 1):
+        raster = mode['raster']
+        lines += [f'    if (mode == {index})']
+        if 'horizontal_front_porch_cycles' in raster:
+            reference_width = _glsl(mode['line_clocks']['odd']) if 'line_clocks' in mode else 'line_width'
+            lines += [f"        return {reference_width} - {_glsl(raster['horizontal_front_porch_cycles'])}",
+                      '            - (timing_profile_nominal_width(mode, source_width, source_width)',
+                      '               + (source_width - timing_profile_nominal_width(mode, source_width, source_width)) * 0.5) * clock_factor;']
+        else:
+            lines += ['        return legacy;']
+    lines += ['    return uintBitsToFloat(0x7fc00000u);', '}', '']
     lines += ['float timing_profile_v_mode(int mode, float height, float legacy)', '{',
               '    if (mode == 0)', '        return legacy;']
     for index, mode in enumerate(modes, 1):
@@ -292,6 +380,13 @@ def generate_source(data):
                   f'        bool odd = ((frame_count % 2u + {first}u + (field_odd > 0.5 ? 1u : 0u)) % 2u) != 0u;']
         for scan, parity in (('progressive', 'even'), ('progressive', 'odd'),
                              ('interlaced', 'even'), ('interlaced', 'odd')):
+            if 'line_clocks' in mode:
+                condition = f"height {'>' if scan == 'interlaced' else '<='} {threshold} && {'odd' if parity == 'odd' else '!odd'}"
+                count = _glsl(mode['field_lines'][scan][parity])
+                clocks = _line_clock_sum(mode, scan, parity, count)
+                lines += [f'        if ({condition})',
+                          f"            return float(ceil(double({clocks}) * double(width) / double({_glsl(mode['clocks_per_line'])})));"]
+                continue
             delta = sum(entry['clocks'] - mode['clocks_per_line'] for entry in mode.get('line_overrides', [])
                         if entry['scan'] == scan and entry['field'] == parity)
             if delta:
@@ -307,6 +402,37 @@ def generate_source(data):
         first = 1 if mode['first_field'] == 'odd' else 0
         lines += [f'    if (mode == {index}) {{',
                   f'        bool odd = ((frame_count % 2u + {first}u + (field_odd > 0.5 ? 1u : 0u)) % 2u) != 0u;']
+        if 'line_clocks' in mode:
+            pair = mode['line_clocks']
+            scale = _glsl(mode['clocks_per_line'])
+            for scan, parity in (('progressive', 'even'), ('progressive', 'odd'),
+                                 ('interlaced', 'even'), ('interlaced', 'odd')):
+                condition = f"height {'>' if scan == 'interlaced' else '<='} {threshold} && {'odd' if parity == 'odd' else '!odd'}"
+                changes = [entry for entry in mode.get('line_overrides', [])
+                           if entry['scan'] == scan and entry['field'] == parity]
+                lines += [f'        if ({condition}) {{']
+                if changes:
+                    mid_clocks = _line_clock_sum(mode, scan, parity, 'middle')
+                    lines += ['            float low = 0.0;',
+                              f"            float high = {_glsl(mode['field_lines'][scan][parity])};",
+                              '            while (low < high) {',
+                              '                float middle = floor((low + high + 1.0) * 0.5);',
+                              f'                double start = ceil(double({mid_clocks}) * double(width) / double({scale}));',
+                              '                if (start <= double(sample_index))',
+                              '                    low = middle;',
+                              '                else',
+                              '                    high = middle - 1.0;',
+                              '            }',
+                              '            float line = low;']
+                else:
+                    lines += [f'            double clock = floor(double(sample_index) * double({scale}) / double(width));',
+                              f"            double pair = floor(clock / double({_glsl(pair['odd'] + pair['even'])}));",
+                              f"            float line = float(pair * double(2.0) + (clock - pair * double({_glsl(pair['odd'] + pair['even'])}) >= double({_glsl(pair['odd'])}) ? double(1.0) : double(0.0)));"]
+                start = _line_clock_sum(mode, scan, parity, 'line')
+                lines += [f'            float start = float(ceil(double({start}) * double(width) / double({scale})));',
+                          '            return vec2(sample_index - start, line);', '        }']
+            lines += ['    }']
+            continue
         for scan, parity in (('progressive', 'even'), ('progressive', 'odd'),
                              ('interlaced', 'even'), ('interlaced', 'odd')):
             changes = sorted((entry for entry in mode.get('line_overrides', [])
@@ -346,6 +472,19 @@ def generate_source(data):
         lines += [f'    if (mode == {index}) {{',
                   f'        bool odd = ((frame_count % 2u + {first}u + (field_odd > 0.5 ? 1u : 0u)) % 2u) != 0u;',
                   '        float start = line * width;', '        float length = width;']
+        if 'line_clocks' in mode:
+            scale = _glsl(mode['clocks_per_line'])
+            for scan, parity in (('progressive', 'even'), ('progressive', 'odd'),
+                                 ('interlaced', 'even'), ('interlaced', 'odd')):
+                condition = f"height {'>' if scan == 'interlaced' else '<='} {threshold} && {'odd' if parity == 'odd' else '!odd'}"
+                start = _line_clock_sum(mode, scan, parity, 'line')
+                end = _line_clock_sum(mode, scan, parity, '(line + 1.0)')
+                lines += [f'        if ({condition}) {{',
+                          f'            start = float(ceil(double({start}) * double(width) / double({scale})));',
+                          f'            float end = float(ceil(double({end}) * double(width) / double({scale})));',
+                          '            return vec2(start, end - start);', '        }']
+            lines += ['    }']
+            continue
         for scan, parity in (('progressive', 'even'), ('progressive', 'odd'),
                              ('interlaced', 'even'), ('interlaced', 'odd')):
             changes = sorted((entry for entry in mode.get('line_overrides', [])

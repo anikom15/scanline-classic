@@ -48,8 +48,8 @@ Neither physical line count nor a nominal width alone determines field
 duration: `field_clocks` accounts for shortened and lengthened lines.
 
 Profiles specify vertical sync and back-porch lines and horizontal sync and
-back-porch pixel-clock cycles; remaining blanking follows from the field and
-source dimensions. SFC has 3 vertical sync lines and 15 back-porch lines,
+either front- or back-porch pixel-clock cycles; remaining blanking follows from
+the field and source dimensions. SFC has 3 vertical sync lines and 15 back-porch lines,
 and 100 horizontal sync clocks and 152 back-porch clocks. The vertical pulse
 is asserted across all three lines; horizontal sync is asserted at the start
 of every line. Line 1 starts at vertical sync: picture begins on line 19 and
@@ -76,9 +76,31 @@ time-ordered stream. Pixel- and working-rate streams use nearly square,
 power-of-two storage strides independent of the timing line width. The final
 display resamplers map the stream back to fixed-width presentation rows and
 apply deskew within the resampling filter. At other sample rates, line boundaries and field lengths round
-up to the next sample. The mapping adds or removes clocks at the end of the
+up to the next stored sample; the display filter uses the unrounded physical
+H-sync time to correct the resulting fractional line-start displacement.
+The debug deskew bypass exposes the rounded presentation instead. The mapping adds or removes clocks at the end of the
 line; the timing reference does not specify their exact placement within the
-blanking interval.
+blanking interval. A mode may instead specify repeating odd/even `line_clocks`;
+line parity restarts at line 1 in every field. The declared field clocks must
+match the summed lines and overrides.
+
+PSX profile 2 uses 3,412 clocks on odd NTSC lines and 3,413 on even lines;
+PAL uses 3,405 throughout. Progressive fields contain 263 NTSC or 314 PAL
+lines. Interlaced even/odd fields contain 263/262 NTSC and 313/312 PAL lines;
+NTSC starts even and PAL starts odd. One vertical sync line and 11 back-porch
+lines put the nominal picture on line 13. Horizontal sync is 100 clocks. The
+nominal front porch is 100 clocks on the first line; picture placement stays
+fixed relative to H-sync as line lengths change. Thus the NTSC front porch
+is 100 clocks on 3,412-clock lines and 101 clocks on 3,413-clock lines.
+The nominal picture heights are 240 NTSC and 288 PAL lines.
+Source dimensions are centered around that nominal picture and clipped at the
+physical field boundaries. Widths 256, 320, 368, 512 and 640 use clock factors
+10, 8, 7, 5 and 4 respectively. The largest supported width not exceeding the
+reported width is selected (widths below 256 use 256); cropping and overscan
+can therefore be misidentified as another mode. Interlace is inferred above
+360 lines for NTSC or 432 for PAL; cropping or overscan across these thresholds
+is ambiguous. These pulse widths, positioning rules, and thresholds are profile
+assumptions, not comprehensive hardware measurements.
 
 This storage mapping describes integer-clock line overrides. Fractional field
 durations remain supported for phase calculations, but a general sub-clock
@@ -137,7 +159,7 @@ and reliable triggers.
    the explicit field durations. Migrate those consumers before relying on
    arbitrary field patterns throughout the signal chain.
 4. Migrate preset inputs from timing fields to stable profile IDs. SFC presets
-   use ID 1; other systems retain ID 0 and their legacy timing parameters.
+   use ID 1, PSX uses ID 2, and other systems retain ID 0 and their legacy timing parameters.
    The shared shaders still expose legacy timing controls until those systems
    are migrated; those controls do not override the SFC profile. Preserve
    display and signal-chain settings; consolidating system timing does not

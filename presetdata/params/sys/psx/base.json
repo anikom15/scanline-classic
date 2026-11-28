@@ -10,6 +10,7 @@
 
         "COLOR_FILTER_MODE" : 0.0,
 
+        "TIMING_PROFILE" : 2.0,
         "PIXEL_CLOCK_MODE" : 1.0,
         "H_FREQ_MODE" : 1.0,
         "H_BLANK_FUZZ" : 78.4,

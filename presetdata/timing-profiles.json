@@ -108,6 +108,110 @@
       "remaps": [
         {"option": "OPTION_REPLACE_NTSC_PALM", "from": "ntsc", "to": "palm"}
       ]
+    },
+    {
+      "id": 2,
+      "name": "psx",
+      "primary": "ntsc",
+      "default": "ntsc",
+      "reference": "https://psx-spx.consoledev.net/dev/ps1/gpu/timings/",
+      "modes": [
+        {
+          "name": "ntsc",
+          "standard": "ntsc",
+          "subcarrier_hz": 3579545,
+          "pixel_clock_multiplier": [15, 1],
+          "clocks_per_line": 3413,
+          "line_clocks": {"odd": 3412, "even": 3413},
+          "raster": {
+            "interlace_height_threshold": 360,
+            "vertical_sync_lines": 1,
+            "vertical_back_porch_lines": 11,
+            "horizontal_sync_cycles": 100,
+            "horizontal_front_porch_cycles": 100,
+            "active_field_lines": 240,
+            "horizontal_modes": [
+              {"width": 256, "clock_factor": 10},
+              {"width": 320, "clock_factor": 8},
+              {"width": 368, "clock_factor": 7},
+              {"width": 512, "clock_factor": 5},
+              {"width": 640, "clock_factor": 4}
+            ]
+          },
+          "field_lines": {
+            "progressive": {"even": 263, "odd": 263},
+            "interlaced": {"even": 263, "odd": 262}
+          },
+          "field_clocks": {
+            "progressive": {"even": 897487, "odd": 897487},
+            "interlaced": {"even": 897487, "odd": 894075}
+          },
+          "line_overrides": [],
+          "first_field": "even",
+          "field_adjustment": false,
+          "initial_phase_degrees": 0
+        },
+        {
+          "name": "pal",
+          "standard": "pal",
+          "subcarrier_hz": 4433618.75,
+          "pixel_clock_multiplier": [12, 1],
+          "clocks_per_line": 3405,
+          "raster": {
+            "interlace_height_threshold": 432,
+            "vertical_sync_lines": 1,
+            "vertical_back_porch_lines": 11,
+            "horizontal_sync_cycles": 100,
+            "horizontal_front_porch_cycles": 100,
+            "active_field_lines": 288,
+            "horizontal_modes": [
+              {"width": 256, "clock_factor": 10},
+              {"width": 320, "clock_factor": 8},
+              {"width": 368, "clock_factor": 7},
+              {"width": 512, "clock_factor": 5},
+              {"width": 640, "clock_factor": 4}
+            ]
+          },
+          "field_lines": {
+            "progressive": {"even": 314, "odd": 314},
+            "interlaced": {"even": 313, "odd": 312}
+          },
+          "field_clocks": {
+            "progressive": {"even": 1069170, "odd": 1069170},
+            "interlaced": {"even": 1065765, "odd": 1062360}
+          },
+          "line_overrides": [],
+          "first_field": "odd",
+          "field_adjustment": false,
+          "initial_phase_degrees": 0
+        }
+      ],
+      "rules": [
+        {"priority": 1, "mode": "pal", "max_fps": 55}
+      ],
+      "output_modes": [
+        {"size": [256, 240], "interlaced": false, "timing_modes": ["ntsc", "pal"]},
+        {"size": [320, 240], "interlaced": false, "timing_modes": ["ntsc", "pal"]},
+        {"size": [368, 240], "interlaced": false, "timing_modes": ["ntsc", "pal"]},
+        {"size": [512, 240], "interlaced": false, "timing_modes": ["ntsc", "pal"]},
+        {"size": [640, 240], "interlaced": false, "timing_modes": ["ntsc", "pal"]},
+        {"size": [256, 480], "interlaced": true, "timing_modes": ["ntsc", "pal"]},
+        {"size": [320, 480], "interlaced": true, "timing_modes": ["ntsc", "pal"]},
+        {"size": [368, 480], "interlaced": true, "timing_modes": ["ntsc", "pal"]},
+        {"size": [512, 480], "interlaced": true, "timing_modes": ["ntsc", "pal"]},
+        {"size": [640, 480], "interlaced": true, "timing_modes": ["ntsc", "pal"]},
+        {"size": [256, 288], "interlaced": false, "timing_modes": ["pal"]},
+        {"size": [320, 288], "interlaced": false, "timing_modes": ["pal"]},
+        {"size": [368, 288], "interlaced": false, "timing_modes": ["pal"]},
+        {"size": [512, 288], "interlaced": false, "timing_modes": ["pal"]},
+        {"size": [640, 288], "interlaced": false, "timing_modes": ["pal"]},
+        {"size": [256, 576], "interlaced": true, "timing_modes": ["pal"]},
+        {"size": [320, 576], "interlaced": true, "timing_modes": ["pal"]},
+        {"size": [368, 576], "interlaced": true, "timing_modes": ["pal"]},
+        {"size": [512, 576], "interlaced": true, "timing_modes": ["pal"]},
+        {"size": [640, 576], "interlaced": true, "timing_modes": ["pal"]}
+      ],
+      "remaps": []
     }
   ]
 }

@@ -84,6 +84,12 @@ class TimingProfileGenerationTests(unittest.TestCase):
             lambda data: data['profiles'][0]['modes'][0]['line_overrides'][0].update(clocks=1361),
             lambda data: data['profiles'][0]['modes'][0]['line_overrides'].append(
                 copy.deepcopy(data['profiles'][0]['modes'][0]['line_overrides'][0])),
+            lambda data: data['profiles'][1]['modes'][0].update(line_clocks={'odd': 3412}),
+            lambda data: data['profiles'][1]['modes'][0]['line_clocks'].update(odd=0),
+            lambda data: data['profiles'][1]['modes'][0]['line_clocks'].update(even=3414),
+            lambda data: data['profiles'][1]['modes'][0]['field_clocks']['progressive'].update(even=897488),
+            lambda data: data['profiles'][1]['modes'][0]['raster'].update(horizontal_back_porch_cycles=100),
+            lambda data: data['profiles'][1]['modes'][0]['raster']['horizontal_modes'][0].update(clock_factor=20),
         )
         for mutate in mutations:
             data = copy.deepcopy(self.data)
@@ -165,7 +171,7 @@ int main() {
 
     def test_legacy_and_invalid_inputs(self):
         self.assertEqual(self.run_selection(0, 0, 0, 0), (0, 12, 0.25))
-        for profile, width, height, fps in ((2, 256, 224, 60), (1, 0, 224, 60), (1, 256, 224, 0)):
+        for profile, width, height, fps in ((3, 256, 224, 60), (1, 0, 224, 60), (1, 256, 224, 0)):
             mode, phase, pal = self.run_selection(profile, width, height, fps)
             with self.subTest(profile=profile, width=width, fps=fps):
                 self.assertEqual(mode, -1)
@@ -177,6 +183,124 @@ int main() {
             with self.subTest(width=width, height=height):
                 mode, _, _ = self.run_selection(1, width, height, 60, custom_rules=True)
                 self.assertEqual(mode, expected)
+
+    def test_psx_selection(self):
+        self.assertEqual(self.run_selection(2, 320, 240, 60), (4, 0, 0))
+        self.assertEqual(self.run_selection(2, 320, 288, 50, palm=True), (5, 0, 1))
+
+    def test_psx_geometry_and_exact_phase(self):
+        compiler = shutil.which('g++')
+        settings = contract_timings.load_sfc_timing_parameters('sfc-rgb.json')
+        settings['TIMING_PROFILE'] = 2
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / 'psx-contract.cpp'
+            executable = Path(temp) / 'psx-contract'
+            source.write_text(CPP_HEADER + cpp_shader_source() + CPP_MAIN, encoding='utf-8')
+            subprocess.run([compiler, '-std=c++17', '-O2', str(source), '-o', str(executable)], check=True)
+            for region, fps, lines, durations, ratio, first_odd in (
+                ('ntsc', 60, ((263, 263), (263, 262)),
+                 ((897487, 897487), (897487, 894075)), 15, False),
+                ('pal', 50, ((314, 314), (313, 312)),
+                 ((1069170, 1069170), (1065765, 1062360)), 12, True),
+            ):
+                for interlaced in (False, True):
+                    size = (320, (480 if interlaced else 240) if region == 'ntsc'
+                            else (576 if interlaced else 288))
+                    even, odd = durations[interlaced]
+                    for reverse in (False, True):
+                        for geometry_field in (0, 1):
+                            values = contract_timings.SfcContractTimingTests.run_case(
+                                region, size, reverse=reverse, fps=fps, executable=executable,
+                                parameters=settings, geometry_field=geometry_field)
+                            parity = (geometry_field + first_odd + reverse) % 2
+                            average = 3412.5 if region == 'ntsc' else 3405
+                            self.assertAlmostEqual(values[3], values[1] / average, delta=0.01)
+                            self.assertEqual(values[4], 3413 if region == 'ntsc' else 3405)
+                            self.assertEqual(values[5], 3413 if region == 'ntsc' else 3405)
+                            self.assertEqual(values[6], lines[interlaced][parity])
+                            self.assertEqual(values[8], float(interlaced))
+                            first = odd if first_odd != reverse else even
+                            for index, field in enumerate(FIELD_COUNTS):
+                                elapsed = (field // 2) * (even + odd) + (field % 2) * first
+                                self.assertLessEqual(
+                                    phase_distance(values[9 + 3 * index], float(Fraction(elapsed, ratio) % 1)),
+                                    1 / 360)
+                                self.assertEqual(values[11 + 3 * index], (field + first_odd + reverse) % 2)
+
+    def test_psx_periodic_lines_and_overrides(self):
+        compiler = shutil.which('g++')
+        data = json.loads((ROOT / 'presetdata' / 'timing-profiles.json').read_text(encoding='utf-8'))
+        mode = data['profiles'][1]['modes'][0]
+        mode['line_overrides'] = [
+            {'scan': 'interlaced', 'field': 'odd', 'line': 10, 'clocks': 3409},
+            {'scan': 'interlaced', 'field': 'odd', 'line': 13, 'clocks': 3415},
+        ]
+        mode['field_clocks']['interlaced']['odd'] -= 1
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / 'psx-raster.cpp'
+            executable = Path(temp) / 'psx-raster'
+            source.write_text(CPP_HEADER + cpp_shader_source(generate_source(data)) + r'''
+#include <stdexcept>
+int main() {
+    for (int mode : {4, 5}) {
+        int widths[] = {200, 256, 319, 320, 367, 368, 511, 512, 639, 640, 700};
+        int nominal[] = {256, 256, 256, 320, 320, 368, 368, 512, 512, 640, 640};
+        int factors[] = {10, 10, 10, 8, 8, 7, 7, 5, 5, 4, 4};
+        for (int i=0; i<11; ++i) {
+            if (timing_profile_nominal_width(mode, widths[i], 0) != nominal[i] ||
+                timing_profile_clock_factor(mode, widths[i], 0) != factors[i])
+                throw std::runtime_error("PSX horizontal mode inference mismatch");
+            float first = timing_profile_active_left(mode, mode == 4 ? 3412 : 3405, widths[i], factors[i], 0);
+            float second = timing_profile_active_left(mode, mode == 4 ? 3413 : 3405, widths[i], factors[i], 0);
+            if (first != second)
+                throw std::runtime_error("PSX active placement changes with line length");
+        }
+        if (timing_profile_vertical_sync_lines(mode, 0) != 1 ||
+            timing_profile_horizontal_sync_cycles(mode, 0) != 100 ||
+            timing_profile_active_top(mode, mode == 4 ? 240 : 288, 0) != 12)
+            throw std::runtime_error("PSX sync or picture origin mismatch");
+    }
+    float picture_start = timing_profile_active_left(4, 3412, 640, 4, 0);
+    if (picture_start != 752 || timing_profile_active_left(4, 3412.5f, 640, 4, 0) != 752 ||
+        3412 - (picture_start + 640*4) != 100 ||
+        3413 - (picture_start + 640*4) != 101)
+        throw std::runtime_error("PSX picture or front porch timing mismatch");
+    for (int mode : {4, 5}) for (int interlaced : {0, 1})
+    for (int frame : {0, 1}) for (int reverse : {0, 1})
+    for (int width : {2047, 3405, 3413, 4096}) {
+        int odd = (frame + reverse + (mode == 5)) % 2;
+        int height = interlaced ? (mode == 4 ? 480 : 576) : (mode == 4 ? 240 : 288);
+        int lines = mode == 4 ? (interlaced && odd ? 262 : 263)
+                              : (interlaced ? (odd ? 312 : 313) : 314);
+        int scale = mode == 4 ? 3413 : 3405;
+        auto boundary = [=](int line) {
+            long long clocks = mode == 4 ? (line / 2) * 6825LL + (line % 2) * 3412LL
+                                         : line * 3405LL;
+            if (mode == 4 && interlaced && odd) {
+                if (line >= 10) clocks -= 4;
+                if (line >= 13) clocks += 3;
+            }
+            return int((clocks * width + scale - 1) / scale);
+        };
+        int length = boundary(lines);
+        if (timing_profile_storage_length(mode, height, frame, reverse, width, width * lines) != length)
+            throw std::runtime_error("PSX field length mismatch");
+        for (int line = 0; line < lines; ++line) {
+            int start = boundary(line), end = boundary(line + 1);
+            vec2 range = timing_profile_line_range(mode, height, frame, reverse, line, width);
+            if (range.x != start || range.y != end - start)
+                throw std::runtime_error("PSX line range mismatch");
+            for (int index : {start, end - 1}) {
+                vec2 pos = timing_profile_raster_position(mode, height, frame, reverse, index, width);
+                if (pos.x != index - start || pos.y != line)
+                    throw std::runtime_error("PSX line boundary mismatch");
+            }
+        }
+    }
+}
+''', encoding='utf-8')
+            subprocess.run([compiler, '-std=c++17', '-O2', str(source), '-o', str(executable)], check=True)
+            subprocess.run([str(executable)], check=True)
 
     def test_exceptional_line_locations_and_field_lengths(self):
         compiler = shutil.which('g++')
@@ -389,9 +513,9 @@ int main() {
 
 
 class TimingProfilePresetTests(unittest.TestCase):
-    def test_sfc_pipeline_timing_passes_resolve_profiles(self):
+    def test_profile_pipeline_timing_passes_resolve_profiles(self):
         names = set()
-        for preset_name in ('sfc-rgb', 'sfc-svideo', 'sfc-composite', 'snes-eu-composite'):
+        for preset_name in ('sfc-rgb', 'sfc-svideo', 'sfc-composite', 'snes-eu-composite', 'psx-rgb'):
             path = ROOT / 'presetdata' / 'input' / 'professional' / f'{preset_name}.json'
             preset = json.loads(path.read_text(encoding='utf-8'))
             for pipeline_name in preset['pipelines']:
@@ -432,6 +556,7 @@ class TimingProfilePresetTests(unittest.TestCase):
             for name, result_name, expected in (
                 ('sfc-rgb', 'sfc', {'TIMING_PROFILE': 1.0}),
                 ('snes-eu-composite', 'snes-eu', {'TIMING_PROFILE': 1.0}),
+                ('psx-rgb', 'psx', {'TIMING_PROFILE': 2.0}),
                 ('famicom-c1', 'famicom-c1', {'H_FREQ': 1364.0, 'SHORTEN_ODD_FIELD_TIME': 1.0}),
             ):
                 command = [
@@ -449,7 +574,7 @@ class TimingProfilePresetTests(unittest.TestCase):
                 with self.subTest(preset=name):
                     for key, value in expected.items():
                         self.assertEqual(float(values[key]), value)
-                    if name != 'famicom-c1':
+                    if name in ('sfc-rgb', 'snes-eu-composite'):
                         self.assertNotIn('H_FREQ', values)
 
 

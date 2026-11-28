@@ -208,13 +208,18 @@ float compute_h_freq(
             else
                 return PAL_H_FREQ;
         }
-    } else if (h_freq_mode < 1.5) {
+    } else if (h_freq_mode < 1.5 || h_freq_mode > 2.5) {
         // From pixel clock
         return pixel_clock_hz / h_freq_custom_khz;
     } else {
         // Custom
         return h_freq_custom_khz * 1.0e3;
     }
+}
+
+float compute_stored_line_width(float h_freq_mode, float h_freq_custom_khz, float total_cycles)
+{
+    return max(1.0, h_freq_mode > 2.5 ? ceil(h_freq_custom_khz) : round(total_cycles));
 }
 
 // Compute vertical geometry and interlace-adjusted field lines.

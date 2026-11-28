@@ -17,6 +17,12 @@ int timing_profile_select(float profile_id, vec2 size, float fps)
 #endif
         return mode;
     }
+    if (profile_id == 2.0) {
+        int mode = 4;
+        if (fps <= 55.0)
+            mode = 5;
+        return mode;
+    }
     return -1;
 }
 
@@ -30,6 +36,10 @@ float timing_profile_sc_mode(int mode, float legacy)
         return 2.0;
     if (mode == 3)
         return 3.0;
+    if (mode == 4)
+        return 1.0;
+    if (mode == 5)
+        return 2.0;
     return uintBitsToFloat(0x7fc00000u);
 }
 
@@ -42,6 +52,10 @@ float timing_profile_pixel_mode(int mode, float legacy)
     if (mode == 2)
         return 1.0;
     if (mode == 3)
+        return 1.0;
+    if (mode == 4)
+        return 1.0;
+    if (mode == 5)
         return 1.0;
     return uintBitsToFloat(0x7fc00000u);
 }
@@ -56,6 +70,10 @@ float timing_profile_h_mode(int mode, float legacy)
         return 1.0;
     if (mode == 3)
         return 1.0;
+    if (mode == 4)
+        return 3.0;
+    if (mode == 5)
+        return 1.0;
     return uintBitsToFloat(0x7fc00000u);
 }
 
@@ -69,6 +87,10 @@ float timing_profile_h_freq(int mode, float legacy)
         return 1364.0;
     if (mode == 3)
         return 1364.0;
+    if (mode == 4)
+        return 3412.5;
+    if (mode == 5)
+        return 3405.0;
     return uintBitsToFloat(0x7fc00000u);
 }
 
@@ -82,6 +104,10 @@ float timing_profile_top_blank_lines(int mode, float legacy)
         return 18.0;
     if (mode == 3)
         return 18.0;
+    if (mode == 4)
+        return 12.0;
+    if (mode == 5)
+        return 12.0;
     return uintBitsToFloat(0x7fc00000u);
 }
 
@@ -95,6 +121,10 @@ float timing_profile_left_blank_cycles(int mode, float legacy)
         return 252.0;
     if (mode == 3)
         return 252.0;
+    if (mode == 4)
+        return legacy;
+    if (mode == 5)
+        return legacy;
     return uintBitsToFloat(0x7fc00000u);
 }
 
@@ -108,6 +138,10 @@ float timing_profile_vertical_sync_lines(int mode, float legacy)
         return 3.0;
     if (mode == 3)
         return 3.0;
+    if (mode == 4)
+        return 1.0;
+    if (mode == 5)
+        return 1.0;
     return uintBitsToFloat(0x7fc00000u);
 }
 
@@ -120,6 +154,10 @@ float timing_profile_horizontal_sync_cycles(int mode, float legacy)
     if (mode == 2)
         return 100.0;
     if (mode == 3)
+        return 100.0;
+    if (mode == 4)
+        return 100.0;
+    if (mode == 5)
         return 100.0;
     return uintBitsToFloat(0x7fc00000u);
 }
@@ -134,6 +172,10 @@ float timing_profile_field_adjustment(int mode, float legacy)
         return 1.0;
     if (mode == 3)
         return 1.0;
+    if (mode == 4)
+        return 0.0;
+    if (mode == 5)
+        return 0.0;
     return uintBitsToFloat(0x7fc00000u);
 }
 
@@ -147,6 +189,10 @@ float timing_profile_first_field_odd(int mode, float legacy)
         return 1.0;
     if (mode == 3)
         return 0.0;
+    if (mode == 4)
+        return 0.0;
+    if (mode == 5)
+        return 1.0;
     return uintBitsToFloat(0x7fc00000u);
 }
 
@@ -159,6 +205,10 @@ float timing_profile_initial_phase(int mode, float legacy)
     if (mode == 2)
         return 0.0;
     if (mode == 3)
+        return 0.0;
+    if (mode == 4)
+        return 0.0;
+    if (mode == 5)
         return 0.0;
     return uintBitsToFloat(0x7fc00000u);
 }
@@ -173,6 +223,142 @@ float timing_profile_pal(int mode, float legacy)
         return 1.0;
     if (mode == 3)
         return 1.0;
+    if (mode == 4)
+        return 0.0;
+    if (mode == 5)
+        return 1.0;
+    return uintBitsToFloat(0x7fc00000u);
+}
+
+float timing_profile_centered_overscan(int mode, float legacy)
+{
+    if (mode == 0)
+        return legacy;
+    if (mode == 1)
+        return 0.0;
+    if (mode == 2)
+        return 0.0;
+    if (mode == 3)
+        return 0.0;
+    if (mode == 4)
+        return 1.0;
+    if (mode == 5)
+        return 1.0;
+    return uintBitsToFloat(0x7fc00000u);
+}
+
+float timing_profile_nominal_width(int mode, float width, float legacy)
+{
+    if (mode == 0)
+        return legacy;
+    if (mode == 1) {
+        return legacy;
+    }
+    if (mode == 2) {
+        return legacy;
+    }
+    if (mode == 3) {
+        return legacy;
+    }
+    if (mode == 4) {
+        if (width >= 640.0)
+            return 640.0;
+        if (width >= 512.0)
+            return 512.0;
+        if (width >= 368.0)
+            return 368.0;
+        if (width >= 320.0)
+            return 320.0;
+        return 256.0;
+    }
+    if (mode == 5) {
+        if (width >= 640.0)
+            return 640.0;
+        if (width >= 512.0)
+            return 512.0;
+        if (width >= 368.0)
+            return 368.0;
+        if (width >= 320.0)
+            return 320.0;
+        return 256.0;
+    }
+    return uintBitsToFloat(0x7fc00000u);
+}
+
+float timing_profile_clock_factor(int mode, float width, float legacy)
+{
+    if (mode == 0)
+        return legacy;
+    if (mode == 1) {
+        return legacy;
+    }
+    if (mode == 2) {
+        return legacy;
+    }
+    if (mode == 3) {
+        return legacy;
+    }
+    if (mode == 4) {
+        if (width >= 640.0)
+            return 4.0;
+        if (width >= 512.0)
+            return 5.0;
+        if (width >= 368.0)
+            return 7.0;
+        if (width >= 320.0)
+            return 8.0;
+        return 10.0;
+    }
+    if (mode == 5) {
+        if (width >= 640.0)
+            return 4.0;
+        if (width >= 512.0)
+            return 5.0;
+        if (width >= 368.0)
+            return 7.0;
+        if (width >= 320.0)
+            return 8.0;
+        return 10.0;
+    }
+    return uintBitsToFloat(0x7fc00000u);
+}
+
+float timing_profile_active_top(int mode, float source_height, float legacy)
+{
+    if (mode == 0)
+        return legacy;
+    if (mode == 1)
+        return legacy;
+    if (mode == 2)
+        return legacy;
+    if (mode == 3)
+        return legacy;
+    if (mode == 4)
+        return 12.0 + floor((240.0 - source_height) * 0.5);
+    if (mode == 5)
+        return 12.0 + floor((288.0 - source_height) * 0.5);
+    return uintBitsToFloat(0x7fc00000u);
+}
+
+float timing_profile_active_left(int mode, float line_width, float source_width,
+    float clock_factor, float legacy)
+{
+    if (mode == 0)
+        return legacy;
+    if (mode == 1)
+        return legacy;
+    if (mode == 2)
+        return legacy;
+    if (mode == 3)
+        return legacy;
+    if (mode == 4)
+        return 3412.0 - 100.0
+            - (timing_profile_nominal_width(mode, source_width, source_width)
+               + (source_width - timing_profile_nominal_width(mode, source_width, source_width)) * 0.5) * clock_factor;
+    if (mode == 5)
+        return line_width - 100.0
+            - (timing_profile_nominal_width(mode, source_width, source_width)
+               + (source_width - timing_profile_nominal_width(mode, source_width, source_width)) * 0.5) * clock_factor;
     return uintBitsToFloat(0x7fc00000u);
 }
 
@@ -186,6 +372,10 @@ float timing_profile_v_mode(int mode, float height, float legacy)
         return height > 312.0 ? 6.0 : 5.0;
     if (mode == 3)
         return height > 262.0 ? 6.0 : 5.0;
+    if (mode == 4)
+        return height > 360.0 ? 6.0 : 5.0;
+    if (mode == 5)
+        return height > 432.0 ? 6.0 : 5.0;
     return uintBitsToFloat(0x7fc00000u);
 }
 
@@ -208,6 +398,16 @@ float timing_profile_v_freq(int mode, float height, uint frame_count, float fiel
         return height > 262.0 ? (odd ? 262.0 : 263.0)
             : (odd ? 262.0 : 262.0);
     }
+    if (mode == 4) {
+        bool odd = ((frame_count % 2u + 0u + (field_odd > 0.5 ? 1u : 0u)) % 2u) != 0u;
+        return height > 360.0 ? (odd ? 262.0 : 263.0)
+            : (odd ? 263.0 : 263.0);
+    }
+    if (mode == 5) {
+        bool odd = ((frame_count % 2u + 1u + (field_odd > 0.5 ? 1u : 0u)) % 2u) != 0u;
+        return height > 432.0 ? (odd ? 312.0 : 313.0)
+            : (odd ? 314.0 : 314.0);
+    }
     return uintBitsToFloat(0x7fc00000u);
 }
 
@@ -221,6 +421,10 @@ float timing_profile_full_frame_height(int mode, float height, float legacy)
         return height > 312.0 ? 625.0 : legacy;
     if (mode == 3)
         return height > 262.0 ? 525.0 : legacy;
+    if (mode == 4)
+        return height > 360.0 ? 525.0 : legacy;
+    if (mode == 5)
+        return height > 432.0 ? 625.0 : legacy;
     return uintBitsToFloat(0x7fc00000u);
 }
 
@@ -234,6 +438,10 @@ dvec4 timing_profile_field_clock_numerators(int mode)
         return dvec4(425568.0lf, 425568.0lf, 426932.0lf, 425572.0lf);
     if (mode == 3)
         return dvec4(357368.0lf, 357364.0lf, 358732.0lf, 357368.0lf);
+    if (mode == 4)
+        return dvec4(897487.0lf, 897487.0lf, 897487.0lf, 894075.0lf);
+    if (mode == 5)
+        return dvec4(1069170.0lf, 1069170.0lf, 1065765.0lf, 1062360.0lf);
     return dvec4(double(uintBitsToFloat(0x7fc00000u)));
 }
 
@@ -246,6 +454,10 @@ dvec4 timing_profile_field_clock_denominators(int mode)
     if (mode == 2)
         return dvec4(1.0lf, 1.0lf, 1.0lf, 1.0lf);
     if (mode == 3)
+        return dvec4(1.0lf, 1.0lf, 1.0lf, 1.0lf);
+    if (mode == 4)
+        return dvec4(1.0lf, 1.0lf, 1.0lf, 1.0lf);
+    if (mode == 5)
         return dvec4(1.0lf, 1.0lf, 1.0lf, 1.0lf);
     return dvec4(double(uintBitsToFloat(0x7fc00000u)));
 }
@@ -260,6 +472,10 @@ float timing_profile_pixel_value(int mode, float legacy)
         return 24.0 / 5.0;
     if (mode == 3)
         return 6.0 / 1.0;
+    if (mode == 4)
+        return 15.0 / 1.0;
+    if (mode == 5)
+        return 12.0 / 1.0;
     return uintBitsToFloat(0x7fc00000u);
 }
 
@@ -284,6 +500,22 @@ float timing_profile_storage_length(int mode, float height, uint frame_count, fl
         bool odd = ((frame_count % 2u + 0u + (field_odd > 0.5 ? 1u : 0u)) % 2u) != 0u;
         if (height <= 262.0 && odd)
             return legacy + ceil(-4.0 * width / 1364.0);
+        return legacy;
+    }
+    if (mode == 4) {
+        bool odd = ((frame_count % 2u + 0u + (field_odd > 0.5 ? 1u : 0u)) % 2u) != 0u;
+        if (height <= 360.0 && !odd)
+            return float(ceil(double((floor(263.0 / 2.0) * 6825.0 + (263.0 - floor(263.0 / 2.0) * 2.0) * 3412.0)) * double(width) / double(3413.0)));
+        if (height <= 360.0 && odd)
+            return float(ceil(double((floor(263.0 / 2.0) * 6825.0 + (263.0 - floor(263.0 / 2.0) * 2.0) * 3412.0)) * double(width) / double(3413.0)));
+        if (height > 360.0 && !odd)
+            return float(ceil(double((floor(263.0 / 2.0) * 6825.0 + (263.0 - floor(263.0 / 2.0) * 2.0) * 3412.0)) * double(width) / double(3413.0)));
+        if (height > 360.0 && odd)
+            return float(ceil(double((floor(262.0 / 2.0) * 6825.0 + (262.0 - floor(262.0 / 2.0) * 2.0) * 3412.0)) * double(width) / double(3413.0)));
+        return legacy;
+    }
+    if (mode == 5) {
+        bool odd = ((frame_count % 2u + 1u + (field_odd > 0.5 ? 1u : 0u)) % 2u) != 0u;
         return legacy;
     }
     return uintBitsToFloat(0x7fc00000u);
@@ -343,6 +575,42 @@ vec2 timing_profile_raster_position(int mode, float height, uint frame_count, fl
         float y = floor(sample_index / width);
         return vec2(sample_index - y * width, y);
     }
+    if (mode == 4) {
+        bool odd = ((frame_count % 2u + 0u + (field_odd > 0.5 ? 1u : 0u)) % 2u) != 0u;
+        if (height <= 360.0 && !odd) {
+            double clock = floor(double(sample_index) * double(3413.0) / double(width));
+            double pair = floor(clock / double(6825.0));
+            float line = float(pair * double(2.0) + (clock - pair * double(6825.0) >= double(3412.0) ? double(1.0) : double(0.0)));
+            float start = float(ceil(double((floor(line / 2.0) * 6825.0 + (line - floor(line / 2.0) * 2.0) * 3412.0)) * double(width) / double(3413.0)));
+            return vec2(sample_index - start, line);
+        }
+        if (height <= 360.0 && odd) {
+            double clock = floor(double(sample_index) * double(3413.0) / double(width));
+            double pair = floor(clock / double(6825.0));
+            float line = float(pair * double(2.0) + (clock - pair * double(6825.0) >= double(3412.0) ? double(1.0) : double(0.0)));
+            float start = float(ceil(double((floor(line / 2.0) * 6825.0 + (line - floor(line / 2.0) * 2.0) * 3412.0)) * double(width) / double(3413.0)));
+            return vec2(sample_index - start, line);
+        }
+        if (height > 360.0 && !odd) {
+            double clock = floor(double(sample_index) * double(3413.0) / double(width));
+            double pair = floor(clock / double(6825.0));
+            float line = float(pair * double(2.0) + (clock - pair * double(6825.0) >= double(3412.0) ? double(1.0) : double(0.0)));
+            float start = float(ceil(double((floor(line / 2.0) * 6825.0 + (line - floor(line / 2.0) * 2.0) * 3412.0)) * double(width) / double(3413.0)));
+            return vec2(sample_index - start, line);
+        }
+        if (height > 360.0 && odd) {
+            double clock = floor(double(sample_index) * double(3413.0) / double(width));
+            double pair = floor(clock / double(6825.0));
+            float line = float(pair * double(2.0) + (clock - pair * double(6825.0) >= double(3412.0) ? double(1.0) : double(0.0)));
+            float start = float(ceil(double((floor(line / 2.0) * 6825.0 + (line - floor(line / 2.0) * 2.0) * 3412.0)) * double(width) / double(3413.0)));
+            return vec2(sample_index - start, line);
+        }
+    }
+    if (mode == 5) {
+        bool odd = ((frame_count % 2u + 1u + (field_odd > 0.5 ? 1u : 0u)) % 2u) != 0u;
+        float y = floor(sample_index / width);
+        return vec2(sample_index - y * width, y);
+    }
     if (mode == 0) {
         float y = floor(sample_index / width);
         return vec2(sample_index - y * width, y);
@@ -389,6 +657,37 @@ vec2 timing_profile_line_range(int mode, float height, uint frame_count, float f
         }
         return vec2(start, length);
     }
+    if (mode == 4) {
+        bool odd = ((frame_count % 2u + 0u + (field_odd > 0.5 ? 1u : 0u)) % 2u) != 0u;
+        float start = line * width;
+        float length = width;
+        if (height <= 360.0 && !odd) {
+            start = float(ceil(double((floor(line / 2.0) * 6825.0 + (line - floor(line / 2.0) * 2.0) * 3412.0)) * double(width) / double(3413.0)));
+            float end = float(ceil(double((floor((line + 1.0) / 2.0) * 6825.0 + ((line + 1.0) - floor((line + 1.0) / 2.0) * 2.0) * 3412.0)) * double(width) / double(3413.0)));
+            return vec2(start, end - start);
+        }
+        if (height <= 360.0 && odd) {
+            start = float(ceil(double((floor(line / 2.0) * 6825.0 + (line - floor(line / 2.0) * 2.0) * 3412.0)) * double(width) / double(3413.0)));
+            float end = float(ceil(double((floor((line + 1.0) / 2.0) * 6825.0 + ((line + 1.0) - floor((line + 1.0) / 2.0) * 2.0) * 3412.0)) * double(width) / double(3413.0)));
+            return vec2(start, end - start);
+        }
+        if (height > 360.0 && !odd) {
+            start = float(ceil(double((floor(line / 2.0) * 6825.0 + (line - floor(line / 2.0) * 2.0) * 3412.0)) * double(width) / double(3413.0)));
+            float end = float(ceil(double((floor((line + 1.0) / 2.0) * 6825.0 + ((line + 1.0) - floor((line + 1.0) / 2.0) * 2.0) * 3412.0)) * double(width) / double(3413.0)));
+            return vec2(start, end - start);
+        }
+        if (height > 360.0 && odd) {
+            start = float(ceil(double((floor(line / 2.0) * 6825.0 + (line - floor(line / 2.0) * 2.0) * 3412.0)) * double(width) / double(3413.0)));
+            float end = float(ceil(double((floor((line + 1.0) / 2.0) * 6825.0 + ((line + 1.0) - floor((line + 1.0) / 2.0) * 2.0) * 3412.0)) * double(width) / double(3413.0)));
+            return vec2(start, end - start);
+        }
+    }
+    if (mode == 5) {
+        bool odd = ((frame_count % 2u + 1u + (field_odd > 0.5 ? 1u : 0u)) % 2u) != 0u;
+        float start = line * width;
+        float length = width;
+        return vec2(start, length);
+    }
     if (mode == 0)
         return vec2(line * width, width);
     return vec2(uintBitsToFloat(0x7fc00000u));
@@ -404,5 +703,9 @@ dvec2 timing_profile_pixel_ratio(int mode)
         return dvec2(24.0lf, 5.0lf);
     if (mode == 3)
         return dvec2(6.0lf, 1.0lf);
+    if (mode == 4)
+        return dvec2(15.0lf, 1.0lf);
+    if (mode == 5)
+        return dvec2(12.0lf, 1.0lf);
     return dvec2(double(uintBitsToFloat(0x7fc00000u)));
 }

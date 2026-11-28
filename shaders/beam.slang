@@ -259,10 +259,18 @@ void main()
         float clock_factor = contract_clock_factor(
             config.OriginalSize.x, global.OriginalFPS, SC_FREQ_MODE, SC_FREQ,
             PIXEL_CLOCK_MODE, PIXEL_CLOCK, H_FREQ_MODE, H_FREQ, H_BLANK_FUZZ);
+        clock_factor = timing_profile_clock_factor(TIMING_PROFILE_MODE, config.OriginalSize.x, clock_factor);
+        float source_field_height = config.OriginalSize.y / (IsInterlaced > 0.5 ? 2.0 : 1.0);
+        float top = timing_profile_active_top(TIMING_PROFILE_MODE, source_field_height,
+            timing_profile_top_blank_lines(TIMING_PROFILE_MODE, 0.0));
+        float left = timing_profile_left_blank_cycles(TIMING_PROFILE_MODE, 0.0);
+        if (timing_profile_centered_overscan(TIMING_PROFILE_MODE, 0.0) > 0.5) {
+            left = timing_profile_active_left(TIMING_PROFILE_MODE, H_FREQ, config.OriginalSize.x, clock_factor, left);
+            OriginalFrameWidth = clocks_per_line / clock_factor;
+        }
         ActiveCenterOffset = active_center_offset(
             clocks_per_line, OriginalFrameHeight, config.OriginalSize.x, config.OriginalSize.y,
-            clock_factor, timing_profile_top_blank_lines(TIMING_PROFILE_MODE, 0.0),
-            timing_profile_left_blank_cycles(TIMING_PROFILE_MODE, 0.0), IsInterlaced > 0.5);
+            clock_factor, top, left, IsInterlaced > 0.5);
     }
 }
 

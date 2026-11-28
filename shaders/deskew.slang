@@ -27,10 +27,9 @@
 // pixels per line, where the clock factor is equal to the ratio of
 // pixel clock cycles to display pixels per line.
 //
-// The correction is applied once, at the last time-aware stage, by shifting
-// each row horizontally by the resampled line-carry derived from
-// `frameh.slang`. Line 0 stays anchored; lower lines accumulate the per-line
-// carry in current output-sample units. Alpha is forced to 1.0 to mark that
+// The correction shifts each presentation row by the legacy line carry or,
+// for timing profiles, the fractional displacement of its H-sync boundary
+// from the rounded stored line start. Alpha is forced to 1.0 to mark that
 // canonical DSP processing is complete after this stage.
 
 #pragma name Deskew
@@ -115,6 +114,7 @@ layout(location = 2) flat out float PresentationFrameHeight;
 layout(location = 3) flat out float LineCarryClocksOut;
 layout(location = 4) flat out float ClockFactorOut;
 layout(location = 5) flat out float SampleRatio;
+layout(location = 6) flat out float BaseFrameWidthOut;
 
 void main()
 {
@@ -149,6 +149,8 @@ void main()
         H_FREQ_MODE,
         H_FREQ,
         H_BLANK_FUZZ);
+    if (TIMING_PROFILE_MODE > 0)
+        LineCarryClocks = 0.0;
     float FrameHeight = contract_frame_height(
         config.OriginalSize.xy,
         config.OriginalFPS,
@@ -195,6 +197,7 @@ void main()
     SampleRatio = fs_current / max(fs_original, EPS);
     LineCarryClocksOut = LineCarryClocks;
     ClockFactorOut = ClockFactor;
+    BaseFrameWidthOut = BaseFrameWidth;
 }
 
 #pragma stage fragment
@@ -204,6 +207,7 @@ layout(location = 2) flat in float PresentationFrameHeight;
 layout(location = 3) flat in float LineCarryClocksOut;
 layout(location = 4) flat in float ClockFactorOut;
 layout(location = 5) flat in float SampleRatio;
+layout(location = 6) flat in float BaseFrameWidthOut;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
@@ -220,6 +224,13 @@ vec3 sample_deskewed(float output_x, float output_y, float frame_width)
         ? (int(output_y) * carry_clocks) % clock_factor
         : 0;
     float row_shift = float(row_carry_clocks) * SampleRatio;
+    if (TIMING_PROFILE_MODE > 0) {
+        float clock_start = timing_profile_line_range(TIMING_PROFILE_MODE, config.OriginalSize.y,
+            global.FrameCount, global.FIELD_ODD, output_y, BaseFrameWidthOut).x;
+        float stored_start = timing_profile_line_range(TIMING_PROFILE_MODE, config.OriginalSize.y,
+            global.FrameCount, global.FIELD_ODD, output_y, frame_width).x;
+        row_shift += contract_hsync_sample_offset(clock_start, BaseFrameWidthOut, frame_width, stored_start);
+    }
     float source_x = output_x + mix(row_shift, 0.0, DESKEW_BYPASS);
 
     if (source_x < 0.0 || source_x >= frame_width)

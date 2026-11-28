@@ -152,6 +152,7 @@ SyncState compute_sync_state()
         H_FREQ_MODE,
         H_FREQ,
         H_BLANK_FUZZ);
+    state.clock_factor = timing_profile_clock_factor(TIMING_PROFILE_MODE, config.OriginalSize.x, state.clock_factor);
 
     float frame_height_int = ceil(state.frame_height);
     float is_interlaced = contract_is_interlaced(
@@ -174,10 +175,14 @@ SyncState compute_sync_state()
         ? max(floor((config.OriginalSize.y - field_parity + 1.0) * 0.5), 0.0)
         : config.OriginalSize.y;
     state.active_top = timing_profile_top_blank_lines(TIMING_PROFILE_MODE, floor((frame_height_int - state.active_source_height) * 0.5));
+    state.active_top = timing_profile_active_top(TIMING_PROFILE_MODE, state.active_source_height, state.active_top);
 
     float active_width_base = config.OriginalSize.x * max(state.clock_factor, 1.0);
     state.active_left_base = timing_profile_left_blank_cycles(TIMING_PROFILE_MODE, (state.base_frame_width - active_width_base) * 0.5);
-    if (TIMING_PROFILE_MODE > 0 && (state.active_left_base + active_width_base > state.base_frame_width
+    state.active_left_base = timing_profile_active_left(TIMING_PROFILE_MODE, state.base_frame_width,
+        config.OriginalSize.x, state.clock_factor, state.active_left_base);
+    if (TIMING_PROFILE_MODE > 0 && timing_profile_centered_overscan(TIMING_PROFILE_MODE, 0.0) < 0.5
+        && (state.active_left_base + active_width_base > state.base_frame_width
         || state.active_top + state.active_source_height > state.frame_height))
         state.texture_fits = 0.0;
     return state;

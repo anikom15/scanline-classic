@@ -158,6 +158,7 @@ layout(location = 11) flat out float InputFrameWidth;
 layout(location = 12) flat out float OutputFrameWidth;
 layout(location = 16) flat out float InputPackedWidth;
 layout(location = 17) flat out float InputTextureFits;
+layout(location = 18) flat out float BaseFrameWidthOut;
 layout(location = 13) flat out float DeskewSampleRatio;
 layout(location = 14) flat out float LineCarryClocksOut;
 layout(location = 15) flat out float ClockFactorOut;
@@ -195,6 +196,10 @@ void main()
         PIXEL_CLOCK_MODE, PIXEL_CLOCK,
         H_FREQ_MODE, H_FREQ, H_BLANK_FUZZ
     );
+    if (TIMING_PROFILE_MODE > 0)
+        LineCarryClocks = 0.0;
+    BaseFrameWidthOut = contract_frame_width(
+        config.OriginalFPS, SC_FREQ_MODE, SC_FREQ, PIXEL_CLOCK_MODE, PIXEL_CLOCK, H_FREQ_MODE, H_FREQ);
     float WorkingSampleRate = contract_working_sample_rate(
         config.OriginalFPS,
         SC_FREQ_MODE, SC_FREQ,
@@ -280,6 +285,7 @@ layout(location = 11) flat in float InputFrameWidth;
 layout(location = 12) flat in float OutputFrameWidth;
 layout(location = 16) flat in float InputPackedWidth;
 layout(location = 17) flat in float InputTextureFits;
+layout(location = 18) flat in float BaseFrameWidthOut;
 layout(location = 13) flat in float DeskewSampleRatio;
 layout(location = 14) flat in float LineCarryClocksOut;
 layout(location = 15) flat in float ClockFactorOut;
@@ -327,25 +333,36 @@ void main()
     int center = (n_taps - 1) / 2;
 
     float row_shift_output = compute_row_shift_output_samples(output_y_i);
-    float deskewed_output_x = output_x + row_shift_output;
-
-    float field_output_index = line_range.x + deskewed_output_x;
+    if (TIMING_PROFILE_MODE > 0) {
+        float clock_start = timing_profile_line_range(TIMING_PROFILE_MODE, config.OriginalSize.y,
+            global.FrameCount, global.FIELD_ODD, output_y, BaseFrameWidthOut).x;
+        float sync_shift = contract_hsync_sample_offset(clock_start, BaseFrameWidthOut, OutputFrameWidth, line_range.x);
+#ifdef OPTION_DEBUG
+        sync_shift = mix(sync_shift, 0.0, DESKEW_BYPASS);
+#endif
+        row_shift_output += sync_shift;
+    }
+    double field_output_index = TIMING_PROFILE_MODE > 0
+        ? double(line_range.x) + double(output_x) + double(row_shift_output)
+        : double(line_range.x + (output_x + row_shift_output));
     if (field_output_index < 0.0 || field_output_index >= OutputDataLength) {
         FragColor = vec4(0.0);
         return;
     }
 
-    float input_sample_pos = field_output_index * invDelta;
-    float input_pos_floor = floor(input_sample_pos);
+    double input_sample_pos = TIMING_PROFILE_MODE > 0
+        ? field_output_index * double(InputFrameWidth) / double(OutputFrameWidth)
+        : double(float(field_output_index) * invDelta);
+    double input_pos_floor = floor(input_sample_pos);
     int input_index_int = int(input_pos_floor);
-    float frac_offset = input_sample_pos - input_pos_floor;
+    float frac_offset = float(input_sample_pos - input_pos_floor);
     float input_data_limit = max(ceil(InputDataLength) - 1.0, 0.0);
 
     vec3 color = vec3(0.0);
 
 #ifdef OPTION_DEBUG
     if (DISPLAY_RGB_FILTER_BYPASS > 0.5) {
-        float sample_index = clamp(floor(input_sample_pos + 0.5), 0.0, input_data_limit);
+        float sample_index = clamp(float(floor(input_sample_pos + 0.5)), 0.0, input_data_limit);
         color = fetch_input_sample(Source, config.SourceSize.xy, sample_index, input_storage_width, input_data_limit).rgb;
     } else {
 #endif  // OPTION_DEBUG

@@ -144,6 +144,40 @@ int main() {
     vSyncState.data_length=262*1364;
     sample(3*1364+200, -0.4f);
     sample(19*1364+100, 0.0f);
+    mode=4; config.FrameCount=0; config.OriginalSize={320,240,{320,240}};
+    config.OutputSize={1024,1024,{1024,1024}}; config.SourceSize=config.OutputSize;
+    vSyncState.base_frame_width=3413; vSyncState.frame_height=263;
+    vSyncState.data_length=897487;
+    auto psx_sample = [](int index, float expected) {
+        int x=index%1024, y=index/1024;
+        vTexCoord=vec2((x+0.5f)/1024,(y+0.5f)/1024);
+        render_sample();
+        if (std::abs(FragColor.a-expected)>1e-5f)
+            throw std::runtime_error("PSX sync mismatch");
+    };
+    psx_sample(3411, -0.4f);
+    psx_sample(3412, -0.4f);
+    psx_sample(3412+99, -0.4f);
+    psx_sample(3412+100, 0.0f);
+    psx_sample(6825, -0.4f);
+    psx_sample(6825+100, 0.0f);
+    psx_sample(897486, 0.0f);
+    psx_sample(897487, 0.0f);
+    mode=5; config.OriginalSize.y=576; config.FrameCount=0;
+    config.OutputSize={1024,2048,{1024,2048}}; config.SourceSize=config.OutputSize;
+    vSyncState.base_frame_width=3405; vSyncState.frame_height=312;
+    vSyncState.data_length=1062360;
+    auto pal_sample = [](int index, float expected) {
+        int x=index%1024, y=index/1024;
+        vTexCoord=vec2((x+0.5f)/1024,(y+0.5f)/2048);
+        render_sample();
+        if (std::abs(FragColor.a-expected)>1e-5f)
+            throw std::runtime_error("PSX PAL sync mismatch");
+    };
+    pal_sample(3404, -0.4f);
+    pal_sample(3405+99, -0.4f);
+    pal_sample(3405+100, 0.0f);
+    pal_sample(1062360, 0.0f);
 }
 '''
         with tempfile.TemporaryDirectory() as temp:
@@ -167,6 +201,11 @@ int main() {
             state.group(),
             shader_function(profiles, 'float timing_profile_top_blank_lines('),
             shader_function(profiles, 'float timing_profile_left_blank_cycles('),
+            shader_function(profiles, 'float timing_profile_centered_overscan('),
+            shader_function(profiles, 'float timing_profile_nominal_width('),
+            shader_function(profiles, 'float timing_profile_clock_factor('),
+            shader_function(profiles, 'float timing_profile_active_top('),
+            shader_function(profiles, 'float timing_profile_active_left('),
             shader_function(profiles, 'float timing_profile_storage_length('),
             shader_function(sync, 'SyncState compute_sync_state()'),
         ))
@@ -602,6 +641,11 @@ int main() {
         shader_code = '\n'.join((
             shader_function(profiles, 'float timing_profile_top_blank_lines('),
             shader_function(profiles, 'float timing_profile_left_blank_cycles('),
+            shader_function(profiles, 'float timing_profile_centered_overscan('),
+            shader_function(profiles, 'float timing_profile_nominal_width('),
+            shader_function(profiles, 'float timing_profile_active_top('),
+            shader_function(profiles, 'float timing_profile_active_left('),
+            shader_function(profiles, 'vec2 timing_profile_line_range('),
             shader_function(profiles, 'vec2 timing_profile_raster_position('),
             shader_function(fragment, 'float current_field_parity()'),
             shader_function(fragment, 'bool sample_maps_to_active_time(').replace('out vec2', 'vec2&'),
@@ -659,16 +703,20 @@ void run_case(float height, bool interlaced, float parity, int output_width, int
     FrameWidth=float(width); FrameHeight=height; ClocksPerLine=float(width); ClockFactor=float(factor);
     IsInterlaced=interlaced ? 1 : 0; Field=parity; field_odd=0;
     config.OriginalSize.y=float(source_height);
-    config.FrameCount=profile == 2 ? uint(1-parity) : uint(parity);
-    int delta=profile && parity && ((!interlaced && (profile==1 || profile==3)) ||
+    config.FrameCount=(profile == 2 || profile == 5) ? uint(1-parity) : uint(parity);
+    int delta=profile && profile<=3 && parity && ((!interlaced && (profile==1 || profile==3)) ||
                                       (interlaced && profile==2)) ? (profile==2 ? 4 : -4) : 0;
     int special_line=profile==2 ? 18 : 259;
-    PackedWidth=1024; DataLength=ceil(FrameWidth*height)+delta; TextureFits=1;
+    PackedWidth=1024;
+    DataLength=profile==4 ? int(height)/2*6825+(int(height)%2)*3412 : ceil(FrameWidth*height)+delta;
+    TextureFits=1;
     config.SourceSize={float(source_width),float(source_height),vec2(1.0f/source_width,1.0f/source_height)};
     config.OutputSize={float(output_width),float(output_height),vec2()};
     int active_height=interlaced ? int(floor((source_height-parity+1)*0.5f)) : source_height;
-    int top=profile ? 18 : int(floor((ceil(height)-active_height)*0.5f));
-    float left=profile ? 252 : (width-source_width*factor)*0.5f;
+    int top=profile>=4 ? 12+int(floor(((profile==4 ? 240 : 288)-active_height)*0.5f))
+                       : profile ? 18 : int(floor((ceil(height)-active_height)*0.5f));
+    int nominal=source_width>=640 ? 640 : source_width>=512 ? 512 : source_width>=368 ? 368
+                                 : source_width>=320 ? 320 : 256;
     for (int y=0;y<output_height;++y) for (int x=0;x<output_width;++x) {
         vTexCoord=vec2((x+0.5f)/output_width,(y+0.5f)/output_height);
         render_sample();
@@ -679,8 +727,16 @@ void run_case(float height, bool interlaced, float parity, int output_width, int
         }
         int line, clock;
         int start=(special_line-1)*width, end=special_line*width+delta;
-        if (delta && index>=start && index<end) { line=special_line-1; clock=index-start; }
+        if (profile==4) {
+            int pair=index/6825, within=index%6825;
+            line=pair*2+(within>=3412);
+            clock=within-(within>=3412 ? 3412 : 0);
+        }
+        else if (delta && index>=start && index<end) { line=special_line-1; clock=index-start; }
         else { int normal=index-(delta && index>=end ? delta : 0); line=normal/width; clock=normal%width; }
+        float left=profile>=4 ? (profile==4 ? 3412 : width)-100
+                                    -(nominal+(source_width-nominal)*0.5f)*factor
+                              : profile ? 252 : (width-source_width*factor)*0.5f;
         float sx=(clock-left-(profile ? 0 : (line*(width%factor))%factor))/factor;
         bool active=line>=top && line<top+active_height && sx>=0 && sx<source_width;
         float expected_x=active ? floor(sx) : -1;
@@ -704,6 +760,15 @@ int main() {
     run_case(262,false,1,1024,512,1,1364,256,239,4);
     run_case(262,false,1,1024,512,3,1364,512,239,2);
     run_case(312,true,1,1024,512,2,1364,256,478,4);
+    run_case(263,false,0,1024,1024,4,3413,256,240,10);
+    run_case(263,false,1,1024,1024,4,3413,352,256,8);
+    run_case(262,true,1,1024,1024,4,3413,368,480,7);
+    run_case(263,true,0,1024,1024,4,3413,512,480,5);
+    run_case(263,true,0,1024,1024,4,3413,640,480,4);
+    run_case(262,true,1,1024,1024,4,3413,640,480,4);
+    run_case(314,false,1,1024,2048,5,3405,640,320,4);
+    run_case(312,true,1,1024,2048,5,3405,320,576,8);
+    run_case(313,true,0,1024,2048,5,3405,368,576,7);
 }
 '''
         with tempfile.TemporaryDirectory() as temp:
