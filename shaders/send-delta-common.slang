@@ -33,8 +33,8 @@
 
 #include "common.inc"
 #include "contract.inc"
+#include "dsp.inc"
 
-#include "menus/parameters/dsp.inc"
 #include "menus/parameters/sys-timing.inc"
 
 #pragma include_optional "../config/options.cfg"
@@ -56,7 +56,6 @@ layout(push_constant) uniform Push
     float PIXEL_CLOCK_WHOLE;
     float H_FREQ_MODE;
     float H_FREQ;
-    float DSP_WORKING_FS;
     float PIXEL_CLOCK_FRAC11;
     float PIXEL_CLOCK_FRAC6;
     float SC_FREQ_FRAC11;
@@ -71,7 +70,7 @@ layout(push_constant) uniform Push
 #define PIXEL_CLOCK timing_profile_pixel_value(TIMING_PROFILE_MODE, timing_decimal_value(vec3(config.PIXEL_CLOCK_WHOLE, config.PIXEL_CLOCK_FRAC6, config.PIXEL_CLOCK_FRAC11)))
 #define H_FREQ_MODE timing_profile_h_mode(TIMING_PROFILE_MODE, config.H_FREQ_MODE)
 #define H_FREQ timing_profile_h_freq(TIMING_PROFILE_MODE, config.H_FREQ)
-#define DSP_WORKING_FS config.DSP_WORKING_FS
+#define DSP_WORKING_FS (DSP_SD_WORKING_FS / 1.0e6)
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
@@ -82,8 +81,6 @@ layout(std140, set = 0, binding = 0) uniform UBO
 } global;
 
 struct DeltaVState {
-    float frame_width;
-    float frame_height;
     float data_length;
     float storage_width;
     float texture_fits;
@@ -100,7 +97,7 @@ DeltaVState compute_delta_v_state()
     DeltaVState state;
 
 #ifdef SEND_PIXEL_DOMAIN
-    state.frame_width = contract_frame_width(
+    double frame_width = contract_frame_width(
         config.OriginalFPS,
         SC_FREQ_MODE,
         SC_FREQ,
@@ -109,7 +106,7 @@ DeltaVState compute_delta_v_state()
         H_FREQ_MODE,
         H_FREQ);
 #else
-    state.frame_width = contract_working_frame_width(
+    double frame_width = timing_profile_rate_width(TIMING_PROFILE_MODE, contract_working_frame_width(
         config.OriginalFPS,
         SC_FREQ_MODE,
         SC_FREQ,
@@ -117,9 +114,9 @@ DeltaVState compute_delta_v_state()
         PIXEL_CLOCK,
         H_FREQ_MODE,
         H_FREQ,
-        DSP_WORKING_FS);
+        DSP_WORKING_FS), DSP_WORKING_FS);
 #endif
-    state.frame_height = contract_frame_height(
+    float frame_height = contract_frame_height(
         config.OriginalSize.xy,
         config.OriginalFPS,
         V_FREQ_MODE,
@@ -131,8 +128,8 @@ DeltaVState compute_delta_v_state()
         H_FREQ_MODE,
         H_FREQ);
     state.data_length = max(timing_profile_storage_length(TIMING_PROFILE_MODE, config.OriginalSize.y,
-        global.FrameCount, global.FIELD_ODD, state.frame_width,
-        contract_data_length(state.frame_width, state.frame_height)), 1.0);
+        global.FrameCount, global.FIELD_ODD, frame_width,
+        contract_data_length(frame_width, frame_height)), 1.0);
     state.data_length = ceil(state.data_length);
     state.storage_width = contract_pixel_packed_width(state.data_length);
     state.texture_fits = contract_pixel_texture_fits(config.OutputSize.xy, state.data_length, state.storage_width) &&

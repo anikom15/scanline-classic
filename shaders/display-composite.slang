@@ -31,7 +31,6 @@
 #include "dsp.inc"
 #include "comb.inc"
 
-#include "menus/parameters/dsp.inc"
 #include "menus/parameters/display-composite.inc"
 #include "menus/parameters/sys-timing.inc"
 
@@ -61,7 +60,6 @@ layout(push_constant) uniform Push
     float PIXEL_CLOCK_WHOLE;
     float H_FREQ_MODE;
     float H_FREQ;
-    float DSP_WORKING_FS;
     float DISPLAY_BANDPASS_WIDTH;
     float DISPLAY_BANDPASS_ATTEN_DB;
     float COLOR_FILTER_MODE;
@@ -93,8 +91,7 @@ layout(location = 0) out vec2 vTexCoord;
 layout(location = 1) flat out vec2 FilterSigma;
 layout(location = 2) flat out vec2 FilterGain;
 layout(location = 3) flat out float ChromaFrequency;
-layout(location = 4) flat out float FrameWidth;
-layout(location = 5) flat out float FrameHeight;
+layout(location = 4) flat out double FrameWidth;
 layout(location = 6) flat out float DataLength;
 layout(location = 7) flat out float Taps;
 layout(location = 8) flat out float HorizontalFrequency;
@@ -109,12 +106,12 @@ void main()
     float fs = contract_working_sample_rate(
         config.OriginalFPS, timing_profile_sc_mode(TIMING_PROFILE_MODE, config.SC_FREQ_MODE), timing_decimal_value(vec3(config.SC_FREQ_WHOLE, global.SC_FREQ_FRAC6, config.SC_FREQ_FRAC11)),
         timing_profile_pixel_mode(TIMING_PROFILE_MODE, config.PIXEL_CLOCK_MODE), timing_profile_pixel_value(TIMING_PROFILE_MODE, timing_decimal_value(vec3(config.PIXEL_CLOCK_WHOLE, config.PIXEL_CLOCK_FRAC6, config.PIXEL_CLOCK_FRAC11))),
-        timing_profile_h_mode(TIMING_PROFILE_MODE, config.H_FREQ_MODE), timing_profile_h_freq(TIMING_PROFILE_MODE, config.H_FREQ), config.DSP_WORKING_FS);
-    FrameWidth = contract_working_frame_width(
+        timing_profile_h_mode(TIMING_PROFILE_MODE, config.H_FREQ_MODE), timing_profile_h_freq(TIMING_PROFILE_MODE, config.H_FREQ), (DSP_SD_WORKING_FS / 1.0e6));
+    FrameWidth = timing_profile_rate_width(TIMING_PROFILE_MODE, contract_working_frame_width(
         config.OriginalFPS, timing_profile_sc_mode(TIMING_PROFILE_MODE, config.SC_FREQ_MODE), timing_decimal_value(vec3(config.SC_FREQ_WHOLE, global.SC_FREQ_FRAC6, config.SC_FREQ_FRAC11)),
         timing_profile_pixel_mode(TIMING_PROFILE_MODE, config.PIXEL_CLOCK_MODE), timing_profile_pixel_value(TIMING_PROFILE_MODE, timing_decimal_value(vec3(config.PIXEL_CLOCK_WHOLE, config.PIXEL_CLOCK_FRAC6, config.PIXEL_CLOCK_FRAC11))),
-        timing_profile_h_mode(TIMING_PROFILE_MODE, config.H_FREQ_MODE), timing_profile_h_freq(TIMING_PROFILE_MODE, config.H_FREQ), config.DSP_WORKING_FS);
-    FrameHeight = contract_frame_height(
+        timing_profile_h_mode(TIMING_PROFILE_MODE, config.H_FREQ_MODE), timing_profile_h_freq(TIMING_PROFILE_MODE, config.H_FREQ), (DSP_SD_WORKING_FS / 1.0e6)), (DSP_SD_WORKING_FS / 1.0e6));
+    float FrameHeight = contract_frame_height(
         config.OriginalSize.xy, config.OriginalFPS,
         timing_profile_v_mode(TIMING_PROFILE_MODE, config.OriginalSize.y, config.V_FREQ_MODE), timing_profile_v_freq(TIMING_PROFILE_MODE, config.OriginalSize.y, global.FrameCount, global.FIELD_ODD, config.V_FREQ), timing_profile_sc_mode(TIMING_PROFILE_MODE, config.SC_FREQ_MODE), timing_decimal_value(vec3(config.SC_FREQ_WHOLE, global.SC_FREQ_FRAC6, config.SC_FREQ_FRAC11)),
         timing_profile_pixel_mode(TIMING_PROFILE_MODE, config.PIXEL_CLOCK_MODE), timing_profile_pixel_value(TIMING_PROFILE_MODE, timing_decimal_value(vec3(config.PIXEL_CLOCK_WHOLE, config.PIXEL_CLOCK_FRAC6, config.PIXEL_CLOCK_FRAC11))), timing_profile_h_mode(TIMING_PROFILE_MODE, config.H_FREQ_MODE), timing_profile_h_freq(TIMING_PROFILE_MODE, config.H_FREQ));
@@ -147,8 +144,7 @@ layout(location = 0) in vec2 vTexCoord;
 layout(location = 1) flat in vec2 FilterSigma;
 layout(location = 2) flat in vec2 FilterGain;
 layout(location = 3) flat in float ChromaFrequency;
-layout(location = 4) flat in float FrameWidth;
-layout(location = 5) flat in float FrameHeight;
+layout(location = 4) flat in double FrameWidth;
 layout(location = 6) flat in float DataLength;
 layout(location = 7) flat in float Taps;
 layout(location = 8) flat in float HorizontalFrequency;

@@ -27,11 +27,10 @@ None as of yet
 
 ## System DSP domain
 
-Use a reference design of 32 MHz which corresponds to a working line
-width of 2048.  The boundary shader here is one of
+Use a fixed 32 MHz SD working rate. The boundary shader here is one of
 `display-*-filter.slang` which outputs data in Display DSP domain.
-The RGB working buffer is 2064 samples wide to accommodate PAL Mega Drive
-timing at the default 32 MHz working rate.
+Working fields use 1024 by 1024 packed textures; `sys-bandlimit.slang`
+checks both the pixel-domain source and working-domain destination.
 
 ### Current Shaders
 
@@ -48,14 +47,14 @@ tap limits and delay handling.
 
 ## SD Display DSP domain
 
-Use a reference design of 32 MHz which corresponds to a working line
-width of 2048.  This doesn't include HD or SVGA display shaders which
-operate at a higher sample rate.  Those will be developed in a future
-scope.  But it does include medium res and high res displays like NEC
-MultiSync and VGA displays. The default output sample rate is 16 MHz;
-32 MHz is the cap-design reference, not the default. Presets can override
-the output rate. SD output allocations are 1032 samples wide; higher rates
-or unusual timings can require larger allocations.
+SD output is fixed at 16 MHz. The Kaiser tap caps use the 32 MHz input
+sample rate because the filter taps are evaluated on the working grid.
+The separate VGA path uses the pixel clock as its input rate and accepts an
+output rate, defaulting to the pixel clock when set to zero. SD presentation
+targets are 2048 by 512 texels.
+The display resamplers check both their packed input and the actual line
+lengths and field height against their output allocation; undersized textures
+produce magenta.
 
 ### Current Shaders
 
@@ -68,15 +67,17 @@ design preserves the cutoff and uses an effective stopband of cutoff +
 0.5 MHz; the requested parameter is not changed.
 The component, S-Video, and RGB designs share Kaiser tap-count and gain
 calculations in `window.inc`; their cutoff and gain guards remain distinct.
+At the default RGB settings the filter attenuates the 8 MHz output Nyquist
+frequency by about 46 dB.
 
 ## Build-time generation
 
 `build.py` calculates and reports the worst-case tap caps before packaging.
-It updates `shaders/filter-taps.inc` from the reference rates, UI parameter
+It generates `out/shaders/filter-taps.inc` from the reference rates, UI parameter
 ranges, common truncation thresholds and shader design constants. The build
 rejects unrecognized truncation thresholds in the in-scope Gaussian and
 Butterworth designs. Run
-`python scripts/generate_filter_taps.py` to regenerate the include separately.
+`python scripts/generate_filter_taps.py` to regenerate the output include separately.
 Keep the generator's filter equations in sync with the shader implementations.
 The caps do not guarantee the same truncation threshold at rates above the
 reference rates.

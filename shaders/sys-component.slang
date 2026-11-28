@@ -35,7 +35,6 @@
 #include "contract.inc"
 #include "dsp.inc"
 
-#include "menus/parameters/dsp.inc"
 #include "menus/parameters/sys-component.inc"
 #include "menus/parameters/sys-timing.inc"
 
@@ -100,7 +99,6 @@ layout(std140, set = 0, binding = 0) uniform UBO
     float FIELD_ODD;
     float TIMING_PROFILE;
     mat4 MVP;
-    float DSP_WORKING_FS;
 
 #ifdef OPTION_DEBUG
     // Bypasses
@@ -115,7 +113,7 @@ layout(std140, set = 0, binding = 0) uniform UBO
 #define SYS_COMPONENT_FILTER_BYPASS global.SYS_COMPONENT_FILTER_BYPASS
 #endif  // OPTION_DEBUG
 
-#define DSP_WORKING_FS global.DSP_WORKING_FS
+#define DSP_WORKING_FS (DSP_SD_WORKING_FS / 1.0e6)
 
 #pragma stage vertex
 layout(location = 0) in vec4 Position;
@@ -123,8 +121,6 @@ layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
 layout(location = 1) flat out vec3 sigma;
 layout(location = 2) flat out vec3 kernelGain;
-layout(location = 3) flat out float FrameWidth;
-layout(location = 4) flat out float FrameHeight;
 layout(location = 5) flat out float DataLength;
 layout(location = 6) flat out float Taps;
 layout(location = 7) flat out float StorageWidth;
@@ -147,7 +143,7 @@ void main()
         H_FREQ,
         DSP_WORKING_FS);
 
-    FrameWidth = contract_working_frame_width(
+    double FrameWidth = timing_profile_rate_width(TIMING_PROFILE_MODE, contract_working_frame_width(
         config.OriginalFPS,
         SC_FREQ_MODE,
         SC_FREQ,
@@ -155,8 +151,8 @@ void main()
         PIXEL_CLOCK,
         H_FREQ_MODE,
         H_FREQ,
-        DSP_WORKING_FS);
-    FrameHeight = contract_frame_height(
+        DSP_WORKING_FS), DSP_WORKING_FS);
+    float FrameHeight = contract_frame_height(
         config.OriginalSize.xy,
         config.OriginalFPS,
         V_FREQ_MODE,
@@ -233,8 +229,6 @@ void main()
 layout(location = 0) in vec2 vTexCoord;
 layout(location = 1) flat in vec3 sigma;
 layout(location = 2) flat in vec3 kernelGain;
-layout(location = 3) flat in float FrameWidth;
-layout(location = 4) flat in float FrameHeight;
 layout(location = 5) flat in float DataLength;
 layout(location = 6) flat in float Taps;
 layout(location = 7) flat in float StorageWidth;

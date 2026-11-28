@@ -40,7 +40,6 @@
 #include "dsp.inc"
 #include "subframe.inc"
 
-#include "menus/parameters/dsp.inc"
 #include "menus/parameters/noise-composite.inc"
 #include "menus/parameters/sys-timing.inc"
 
@@ -72,7 +71,6 @@ layout(push_constant) uniform Push
     float H_FREQ_MODE;
     float H_FREQ;
     float H_BLANK_FUZZ;
-    float DSP_WORKING_FS;
 
     float COMPOSITE_NOISE_AWGN_DB;
     float COMPOSITE_NOISE_CLOCK_DB;
@@ -91,7 +89,7 @@ layout(push_constant) uniform Push
 #define H_FREQ_MODE timing_profile_h_mode(TIMING_PROFILE_MODE, config.H_FREQ_MODE)
 #define H_FREQ timing_profile_h_freq(TIMING_PROFILE_MODE, config.H_FREQ)
 #define H_BLANK_FUZZ config.H_BLANK_FUZZ
-#define DSP_WORKING_FS config.DSP_WORKING_FS
+#define DSP_WORKING_FS (DSP_SD_WORKING_FS / 1.0e6)
 #define CURRENT_SUBFRAME config.CurrentSubFrame
 #define TOTAL_SUBFRAMES config.TotalSubFrames
 
@@ -125,8 +123,7 @@ layout(std140, set = 0, binding = 0) uniform UBO
 #endif  // OPTION_DEBUG
 
 struct NoiseCompositeState {
-    float frame_width;
-    float frame_height;
+    double frame_width;
     float data_length;
     float fs_current;
     float fs_original;
@@ -146,7 +143,7 @@ NoiseCompositeState compute_noise_state()
 {
     NoiseCompositeState state;
 
-    state.frame_width = contract_working_frame_width(
+    state.frame_width = timing_profile_rate_width(TIMING_PROFILE_MODE, contract_working_frame_width(
         config.OriginalFPS,
         SC_FREQ_MODE,
         SC_FREQ,
@@ -154,8 +151,8 @@ NoiseCompositeState compute_noise_state()
         PIXEL_CLOCK,
         H_FREQ_MODE,
         H_FREQ,
-        DSP_WORKING_FS);
-    state.frame_height = contract_frame_height(
+        DSP_WORKING_FS), DSP_WORKING_FS);
+    float frame_height = contract_frame_height(
         config.OriginalSize.xy,
         config.OriginalFPS,
         V_FREQ_MODE,
@@ -168,7 +165,7 @@ NoiseCompositeState compute_noise_state()
         H_FREQ);
     state.data_length = max(timing_profile_storage_length(TIMING_PROFILE_MODE, config.OriginalSize.y,
         config.FrameCount, global.FIELD_ODD, state.frame_width,
-        contract_data_length(state.frame_width, state.frame_height)), 1.0);
+        contract_data_length(state.frame_width, frame_height)), 1.0);
     state.fs_current = contract_working_sample_rate(
         config.OriginalFPS,
         SC_FREQ_MODE,
@@ -245,7 +242,7 @@ NoiseGradeSettings resolve_noise_grade_settings()
 // contract instead of relying on presentation-space UV sampling.
 vec4 fetch_signal_sample(float sample_index, NoiseCompositeState state)
 {
-    return fetch_input_sample(CompositeOut, config.CompositeOutSize.xy, sample_index, state.frame_width, state.data_length);
+    return fetch_input_sample(CompositeOut, config.CompositeOutSize.xy, sample_index, float(state.frame_width), state.data_length);
 }
 
 // Sample between adjacent DSP samples with a simple linear blend. This is
@@ -349,7 +346,7 @@ void main()
         return;
     }
 
-    float sample_index = output_y * vNoiseState.frame_width + output_x;
+    float sample_index = float(double(output_y) * vNoiseState.frame_width + double(output_x));
     vec2 raster = timing_profile_raster_position(TIMING_PROFILE_MODE, config.OriginalSize.y,
         config.FrameCount, global.FIELD_ODD, sample_index, vNoiseState.frame_width);
 

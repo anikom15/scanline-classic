@@ -28,7 +28,6 @@
 #include "contract.inc"
 #include "dsp.inc"
 
-#include "menus/parameters/dsp.inc"
 #include "menus/parameters/sys-encode.inc"
 #include "menus/parameters/sys-timing.inc"
 #include "menus/parameters/noise-yc.inc"
@@ -62,7 +61,6 @@ layout(push_constant) uniform Push
     float PHASE_ZERO;
     float SHORTEN_ODD_FIELD_TIME;
     float FIELD_ODD;
-    float DSP_WORKING_FS;
 
     float ENCODER_SETUP;
     float CARRIER_SHAPE;
@@ -95,7 +93,7 @@ layout(push_constant) uniform Push
 #define SHORTEN_ODD_FIELD_TIME timing_profile_field_adjustment(TIMING_PROFILE_MODE, config.SHORTEN_ODD_FIELD_TIME)
 #define FIELD_ODD config.FIELD_ODD
 
-#define DSP_WORKING_FS config.DSP_WORKING_FS
+#define DSP_WORKING_FS (DSP_SD_WORKING_FS / 1.0e6)
 
 #define ENCODER_SETUP config.ENCODER_SETUP
 #define CARRIER_SHAPE config.CARRIER_SHAPE
@@ -131,7 +129,7 @@ layout(std140, set = 0, binding = 0) uniform UBO
 
 struct SysComponentYCState
 {
-    float frame_width;
+    double frame_width;
     float frame_height;
     float data_length;
     float initial_subcarrier_phase_frac;
@@ -163,13 +161,13 @@ SysComponentYCState compute_sys_component_yc_state()
         timing_profile_first_field_odd(TIMING_PROFILE_MODE, -1.0)
     );
 
-    state.frame_width = contract_working_frame_width(
+    state.frame_width = timing_profile_rate_width(TIMING_PROFILE_MODE, contract_working_frame_width(
         config.OriginalFPS,
         SC_FREQ_MODE, SC_FREQ,
         PIXEL_CLOCK_MODE, PIXEL_CLOCK,
         H_FREQ_MODE, H_FREQ,
         DSP_WORKING_FS
-    );
+    ), DSP_WORKING_FS);
 
     state.frame_height = contract_frame_height(
         config.OriginalSize.xy, config.OriginalFPS,
@@ -261,8 +259,7 @@ vec2 modulate_sys_component_yc(
 layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
-layout(location = 1) flat out float FrameWidth;
-layout(location = 2) flat out float FrameHeight;
+layout(location = 1) flat out double FrameWidth;
 layout(location = 3) flat out float DataLength;
 layout(location = 4) flat out float InitialSubcarrierPhaseFrac;
 layout(location = 5) flat out float Fs;
@@ -280,7 +277,6 @@ void main()
 
     SysComponentYCState state = compute_sys_component_yc_state();
     FrameWidth = state.frame_width;
-    FrameHeight = state.frame_height;
     DataLength = state.data_length;
     StorageWidth = contract_pixel_packed_width(DataLength);
     TextureFits = contract_pixel_texture_fits(config.OutputSize.xy, DataLength, StorageWidth) ? 1.0 : 0.0;
@@ -294,8 +290,7 @@ void main()
 
 #pragma stage fragment
 layout(location = 0) in vec2 vTexCoord;
-layout(location = 1) flat in float FrameWidth;
-layout(location = 2) flat in float FrameHeight;
+layout(location = 1) flat in double FrameWidth;
 layout(location = 3) flat in float DataLength;
 layout(location = 4) flat in float InitialSubcarrierPhaseFrac;
 layout(location = 5) flat in float Fs;

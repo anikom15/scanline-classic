@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from test_dyadic_pyramid import shader_function
+from test_dyadic_pyramid import shader_function, timing_profile_source
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -28,7 +28,7 @@ class DisplayPipelineGeometryTests(unittest.TestCase):
         compiler = shutil.which('g++')
         if compiler is None:
             self.skipTest('g++ is required to exercise shader functions')
-        shader = (ROOT / 'shaders' / 'sys-bandlimit.slang').read_text(encoding='utf-8')
+        shader = (ROOT / 'shaders' / 'sys-bandlimit.inc').read_text(encoding='utf-8')
         fragment = shader.split('#pragma stage fragment', 1)[1]
         main = shader_function(fragment, 'void main()').replace('void main()', 'void render_sample()', 1)
         main = main.replace('    float input_data_limit =',
@@ -78,7 +78,7 @@ int main() {
     config.OutputSize={2048,2048,{2048,2048}};
     config.SourceSize=config.OutputSize;
     InputPackedWidth=1024; InputDataLength=357364; InputTextureFits=1;
-    OutputFrameWidth=1364; OutputDataLength=357364; OutputPackedWidth=1024;
+    InputFrameWidth=1364; OutputFrameWidth=1364; OutputDataLength=357364; OutputPackedWidth=1024;
     pfilt.Delta=1; pfilt.taps=1; gfilt.gain=1;
     sample(1023,1023); sample(1024,1024); sample(1364,1364);
     sample(357363,357363); sample(357364,0);
@@ -116,7 +116,7 @@ int main() {
         if compiler is None:
             self.skipTest('g++ is required to exercise shader functions')
         shader = (ROOT / 'shaders' / 'sys-component-yc-common.slang').read_text(encoding='utf-8')
-        profiles = (ROOT / 'shaders' / 'timing-profiles.inc').read_text(encoding='utf-8')
+        profiles = timing_profile_source()
         fragment = shader.split('#pragma stage fragment', 1)[1]
         harness = r'''
 #include <algorithm>
@@ -187,7 +187,7 @@ int main() {
         compiler = shutil.which('g++')
         if compiler is None:
             self.skipTest('g++ is required to exercise shader functions')
-        profiles = (ROOT / 'shaders' / 'timing-profiles.inc').read_text(encoding='utf-8')
+        profiles = timing_profile_source()
         contract = (ROOT / 'shaders' / 'contract.inc').read_text(encoding='utf-8')
         harness = r'''
 #include <algorithm>
@@ -284,7 +284,7 @@ int main() {
     InputDataLength=OutputDataLength=std::ceil(897487.0*2047/3413);
     pfilt.Delta=1; LineCarryClocksOut=0;
     sample(2045,2,6138);
-    sample(2046,2,0,true);
+    sample(2046,2,6139);
     sample(0,3,6140);
     config.OriginalSize.y=480; InputFrameWidth=2047; OutputFrameWidth=1017;
     for (int frame : {0,1}) for (int line=0;line<(frame ? 262 : 263);++line) {
@@ -301,7 +301,8 @@ int main() {
         with tempfile.TemporaryDirectory() as temp:
             for name in ('display-rgb-filter', 'hd-rgb-filter'):
                 with self.subTest(shader=name):
-                    source = (ROOT / 'shaders' / f'{name}.slang').read_text(encoding='utf-8')
+                    extension = 'inc' if name == 'display-rgb-filter' else 'slang'
+                    source = (ROOT / 'shaders' / f'{name}.{extension}').read_text(encoding='utf-8')
                     fragment = source.split('#pragma stage fragment', 1)[1]
                     main = shader_function(fragment, 'void main()').replace('void main()', 'void render_sample()', 1)
                     main = main.split('    if (BW_MODE < 0.5)', 1)[0] + '    FragColor = vec4(color, 1.0);\n}\n'
@@ -324,7 +325,7 @@ int main() {
         if compiler is None:
             self.skipTest('g++ is required to exercise shader functions')
         shader = (ROOT / 'shaders' / 'display-component-filter.inc').read_text(encoding='utf-8')
-        profiles = (ROOT / 'shaders' / 'timing-profiles.inc').read_text(encoding='utf-8')
+        profiles = timing_profile_source()
         contract = (ROOT / 'shaders' / 'contract.inc').read_text(encoding='utf-8')
         fragment = shader.split('#pragma stage fragment', 1)[1]
         main = shader_function(fragment, 'void main()').replace('void main()', 'void render_sample()', 1)
@@ -457,7 +458,7 @@ int main() {
         if compiler is None:
             self.skipTest('g++ is required to exercise shader functions')
         shader = (ROOT / 'shaders' / 'deskew.slang').read_text(encoding='utf-8')
-        profiles = (ROOT / 'shaders' / 'timing-profiles.inc').read_text(encoding='utf-8')
+        profiles = timing_profile_source()
         contract = (ROOT / 'shaders' / 'contract.inc').read_text(encoding='utf-8')
         fragment = shader.split('#pragma stage fragment', 1)[1]
         harness = r'''
@@ -523,7 +524,7 @@ int main() {
         compiler = shutil.which('g++')
         if compiler is None:
             self.skipTest('g++ is required to exercise shader functions')
-        beam = (ROOT / 'shaders' / 'beam.slang').read_text(encoding='utf-8')
+        beam = (ROOT / 'shaders' / 'beam.inc').read_text(encoding='utf-8')
         function = shader_function(beam, 'vec2 active_center_offset(')
         harness = r'''
 #include <cmath>
@@ -557,8 +558,8 @@ int main() {
         compiler = shutil.which('g++')
         if compiler is None:
             self.skipTest('g++ is required to exercise shader functions')
-        beam = (ROOT / 'shaders' / 'beam.slang').read_text(encoding='utf-8')
-        profiles = (ROOT / 'shaders' / 'timing-profiles.inc').read_text(encoding='utf-8')
+        beam = (ROOT / 'shaders' / 'beam.inc').read_text(encoding='utf-8')
+        profiles = timing_profile_source()
         vertex = beam.split('#pragma stage vertex', 1)[1].split('#pragma stage fragment', 1)[0]
         main = shader_function(vertex, 'void main()').replace('void main()', 'void render_vertex()', 1)
         harness = r'''
@@ -597,6 +598,7 @@ float uintBitsToFloat(uint) { return std::numeric_limits<float>::quiet_NaN(); }
 float contract_output_sample_rate(float,float,float,float,float,float,float,float,float) { return 1; }
 float contract_display_frame_width(vec2,float,float,float,float,float,float,float,float) { return 341; }
 float contract_output_frame_width(float,float,float,float,float,float,float,float,float) { return 1364; }
+double timing_profile_rate_width(int, double width, float) { return width; }
 float contract_frame_height(vec2,float,float,float v,float,float,float,float,float,float) { return v; }
 float contract_full_frame_height(vec2,float,float mode,float v,float,float,float,float,float,float) {
     return mode > 5.5f ? 2*v : v;
@@ -670,7 +672,8 @@ int main() {
                 ('crt-composite-sd.json', 'filter')):
             with self.subTest(pipeline=pipeline):
                 settings = load_json('presetdata', 'pipelines', 'disp', pipeline)['options'][stage]
-                self.assertEqual(settings['scale_type'][0], 'absolute')
+                self.assertEqual(settings['scale_type'], ['absolute', 'absolute'])
+                self.assertEqual(settings['scale'][1], 512)
                 self.assertGreaterEqual(settings['scale'][0], width)
 
     def test_rgb_working_output_fits_pal_mega_drive_at_32_mhz(self):

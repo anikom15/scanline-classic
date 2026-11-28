@@ -102,7 +102,7 @@ N64, Mega Drive and 3DO cases compare phase against their preset's stated
 decimal clock values, not independently verified hardware timings.
 
 Timing profiles are defined in `presetdata/timing-profiles.json`; `build.py`
-validates them and regenerates `shaders/timing-profiles.inc`. Profile ID 0
+validates them and generates `out/shaders/timing-profiles.inc`. Profile ID 0
 retains the legacy timing parameters. SFC uses ID 1, which selects PAL at
 55 Hz or below and NTSC above 55 Hz; the PAL-M option remaps only NTSC. The
 profile fixes timing values independently of the reported rate. PSX uses ID 2

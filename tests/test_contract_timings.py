@@ -8,7 +8,7 @@ import unittest
 from fractions import Fraction
 from pathlib import Path
 
-from test_dyadic_pyramid import shader_function
+from test_dyadic_pyramid import shader_function, timing_profile_source
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -120,8 +120,7 @@ def cpp_shader_source(profile_source=None):
             'float contract_initial_subcarrier_phase_frac(',
         )
     )
-    profiles = profile_source if profile_source is not None else (
-        ROOT / 'shaders' / 'timing-profiles.inc').read_text(encoding='utf-8')
+    profiles = profile_source if profile_source is not None else timing_profile_source()
     source = '\n'.join(declarations + [profiles] + functions)
     source = re.sub(r'\bout (float|int|bool)\s+(\w+)', r'\1& \2', source)
     # GLSL decimal literals are float unless explicitly suffixed with lf.

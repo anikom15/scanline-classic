@@ -6,8 +6,15 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from scripts.generate_timing_profiles import generate_source
+
 
 ROOT = Path(__file__).resolve().parent.parent
+
+
+def timing_profile_source():
+    data = json.loads((ROOT / 'presetdata' / 'timing-profiles.json').read_text(encoding='utf-8'))
+    return generate_source(data)
 
 
 def shader_function(source, signature):
@@ -27,7 +34,7 @@ class DyadicPyramidTests(unittest.TestCase):
         if compiler is None:
             self.skipTest('g++ is required to exercise shader functions')
         sync = (ROOT / 'shaders' / 'sys-sync.slang').read_text(encoding='utf-8')
-        profiles = (ROOT / 'shaders' / 'timing-profiles.inc').read_text(encoding='utf-8')
+        profiles = timing_profile_source()
         state = re.search(r'struct SyncState\s*\{[^}]+\};', sync)
         if state is None:
             raise ValueError('Missing SyncState')
@@ -193,7 +200,7 @@ int main() {
         if compiler is None:
             self.skipTest('g++ is required to exercise shader functions')
         sync = (ROOT / 'shaders' / 'sys-sync.slang').read_text(encoding='utf-8')
-        profiles = (ROOT / 'shaders' / 'timing-profiles.inc').read_text(encoding='utf-8')
+        profiles = timing_profile_source()
         state = re.search(r'struct SyncState\s*\{[^}]+\};', sync)
         if state is None:
             raise ValueError('Missing SyncState')
@@ -281,7 +288,7 @@ int main() {
     def test_pipeline_levels_cover_full_allocation(self):
         root = ROOT / 'presetdata' / 'pipelines' / 'sys'
         pipelines = (
-            'rgb.json', 'famicom-rgb.json', 'famicom-svideo.json',
+            'rgb.json', 'rgb-vga.json', 'famicom-rgb.json', 'famicom-svideo.json',
             'rgb-yc.json', 'rgb-yc-composite.json',
             'rgb-component-yc.json', 'rgb-component-composite.json',
         )
@@ -289,7 +296,8 @@ int main() {
             with self.subTest(pipeline=name):
                 data = json.loads((root / name).read_text(encoding='utf-8'))
                 pixel = data['shaders']['deltav'] == 'send-delta-pixel'
-                width, height = (2048, 2048)
+                width, height = (2048, 2048) if pixel else (1024, 1024)
+                initial_area = width * height
                 self.assertEqual(
                     [key for key in data['shaders'] if key.startswith('mip')],
                     [f'mip{level}' for level in range(1, 9)],
@@ -307,11 +315,11 @@ int main() {
                     width = int(width * options['scale'][0])
                     height = int(height * options['scale'][1])
                     self.assertGreaterEqual(min(width, height), 1)
-                    self.assertEqual(width * height, 4194304 >> level)
-                self.assertEqual(width * height, 16384)
+                    self.assertEqual(width * height, initial_area >> level)
+                self.assertEqual(width * height, initial_area >> 8)
                 noise = data['options']['noise-txrx']
                 self.assertEqual(noise['scale_type'], ['absolute', 'absolute'])
-                self.assertEqual(noise['scale'], [2048.0, 2048.0])
+                self.assertEqual(noise['scale'], [2048.0, 2048.0] if pixel else [1024.0, 1024.0])
 
     def test_shader_against_domain_reference(self):
         compiler = shutil.which('g++')
@@ -320,7 +328,7 @@ int main() {
 
         dsp = (ROOT / 'shaders' / 'dsp.inc').read_text(encoding='utf-8')
         contract = (ROOT / 'shaders' / 'contract.inc').read_text(encoding='utf-8')
-        profiles = (ROOT / 'shaders' / 'timing-profiles.inc').read_text(encoding='utf-8')
+        profiles = timing_profile_source()
         producer = (ROOT / 'shaders' / 'send-did-common.slang').read_text(encoding='utf-8')
         consumer = (ROOT / 'shaders' / 'noise-txrx-common.slang').read_text(encoding='utf-8')
         fragment = producer.split('#pragma stage fragment', 1)[1]
@@ -393,6 +401,7 @@ float TXRX_NOISE_INTERPOLATE_MIPS = 0;
 template<typename... T> float contract_frame_height(T...) { return mock_height; }
 template<typename... T> float contract_frame_width(T...) { return mock_width; }
 template<typename... T> float contract_working_frame_width(T...) { return mock_width; }
+double timing_profile_rate_width(int, double width, float) { return width; }
 float contract_data_length(float width, float height) { return width*height; }
 #define V_FREQ_MODE 0
 #define V_FREQ 0
@@ -636,7 +645,7 @@ int main() {
             self.skipTest('g++ is required to exercise shader functions')
 
         source = (ROOT / 'shaders' / 'frameh.slang').read_text(encoding='utf-8')
-        profiles = (ROOT / 'shaders' / 'timing-profiles.inc').read_text(encoding='utf-8')
+        profiles = timing_profile_source()
         fragment = source.split('#pragma stage fragment', 1)[1]
         shader_code = '\n'.join((
             shader_function(profiles, 'float timing_profile_top_blank_lines('),

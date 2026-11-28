@@ -201,13 +201,12 @@ def main():
         print("Error: --strict-structure requires --lint-shaders")
         sys.exit(2)
 
-    generate_filter_taps(ROOT)
-    generate_timing_profiles(ROOT)
-
     if args.lint_shaders:
         run_shader_lint(verbose=verbose, strict_structure=args.strict_structure)
 
     prepare_out_folder(verbose=verbose)
+    generate_filter_taps(ROOT, os.path.join(OUT, 'shaders'))
+    generate_timing_profiles(ROOT, os.path.join(OUT, 'shaders'))
     run_presetgen(verbose=verbose, jobs=jobs)
     normalize_flat_preset_paths(verbose=verbose)
 

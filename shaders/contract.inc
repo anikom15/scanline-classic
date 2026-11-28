@@ -39,8 +39,7 @@
 //   - Progressive-only HDTV: up to 3212 samples per line, 216.81 MHz output rate
 //   - Full HDTV: up to 3212 samples per line, 216.81 MHz output rate
 //
-// The actual sample rate will vary to align with an integral line width.
-vec2 contract_auto_hd_aa_fs_spl(
+dvec2 contract_auto_hd_aa_fs_spl(
     vec2 original_size,
     float original_fps,
     float sc_freq_mode,
@@ -71,7 +70,6 @@ vec2 contract_auto_hd_aa_fs_spl(
 
     float v_freq_hz = compute_v_freq(v_freq_mode, h_freq_hz, v_lines_per_field, v_freq_custom_hz);
     float target_sample_rate;
-    float line_width;
 
     if (hd_display_type < 0.5)
         target_sample_rate = 19.71e6;  // EDTV
@@ -80,12 +78,10 @@ vec2 contract_auto_hd_aa_fs_spl(
     else
         target_sample_rate = 216.81e6;  // Progressive-only and Full HDTV
 
-    // Snap sample rate to an integral line width
-    line_width = round(target_sample_rate / h_freq_hz);
-
-    float sample_rate = line_width * h_freq_hz;
-
-    return vec2(sample_rate, line_width);
+    float base_frame_width = compute_stored_line_width(
+        h_freq_mode, h_freq_custom_khz, pixel_clock_hz / max(h_freq_hz, EPS));
+    double width = double(base_frame_width) * double(target_sample_rate) / double(max(pixel_clock_hz, EPS));
+    return dvec2(double(target_sample_rate), width);
 }
 
 // Returns the number of stored clock samples that represent one active source pixel.
@@ -134,9 +130,9 @@ float contract_clocks_per_line(
 }
 
 // Returns the total number of stored samples in a framed 2D raster.
-float contract_data_length(float frame_width, float frame_height)
+float contract_data_length(double frame_width, float frame_height)
 {
-    return frame_width * frame_height;
+    return float(ceil(double(frame_width) * double(frame_height)));
 }
 
 // Pack the field in either pixel or working samples into a nearly square
@@ -260,7 +256,7 @@ float contract_frame_width(
 }
 
 // Returns the stored line width that corresponds to a given sample rate.
-float contract_frame_width_at_sample_rate(
+double contract_frame_width_at_sample_rate(
     float base_frame_width,
     float sample_rate,
     float fs_original)
@@ -268,13 +264,12 @@ float contract_frame_width_at_sample_rate(
     float safe_fs_original = max(fs_original, EPS);
     float safe_base_frame_width = max(base_frame_width, 1.0);
 
-    return max(1.0,
-        round(safe_base_frame_width * max(sample_rate, EPS) / safe_fs_original));
+    return max(1.0lf, double(safe_base_frame_width) * double(max(sample_rate, EPS)) / double(safe_fs_original));
 }
 
 // Offset from the first stored sample to the exact physical line boundary.
 float contract_hsync_sample_offset(
-    float clock_line_start, float base_width, float output_width, float stored_line_start)
+    float clock_line_start, float base_width, double output_width, float stored_line_start)
 {
     return float(double(clock_line_start) * double(output_width) / double(base_width)
         - double(stored_line_start));
@@ -680,8 +675,8 @@ float contract_line_carry_clocks(
     return mod(clocks_per_line, max(clock_factor, 1.0));
 }
 
-// Returns the snapped output-stage stored line width in samples.
-float contract_output_frame_width(
+// Returns the nominal output-stage line duration in samples.
+double contract_output_frame_width(
     float original_fps,
     float sc_freq_mode,
     float sc_freq_custom_mhz,
@@ -703,19 +698,14 @@ float contract_output_frame_width(
     float working_requested = (dsp_working_fs > 0.0)
         ? (dsp_working_fs * 1.0e6)
         : fs_original;
-    float working_width = max(1.0,
-        round(base_frame_width * max(working_requested, EPS) / fs_original));
-    float working_sample_rate = fs_original * working_width / base_frame_width;
-
     float output_requested = (dsp_output_fs > 0.0)
         ? (dsp_output_fs * 1.0e6)
-        : working_sample_rate;
+        : working_requested;
 
-    return max(1.0,
-        round(base_frame_width * max(output_requested, EPS) / fs_original));
+    return max(1.0lf, double(base_frame_width) * double(max(output_requested, EPS)) / double(fs_original));
 }
 
-// Returns the snapped output-stage sample rate in Hz.
+// Returns the output-stage sample rate in Hz.
 float contract_output_sample_rate(
     float original_fps,
     float sc_freq_mode,
@@ -732,23 +722,12 @@ float contract_output_sample_rate(
     compute_subcarrier_freq(sc_freq_mode, sc_freq_custom_mhz, original_fps, sc_freq_hz, standard);
 
     float fs_original = max(compute_pixel_clock(pixel_clock_mode, pixel_clock_mhz, sc_freq_hz), EPS);
-    float h_freq_hz = compute_h_freq(h_freq_mode, standard, h_freq_custom_khz, fs_original, original_fps);
-    float base_frame_width = compute_stored_line_width(h_freq_mode, h_freq_custom_khz, fs_original / max(h_freq_hz, EPS));
-
     float working_requested = (dsp_working_fs > 0.0)
         ? (dsp_working_fs * 1.0e6)
         : fs_original;
-    float working_width = max(1.0,
-        round(base_frame_width * max(working_requested, EPS) / fs_original));
-    float working_sample_rate = fs_original * working_width / base_frame_width;
-
-    float output_requested = (dsp_output_fs > 0.0)
+    return (dsp_output_fs > 0.0)
         ? (dsp_output_fs * 1.0e6)
-        : working_sample_rate;
-    float output_width = max(1.0,
-        round(base_frame_width * max(output_requested, EPS) / fs_original));
-
-    return fs_original * output_width / base_frame_width;
+        : working_requested;
 }
 
 // Returns the pixel clock in Hz for the selected timing configuration.
@@ -769,20 +748,6 @@ float contract_pixel_clock(
     return compute_pixel_clock(pixel_clock_mode, pixel_clock_mhz, sc_freq_hz);
 }
 
-// Snaps a requested sample rate so the stored row width remains integral.
-float contract_snap_sample_rate(
-    float requested_sample_rate,
-    float fs_original,
-    float base_frame_width)
-{
-    float safe_fs_original = max(fs_original, EPS);
-    float safe_base_frame_width = max(base_frame_width, 1.0);
-    float snapped_frame_width = max(1.0,
-        round(safe_base_frame_width * max(requested_sample_rate, EPS) / safe_fs_original));
-
-    return safe_fs_original * snapped_frame_width / safe_base_frame_width;
-}
-
 // Returns the subcarrier frequency in Hz or 0.0 if the subcarrier is disabled.
 float contract_subcarrier_freq_hz(
     float original_fps,
@@ -796,8 +761,8 @@ float contract_subcarrier_freq_hz(
     return max(sc_freq_hz, 0.0);
 }
 
-// Returns the snapped working-stage stored line width in samples.
-float contract_working_frame_width(
+// Returns the nominal working-stage line duration in samples.
+double contract_working_frame_width(
     float original_fps,
     float sc_freq_mode,
     float sc_freq_custom_mhz,
@@ -818,11 +783,10 @@ float contract_working_frame_width(
         ? (dsp_working_fs * 1.0e6)
         : fs_original;
 
-    return max(1.0,
-        round(base_frame_width * max(requested_sample_rate, EPS) / fs_original));
+    return max(1.0lf, double(base_frame_width) * double(max(requested_sample_rate, EPS)) / double(fs_original));
 }
 
-// Returns the snapped working-stage sample rate in Hz.
+// Returns the working-stage sample rate in Hz.
 float contract_working_sample_rate(
     float original_fps,
     float sc_freq_mode,
@@ -838,13 +802,7 @@ float contract_working_sample_rate(
     compute_subcarrier_freq(sc_freq_mode, sc_freq_custom_mhz, original_fps, sc_freq_hz, standard);
 
     float fs_original = max(compute_pixel_clock(pixel_clock_mode, pixel_clock_mhz, sc_freq_hz), EPS);
-    float h_freq_hz = compute_h_freq(h_freq_mode, standard, h_freq_custom_khz, fs_original, original_fps);
-    float base_frame_width = compute_stored_line_width(h_freq_mode, h_freq_custom_khz, fs_original / max(h_freq_hz, EPS));
-    float requested_sample_rate = (dsp_working_fs > 0.0)
+    return (dsp_working_fs > 0.0)
         ? (dsp_working_fs * 1.0e6)
         : fs_original;
-    float snapped_frame_width = max(1.0,
-        round(base_frame_width * max(requested_sample_rate, EPS) / fs_original));
-
-    return fs_original * snapped_frame_width / base_frame_width;
 }

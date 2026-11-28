@@ -16,8 +16,8 @@
     },
     "options" : {
         "filter" : {
-            "scale_type" : ["absolute", "source"],
-            "scale" : [2048.0, 1.0]
+            "scale_type" : ["absolute", "absolute"],
+            "scale" : [2048.0, 512.0]
         },
         "frame" : {
             "scale_type" : ["source", "absolute"],

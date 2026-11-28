@@ -71,7 +71,7 @@
         },
         "bandlimit" : {
             "scale_type" : ["absolute", "absolute"],
-            "scale" : [2048.0, 2048.0]
+            "scale" : [1024.0, 1024.0]
         }
     }
 }

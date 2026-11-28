@@ -22,7 +22,6 @@
 
 #include "common.inc"
 #include "color.inc"
-#include "bandlimit.inc"
 #include "modulation.inc"
 #include "dsp.inc"
 #include "comb.inc"

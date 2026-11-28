@@ -33,7 +33,6 @@
 #include "contract.inc"
 #include "dsp.inc"
 
-#include "menus/parameters/dsp.inc"
 #include "menus/parameters/sys-timing.inc"
 #include "menus/parameters/user-common.inc"
 
@@ -61,7 +60,6 @@ layout(push_constant) uniform Push
     float PIXEL_CLOCK_WHOLE;
     float H_FREQ_MODE;
     float H_FREQ;
-    float DSP_WORKING_FS;
     float USER_SHARPNESS;
     float PIXEL_CLOCK_FRAC11;
     float PIXEL_CLOCK_FRAC6;
@@ -78,7 +76,7 @@ layout(push_constant) uniform Push
 #define H_FREQ_MODE timing_profile_h_mode(TIMING_PROFILE_MODE, config.H_FREQ_MODE)
 #define USER_SHARPNESS config.USER_SHARPNESS
 #define H_FREQ timing_profile_h_freq(TIMING_PROFILE_MODE, config.H_FREQ)
-#define DSP_WORKING_FS config.DSP_WORKING_FS
+#define DSP_WORKING_FS (DSP_SD_WORKING_FS / 1.0e6)
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
@@ -104,8 +102,6 @@ layout(location = 0) out vec2 vTexCoord;
 layout(location = 1) out flat vec4 sharpness_filters;
 layout(location = 2) out flat float Fs;
 layout(location = 3) out flat vec4 sharpness_params;  // (tap_count1, gain1, tap_count2, gain2)
-layout(location = 4) out flat float FrameWidth;
-layout(location = 5) out flat float FrameHeight;
 layout(location = 6) out flat float DataLength;
 layout(location = 7) out flat float StorageWidth;
 layout(location = 8) out flat float TextureFits;
@@ -123,10 +119,10 @@ void main()
     Fs = contract_working_sample_rate(
         config.OriginalFPS, SC_FREQ_MODE, SC_FREQ, PIXEL_CLOCK_MODE, PIXEL_CLOCK,
         H_FREQ_MODE, H_FREQ, DSP_WORKING_FS);
-    FrameWidth = contract_working_frame_width(
+    double FrameWidth = timing_profile_rate_width(TIMING_PROFILE_MODE, contract_working_frame_width(
         config.OriginalFPS, SC_FREQ_MODE, SC_FREQ, PIXEL_CLOCK_MODE, PIXEL_CLOCK,
-        H_FREQ_MODE, H_FREQ, DSP_WORKING_FS);
-    FrameHeight = contract_frame_height(
+        H_FREQ_MODE, H_FREQ, DSP_WORKING_FS), DSP_WORKING_FS);
+    float FrameHeight = contract_frame_height(
         config.OriginalSize.xy, config.OriginalFPS, V_FREQ_MODE, V_FREQ,
         SC_FREQ_MODE, SC_FREQ, PIXEL_CLOCK_MODE, PIXEL_CLOCK, H_FREQ_MODE, H_FREQ);
     DataLength = max(timing_profile_storage_length(TIMING_PROFILE_MODE, config.OriginalSize.y,
@@ -181,8 +177,6 @@ layout(location = 0) in vec2 vTexCoord;
 layout(location = 1) flat in vec4 sharpness_filters;
 layout(location = 2) flat in float Fs;
 layout(location = 3) flat in vec4 sharpness_params;  // (tap_count1, gain1, tap_count2, gain2)
-layout(location = 4) flat in float FrameWidth;
-layout(location = 5) flat in float FrameHeight;
 layout(location = 6) flat in float DataLength;
 layout(location = 7) flat in float StorageWidth;
 layout(location = 8) flat in float TextureFits;

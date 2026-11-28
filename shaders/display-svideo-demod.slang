@@ -33,7 +33,6 @@
 #include "dsp.inc"
 #include "comb.inc"
 
-#include "menus/parameters/dsp.inc"
 #include "menus/parameters/display-svideo.inc"
 #include "menus/parameters/sys-timing.inc"
 #include "menus/parameters/user-video.inc"
@@ -71,7 +70,6 @@ layout(push_constant) uniform Push
     float PHASE_ZERO;
     float SHORTEN_ODD_FIELD_TIME;
     float FIELD_ODD;
-    float DSP_WORKING_FS;
 
     float DECODER_SETUP;
     float PAL_DECODER_MODE;
@@ -101,7 +99,7 @@ layout(push_constant) uniform Push
 #define SHORTEN_ODD_FIELD_TIME timing_profile_field_adjustment(TIMING_PROFILE_MODE, config.SHORTEN_ODD_FIELD_TIME)
 #define FIELD_ODD config.FIELD_ODD
 
-#define DSP_WORKING_FS config.DSP_WORKING_FS
+#define DSP_WORKING_FS (DSP_SD_WORKING_FS / 1.0e6)
 
 #define DECODER_SETUP config.DECODER_SETUP
 #define PAL_DECODER_MODE config.PAL_DECODER_MODE
@@ -129,8 +127,7 @@ layout(std140, binding = 0) uniform UBO
 layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
-layout(location = 1) flat out float FrameWidth;
-layout(location = 2) flat out float FrameHeight;
+layout(location = 1) flat out double FrameWidth;
 layout(location = 3) flat out float DataLength;
 layout(location = 4) flat out float InitialSubcarrierPhaseFrac;
 layout(location = 5) flat out float Fs;
@@ -161,15 +158,15 @@ void main()
         timing_profile_first_field_odd(TIMING_PROFILE_MODE, -1.0)
     );
 
-    FrameWidth = contract_working_frame_width(
+    FrameWidth = timing_profile_rate_width(TIMING_PROFILE_MODE, contract_working_frame_width(
         config.OriginalFPS,
         SC_FREQ_MODE, SC_FREQ,
         PIXEL_CLOCK_MODE, PIXEL_CLOCK,
         H_FREQ_MODE, H_FREQ,
         DSP_WORKING_FS
-    );
+    ), DSP_WORKING_FS);
 
-    FrameHeight = contract_frame_height(
+    float FrameHeight = contract_frame_height(
         config.OriginalSize.xy, config.OriginalFPS,
         V_FREQ_MODE, V_FREQ,
         SC_FREQ_MODE, SC_FREQ,
@@ -205,8 +202,7 @@ void main()
 
 #pragma stage fragment
 layout(location = 0) in vec2 vTexCoord;
-layout(location = 1) flat in float FrameWidth;
-layout(location = 2) flat in float FrameHeight;
+layout(location = 1) flat in double FrameWidth;
 layout(location = 3) flat in float DataLength;
 layout(location = 4) flat in float InitialSubcarrierPhaseFrac;
 layout(location = 5) flat in float Fs;

@@ -17,6 +17,9 @@
 //
 // Functions for 1D analog-modeled DSP
 
+const float DSP_SD_WORKING_FS = 32.0e6;
+const float DSP_SD_OUTPUT_FS = 16.0e6;
+
 // Samples a packed 2D grid of stored samples as a 1D stream
 //
 // Parameters:

@@ -30,7 +30,6 @@
 #include "window.inc"
 #include "zoh.inc"
 
-#include "menus/parameters/dsp.inc"
 #include "menus/parameters/display-composite.inc"
 #include "menus/parameters/sys-timing.inc"
 
@@ -63,8 +62,6 @@ layout(push_constant) uniform Push
     float H_FREQ_MODE;
     float H_FREQ;
     float H_BLANK_FUZZ;
-    float DSP_WORKING_FS;
-    float DSP_OUTPUT_FS;
 
     float COLOR_FILTER_MODE;
     float NOTCH_WIDTH;

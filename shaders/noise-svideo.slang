@@ -41,7 +41,6 @@
 #include "dsp.inc"
 #include "subframe.inc"
 
-#include "menus/parameters/dsp.inc"
 #include "menus/parameters/noise-svideo.inc"
 #include "menus/parameters/sys-timing.inc"
 
@@ -75,7 +74,6 @@ layout(push_constant) uniform Push
     float H_FREQ_MODE;
     float H_FREQ;
     float H_BLANK_FUZZ;
-    float DSP_WORKING_FS;
 
     float SVIDEO_NOISE_AWGN_DB;
     float SVIDEO_NOISE_YC_XT_DB;
@@ -94,7 +92,7 @@ layout(push_constant) uniform Push
 #define H_FREQ_MODE timing_profile_h_mode(TIMING_PROFILE_MODE, config.H_FREQ_MODE)
 #define H_FREQ timing_profile_h_freq(TIMING_PROFILE_MODE, config.H_FREQ)
 #define H_BLANK_FUZZ config.H_BLANK_FUZZ
-#define DSP_WORKING_FS config.DSP_WORKING_FS
+#define DSP_WORKING_FS (DSP_SD_WORKING_FS / 1.0e6)
 #define CURRENT_SUBFRAME config.CurrentSubFrame
 #define TOTAL_SUBFRAMES config.TotalSubFrames
 
@@ -134,7 +132,7 @@ layout(std140, set = 0, binding = 0) uniform UBO
 #endif  // OPTION_DEBUG
 
 struct NoiseSVideoState {
-    float frame_width;
+    double frame_width;
     float frame_height;
     float data_length;
     float fs_current;
@@ -155,7 +153,7 @@ NoiseSVideoState compute_noise_state()
 {
     NoiseSVideoState state;
 
-    state.frame_width = contract_working_frame_width(
+    state.frame_width = timing_profile_rate_width(TIMING_PROFILE_MODE, contract_working_frame_width(
         config.OriginalFPS,
         SC_FREQ_MODE,
         SC_FREQ,
@@ -163,7 +161,7 @@ NoiseSVideoState compute_noise_state()
         PIXEL_CLOCK,
         H_FREQ_MODE,
         H_FREQ,
-        DSP_WORKING_FS);
+        DSP_WORKING_FS), DSP_WORKING_FS);
     state.frame_height = contract_frame_height(
         config.OriginalSize.xy,
         config.OriginalFPS,
@@ -265,7 +263,7 @@ NoiseGradeSettings resolve_noise_grade_settings()
 // contract instead of relying on presentation-space UV sampling.
 vec4 fetch_signal_sample(float sample_index, NoiseSVideoState state)
 {
-    return fetch_input_sample(SysYPbPrYC, config.SysYPbPrYCSize.xy, sample_index, state.frame_width, state.data_length);
+    return fetch_input_sample(SysYPbPrYC, config.SysYPbPrYCSize.xy, sample_index, float(state.frame_width), state.data_length);
 }
 
 // Sample between adjacent DSP samples with a simple linear blend. This is
@@ -339,8 +337,8 @@ vec2 mag_delta_v_uv_from_index(float sample_index, NoiseSVideoState state)
 {
     float data_limit = max(state.data_length - 1.0, 0.0);
     float clamped_index = clamp(sample_index, 0.0, data_limit);
-    float sample_y = floor(clamped_index / max(state.frame_width, 1.0));
-    float sample_x = clamped_index - sample_y * state.frame_width;
+    float sample_y = float(floor(double(clamped_index) / max(state.frame_width, 1.0lf)));
+    float sample_x = float(double(clamped_index) - double(sample_y) * state.frame_width);
     vec2 mag_delta_size = max(vec2(textureSize(DeltaV, 0)), vec2(1.0));
 
     return (vec2(sample_x, sample_y) + vec2(0.5)) / mag_delta_size;
@@ -596,7 +594,7 @@ void main()
         return;
     }
 
-    float sample_index = output_y * vNoiseState.frame_width + output_x;
+    float sample_index = float(double(output_y) * vNoiseState.frame_width + double(output_x));
 
 #ifdef OPTION_DEBUG
         if (SVIDEO_NOISE_BYPASS > 0.5) {

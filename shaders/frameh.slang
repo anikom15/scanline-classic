@@ -121,7 +121,6 @@ layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
 layout(location = 1) flat out float FrameWidth;
 layout(location = 2) flat out float FrameHeight;
-layout(location = 3) flat out float FS_ORIGINAL;
 layout(location = 5) flat out float FullFrameHeight;
 layout(location = 6) flat out float IsInterlaced;
 layout(location = 7) flat out float Field;
@@ -137,7 +136,6 @@ void main()
     vTexCoord = TexCoord;
 
     if (TIMING_PROFILE_MODE < 0) {
-        FS_ORIGINAL = 0.0;
         ClocksPerLine = 1.0;
         ClockFactor = 1.0;
         FrameWidth = 1.0;
@@ -151,12 +149,6 @@ void main()
         return;
     }
 
-    FS_ORIGINAL = contract_fs_original(
-        config.OriginalFPS,
-        SC_FREQ_MODE,
-        SC_FREQ,
-        PIXEL_CLOCK_MODE,
-        PIXEL_CLOCK);
 
     ClocksPerLine = contract_clocks_per_line(
         config.OriginalFPS,
@@ -244,7 +236,6 @@ void main()
 layout(location = 0) in vec2 vTexCoord;
 layout(location = 1) flat in float FrameWidth;
 layout(location = 2) flat in float FrameHeight;
-layout(location = 3) flat in float FS_ORIGINAL;
 layout(location = 6) flat in float IsInterlaced;
 layout(location = 7) flat in float Field;
 layout(location = 8) flat in float ClocksPerLine;

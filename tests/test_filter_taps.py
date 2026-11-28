@@ -2,6 +2,7 @@ import contextlib
 import io
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -12,6 +13,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 import build
+from test_dyadic_pyramid import shader_function
 from scripts.generate_filter_taps import (
     _butterworth_taps,
     _gaussian_taps,
@@ -40,11 +42,55 @@ class FilterTapTests(unittest.TestCase):
             guarded_sigma=True, clamp_cutoff=False), 124)
         self.assertEqual(_kaiser_taps(32.0e6, 0.5e6, 40.0), 143)
 
-    def test_generated_include_is_current(self):
+    def test_sd_display_filter_rejects_output_nyquist(self):
+        compiler = shutil.which('g++')
+        if compiler is None:
+            self.skipTest('g++ is required to exercise shader functions')
+        window = (ROOT / 'shaders' / 'window.inc').read_text(encoding='utf-8')
+        shader = (ROOT / 'shaders' / 'display-rgb-filter.inc').read_text(encoding='utf-8')
+        self.assertIn('kfilt.fc_norm = cutoff / WorkingSampleRate;', shader)
+        self.assertIn('cutoff, stopband, WorkingSampleRate, KAISER_ATTEN_DB', shader)
+        functions = '\n'.join(shader_function(window, signature) for signature in (
+            'float sinc(', 'float kaiser_i0(', 'float kaiser(', 'float kaiser_beta_from_atten(',
+            'float display_transition_width_hz(', 'float display_kaiser_taps(', 'float kaiser_sinc_gain(',
+        ))
+        functions = re.sub(r'(?<![\w.])(\d+\.\d+(?:[eE][+-]?\d+)?)\b', r'\1f', functions)
+        source = self.root / 'response.cpp'
+        executable = self.root / 'response'
+        source.write_text(r'''
+#include <algorithm>
+#include <cmath>
+#include <stdexcept>
+using std::abs; using std::ceil; using std::cos; using std::exp;
+using std::max; using std::min; using std::pow; using std::sin; using std::sqrt;
+const float PI = 3.14159265358979323846f;
+const float EPS = 1.19209289551e-7f;
+const float DISPLAY_MIN_TRANSITION_WIDTH_HZ = 0.5e6f;
+''' + functions + r'''
+int main() {
+    float fs = 32.0e6f, cutoff = 6.5e6f, stop = 8.0e6f;
+    float beta = kaiser_beta_from_atten(40), norm = cutoff / fs;
+    int taps = int(display_kaiser_taps(cutoff, stop, fs, 40, 143));
+    int center = (taps - 1) / 2;
+    double response = 0;
+    for (int n = -center; n <= center; ++n)
+        response += sinc(float(n), norm) * kaiser(float(n), float(taps), beta)
+                    * std::cos(2 * double(PI) * 8.0e6 / fs * n);
+    response /= kaiser_sinc_gain(norm, float(taps), beta);
+    if (20 * std::log10(std::abs(response)) > -40)
+        throw std::runtime_error("insufficient output-Nyquist attenuation");
+}
+''', encoding='utf-8')
+        subprocess.run([compiler, '-std=c++17', '-O2', str(source), '-o', str(executable)], check=True)
+        subprocess.run([str(executable)], check=True)
+
+    def test_generated_include_is_written_to_output(self):
         with contextlib.redirect_stdout(io.StringIO()):
             generate_filter_taps(self.root)
-        generated = (self.root / 'shaders' / 'filter-taps.inc').read_text(encoding='utf-8')
-        self.assertEqual(generated, (ROOT / 'shaders' / 'filter-taps.inc').read_text(encoding='utf-8'))
+        generated = (self.root / 'out' / 'shaders' / 'filter-taps.inc').read_text(encoding='utf-8')
+        for _, symbol, designs in calculate_filter_taps(self.root):
+            self.assertIn(f'const int {symbol} = {max(designs.values())};', generated)
+        self.assertFalse((self.root / 'shaders' / 'filter-taps.inc').exists())
 
     def test_sys_yc_filter_supports_svideo_output_mode(self):
         shader = (ROOT / 'shaders' / 'sys-yc-filter.slang').read_text(encoding='utf-8')
@@ -196,14 +242,13 @@ class FilterTapTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'below Nyquist'):
             self.results()
 
-    def test_build_generates_before_copy_and_reports_caps(self):
+    def test_build_generates_in_output_and_reports_caps(self):
         output = self.root / 'out'
         catalog = self.root / 'presetdata' / 'timing-profiles.json'
         catalog.parent.mkdir()
         shutil.copy2(ROOT / 'presetdata' / 'timing-profiles.json', catalog)
         (self.root / 'config').mkdir()
         shutil.copy2(ROOT / 'config' / 'options.skel.cfg', self.root / 'config')
-        (self.root / 'shaders' / 'timing-profiles.inc').write_text('stale\n', encoding='utf-8')
         log = io.StringIO()
         with patch.object(build, 'ROOT', str(self.root)), \
                 patch.object(build, 'OUT', str(output)), \
@@ -215,13 +260,10 @@ class FilterTapTests(unittest.TestCase):
                 patch.object(sys, 'argv', ['build.py']), \
                 contextlib.redirect_stdout(log):
             build.main()
-        source = self.root / 'shaders' / 'filter-taps.inc'
-        self.assertEqual(source.read_text(encoding='utf-8'),
-                         (output / 'shaders' / 'filter-taps.inc').read_text(encoding='utf-8'))
-        profiles = self.root / 'shaders' / 'timing-profiles.inc'
-        self.assertEqual(profiles.read_text(encoding='utf-8'),
-                         (output / 'shaders' / 'timing-profiles.inc').read_text(encoding='utf-8'))
-        self.assertNotEqual(profiles.read_text(encoding='utf-8'), 'stale\n')
+        self.assertTrue((output / 'shaders' / 'filter-taps.inc').is_file())
+        self.assertTrue((output / 'shaders' / 'timing-profiles.inc').is_file())
+        self.assertFalse((self.root / 'shaders' / 'filter-taps.inc').exists())
+        self.assertFalse((self.root / 'shaders' / 'timing-profiles.inc').exists())
         for shader, designs in self.results().items():
             self.assertIn(f'{shader}: {max(designs.values())}', log.getvalue())
         self.assertIn('display-component.slang and display-svideo-filter.slang', log.getvalue())

@@ -3,6 +3,6 @@
         "DISPLAY_CUTOFF" : 12.0,
         "DISPLAY_STOPBAND" : 15.0,
 
-        "DSP_OUTPUT_FS" : 30.0
+        "VGA_OUTPUT_FS" : 30.0
     }
 }

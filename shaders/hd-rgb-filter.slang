@@ -52,7 +52,6 @@
 #include "window.inc"
 #include "zoh.inc"
 
-#include "menus/parameters/dsp.inc"
 #include "menus/parameters/user-uncommon.inc"
 #include "menus/parameters/sys-timing.inc"
 #include "menus/parameters/display-rgb-amp.inc"
@@ -84,7 +83,6 @@ layout(push_constant) uniform Push
     float H_FREQ_MODE;
     float H_FREQ;
     float H_BLANK_FUZZ;
-    float DSP_WORKING_FS;
     float HD_DISPLAY_TYPE;
 
     float BW_MODE;
@@ -106,7 +104,7 @@ layout(push_constant) uniform Push
 #define H_FREQ_MODE timing_profile_h_mode(TIMING_PROFILE_MODE, config.H_FREQ_MODE)
 #define H_FREQ timing_profile_h_freq(TIMING_PROFILE_MODE, config.H_FREQ)
 #define H_BLANK_FUZZ config.H_BLANK_FUZZ
-#define DSP_WORKING_FS config.DSP_WORKING_FS
+#define DSP_WORKING_FS (DSP_SD_WORKING_FS / 1.0e6)
 #define HD_DISPLAY_TYPE config.HD_DISPLAY_TYPE
 
 #define BW_MODE config.BW_MODE
@@ -154,8 +152,8 @@ layout(location = 6) flat out PolyphaseFilter pfilt;
 layout(location = 8) flat out float OutputFrameHeight;
 layout(location = 9) flat out float InputDataLength;
 layout(location = 10) flat out float OutputDataLength;
-layout(location = 11) flat out float InputFrameWidth;
-layout(location = 12) flat out float OutputFrameWidth;
+layout(location = 11) flat out double InputFrameWidth;
+layout(location = 12) flat out double OutputFrameWidth;
 layout(location = 16) flat out float InputPackedWidth;
 layout(location = 17) flat out float InputTextureFits;
 layout(location = 18) flat out float BaseFrameWidthOut;
@@ -200,14 +198,7 @@ void main()
         LineCarryClocks = 0.0;
     BaseFrameWidthOut = contract_frame_width(
         config.OriginalFPS, SC_FREQ_MODE, SC_FREQ, PIXEL_CLOCK_MODE, PIXEL_CLOCK, H_FREQ_MODE, H_FREQ);
-    float WorkingSampleRate = contract_working_sample_rate(
-        config.OriginalFPS,
-        SC_FREQ_MODE, SC_FREQ,
-        PIXEL_CLOCK_MODE, PIXEL_CLOCK,
-        H_FREQ_MODE, H_FREQ,
-        DSP_WORKING_FS
-    );
-    vec2 OutputFsSPL = contract_auto_hd_aa_fs_spl(
+    dvec2 OutputFsSPL = contract_auto_hd_aa_fs_spl(
         config.OriginalSize.xy, config.OriginalFPS,
         SC_FREQ_MODE, SC_FREQ,
         PIXEL_CLOCK_MODE, PIXEL_CLOCK,
@@ -216,19 +207,17 @@ void main()
         HD_DISPLAY_TYPE
     );
 
-    // Keep widths as float varyings for cross-driver safety, but the contract
-    // guarantees they are integral-valued.
-    float OutputFs = OutputFsSPL.x;
+    float OutputFs = float(OutputFsSPL.x);
 
     OutputFrameHeight = InputFrameHeight;
-    InputFrameWidth = contract_working_frame_width(
+    InputFrameWidth = timing_profile_rate_width(TIMING_PROFILE_MODE, contract_working_frame_width(
         config.OriginalFPS,
         SC_FREQ_MODE, SC_FREQ,
         PIXEL_CLOCK_MODE, PIXEL_CLOCK,
         H_FREQ_MODE, H_FREQ,
         DSP_WORKING_FS
-    );
-    OutputFrameWidth = OutputFsSPL.y;
+    ), DSP_WORKING_FS);
+    OutputFrameWidth = timing_profile_rate_width(TIMING_PROFILE_MODE, OutputFsSPL.y, OutputFs / 1.0e6);
     InputDataLength = max(timing_profile_storage_length(TIMING_PROFILE_MODE, config.OriginalSize.y,
         global.FrameCount, global.FIELD_ODD, InputFrameWidth,
         contract_data_length(InputFrameWidth, OutputFrameHeight)), 1.0);
@@ -242,8 +231,7 @@ void main()
     LineCarryClocksOut = LineCarryClocks;
     ClockFactorOut = ClockFactor;
 
-    float Delta = TIMING_PROFILE_MODE == 0 ? OutputDataLength / max(InputDataLength, 1.0)
-        : OutputFrameWidth / max(InputFrameWidth, 1.0);
+    float Delta = float(OutputFrameWidth / max(InputFrameWidth, 1.0lf));
 
     pfilt.Delta = Delta;
 
@@ -281,8 +269,8 @@ layout(location = 6) flat in PolyphaseFilter pfilt;
 layout(location = 8) flat in float OutputFrameHeight;
 layout(location = 9) flat in float InputDataLength;
 layout(location = 10) flat in float OutputDataLength;
-layout(location = 11) flat in float InputFrameWidth;
-layout(location = 12) flat in float OutputFrameWidth;
+layout(location = 11) flat in double InputFrameWidth;
+layout(location = 12) flat in double OutputFrameWidth;
 layout(location = 16) flat in float InputPackedWidth;
 layout(location = 17) flat in float InputTextureFits;
 layout(location = 18) flat in float BaseFrameWidthOut;
@@ -322,7 +310,10 @@ void main()
 
     vec2 line_range = timing_profile_line_range(TIMING_PROFILE_MODE, config.OriginalSize.y,
         global.FrameCount, global.FIELD_ODD, output_y, OutputFrameWidth);
-    if (output_x >= min(OutputFrameWidth, line_range.y) || output_y >= OutputFrameHeight) {
+    vec2 clock_range = timing_profile_line_range(TIMING_PROFILE_MODE, config.OriginalSize.y,
+        global.FrameCount, global.FIELD_ODD, output_y, double(BaseFrameWidthOut));
+    double line_width = double(clock_range.y) * OutputFrameWidth / double(BaseFrameWidthOut);
+    if (double(output_x) >= ceil(line_width) || output_y >= OutputFrameHeight) {
         FragColor = vec4(0.0);
         return;
     }
@@ -333,26 +324,20 @@ void main()
     int center = (n_taps - 1) / 2;
 
     float row_shift_output = compute_row_shift_output_samples(output_y_i);
-    if (TIMING_PROFILE_MODE > 0) {
-        float clock_start = timing_profile_line_range(TIMING_PROFILE_MODE, config.OriginalSize.y,
-            global.FrameCount, global.FIELD_ODD, output_y, BaseFrameWidthOut).x;
-        float sync_shift = contract_hsync_sample_offset(clock_start, BaseFrameWidthOut, OutputFrameWidth, line_range.x);
+    {
+        float sync_shift = contract_hsync_sample_offset(clock_range.x, BaseFrameWidthOut, OutputFrameWidth, line_range.x);
 #ifdef OPTION_DEBUG
         sync_shift = mix(sync_shift, 0.0, DESKEW_BYPASS);
 #endif
         row_shift_output += sync_shift;
     }
-    double field_output_index = TIMING_PROFILE_MODE > 0
-        ? double(line_range.x) + double(output_x) + double(row_shift_output)
-        : double(line_range.x + (output_x + row_shift_output));
+    double field_output_index = double(line_range.x) + double(output_x) + double(row_shift_output);
     if (field_output_index < 0.0 || field_output_index >= OutputDataLength) {
         FragColor = vec4(0.0);
         return;
     }
 
-    double input_sample_pos = TIMING_PROFILE_MODE > 0
-        ? field_output_index * double(InputFrameWidth) / double(OutputFrameWidth)
-        : double(float(field_output_index) * invDelta);
+    double input_sample_pos = field_output_index * double(InputFrameWidth) / double(OutputFrameWidth);
     double input_pos_floor = floor(input_sample_pos);
     int input_index_int = int(input_pos_floor);
     float frac_offset = float(input_sample_pos - input_pos_floor);

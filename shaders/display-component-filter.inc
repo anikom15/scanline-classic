@@ -48,8 +48,6 @@ layout(push_constant) uniform Push
     float H_FREQ_MODE;
     float H_FREQ;
     float H_BLANK_FUZZ;
-    float DSP_WORKING_FS;
-    float DSP_OUTPUT_FS;
 
     float DISPLAY_CUTOFF_Y;
     float DISPLAY_CUTOFF_C;
@@ -70,8 +68,8 @@ layout(push_constant) uniform Push
 #define H_FREQ_MODE timing_profile_h_mode(TIMING_PROFILE_MODE, config.H_FREQ_MODE)
 #define H_FREQ timing_profile_h_freq(TIMING_PROFILE_MODE, config.H_FREQ)
 #define H_BLANK_FUZZ config.H_BLANK_FUZZ
-#define DSP_WORKING_FS config.DSP_WORKING_FS
-#define DSP_OUTPUT_FS config.DSP_OUTPUT_FS
+#define DSP_WORKING_FS (DSP_SD_WORKING_FS / 1.0e6)
+#define DSP_OUTPUT_FS (DSP_SD_OUTPUT_FS / 1.0e6)
 
 #define DISPLAY_CUTOFF_Y config.DISPLAY_CUTOFF_Y
 #define DISPLAY_CUTOFF_C config.DISPLAY_CUTOFF_C
@@ -156,8 +154,8 @@ layout(location = 10) flat out PolyphaseFilter pfilt;
 layout(location = 11) flat out float OutputFrameHeight;
 layout(location = 12) flat out float InputDataLength;
 layout(location = 13) flat out float OutputDataLength;
-layout(location = 14) flat out float InputFrameWidth;
-layout(location = 15) flat out float OutputFrameWidth;
+layout(location = 14) flat out double InputFrameWidth;
+layout(location = 15) flat out double OutputFrameWidth;
 layout(location = 16) flat out vec3 componentGain;
 layout(location = 17) flat out vec3 componentBias;
 layout(location = 18) flat out float DeskewSampleRatio;
@@ -215,7 +213,7 @@ void main()
         H_FREQ_MODE,
         H_FREQ);
 
-    InputFrameWidth = contract_working_frame_width(
+    InputFrameWidth = timing_profile_rate_width(TIMING_PROFILE_MODE, contract_working_frame_width(
         config.OriginalFPS,
         SC_FREQ_MODE,
         SC_FREQ,
@@ -223,8 +221,8 @@ void main()
         PIXEL_CLOCK,
         H_FREQ_MODE,
         H_FREQ,
-        DSP_WORKING_FS);
-    OutputFrameWidth = contract_output_frame_width(
+        DSP_WORKING_FS), DSP_WORKING_FS);
+    OutputFrameWidth = timing_profile_rate_width(TIMING_PROFILE_MODE, contract_output_frame_width(
         config.OriginalFPS,
         SC_FREQ_MODE,
         SC_FREQ,
@@ -233,18 +231,19 @@ void main()
         H_FREQ_MODE,
         H_FREQ,
         DSP_WORKING_FS,
-        DSP_OUTPUT_FS);
+        DSP_OUTPUT_FS), max(DSP_WORKING_FS, DSP_OUTPUT_FS));
 
     InputDataLength = max(timing_profile_storage_length(TIMING_PROFILE_MODE, config.OriginalSize.y,
         config.FrameCount, global.FIELD_ODD, InputFrameWidth,
         contract_data_length(InputFrameWidth, OutputFrameHeight)), 1.0);
     InputPackedWidth = contract_pixel_packed_width(InputDataLength);
-    InputTextureFits = contract_pixel_texture_fits(config.SourceSize.xy, InputDataLength, InputPackedWidth) ? 1.0 : 0.0;
+    InputTextureFits = contract_pixel_texture_fits(config.SourceSize.xy, InputDataLength, InputPackedWidth) &&
+        timing_profile_presentation_fits(TIMING_PROFILE_MODE, config.OriginalSize.y, config.FrameCount,
+            global.FIELD_ODD, OutputFrameWidth, BaseFrameWidthOut, OutputFrameHeight, config.OutputSize.xy) ? 1.0 : 0.0;
     OutputDataLength = max(timing_profile_storage_length(TIMING_PROFILE_MODE, config.OriginalSize.y,
         config.FrameCount, global.FIELD_ODD, OutputFrameWidth,
         contract_data_length(OutputFrameWidth, OutputFrameHeight)), 1.0);
-    pfilt.Delta = TIMING_PROFILE_MODE == 0 ? OutputDataLength / max(InputDataLength, 1.0)
-        : OutputFrameWidth / max(InputFrameWidth, 1.0);
+    pfilt.Delta = float(OutputFrameWidth / max(InputFrameWidth, 1.0lf));
 
     float OutputSampleRate = contract_output_sample_rate(
         config.OriginalFPS,
@@ -261,8 +260,10 @@ void main()
     LineCarryClocksOut = LineCarryClocks;
     ClockFactorOut = ClockFactor;
 
-    yfilt = design_kaiser_filter(DISPLAY_CUTOFF_Y, DISPLAY_STOPBAND_Y, OutputSampleRate);
-    cfilt = design_kaiser_filter(DISPLAY_CUTOFF_C, DISPLAY_STOPBAND_C, OutputSampleRate);
+    float WorkingSampleRate = contract_working_sample_rate(config.OriginalFPS, SC_FREQ_MODE, SC_FREQ,
+        PIXEL_CLOCK_MODE, PIXEL_CLOCK, H_FREQ_MODE, H_FREQ, DSP_WORKING_FS);
+    yfilt = design_kaiser_filter(DISPLAY_CUTOFF_Y, DISPLAY_STOPBAND_Y, WorkingSampleRate);
+    cfilt = design_kaiser_filter(DISPLAY_CUTOFF_C, DISPLAY_STOPBAND_C, WorkingSampleRate);
 
     componentGain = vec3(
         db_to_linear(DISPLAY_GAIN_Y),
@@ -282,8 +283,8 @@ layout(location = 10) flat in PolyphaseFilter pfilt;
 layout(location = 11) flat in float OutputFrameHeight;
 layout(location = 12) flat in float InputDataLength;
 layout(location = 13) flat in float OutputDataLength;
-layout(location = 14) flat in float InputFrameWidth;
-layout(location = 15) flat in float OutputFrameWidth;
+layout(location = 14) flat in double InputFrameWidth;
+layout(location = 15) flat in double OutputFrameWidth;
 layout(location = 16) flat in vec3 componentGain;
 layout(location = 17) flat in vec3 componentBias;
 layout(location = 18) flat in float DeskewSampleRatio;
@@ -325,24 +326,23 @@ void main()
 
     vec2 line_range = timing_profile_line_range(TIMING_PROFILE_MODE, config.OriginalSize.y,
         config.FrameCount, global.FIELD_ODD, output_y, OutputFrameWidth);
-    if (output_x >= min(OutputFrameWidth, line_range.y) || output_y >= OutputFrameHeight) {
+    vec2 clock_range = timing_profile_line_range(TIMING_PROFILE_MODE, config.OriginalSize.y,
+        config.FrameCount, global.FIELD_ODD, output_y, double(BaseFrameWidthOut));
+    double line_width = double(clock_range.y) * OutputFrameWidth / double(BaseFrameWidthOut);
+    if (double(output_x) >= ceil(line_width) || output_y >= OutputFrameHeight) {
         FragColor = vec4(0.0);
         return;
     }
 
     float row_shift_output = compute_row_shift_output_samples(output_y_i);
-    if (TIMING_PROFILE_MODE > 0) {
-        float clock_start = timing_profile_line_range(TIMING_PROFILE_MODE, config.OriginalSize.y,
-            config.FrameCount, global.FIELD_ODD, output_y, BaseFrameWidthOut).x;
-        float sync_shift = contract_hsync_sample_offset(clock_start, BaseFrameWidthOut, OutputFrameWidth, line_range.x);
+    {
+        float sync_shift = contract_hsync_sample_offset(clock_range.x, BaseFrameWidthOut, OutputFrameWidth, line_range.x);
 #ifdef OPTION_DEBUG
         sync_shift = mix(sync_shift, 0.0, DESKEW_BYPASS);
 #endif
         row_shift_output += sync_shift;
     }
-    double field_output_index = TIMING_PROFILE_MODE > 0
-        ? double(line_range.x) + double(output_x) + double(row_shift_output)
-        : double(line_range.x + (output_x + row_shift_output));
+    double field_output_index = double(line_range.x) + double(output_x) + double(row_shift_output);
     if (field_output_index < 0.0 || field_output_index >= OutputDataLength) {
         FragColor = vec4(0.0);
         return;
@@ -350,9 +350,7 @@ void main()
 
     float Delta = pfilt.Delta;
     float invDelta = 1.0 / max(Delta, EPS);
-    double input_sample_pos = TIMING_PROFILE_MODE > 0
-        ? field_output_index * double(InputFrameWidth) / double(OutputFrameWidth)
-        : double(float(field_output_index) * invDelta);
+    double input_sample_pos = field_output_index * double(InputFrameWidth) / double(OutputFrameWidth);
     double input_pos_floor = floor(input_sample_pos);
     int input_index_int = int(input_pos_floor);
     float frac_offset = float(input_sample_pos - input_pos_floor);

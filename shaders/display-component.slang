@@ -41,7 +41,6 @@
 #include "window.inc"
 #include "zoh.inc"
 
-#include "menus/parameters/dsp.inc"
 #include "menus/parameters/display-component.inc"
 #include "menus/parameters/display-rgb-amp.inc"
 #include "menus/parameters/sys-timing.inc"

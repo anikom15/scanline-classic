@@ -1,12 +1,12 @@
 {
     "shaders" : {
         "limiter" : "limiter-rgb",
-        "input" : "display-rgb-filter",
+        "input" : "display-rgb-vga-filter",
         "amp" : "display-rgb-amp",
         "linear" : "crt-linear",
         "frame" : "framev",
         "phosphor" : "phosphor-trichrome",
-        "beam" : "beam",
+        "beam" : "beam-vga",
         "mask" : "mask",
         "curve" : "curve"
     },

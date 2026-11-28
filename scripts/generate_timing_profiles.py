@@ -50,12 +50,16 @@ def _field_clocks(value, name):
 
 
 def _line_clock_sum(mode, scan, parity, line):
-    pair = mode['line_clocks']
-    result = (f'(floor({line} / 2.0) * {_glsl(pair["odd"] + pair["even"])}'
-              f' + ({line} - floor({line} / 2.0) * 2.0) * {_glsl(pair["odd"])})')
+    pair = mode.get('line_clocks')
+    if pair:
+        result = (f'(floor({line} / 2.0) * {_glsl(pair["odd"] + pair["even"])}'
+                  f' + ({line} - floor({line} / 2.0) * 2.0) * {_glsl(pair["odd"])})')
+    else:
+        result = f'({line} * {_glsl(mode["clocks_per_line"])})'
     for override in mode.get('line_overrides', []):
         if override['scan'] == scan and override['field'] == parity:
-            original = pair['odd' if override['line'] % 2 else 'even']
+            original = (pair['odd' if override['line'] % 2 else 'even']
+                        if pair else mode['clocks_per_line'])
             delta = override['clocks'] - original
             result += f' + ({line} >= {_glsl(override["line"])} ? {_glsl(delta)} : 0.0)'
     return result
@@ -285,6 +289,18 @@ def generate_source(data):
         for index, mode in enumerate(modes, 1):
             lines += [f'    if (mode == {index})', f'        return {value(mode)};']
         lines += ['    return uintBitsToFloat(0x7fc00000u);', '}', '']
+    lines += ['double timing_profile_rate_width(int mode, double width, float rate_mhz)', '{',
+              '    if (mode == 0 || rate_mhz <= 0.0)', '        return width;']
+    for index, mode in enumerate(modes, 1):
+        ratio = Fraction(*mode['pixel_clock_multiplier'])
+        carrier = _glsl(mode['subcarrier_hz'])
+        numerator = _glsl(ratio.numerator)
+        denominator = _glsl(ratio.denominator)
+        lines += [f'    if (mode == {index}) {{',
+                  f'        float rounded_clock = {carrier} * ({numerator} / {denominator});',
+                  f'        double exact_clock = {carrier}lf * {numerator}lf / {denominator}lf;',
+                  '        return width * double(rounded_clock) / exact_clock;', '    }']
+    lines += ['    return double(uintBitsToFloat(0x7fc00000u));', '}', '']
     for prop in ('nominal_width', 'clock_factor'):
         lines += [f'float timing_profile_{prop}(int mode, float width, float legacy)', '{',
                   '    if (mode == 0)', '        return legacy;']
@@ -371,143 +387,99 @@ def generate_source(data):
         lines += [f'    if (mode == {index})',
                   f'        return {_glsl(ratio.numerator)} / {_glsl(ratio.denominator)};']
     lines += ['    return uintBitsToFloat(0x7fc00000u);', '}', '']
+    scans = (('progressive', 'even'), ('progressive', 'odd'),
+             ('interlaced', 'even'), ('interlaced', 'odd'))
     lines += ['float timing_profile_storage_length(int mode, float height, uint frame_count, float field_odd,',
-              '    float width, float legacy)', '{', '    if (mode == 0)', '        return legacy;']
+              '    double width, float legacy)', '{', '    if (mode == 0)', '        return ceil(legacy);']
     for index, mode in enumerate(modes, 1):
         threshold = _glsl(mode['raster']['interlace_height_threshold'])
         first = 1 if mode['first_field'] == 'odd' else 0
+        scale = _glsl(mode['clocks_per_line'])
         lines += [f'    if (mode == {index}) {{',
                   f'        bool odd = ((frame_count % 2u + {first}u + (field_odd > 0.5 ? 1u : 0u)) % 2u) != 0u;']
-        for scan, parity in (('progressive', 'even'), ('progressive', 'odd'),
-                             ('interlaced', 'even'), ('interlaced', 'odd')):
-            if 'line_clocks' in mode:
-                condition = f"height {'>' if scan == 'interlaced' else '<='} {threshold} && {'odd' if parity == 'odd' else '!odd'}"
-                count = _glsl(mode['field_lines'][scan][parity])
-                clocks = _line_clock_sum(mode, scan, parity, count)
-                lines += [f'        if ({condition})',
-                          f"            return float(ceil(double({clocks}) * double(width) / double({_glsl(mode['clocks_per_line'])})));"]
-                continue
-            delta = sum(entry['clocks'] - mode['clocks_per_line'] for entry in mode.get('line_overrides', [])
-                        if entry['scan'] == scan and entry['field'] == parity)
-            if delta:
-                condition = f"height {'>' if scan == 'interlaced' else '<='} {threshold} && {'odd' if parity == 'odd' else '!odd'}"
-                lines += [f'        if ({condition})',
-                          f"            return legacy + ceil({_glsl(delta)} * width / {_glsl(mode['clocks_per_line'])});"]
-        lines += ['        return legacy;', '    }']
+        for scan, parity in scans:
+            condition = f"height {'>' if scan == 'interlaced' else '<='} {threshold} && {'odd' if parity == 'odd' else '!odd'}"
+            count = _glsl(mode['field_lines'][scan][parity])
+            clocks = _line_clock_sum(mode, scan, parity, count)
+            lines += [f'        if ({condition})',
+                      f'            return float(ceil(double({clocks}) * double(width) / double({scale})));']
+        lines += ['    }']
     lines += ['    return uintBitsToFloat(0x7fc00000u);', '}', '']
     lines += ['vec2 timing_profile_raster_position(int mode, float height, uint frame_count, float field_odd,',
-              '    float sample_index, float width)', '{']
+              '    float sample_index, double width)', '{']
     for index, mode in enumerate(modes, 1):
         threshold = _glsl(mode['raster']['interlace_height_threshold'])
         first = 1 if mode['first_field'] == 'odd' else 0
+        scale = _glsl(mode['clocks_per_line'])
         lines += [f'    if (mode == {index}) {{',
                   f'        bool odd = ((frame_count % 2u + {first}u + (field_odd > 0.5 ? 1u : 0u)) % 2u) != 0u;']
-        if 'line_clocks' in mode:
-            pair = mode['line_clocks']
-            scale = _glsl(mode['clocks_per_line'])
-            for scan, parity in (('progressive', 'even'), ('progressive', 'odd'),
-                                 ('interlaced', 'even'), ('interlaced', 'odd')):
-                condition = f"height {'>' if scan == 'interlaced' else '<='} {threshold} && {'odd' if parity == 'odd' else '!odd'}"
-                changes = [entry for entry in mode.get('line_overrides', [])
-                           if entry['scan'] == scan and entry['field'] == parity]
-                lines += [f'        if ({condition}) {{']
-                if changes:
-                    mid_clocks = _line_clock_sum(mode, scan, parity, 'middle')
-                    lines += ['            float low = 0.0;',
-                              f"            float high = {_glsl(mode['field_lines'][scan][parity])};",
-                              '            while (low < high) {',
-                              '                float middle = floor((low + high + 1.0) * 0.5);',
-                              f'                double start = ceil(double({mid_clocks}) * double(width) / double({scale}));',
-                              '                if (start <= double(sample_index))',
-                              '                    low = middle;',
-                              '                else',
-                              '                    high = middle - 1.0;',
-                              '            }',
-                              '            float line = low;']
-                else:
-                    lines += [f'            double clock = floor(double(sample_index) * double({scale}) / double(width));',
-                              f"            double pair = floor(clock / double({_glsl(pair['odd'] + pair['even'])}));",
-                              f"            float line = float(pair * double(2.0) + (clock - pair * double({_glsl(pair['odd'] + pair['even'])}) >= double({_glsl(pair['odd'])}) ? double(1.0) : double(0.0)));"]
-                start = _line_clock_sum(mode, scan, parity, 'line')
-                lines += [f'            float start = float(ceil(double({start}) * double(width) / double({scale})));',
-                          '            return vec2(sample_index - start, line);', '        }']
-            lines += ['    }']
-            continue
-        for scan, parity in (('progressive', 'even'), ('progressive', 'odd'),
-                             ('interlaced', 'even'), ('interlaced', 'odd')):
-            changes = sorted((entry for entry in mode.get('line_overrides', [])
-                              if entry['scan'] == scan and entry['field'] == parity),
-                             key=lambda entry: entry['line'])
-            if not changes:
-                continue
+        for scan, parity in scans:
             condition = f"height {'>' if scan == 'interlaced' else '<='} {threshold} && {'odd' if parity == 'odd' else '!odd'}"
+            changes = [entry for entry in mode.get('line_overrides', [])
+                       if entry['scan'] == scan and entry['field'] == parity]
             lines += [f'        if ({condition}) {{']
-            cumulative = 0
-            for entry in changes:
-                line = entry['line'] - 1
-                delta = entry['clocks'] - mode['clocks_per_line']
-                scale = _glsl(mode['clocks_per_line'])
-                start = f'{_glsl(line)} * width + ceil({_glsl(cumulative)} * width / {scale})'
-                end = f'{_glsl(line + 1)} * width + ceil({_glsl(cumulative + delta)} * width / {scale})'
-                lines += [f'            if (sample_index < {start}) {{',
-                          f'                float index = sample_index - ceil({_glsl(cumulative)} * width / {scale});',
-                          '                float y = floor(index / width);',
-                          '                return vec2(index - y * width, y);', '            }',
-                          f'            if (sample_index < {end})',
-                          f'                return vec2(sample_index - ({start}), {_glsl(line)});']
-                cumulative += delta
-            lines += [f'            float index = sample_index - ceil({_glsl(cumulative)} * width / {scale});',
-                      '            float y = floor(index / width);',
-                      '            return vec2(index - y * width, y);', '        }']
-        lines += ['        float y = floor(sample_index / width);',
-                  '        return vec2(sample_index - y * width, y);', '    }']
-    lines += ['    if (mode == 0) {', '        float y = floor(sample_index / width);',
-              '        return vec2(sample_index - y * width, y);', '    }',
+            if changes:
+                middle = _line_clock_sum(mode, scan, parity, 'middle')
+                lines += ['            float low = 0.0;',
+                          f"            float high = {_glsl(mode['field_lines'][scan][parity])};",
+                          '            while (low < high) {',
+                          '                float middle = floor((low + high + 1.0) * 0.5);',
+                          f'                double start = ceil(double({middle}) * double(width) / double({scale}));',
+                          '                if (start <= double(sample_index))',
+                          '                    low = middle;',
+                          '                else',
+                          '                    high = middle - 1.0;',
+                          '            }',
+                          '            float line = low;']
+            elif 'line_clocks' in mode:
+                pair = mode['line_clocks']
+                lines += [f'            double clock = floor(double(sample_index) * double({scale}) / double(width));',
+                          f"            double pair = floor(clock / double({_glsl(pair['odd'] + pair['even'])}));",
+                          f"            float line = float(pair * double(2.0) + (clock - pair * double({_glsl(pair['odd'] + pair['even'])}) >= double({_glsl(pair['odd'])}) ? double(1.0) : double(0.0)));"]
+            else:
+                lines += ['            float line = float(floor(double(sample_index) / double(width)));']
+            start = _line_clock_sum(mode, scan, parity, 'line')
+            lines += [f'            float start = float(ceil(double({start}) * double(width) / double({scale})));',
+                      '            return vec2(sample_index - start, line);', '        }']
+        lines += ['    }']
+    lines += ['    if (mode == 0) {',
+              '        float line = float(floor(double(sample_index) / double(width)));',
+              '        float start = float(ceil(double(line) * double(width)));',
+              '        return vec2(sample_index - start, line);', '    }',
               '    return vec2(uintBitsToFloat(0x7fc00000u));', '}', '']
     lines += ['vec2 timing_profile_line_range(int mode, float height, uint frame_count, float field_odd,',
-              '    float line, float width)', '{']
+              '    float line, double width)', '{']
     for index, mode in enumerate(modes, 1):
         threshold = _glsl(mode['raster']['interlace_height_threshold'])
         first = 1 if mode['first_field'] == 'odd' else 0
+        scale = _glsl(mode['clocks_per_line'])
         lines += [f'    if (mode == {index}) {{',
-                  f'        bool odd = ((frame_count % 2u + {first}u + (field_odd > 0.5 ? 1u : 0u)) % 2u) != 0u;',
-                  '        float start = line * width;', '        float length = width;']
-        if 'line_clocks' in mode:
-            scale = _glsl(mode['clocks_per_line'])
-            for scan, parity in (('progressive', 'even'), ('progressive', 'odd'),
-                                 ('interlaced', 'even'), ('interlaced', 'odd')):
-                condition = f"height {'>' if scan == 'interlaced' else '<='} {threshold} && {'odd' if parity == 'odd' else '!odd'}"
-                start = _line_clock_sum(mode, scan, parity, 'line')
-                end = _line_clock_sum(mode, scan, parity, '(line + 1.0)')
-                lines += [f'        if ({condition}) {{',
-                          f'            start = float(ceil(double({start}) * double(width) / double({scale})));',
-                          f'            float end = float(ceil(double({end}) * double(width) / double({scale})));',
-                          '            return vec2(start, end - start);', '        }']
-            lines += ['    }']
-            continue
-        for scan, parity in (('progressive', 'even'), ('progressive', 'odd'),
-                             ('interlaced', 'even'), ('interlaced', 'odd')):
-            changes = sorted((entry for entry in mode.get('line_overrides', [])
-                              if entry['scan'] == scan and entry['field'] == parity),
-                             key=lambda entry: entry['line'])
-            if not changes:
-                continue
+                  f'        bool odd = ((frame_count % 2u + {first}u + (field_odd > 0.5 ? 1u : 0u)) % 2u) != 0u;']
+        for scan, parity in scans:
             condition = f"height {'>' if scan == 'interlaced' else '<='} {threshold} && {'odd' if parity == 'odd' else '!odd'}"
-            lines += [f'        if ({condition}) {{']
-            cumulative = 0
-            for entry in changes:
-                line = entry['line'] - 1
-                delta = entry['clocks'] - mode['clocks_per_line']
-                scale = _glsl(mode['clocks_per_line'])
-                difference = (f'(ceil({_glsl(cumulative + delta)} * width / {scale})'
-                              f' - ceil({_glsl(cumulative)} * width / {scale}))')
-                lines += [f'            if (line > {_glsl(line)})', f'                start += {difference};',
-                          f'            else if (line == {_glsl(line)})', f'                length += {difference};']
-                cumulative += delta
-            lines += ['        }']
-        lines += ['        return vec2(start, length);', '    }']
-    lines += ['    if (mode == 0)', '        return vec2(line * width, width);',
+            start = _line_clock_sum(mode, scan, parity, 'line')
+            end = _line_clock_sum(mode, scan, parity, '(line + 1.0)')
+            lines += [f'        if ({condition}) {{',
+                      f'            float start = float(ceil(double({start}) * double(width) / double({scale})));',
+                      f'            float end = float(ceil(double({end}) * double(width) / double({scale})));',
+                      '            return vec2(start, end - start);', '        }']
+        lines += ['    }']
+    lines += ['    if (mode == 0) {',
+              '        float start = float(ceil(double(line) * double(width)));',
+              '        float end = float(ceil(double(line + 1.0) * double(width)));',
+              '        return vec2(start, end - start);', '    }',
               '    return vec2(uintBitsToFloat(0x7fc00000u));', '}', '']
+    lines += ['bool timing_profile_presentation_fits(int mode, float height, uint frame_count, float field_odd,',
+              '    double width, float base_width, float field_height, vec2 texture_size)', '{',
+              '    if (!(width > 0.0) || !(base_width > 0.0) || !(field_height > 0.0) || !(texture_size.y >= ceil(field_height)))',
+              '        return false;',
+              '    for (int line = 0; line < int(ceil(field_height)); ++line) {',
+              '        vec2 range = timing_profile_line_range(mode, height, frame_count, field_odd, float(line), double(base_width));',
+              '        double line_width = double(range.y) * width / double(base_width);',
+              '        if (!(double(texture_size.x) >= ceil(line_width)))',
+              '            return false;',
+              '    }',
+              '    return true;', '}', '']
     lines += ['dvec2 timing_profile_pixel_ratio(int mode)', '{',
               '    if (mode == 0)', '        return dvec2(-1.0lf, 1.0lf);']
     for index, mode in enumerate(modes, 1):
@@ -518,7 +490,7 @@ def generate_source(data):
     return '\n'.join(lines)
 
 
-def generate_timing_profiles(root):
+def generate_timing_profiles(root, output_dir=None):
     root = Path(root)
     data = json.loads((root / 'presetdata' / 'timing-profiles.json').read_text(encoding='utf-8'))
     options = (root / 'config' / 'options.skel.cfg').read_text(encoding='utf-8')
@@ -527,8 +499,10 @@ def generate_timing_profiles(root):
         for remap in profile['remaps']:
             if remap['option'] not in valid_options:
                 raise ValueError(f"Unknown timing profile option: {remap['option']}")
-    output = root / 'shaders' / 'timing-profiles.inc'
-    output.write_text(generate_source(data), encoding='utf-8', newline='\n')
+    content = generate_source(data)
+    output_dir = Path(output_dir) if output_dir is not None else root / 'out' / 'shaders'
+    output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / 'timing-profiles.inc').write_text(content, encoding='utf-8', newline='\n')
 
 
 if __name__ == '__main__':

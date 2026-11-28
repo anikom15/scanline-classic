@@ -75,8 +75,10 @@ The generator checks each overridden field's line lengths against its declared
 time-ordered stream. Pixel- and working-rate streams use nearly square,
 power-of-two storage strides independent of the timing line width. The final
 display resamplers map the stream back to fixed-width presentation rows and
-apply deskew within the resampling filter. At other sample rates, line boundaries and field lengths round
-up to the next stored sample; the display filter uses the unrounded physical
+apply deskew within the resampling filter. SD rates are fixed at 32 MHz working
+and 16 MHz output and are not snapped to integer line widths. Line boundaries
+and field lengths round up from their cumulative physical time to the next
+stored sample; the display filter uses the unrounded physical
 H-sync time to correct the resulting fractional line-start displacement.
 The debug deskew bypass exposes the rounded presentation instead. The mapping adds or removes clocks at the end of the
 line; the timing reference does not specify their exact placement within the

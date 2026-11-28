@@ -37,8 +37,8 @@
 
 #include "common.inc"
 #include "contract.inc"
+#include "dsp.inc"
 
-#include "menus/parameters/dsp.inc"
 #include "menus/parameters/sys-timing.inc"
 
 #pragma include_optional "../config/options.cfg"
@@ -66,8 +66,6 @@ layout(push_constant) uniform Push
     float H_FREQ_MODE;
     float H_FREQ;
     float H_BLANK_FUZZ;
-    float DSP_WORKING_FS;
-    float DSP_OUTPUT_FS;
     float PIXEL_CLOCK_FRAC11;
     float PIXEL_CLOCK_FRAC6;
     float SC_FREQ_FRAC11;
@@ -83,8 +81,8 @@ layout(push_constant) uniform Push
 #define H_FREQ_MODE timing_profile_h_mode(TIMING_PROFILE_MODE, config.H_FREQ_MODE)
 #define H_FREQ timing_profile_h_freq(TIMING_PROFILE_MODE, config.H_FREQ)
 #define H_BLANK_FUZZ config.H_BLANK_FUZZ
-#define DSP_WORKING_FS config.DSP_WORKING_FS
-#define DSP_OUTPUT_FS config.DSP_OUTPUT_FS
+#define DSP_WORKING_FS (DSP_SD_WORKING_FS / 1.0e6)
+#define DSP_OUTPUT_FS (DSP_SD_OUTPUT_FS / 1.0e6)
 
 layout(std140, set = 0, binding = 0) uniform UBO
 {
@@ -109,7 +107,7 @@ const float DESKEW_BYPASS = 0.0;
 layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
-layout(location = 1) flat out float PresentationFrameWidth;
+layout(location = 1) flat out double PresentationFrameWidth;
 layout(location = 2) flat out float PresentationFrameHeight;
 layout(location = 3) flat out float LineCarryClocksOut;
 layout(location = 4) flat out float ClockFactorOut;
@@ -180,7 +178,7 @@ void main()
         DSP_OUTPUT_FS);
 
     PresentationFrameHeight = FrameHeight;
-    PresentationFrameWidth = contract_output_frame_width(
+    PresentationFrameWidth = timing_profile_rate_width(TIMING_PROFILE_MODE, contract_output_frame_width(
         config.OriginalFPS,
         SC_FREQ_MODE,
         SC_FREQ,
@@ -189,7 +187,7 @@ void main()
         H_FREQ_MODE,
         H_FREQ,
         DSP_WORKING_FS,
-        DSP_OUTPUT_FS);
+        DSP_OUTPUT_FS), max(DSP_WORKING_FS, DSP_OUTPUT_FS));
 
     // Pass the integer-valued carry and cycle to the fragment stage as floats
     // for cross-driver safety; the fragment shader converts locally to int for
@@ -202,7 +200,7 @@ void main()
 
 #pragma stage fragment
 layout(location = 0) in vec2 vTexCoord;
-layout(location = 1) flat in float PresentationFrameWidth;
+layout(location = 1) flat in double PresentationFrameWidth;
 layout(location = 2) flat in float PresentationFrameHeight;
 layout(location = 3) flat in float LineCarryClocksOut;
 layout(location = 4) flat in float ClockFactorOut;
@@ -211,7 +209,7 @@ layout(location = 6) flat in float BaseFrameWidthOut;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
-vec3 sample_deskewed(float output_x, float output_y, float frame_width)
+vec3 sample_deskewed(float output_x, float output_y, double frame_width)
 {
     // Compute the wrapped carry in integer arithmetic to avoid float32
     // precision loss.  At high line numbers (e.g. y=130 for PSX 256px NTSC)

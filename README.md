@@ -32,8 +32,10 @@ README Edition 11
 3. Build with strict shader-structure gate: `python build.py --lint-shaders --strict-structure`
 
 Generated presets are written to `out/presets/` (for example `out/presets/arcade`, `out/presets/consumer`, and `out/presets/professional`).
-The build regenerates `shaders/filter-taps.inc` and reports the reference-domain
-tap caps used by the packaged filters; see `doc/filter_taps.md` for details.
+The build generates `out/shaders/timing-profiles.inc` and `out/shaders/filter-taps.inc`.
+It also reports the reference-domain tap caps used by the packaged filters;
+see `doc/filter_taps.md` for details. Run shaders from the built output rather
+than directly from the source tree.
 
 ### Global Options
 

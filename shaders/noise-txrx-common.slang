@@ -35,7 +35,6 @@
 #include "contract.inc"
 #include "dsp.inc"
 
-#include "menus/parameters/dsp.inc"
 #include "menus/parameters/noise-txrx.inc"
 #include "menus/parameters/sys-timing.inc"
 
@@ -76,7 +75,6 @@ layout(push_constant) uniform Push
     float PIXEL_CLOCK_WHOLE;
     float H_FREQ_MODE;
     float H_FREQ;
-    float DSP_WORKING_FS;
 
     float TXRX_NOISE_FEEDBACK_DB;
     float TXRX_NOISE_XTALK_DB;
@@ -101,7 +99,7 @@ layout(push_constant) uniform Push
 #define PIXEL_CLOCK timing_profile_pixel_value(TIMING_PROFILE_MODE, timing_decimal_value(vec3(config.PIXEL_CLOCK_WHOLE, config.PIXEL_CLOCK_FRAC6, config.PIXEL_CLOCK_FRAC11)))
 #define H_FREQ_MODE timing_profile_h_mode(TIMING_PROFILE_MODE, config.H_FREQ_MODE)
 #define H_FREQ timing_profile_h_freq(TIMING_PROFILE_MODE, config.H_FREQ)
-#define DSP_WORKING_FS config.DSP_WORKING_FS
+#define DSP_WORKING_FS (DSP_SD_WORKING_FS / 1.0e6)
 
 #define TXRX_NOISE_FEEDBACK_DB config.TXRX_NOISE_FEEDBACK_DB
 #define TXRX_NOISE_XTALK_DB config.TXRX_NOISE_XTALK_DB
@@ -126,8 +124,7 @@ layout(std140, set = 0, binding = 0) uniform UBO
 #endif  // OPTION_DEBUG
 
 struct NoiseTxRxState {
-    float frame_width; // Logical raster line width in the current domain.
-    float frame_height;
+    double frame_width; // Logical raster line width in the current domain.
     float data_length; // Number of original-domain samples in the field.
     float storage_width; // Base signal stride; differs from frame_width when packed.
     float texture_fits; // Input and output capacity check.
@@ -156,14 +153,8 @@ NoiseTxRxState compute_noise_state()
         PIXEL_CLOCK,
         H_FREQ_MODE,
         H_FREQ);
-    float sample_rate = contract_fs_original(
-        config.OriginalFPS,
-        SC_FREQ_MODE,
-        SC_FREQ,
-        PIXEL_CLOCK_MODE,
-        PIXEL_CLOCK);
 #else
-    state.frame_width = contract_working_frame_width(
+    state.frame_width = timing_profile_rate_width(TIMING_PROFILE_MODE, contract_working_frame_width(
         config.OriginalFPS,
         SC_FREQ_MODE,
         SC_FREQ,
@@ -171,18 +162,9 @@ NoiseTxRxState compute_noise_state()
         PIXEL_CLOCK,
         H_FREQ_MODE,
         H_FREQ,
-        DSP_WORKING_FS);
-    float sample_rate = contract_working_sample_rate(
-        config.OriginalFPS,
-        SC_FREQ_MODE,
-        SC_FREQ,
-        PIXEL_CLOCK_MODE,
-        PIXEL_CLOCK,
-        H_FREQ_MODE,
-        H_FREQ,
-        DSP_WORKING_FS);
+        DSP_WORKING_FS), DSP_WORKING_FS);
 #endif
-    state.frame_height = contract_frame_height(
+    float frame_height = contract_frame_height(
         config.OriginalSize.xy,
         config.OriginalFPS,
         V_FREQ_MODE,
@@ -193,22 +175,13 @@ NoiseTxRxState compute_noise_state()
         PIXEL_CLOCK,
         H_FREQ_MODE,
         H_FREQ);
-    float nominal_data_length = ceil(contract_data_length(state.frame_width, state.frame_height));
+    float nominal_data_length = ceil(contract_data_length(state.frame_width, frame_height));
     state.data_length = max(timing_profile_storage_length(TIMING_PROFILE_MODE, config.OriginalSize.y,
         global.FrameCount, global.FIELD_ODD, state.frame_width, nominal_data_length), 1.0);
     state.storage_width = contract_pixel_packed_width(state.data_length);
     state.texture_fits = contract_pixel_texture_fits(config.OutputSize.xy, state.data_length, state.storage_width) &&
         contract_pixel_texture_fits(config.SendSourceSize.xy, state.data_length, state.storage_width) ? 1.0 : 0.0;
     state.max_lod = float(pyramid_max_lod(int(ceil(state.data_length)), OPTION_XTALK_SAMPLE_COUNT));
-    float horizontal_frequency = contract_h_frequency(
-        config.OriginalFPS,
-        SC_FREQ_MODE,
-        SC_FREQ,
-        PIXEL_CLOCK_MODE,
-        PIXEL_CLOCK,
-        H_FREQ_MODE,
-        H_FREQ);
-
     return state;
 }
 
@@ -328,7 +301,6 @@ void main()
     int output_x_i = int(floor(uv.x));
     int output_y_i = int(floor(uv.y));
     float output_x = float(output_x_i);
-    float output_y = float(output_y_i);
 
     float storage_width = vNoiseState.storage_width;
     if (vNoiseState.texture_fits < 0.5) {

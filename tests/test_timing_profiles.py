@@ -1,4 +1,6 @@
 import copy
+import contextlib
+import io
 import json
 import math
 import re
@@ -12,21 +14,24 @@ from pathlib import Path
 
 import test_contract_timings as contract_timings
 from scripts.generate_timing_profiles import generate_source, generate_timing_profiles
+from scripts.generate_filter_taps import generate_filter_taps
 from test_contract_timings import (
     CPP_HEADER, CPP_MAIN, FIELD_COUNTS, OUTPUT_MODES, REFERENCES, ROOT,
     cpp_shader_source, phase_distance,
 )
-from test_dyadic_pyramid import shader_function
+from test_dyadic_pyramid import shader_function, timing_profile_source
 
 
 class TimingProfileGenerationTests(unittest.TestCase):
     def setUp(self):
         self.data = json.loads((ROOT / 'presetdata' / 'timing-profiles.json').read_text(encoding='utf-8'))
 
-    def test_checked_in_shader_matches_catalog(self):
-        generated = generate_source(self.data)
-        actual = (ROOT / 'shaders' / 'timing-profiles.inc').read_text(encoding='utf-8')
-        self.assertEqual(actual, generated)
+    def test_shader_is_generated_in_output_directory(self):
+        with tempfile.TemporaryDirectory() as temp:
+            output = Path(temp) / 'out' / 'shaders'
+            generate_timing_profiles(ROOT, output)
+            self.assertEqual((output / 'timing-profiles.inc').read_text(encoding='utf-8'),
+                             generate_source(self.data))
 
     def test_sfc_timing_modes_cover_reference_output_modes(self):
         profile = self.data['profiles'][0]
@@ -191,7 +196,7 @@ int main() {
 
     def test_signal_standard_tracks_profile_refresh_and_debug_override(self):
         compiler = shutil.which('g++')
-        profiles = (ROOT / 'shaders' / 'timing-profiles.inc').read_text(encoding='utf-8')
+        profiles = timing_profile_source()
         standard = (ROOT / 'shaders' / 'signal-standard.inc').read_text(encoding='utf-8')
         source = re.sub(r'(?<=\d)lf\b', '', profiles)
         function = shader_function(standard, 'float signal_pal(')
@@ -455,6 +460,133 @@ int main() {
             subprocess.run([compiler, '-std=c++17', '-O2', str(source), '-o', str(executable)], check=True)
             subprocess.run([str(executable)], check=True)
 
+    def test_presentation_capacity_includes_exceptional_lines(self):
+        compiler = shutil.which('g++')
+        if compiler is None:
+            self.skipTest('g++ is required to exercise shader functions')
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / 'presentation.cpp'
+            executable = Path(temp) / 'presentation'
+            source.write_text(CPP_HEADER + cpp_shader_source() + r'''
+#include <stdexcept>
+int main() {
+    auto fits = [](int mode, float height, uint frame, float width, float lines, float x, float y) {
+        return timing_profile_presentation_fits(mode, height, frame, 0, width,
+                                                mode == 4 ? 3413 : 1364, lines, vec2{x,y});
+    };
+    if (!fits(2, 478, 0, 1364, 312, 1368, 312) ||
+        fits(2, 478, 0, 1364, 312, 1367, 312) ||
+        fits(2, 478, 0, 1364, 312, 1368, 311) ||
+        !fits(1, 239, 1, 1364, 262, 1364, 262) ||
+        !fits(4, 480, 1, 3413, 262, 3413, 262) ||
+        fits(0, 224, 0, 1025.5, 262, 1025, 512) ||
+        !fits(0, 224, 0, 1025.5, 262, 1026, 512) ||
+        fits(-1, 224, 0, 1024, 262, 2048, 512))
+        throw std::runtime_error("presentation capacity check mismatch");
+}
+''', encoding='utf-8')
+            subprocess.run([compiler, '-std=c++17', '-O2', str(source), '-o', str(executable)], check=True)
+            subprocess.run([str(executable)], check=True)
+
+    def test_fractional_widths_use_cumulative_boundaries(self):
+        compiler = shutil.which('g++')
+        if compiler is None:
+            self.skipTest('g++ is required to exercise shader functions')
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / 'fractional-raster.cpp'
+            executable = Path(temp) / 'fractional-raster'
+            source.write_text(CPP_HEADER + cpp_shader_source() + r'''
+#include <stdexcept>
+int main() {
+    for (int mode : {0, 1, 2, 4, 5}) for (int frame : {0, 1}) {
+        float width = 1025.498f;
+        int lines = mode == 0 ? 262 : int(timing_profile_v_freq(mode, 478, frame, 0, 262));
+        float height = mode == 0 ? 224 : 478;
+        auto boundary = [=](int line) {
+            double clocks = line * (mode == 4 ? 3413.0 : mode == 5 ? 3405.0 : 1364.0);
+            if (mode == 4) {
+                clocks = (line / 2) * 6825.0 + (line % 2) * 3412.0;
+            }
+            if (mode == 2 && frame == 0 && line >= 18) clocks += 4;
+            double scale = mode == 4 ? 3413.0 : mode == 5 ? 3405.0 : 1364.0;
+            return std::ceil(clocks * double(width) / scale);
+        };
+        float length = timing_profile_storage_length(mode, height, frame, 0, width, width * lines);
+        if (length != boundary(lines)) {
+            std::cerr << "mode " << mode << " frame " << frame << " length "
+                      << length << " expected " << boundary(lines) << '\n';
+            throw std::runtime_error("fractional field length mismatch");
+        }
+        for (int line = 0; line < lines; ++line) {
+            float start = float(boundary(line)), end = float(boundary(line+1));
+            vec2 range = timing_profile_line_range(mode, height, frame, 0, line, width);
+            if (range.x != start || range.y != end - start)
+                throw std::runtime_error("fractional line range mismatch");
+            for (float index : {start, end - 1}) {
+                vec2 pos = timing_profile_raster_position(mode, height, frame, 0, index, width);
+                if (pos.y != line || pos.x != index - start)
+                    throw std::runtime_error("fractional raster position mismatch");
+            }
+        }
+    }
+}
+''', encoding='utf-8')
+            subprocess.run([compiler, '-std=c++17', '-O2', str(source), '-o', str(executable)], check=True)
+            subprocess.run([str(executable)], check=True)
+
+    def test_fixed_rates_follow_exact_profile_clocks(self):
+        compiler = shutil.which('g++')
+        if compiler is None:
+            self.skipTest('g++ is required to exercise shader functions')
+        contract = (ROOT / 'shaders' / 'contract.inc').read_text(encoding='utf-8')
+        functions = '\n'.join(shader_function(contract, signature) for signature in (
+            'double contract_working_frame_width(', 'double contract_output_frame_width(',
+            'float contract_working_sample_rate(', 'float contract_output_sample_rate(',
+        ))
+        functions = re.sub(r'(?<![\w.])(\d+\.\d+(?:[eE][+-]?\d+)?)(lf)?\b',
+                           lambda m: m.group(1) + ('' if m.group(2) else 'f'), functions)
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / 'fixed-rates.cpp'
+            executable = Path(temp) / 'fixed-rates'
+            source.write_text(CPP_HEADER + cpp_shader_source() + functions + r'''
+#include <stdexcept>
+int main() {
+    const double clocks[] = {0, 21477270, 21281370, 21453666, 53693175, 53203425};
+    for (int mode = 1; mode <= 5; ++mode) {
+        float sc_mode = timing_profile_sc_mode(mode, 0), pc_mode = timing_profile_pixel_mode(mode, 0);
+        float pc = timing_profile_pixel_value(mode, 0), h_mode = timing_profile_h_mode(mode, 0);
+        float h = timing_profile_h_freq(mode, 0);
+        float base = contract_frame_width(60, sc_mode, 0, pc_mode, pc, h_mode, h);
+        if (contract_working_sample_rate(60, sc_mode, 0, pc_mode, pc, h_mode, h, 32) != 32000000 ||
+            contract_output_sample_rate(60, sc_mode, 0, pc_mode, pc, h_mode, h, 32, 16) != 16000000)
+            throw std::runtime_error("sample rate changed");
+        for (int rate : {16, 32}) {
+            double width = rate == 32
+                ? contract_working_frame_width(60, sc_mode, 0, pc_mode, pc, h_mode, h, 32)
+                : contract_output_frame_width(60, sc_mode, 0, pc_mode, pc, h_mode, h, 32, 16);
+            width = timing_profile_rate_width(mode, width, float(rate));
+            if (mode == 2 && rate == 16 &&
+                (!timing_profile_presentation_fits(mode, 478, 0, 0, width, 1364, 312, vec2{1029,512}) ||
+                  timing_profile_presentation_fits(mode, 478, 0, 0, width, 1364, 312, vec2{1028,512})))
+                throw std::runtime_error("PAL extended line requires 1029 presentation pixels");
+            for (int line = 0; line < 260; ++line) {
+                double line_clock = mode == 4 ? (line / 2) * 6825.0 + (line % 2) * 3412.0
+                                               : line * double(base);
+                double expected = std::ceil(line_clock * (rate * 1000000.0) / clocks[mode]);
+                vec2 range = timing_profile_line_range(mode, 239, 0, 0, line, width);
+                if (range.x != expected) {
+                    std::cerr << "mode " << mode << " rate " << rate << " line " << line
+                              << " got " << range.x << " expected " << expected << '\n';
+                    throw std::runtime_error("incorrect physical sample boundary");
+                }
+            }
+        }
+    }
+}
+''', encoding='utf-8')
+            subprocess.run([compiler, '-std=c++17', '-O2', str(source), '-o', str(executable)], check=True)
+            subprocess.run([str(executable)], check=True)
+
 
 class ExplicitFieldTimingTests(unittest.TestCase):
     def test_shader_rejects_invalid_profile_clock_ratios(self):
@@ -565,6 +697,43 @@ int main() {
 
 
 class TimingProfilePresetTests(unittest.TestCase):
+    def prepare_generated_includes(self, output):
+        with contextlib.redirect_stdout(io.StringIO()):
+            generate_filter_taps(ROOT, output / 'shaders')
+        generate_timing_profiles(ROOT, output / 'shaders')
+
+    def test_vga_rates_are_exposed_only_to_vga_presets(self):
+        cases = (
+            ('professional', 'sfc-rgb', 'sfc', None),
+            ('computer', 'teradrive', 'teradrive', 30.0),
+            ('computer', 'pckd863g', 'pckd863g', 25.0),
+        )
+        with tempfile.TemporaryDirectory() as temp:
+            for category, name, result_name, expected in cases:
+                output = Path(temp) / name
+                self.prepare_generated_includes(output)
+                command = [
+                    sys.executable, str(ROOT / 'external' / 'presetgen' / 'presetgen.py'),
+                    '--input', str(ROOT / 'presetdata' / 'input' / category / f'{name}.json'),
+                    '--output', str(output), '--config', str(ROOT / 'presetdata' / 'presetgen.json'),
+                ]
+                subprocess.run(command, capture_output=True, text=True, check=True)
+                menu = next((output / 'shaders' / 'menus').glob(f'menu-{result_name}-*.slang'))
+                menu_text = menu.read_text(encoding='utf-8')
+                preset = (output / 'presets' / category / f'{result_name}.slangp').read_text(encoding='utf-8')
+                values = {
+                    key.strip(): value.strip().strip('"')
+                    for line in preset.splitlines() if '=' in line
+                    for key, value in [line.split('=', 1)]
+                }
+                with self.subTest(preset=name):
+                    self.assertEqual('parameters/vga-dsp.inc' in menu_text, expected is not None)
+                    self.assertNotIn('DSP_WORKING_FS', values)
+                    self.assertNotIn('DSP_OUTPUT_FS', values)
+                    if expected is not None:
+                        self.assertNotIn('VGA_INPUT_FS', values)
+                        self.assertEqual(float(values['VGA_OUTPUT_FS']), expected)
+
     def test_signal_shaders_use_shared_standard_and_debug_parameter(self):
         for name in ('display-svideo-demod.slang', 'composite-demod.slang',
                      'composite-mod.slang', 'digital-svideo.slang', 'famicom-special.slang'):
@@ -600,6 +769,10 @@ class TimingProfilePresetTests(unittest.TestCase):
             if path in seen:
                 return ''
             seen.add(path)
+            if path == ROOT / 'shaders' / 'timing-profiles.inc':
+                return timing_profile_source()
+            if path == ROOT / 'shaders' / 'filter-taps.inc':
+                return ''
             source = path.read_text(encoding='utf-8')
             includes = re.findall(r'^\s*#include\s+"([^"]+)"', source, re.MULTILINE)
             return source + '\n' + '\n'.join(source_tree(path.parent / name, seen) for name in includes)
@@ -627,6 +800,7 @@ class TimingProfilePresetTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             output = Path(temp)
             shutil.copytree(ROOT / 'shaders', output / 'shaders')
+            self.prepare_generated_includes(output)
             for name, result_name, expected in (
                 ('sfc-rgb', 'sfc', {'TIMING_PROFILE': 1.0}),
                 ('snes-eu-composite', 'snes-eu', {'TIMING_PROFILE': 1.0}),
