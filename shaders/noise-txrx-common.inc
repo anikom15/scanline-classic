@@ -21,7 +21,7 @@
 // Output: voltage
 //
 // Adds DeltaV-driven feedback and crosstalk to a framed 1D signal.
-// Each stage is the causal difference over 2^LOD samples. Line-aligned stage
+// Each stage uses a stochastic causal span bounded by 2^LOD. Line-aligned stage
 // values are interpolated before their magnitudes are summed.
 // Pixel variants run before sys-bandlimit; DSP variants run after it.
 
@@ -56,6 +56,7 @@
 #pragma parameter TXRX_NOISE_VIEW_MAG_DELTAV "View signed DeltaV" 0.0 0.0 1.0 1.0
 #pragma parameter TXRX_NOISE_MAG_DELTAV_MIP_LOD "DeltaV stage LOD" 0.0 0.0 20.0 1.0
 #pragma parameter TXRX_NOISE_GAIN "Tx/Rx Noise Gain" 1.0 1.0 10.0 0.1
+#pragma parameter TXRX_NOISE_SAMPLING "DeltaV sampling (0: fixed, 1: uniform, 2: triangular)" 2.0 0.0 2.0 1.0
 #endif  // OPTION_DEBUG
 
 layout(push_constant) uniform Push
@@ -81,6 +82,7 @@ layout(push_constant) uniform Push
     float TXRX_NOISE_VIEW_MAG_DELTAV;
     float TXRX_NOISE_MAG_DELTAV_MIP_LOD;
     float TXRX_NOISE_GAIN;
+    float TXRX_NOISE_SAMPLING;
 #endif  // OPTION_DEBUG
     float PIXEL_CLOCK_FRAC11;
     float PIXEL_CLOCK_FRAC6;
@@ -107,6 +109,8 @@ layout(std140, set = 0, binding = 0) uniform UBO
     float TIMING_PROFILE;
     mat4 MVP;
     float SC_FREQ_FRAC6;
+    uint CurrentSubFrame;
+    uint TotalSubFrames;
 } global;
 
 #ifdef OPTION_DEBUG
@@ -114,8 +118,10 @@ layout(std140, set = 0, binding = 0) uniform UBO
 #define TXRX_NOISE_VIEW_MAG_DELTAV config.TXRX_NOISE_VIEW_MAG_DELTAV
 #define TXRX_NOISE_MAG_DELTAV_MIP_LOD config.TXRX_NOISE_MAG_DELTAV_MIP_LOD
 #define TXRX_NOISE_GAIN config.TXRX_NOISE_GAIN
+#define TXRX_NOISE_SAMPLING config.TXRX_NOISE_SAMPLING
 #else
 #define TXRX_NOISE_GAIN 1.0
+#define TXRX_NOISE_SAMPLING 2.0
 #endif  // OPTION_DEBUG
 
 struct NoiseTxRxState {
@@ -205,9 +211,31 @@ vec4 sample_noise_signal(int sample_index, NoiseTxRxState state)
         state.storage_width, ceil(state.data_length) - 1.0);
 }
 
-vec4 sample_delta_v_level(int sample_index, int lod_i, int line_start, NoiseTxRxState state)
+int stochastic_delta_v_span(int sample_index, int lod_i)
 {
     int span = 1 << lod_i;
+    if (TXRX_NOISE_SAMPLING < 0.5 || lod_i == 0) {
+        return span;
+    }
+
+    // RetroArch subframes are one-based; older hosts may leave both uniforms zero.
+    uint total = max(global.TotalSubFrames, 1u);
+    uint subframe = clamp(global.CurrentSubFrame, 1u, total) - 1u;
+    uint tick = global.FrameCount * total + subframe;
+    uint seed = hash_u32(uint(sample_index) ^ hash_u32(uint(lod_i) ^ 0xA511E9B3u) ^
+        hash_u32(tick ^ 0x6D2B79F5u));
+    float u = float(hash_u32(seed) >> 8) * (1.0 / 16777216.0);
+    if (TXRX_NOISE_SAMPLING > 1.5) {
+        float v = float(hash_u32(seed ^ 0x63D83595u) >> 8) * (1.0 / 16777216.0);
+        u = min(u, v);
+    }
+    int half_span = span >> 1;
+    return half_span + 1 + min(int(u * float(half_span)), half_span - 1);
+}
+
+vec4 sample_delta_v_level(int sample_index, int lod_i, int line_start, NoiseTxRxState state)
+{
+    int span = stochastic_delta_v_span(sample_index, lod_i);
     int offset = (sample_index - line_start) % span;
     int anchor = sample_index - offset;
     vec4 anchor_signal = sample_noise_signal(anchor, state);

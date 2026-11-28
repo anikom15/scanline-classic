@@ -27,15 +27,33 @@ An undersized pixel-domain allocation produces magenta.
 line-aligned DSP-domain raster. Its output allocation must therefore be sized
 for the DSP line width and field height, not the packed input dimensions.
 The pixel and DSP Tx/Rx noise passes read the packed signal directly. At each
-sample they evaluate causal differences over spans `1, 2, 4, ...` samples,
+sample they evaluate causal differences with stage bounds `1, 2, 4, ...` samples,
 clamping history to the start of the field. Line-aligned interpolation blends
 the two most recent stage anchors before their magnitudes are summed with
 weight `1 / (LOD + 1)`. This adds up to one span of delay and never reads a future
 sample. The quality setting counts the base span plus up to 20 larger spans
-(11 stages by default), stopping at the first span covering the field. The
-debug view shows the signed result for the selected discrete stage. This avoids
-line-to-line decimation phase drift without resampling the raster or requiring
-a delta pyramid.
+(11 stages by default), stopping at the first nominal span covering the field.
+No delta pyramid or raster resampling is required.
+
+Both normal and debug builds default to lower-biased triangular stochastic
+spans. With `OPTION_DEBUG`, `TXRX_NOISE_SAMPLING` selects fixed spans (0),
+uniform stochastic spans (1), or lower-biased triangular stochastic spans
+(2, default).
+For LOD `k > 0`, each output sample independently selects an integer span in
+`(2^(k-1), 2^k]`; LOD 0 remains one sample. The triangular distribution is
+formed by taking the minimum of two uniforms before quantizing to integer
+spans. Its probability decreases linearly from the lowest allowed span to the
+highest. The selected span controls both the causal differences
+and the line-aligned interpolation grid, so stochastic modes do not retain
+the fixed mode's coherent grid across adjacent samples. The signed debug view
+uses the same sampling mode.
+
+Random seeds include the sample index, LOD, and integer
+`FrameCount * TotalSubFrames + CurrentSubFrame - 1`. RetroArch's subframe
+uniforms provide a fresh realization on each shader subframe without
+converting the frame count to a float. Hosts without subframes use one tick
+per frame (zero/unset subframe uniforms are treated as one subframe).
+The sampling behavior applies to both pixel- and DSP-domain Tx/Rx passes.
 
 To migrate DSP-domain shaders to packed storage later, derive the packed
 width from their own sample count at the working or output sample rate, use

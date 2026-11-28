@@ -320,6 +320,12 @@ int main() {
 
         dsp = (ROOT / 'shaders' / 'dsp.inc').read_text(encoding='utf-8')
         consumer = (ROOT / 'shaders' / 'noise-txrx-common.inc').read_text(encoding='utf-8')
+        common = (ROOT / 'shaders' / 'common.inc').read_text(encoding='utf-8')
+        sampling_default = re.search(
+            r'^#define TXRX_NOISE_SAMPLING [0-9.]+$', consumer, re.MULTILINE).group()
+        debug_sampling_default = re.search(
+            r'^#pragma parameter TXRX_NOISE_SAMPLING "[^"]+" ([0-9.]+)',
+            consumer, re.MULTILINE).group(1)
         fragment = consumer.split('#pragma stage fragment', 1)[1]
         main = shader_function(fragment, 'void main()').replace('void main()', 'void render_sample()', 1)
         main = main.split('    float feedback_gain =', 1)[0] + '    FragColor = mag_delta;\n}\n'
@@ -334,7 +340,10 @@ int main() {
 #include <vector>
 using std::ceil; using std::floor; using std::max; using std::min;
 using std::exp2; using std::isnan; using std::isinf;
+using uint = unsigned int;
 float clamp(float x, float a, float b) { return std::clamp(x,a,b); }
+uint clamp(uint x, uint a, uint b) { return std::clamp(x,a,b); }
+int clamp(int x, int a, int b) { return std::clamp(x,a,b); }
 struct vec2 { float x,y; vec2(float a=0,float b=0): x(a),y(b) {} };
 vec2 operator*(vec2 a,vec2 b) { return {a.x*b.x,a.y*b.y}; }
 struct ivec2 { int x,y; ivec2(int a,int b): x(a),y(b) {} };
@@ -364,10 +373,17 @@ sampler2D Source;
 vec2 vTexCoord; vec4 FragColor;
 int current_test_index;
 float debug_bypass,debug_view,debug_lod_value;
+float debug_sampling = DEBUG_SAMPLING_DEFAULT;
+struct { uint FrameCount, CurrentSubFrame, TotalSubFrames; } global;
 bool invalid_raster;
 #define TXRX_NOISE_BYPASS debug_bypass
 #define TXRX_NOISE_VIEW_MAG_DELTAV debug_view
 #define TXRX_NOISE_MAG_DELTAV_MIP_LOD debug_lod_value
+#ifdef OPTION_DEBUG
+#define TXRX_NOISE_SAMPLING debug_sampling
+#else
+SAMPLING_DEFAULT
+#endif
 vec2 fake_raster_position(float index) {
     if (invalid_raster) return {std::numeric_limits<float>::quiet_NaN(),0};
     float start = index < 1364 ? 0 : index < 2727 ? 1364 : 2727;
@@ -376,6 +392,8 @@ vec2 fake_raster_position(float index) {
 #define raster_position(pattern, exceptions, index, width) fake_raster_position(index)
 const int XTALK_SAMPLE_COUNT = OPTION_XTALK_SAMPLE_COUNT;
 '''
+        harness = harness.replace('DEBUG_SAMPLING_DEFAULT', debug_sampling_default).replace(
+            'SAMPLING_DEFAULT', sampling_default)
         checks = r'''
 void check(vec4 a,vec4 b) {
     if (std::abs(a.x-b.x)>1e-5 || std::abs(a.y-b.y)>1e-5 ||
@@ -420,13 +438,22 @@ int main() {
             if (dyadic_max_lod(length,count)!=min(lod,count-1))
                 throw std::runtime_error("incorrect quality limit");
     }
+#ifdef OPTION_DEBUG
+    debug_sampling=0;
+#endif
     for (int length : {1,13,2801}) {
         for (int i=0;i<length;++i) source.pixels[(i/8)*16+i%8]=value(i);
         vNoiseState={1364,float(length),8,1,float(dyadic_max_lod(length,XTALK_SAMPLE_COUNT))};
         for (int i=0;i<length;++i) {
             vec4 expected(0);
-            for (int k=0;k<=int(vNoiseState.max_lod);++k)
-                expected += abs(expected_stage(i,1<<k)) / float(k+1);
+            for (int k=0;k<=int(vNoiseState.max_lod);++k) {
+#ifdef OPTION_DEBUG
+                int span=1<<k;
+#else
+                int span=stochastic_delta_v_span(i,k);
+#endif
+                expected += abs(expected_stage(i,span)) / float(k+1);
+            }
             sample(i);
             check(FragColor,expected);
         }
@@ -455,6 +482,103 @@ int main() {
     invalid_raster=true;
     sample(0);
     check(FragColor,vec4(1,0,1,1));
+    invalid_raster=false;
+#ifdef OPTION_DEBUG
+    debug_sampling=DEBUG_SAMPLING_DEFAULT;
+    std::vector<int> modes={2,1};
+#else
+    std::vector<int> modes={2};
+#endif
+    for (int mode : modes) {
+#ifdef OPTION_DEBUG
+        if (mode==1) debug_sampling=1;
+#endif
+        global={16777216u,1u,4u};
+        for (int lod=0;lod<=20;++lod) {
+            int upper=1<<lod, lower=lod==0 ? 0 : upper/2;
+            for (int i=0;i<4096;++i) {
+                int span=stochastic_delta_v_span(i,lod);
+                if (span<=lower || span>upper)
+                    throw std::runtime_error("stochastic span outside required interval");
+                if (span!=stochastic_delta_v_span(i,lod))
+                    throw std::runtime_error("stochastic span is not reproducible");
+            }
+        }
+        double sum=0, squares=0;
+        std::vector<int> bins(128);
+        for (int i=0;i<65536;++i) {
+            int span=stochastic_delta_v_span(i,8);
+            ++bins[span-129];
+            sum+=span; squares+=double(span)*span;
+        }
+        double mean=sum/65536, variance=squares/65536-mean*mean;
+        double expected_mean=0, expected_squares=0;
+        for (int j=0;j<128;++j) {
+            // Integrate the uniform or descending triangular PDF over each bin.
+            double probability=mode==1 ? 1.0/128 : (255.0-2*j)/(128*128);
+            expected_mean+=(129+j)*probability;
+            expected_squares+=(129+j)*(129+j)*probability;
+        }
+        double expected_variance=expected_squares-expected_mean*expected_mean;
+        if (std::abs(mean-expected_mean)>0.5 ||
+            std::abs(variance-expected_variance)>35)
+            throw std::runtime_error("incorrect stochastic distribution moments");
+        if (mode==1) {
+            for (int count : bins)
+                if (count<380 || count>650)
+                    throw std::runtime_error("uniform distribution is not flat");
+        } else if (bins[0]+bins[1] < 8*(bins[126]+bins[127])) {
+            throw std::runtime_error("triangular distribution does not favor lowest spans");
+        }
+        int changed_sample=0, changed_lod=0, changed_subframe=0, changed_frame=0;
+        for (int i=0;i<1024;++i) {
+            global={16777216u,1u,4u};
+            int span=stochastic_delta_v_span(i,8);
+            changed_sample+=span!=stochastic_delta_v_span(i+1,8);
+            changed_lod+=(span-129)/2!=stochastic_delta_v_span(i,7)-65;
+            global.CurrentSubFrame=2;
+            changed_subframe+=span!=stochastic_delta_v_span(i,8);
+            global={16777217u,1u,4u};
+            changed_frame+=span!=stochastic_delta_v_span(i,8);
+        }
+        if (min(min(changed_sample,changed_lod),min(changed_subframe,changed_frame))<900)
+            throw std::runtime_error("stochastic seed omits sample, LOD, subframe or frame");
+        for (int i=0;i<1024;++i) {
+            global={23u,0u,0u};
+            int span=stochastic_delta_v_span(i,8);
+            global={23u,1u,1u};
+            if (span!=stochastic_delta_v_span(i,8))
+                throw std::runtime_error("non-subframe fallback differs");
+        }
+        Source=&source;
+        vNoiseState={1364,2801,8,1,float(dyadic_max_lod(2801,XTALK_SAMPLE_COUNT))};
+#ifdef OPTION_DEBUG
+        debug_view=1;
+#endif
+        for (int i : {0,1,1363,1364,1365,2726,2727,2800}) {
+#ifdef OPTION_DEBUG
+            for (int lod=0;lod<=int(vNoiseState.max_lod);++lod) {
+                debug_lod_value=float(lod);
+                int span=stochastic_delta_v_span(i,lod);
+                sample(i);
+                check(FragColor,expected_stage(i,span));
+            }
+            debug_view=0;
+#endif
+            vec4 expected(0);
+            for (int lod=0;lod<=int(vNoiseState.max_lod);++lod)
+                expected+=abs(expected_stage(i,stochastic_delta_v_span(i,lod)))/float(lod+1);
+            sample(i);
+            check(FragColor,expected);
+#ifdef OPTION_DEBUG
+            debug_view=1;
+#endif
+        }
+        debug_view=0;
+    }
+#ifdef OPTION_DEBUG
+    debug_sampling=0;
+#endif
     Texture large{1024,1537,std::vector<vec4>(1024*1537)};
     large.pixels[0]=vec4(2);
     large.pixels[1048576]=vec4(18);
@@ -462,11 +586,25 @@ int main() {
     config.SourceSize={1024,1537,{1024,1537}};
     vNoiseState={1024,1572865,1024,1,20};
     current_test_index=1572864;
+#ifdef OPTION_DEBUG
     check(sample_delta_v_level(1572864,20,0,vNoiseState),vec4(8));
+#else
+    int span=stochastic_delta_v_span(1572864,20);
+    int offset=1572864%span, anchor=1572864-offset;
+    auto sparse_value = [](int index) {
+        return vec4(index<=0 ? 2 : index==1048576 ? 18 : 0);
+    };
+    vec4 previous=sparse_value(anchor-span), earlier=sparse_value(anchor-2*span);
+    check(sample_delta_v_level(1572864,20,0,vNoiseState),
+          mix(previous-earlier,sparse_value(anchor)-previous,float(offset)/span));
+#endif
 }
 '''
+        checks = checks.replace('DEBUG_SAMPLING_DEFAULT', debug_sampling_default)
         code = '\n'.join((shader_function(dsp, 'int dyadic_max_lod('), fetch,
                           shader_function(consumer, 'vec4 sample_noise_signal('),
+                          shader_function(common, 'uint hash_u32('),
+                          shader_function(consumer, 'int stochastic_delta_v_span('),
                           shader_function(consumer, 'vec4 sample_delta_v_level('), main))
         with tempfile.TemporaryDirectory() as temp:
             source = Path(temp) / 'causal-noise.cpp'
