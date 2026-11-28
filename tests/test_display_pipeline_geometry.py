@@ -24,6 +24,130 @@ def pal_mega_drive_width(sample_rate_hz):
 
 
 class DisplayPipelineGeometryTests(unittest.TestCase):
+    def test_dac_jitter_matches_percentage_rms(self):
+        compiler = shutil.which('g++')
+        if compiler is None:
+            self.skipTest('g++ is required to exercise shader functions')
+        common = (ROOT / 'shaders' / 'common.inc').read_text(encoding='utf-8')
+        shader = (ROOT / 'shaders' / 'noise-dac.slang').read_text(encoding='utf-8')
+        functions = '\n'.join((
+            shader_function(common, 'uint hash_u32('),
+            shader_function(common, 'float hash_float('),
+            shader_function(common, 'vec2 box_muller('),
+            shader_function(common, 'vec3 gaussian_noise3('),
+            shader_function(common, 'float tpdf_blue_noise_1x('),
+            shader_function(shader, 'float compute_jitter_samples('),
+        ))
+        harness = r'''
+#include <algorithm>
+#include <cmath>
+#include <stdexcept>
+using uint = unsigned int;
+using std::cos; using std::floor; using std::log; using std::max; using std::sin; using std::sqrt;
+struct vec2 {
+    float x,y;
+    vec2(float a): x(a),y(a) {}
+    vec2(float a,float b): x(a),y(b) {}
+};
+vec2 floor(vec2 v) { return {floor(v.x),floor(v.y)}; }
+vec2 max(vec2 a,vec2 b) { return {max(a.x,b.x),max(a.y,b.y)}; }
+struct ivec2 { int x,y; ivec2(vec2 v): x(int(v.x)),y(int(v.y)) {} };
+struct uvec2 {
+    uint x,y;
+    uvec2(uint a,uint b): x(a),y(b) {}
+    uvec2(ivec2 v): x(uint(v.x)),y(uint(v.y)) {}
+};
+struct vec3 { float x,y,z; vec3(float a,float b,float c): x(a),y(b),z(c) {} };
+'''
+        checks = r'''
+int main() {
+    if (compute_jitter_samples(10,0,0,0)!=0)
+        throw std::runtime_error("zero jitter is not zero");
+    double sum=0, sum_sq=0;
+    int count=0;
+    for (uint frame=0;frame<256;++frame) {
+        for (int line=0;line<263;++line) {
+            float sample=float(line*3413+101);
+            float jitter=compute_jitter_samples(sample,line,frame,3);
+            float full=compute_jitter_samples(sample,line,frame,100);
+            if (std::abs(full-jitter*(100.0f/3.0f))>1e-5f)
+                throw std::runtime_error("jitter does not scale with the setting");
+            sum+=jitter;
+            sum_sq+=jitter*jitter;
+            ++count;
+        }
+    }
+    double rms=sqrt(sum_sq/count);
+    if (std::abs(sum/count)>0.001 || std::abs(rms-0.03)>0.0006)
+        throw std::runtime_error("jitter RMS differs from its percentage setting");
+}
+'''
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / 'dac-jitter.cpp'
+            executable = Path(temp) / 'dac-jitter'
+            source.write_text(harness + functions + checks, encoding='utf-8')
+            subprocess.run([compiler, '-std=c++17', '-O2', str(source), '-o', str(executable)], check=True)
+            subprocess.run([str(executable)], check=True)
+
+    def test_modulator_leaks_the_carrier_not_dc(self):
+        compiler = shutil.which('g++')
+        if compiler is None:
+            self.skipTest('g++ is required to exercise shader functions')
+        shader = (ROOT / 'shaders' / 'sys-component-yc-common.slang').read_text(encoding='utf-8')
+        dsp = (ROOT / 'shaders' / 'dsp.inc').read_text(encoding='utf-8')
+        functions = '\n'.join((
+            shader_function(dsp, 'float carrier_phase('),
+            shader_function(shader, 'vec2 modulate_sys_component_yc(')
+            .replace('component.gb', 'vec2(component.g, component.b)'),
+        ))
+        harness = r'''
+#include <algorithm>
+#include <cmath>
+#include <stdexcept>
+using std::cos; using std::floor; using std::max; using std::sin; using std::sqrt;
+const float PI=3.14159265358979323846f, EPS=1e-6f;
+float fract(float x) { return x-floor(x); }
+float mod(float a,float b) { return a-b*floor(a/b); }
+float mix(float a,float b,float t) { return a*(1-t)+b*t; }
+struct vec2 {
+    union { struct { float x,y; }; struct { float r,g; }; };
+    vec2(float a,float b): x(a),y(b) {}
+    vec2& operator+=(vec2 v) { x+=v.x; y+=v.y; return *this; }
+};
+vec2 operator*(float s,vec2 v) { return {s*v.x,s*v.y}; }
+float dot(vec2 a,vec2 b) { return a.x*b.x+a.y*b.y; }
+struct vec3 { float r,g,b; };
+float CARRIER_SHAPE=0, ENCODER_SETUP=0;
+'''
+        checks = r'''
+void near(float actual,float expected) {
+    if (std::abs(actual-expected)>1e-5f) throw std::runtime_error("carrier leakage mismatch");
+}
+int main() {
+    float leak=std::pow(10.0f,-34.0f/20.0f);
+    vec3 input={0.5f,0.2f,-0.1f};
+    for (int line : {0,1}) {
+        for (int i=0;i<4;++i) {
+            auto base=modulate_sys_component_yc(input,i,line,1,4,0,0,2,0.3f,1);
+            auto with_leak=modulate_sys_component_yc(input,i,line,1,4,0,leak,2,0.3f,1);
+            near(with_leak.r,base.r);
+            near(with_leak.g-base.g,leak*std::cos(2*PI*i/4));
+        }
+    }
+    auto shifted=modulate_sys_component_yc({0.5f,0,0},0,0,1,4,0.25f,leak,1,0,0);
+    near(shifted.g,0);
+    CARRIER_SHAPE=1;
+    auto distorted=modulate_sys_component_yc({0.5f,0,0},0,0,1,8,0,leak,1,0,0);
+    near(distorted.g,leak*(1+1.0f/3));
+}
+'''
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / 'carrier-leakage.cpp'
+            executable = Path(temp) / 'carrier-leakage'
+            source.write_text(harness + functions + checks, encoding='utf-8')
+            subprocess.run([compiler, '-std=c++17', '-O2', str(source), '-o', str(executable)], check=True)
+            subprocess.run([str(executable)], check=True)
+
     def test_working_resampler_packs_independently_of_raster_width(self):
         compiler = shutil.which('g++')
         if compiler is None:

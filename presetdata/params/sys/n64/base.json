@@ -18,8 +18,6 @@
         "DAC_NOISE_JITTER_UI" : 2.0,
 
         "TXRX_NOISE_FEEDBACK_DB": -50.0,
-        "TXRX_NOISE_CROSSTALK_DB": -62.0,
-        "TXRX_NOISE_IMD2" : -50.0,
-        "TXRX_NOISE_IMD3" : -62.0
+        "TXRX_NOISE_XTALK_DB": -62.0
     }
 }

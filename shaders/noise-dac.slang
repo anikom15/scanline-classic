@@ -186,7 +186,8 @@ vec4 sample_signal_linear(float sample_index, NoiseDACState state)
 
 float compute_jitter_samples(float sample_index, int output_y_i, uint frame, float jitter_ui)
 {
-    float jitter_amp = jitter_ui * 0.02;
+    // The half-strength TPDF term contributes 1/96 of the line term's variance.
+    float jitter_amp = jitter_ui * 0.01 / sqrt(1.0 + 1.0 / 96.0);
     if (jitter_amp <= 0.0)
         return 0.0;
 

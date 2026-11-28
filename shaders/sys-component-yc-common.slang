@@ -253,7 +253,7 @@ vec2 modulate_sys_component_yc(
             vec2(carrier.x, pal_v_sign * carrier.y))
     );
 
-    yc.g += carrier_leakage;
+    yc.g += carrier_leakage * carrier.y;
     return yc;
 }
 

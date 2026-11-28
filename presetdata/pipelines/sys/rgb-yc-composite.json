@@ -7,15 +7,6 @@
         "mod" : "sys-yc",
         "filter" : "sys-yc-filter",
         "amp" : "sys-yc-amp",
-        "deltav" : "send-delta-dsp",
-        "mip1" : "send-did-dsp",
-        "mip2" : "send-did-dsp",
-        "mip3" : "send-did-dsp",
-        "mip4" : "send-did-dsp",
-        "mip5" : "send-did-dsp",
-        "mip6" : "send-did-dsp",
-        "mip7" : "send-did-dsp",
-        "mip8" : "send-did-dsp",
         "noise-txrx" : "noise-txrx-dsp"
     },
     "options" : {
@@ -26,49 +17,6 @@
         "bandlimit" : {
             "scale_type" : ["absolute", "absolute"],
             "scale" : [1024.0, 1024.0]
-        },
-        "amp" : {
-            "alias" : "SendSource"
-        },
-        "mip1" : {
-            "scale_type" : ["source", "source"],
-            "scale" : [0.5, 1.0],
-            "alias" : "Mip1"
-        },
-        "mip2" : {
-            "scale_type" : ["source", "source"],
-            "scale" : [0.5, 1.0],
-            "alias" : "Mip2"
-        },
-        "mip3" : {
-            "scale_type" : ["source", "source"],
-            "scale" : [1.0, 0.5],
-            "alias" : "Mip3"
-        },
-        "mip4" : {
-            "scale_type" : ["source", "source"],
-            "scale" : [0.5, 1.0],
-            "alias" : "Mip4"
-        },
-        "mip5" : {
-            "scale_type" : ["source", "source"],
-            "scale" : [1.0, 0.5],
-            "alias" : "Mip5"
-        },
-        "mip6" : {
-            "scale_type" : ["source", "source"],
-            "scale" : [0.5, 1.0],
-            "alias" : "Mip6"
-        },
-        "mip7" : {
-            "scale_type" : ["source", "source"],
-            "scale" : [1.0, 0.5],
-            "alias" : "Mip7"
-        },
-        "mip8" : {
-            "scale_type" : ["source", "source"],
-            "scale" : [0.5, 1.0],
-            "alias" : "Mip8"
         },
         "noise-txrx" : {
             "filter_linear" : true,

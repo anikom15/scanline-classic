@@ -227,8 +227,8 @@ performance benefit or can simplify structure.
    current systems into individual shaders. Keep a single `frameh` shader.
 4. **Reduce fragment work.** Use the selected parameters for sample-to-line
    and line-to-sample mapping; avoid profile dispatch and repeated lookups for
-   invariant values. In particular, calculate the noise pyramid's line
-   alignment once per sample rather than once per mip. Evaluate integer or
+   invariant values. The Tx/Rx noise path now evaluates causal differences
+   directly rather than using a line-aligned pyramid. Evaluate integer or
    rational arithmetic and base-plus-fraction representations before retaining
    double operations in fragment shaders; use the precision required by the
    results, not an unverified float approximation.
@@ -254,8 +254,9 @@ proof that they are free.
 ### Efficiency work in progress
 
 - The Tx/Rx noise passes select the profile in the vertex stage and compute
-  raster alignment once per sample, outside the mip loop. The interpolated
-  debug path does not need raster alignment.
+  causal differences directly from the packed signal at each sample. They no
+  longer require a delta pyramid; span interpolation resolves raster alignment
+  once per fragment.
 - Timing-dependent source shaders now select the profile once per vertex.
   Fragment consumers receive the selected mode as a flat input; PAL and its
   debug override are also resolved in the vertex stage. `frameh` resolves
@@ -266,7 +267,7 @@ proof that they are free.
   the base width is the physical clock width and cumulative clock positions
   are exactly representable. Legacy, partial-field, and other width cases
   retain the line scan.
-- Framing, sync, noise, demodulation, deskew and display-filter paths now
+- Framing, sync, demodulation, deskew and display-filter paths now
   receive a selected flat line-pattern descriptor and exception span. Shared
   fragment mapping handles uniform and alternating lines, a single exception,
   and a general multiple-exception fallback without profile dispatch. The

@@ -292,7 +292,7 @@ int main() {
             subprocess.run([compiler, '-std=c++17', '-O2', str(path), '-o', str(executable)], check=True)
             subprocess.run([str(executable)], check=True)
 
-    def test_pipeline_levels_cover_full_allocation(self):
+    def test_noise_pipelines_read_the_send_source_directly(self):
         root = ROOT / 'presetdata' / 'pipelines' / 'sys'
         pipelines = (
             'rgb.json', 'rgb-vga.json', 'famicom-rgb.json', 'famicom-svideo.json',
@@ -302,64 +302,29 @@ int main() {
         for name in pipelines:
             with self.subTest(pipeline=name):
                 data = json.loads((root / name).read_text(encoding='utf-8'))
-                pixel = data['shaders']['deltav'] == 'send-delta-pixel'
-                width, height = (2048, 2048) if pixel else (1024, 1024)
-                initial_area = width * height
-                self.assertEqual(
-                    [key for key in data['shaders'] if key.startswith('mip')],
-                    [f'mip{level}' for level in range(1, 9)],
-                )
-                self.assertEqual(
-                    [key for key in data['options'] if key.startswith('mip')],
-                    [f'mip{level}' for level in range(1, 9)],
-                )
-                for level in range(1, 9):
-                    key = f'mip{level}'
-                    self.assertEqual(data['shaders'][key], 'send-did-pixel' if pixel else 'send-did-dsp')
-                    options = data['options'][key]
-                    self.assertEqual(options['alias'], f'Mip{level}')
-                    self.assertEqual(options['scale_type'], ['source', 'source'])
-                    width = int(width * options['scale'][0])
-                    height = int(height * options['scale'][1])
-                    self.assertGreaterEqual(min(width, height), 1)
-                    self.assertEqual(width * height, initial_area >> level)
-                self.assertEqual(width * height, initial_area >> 8)
+                pixel = name in ('rgb.json', 'rgb-vga.json', 'famicom-rgb.json')
+                self.assertEqual(data['shaders']['noise-txrx'], 'noise-txrx-pixel' if pixel else 'noise-txrx-dsp')
+                keys = list(data['shaders'])
+                self.assertEqual(keys[keys.index('noise-txrx') - 1], 'amp')
+                self.assertNotIn('amp', data['options'])
+                self.assertNotIn('deltav', keys)
+                self.assertFalse(any(key.startswith('mip') for key in keys))
                 noise = data['options']['noise-txrx']
                 self.assertEqual(noise['scale_type'], ['absolute', 'absolute'])
                 self.assertEqual(noise['scale'], [2048.0, 2048.0] if pixel else [1024.0, 1024.0])
 
-    def test_shader_against_domain_reference(self):
+    def test_direct_causal_noise_stages(self):
         compiler = shutil.which('g++')
         if compiler is None:
             self.skipTest('g++ is required to exercise shader functions')
 
         dsp = (ROOT / 'shaders' / 'dsp.inc').read_text(encoding='utf-8')
-        contract = (ROOT / 'shaders' / 'contract.inc').read_text(encoding='utf-8')
-        profiles = timing_profile_source()
-        producer = (ROOT / 'shaders' / 'send-did-common.slang').read_text(encoding='utf-8')
         consumer = (ROOT / 'shaders' / 'noise-txrx-common.slang').read_text(encoding='utf-8')
-        fragment = producer.split('#pragma stage fragment', 1)[1]
-        shader_code = '\n'.join((
-            shader_function(profiles, 'float timing_profile_storage_length('),
-            shader_function(profiles, 'vec2 timing_profile_raster_position(').replace('{', '{ ++raster_calls;', 1),
-            shader_function(contract, 'float contract_pixel_packed_width('),
-            shader_function(contract, 'bool contract_pixel_texture_fits('),
-            shader_function(dsp, 'int pyramid_max_lod('),
-            shader_function(dsp, 'vec4 sample_pyramid_signal('),
-            shader_function(producer, 'SendDIDState compute_send_did_state('),
-            shader_function(fragment, 'void main()').replace('void main()', 'void render_sample()', 1),
-            shader_function(consumer, 'int delta_v_line_start('),
-            shader_function(consumer, 'vec4 sample_packed_delta_v('),
-            shader_function(consumer, 'vec4 sample_delta_v_level('),
-            '''vec4 sample_delta_v_level(int index, int lod, NoiseTxRxState state) {
-    return sample_delta_v_level(index, lod, delta_v_line_start(index, state), state);
-}''',
-            shader_function(consumer, 'if (TXRX_NOISE_VIEW_MAG_DELTAV > 0.5)').replace(
-                'if (TXRX_NOISE_VIEW_MAG_DELTAV > 0.5)',
-                'void render_debug_view(int sample_index_i, float TXRX_NOISE_MAG_DELTAV_MIP_LOD, NoiseTxRxState vNoiseState)',
-                1,
-            ).replace('int debug_lod =', 'int line_start = delta_v_line_start(sample_index_i, vNoiseState);\n        int debug_lod =', 1),
-        ))
+        fragment = consumer.split('#pragma stage fragment', 1)[1]
+        main = shader_function(fragment, 'void main()').replace('void main()', 'void render_sample()', 1)
+        main = main.split('    float feedback_gain =', 1)[0] + '    FragColor = mag_delta;\n}\n'
+        fetch = shader_function(dsp, 'vec4 fetch_input_sample(').replace(
+            '{', '{\n    if (sample_index > current_test_index) throw std::runtime_error("future sample read");', 1)
         harness = r'''
 #include <algorithm>
 #include <cmath>
@@ -367,302 +332,152 @@ int main() {
 #include <limits>
 #include <stdexcept>
 #include <vector>
-using std::ceil; using std::floor; using std::max; using std::min; using std::clamp; using std::round;
-using std::sqrt; using std::log2; using std::exp2;
-using uint = unsigned int;
-float max(float x, double y) { return std::max(x,float(y)); }
-float clamp(float x, double a, double b) { return std::clamp(x,float(a),float(b)); }
-struct vec2 {
-    float x, y;
-    vec2(float a=0, float b=0): x(a), y(b) {}
-};
-vec2 operator*(vec2 a, vec2 b) { return {a.x*b.x, a.y*b.y}; }
-struct vec4 {
-    float x, y, z, w;
-    vec4(float v=0) : x(v), y(v), z(v), w(v) {}
-    vec4(float a, float b, float c, float d) : x(a), y(b), z(c), w(d) {}
-};
-vec4 operator+(vec4 a, vec4 b) { return {a.x+b.x,a.y+b.y,a.z+b.z,a.w+b.w}; }
-vec4 operator-(vec4 a, vec4 b) { return {a.x-b.x,a.y-b.y,a.z-b.z,a.w-b.w}; }
-vec4 operator*(float s, vec4 a) { return {s*a.x,s*a.y,s*a.z,s*a.w}; }
-vec4 operator*(vec4 a, float s) { return s*a; }
-vec4 mix(vec4 a, vec4 b, float f) { return (1-f)*a+f*b; }
+using std::ceil; using std::floor; using std::max; using std::min;
+using std::exp2; using std::isnan; using std::isinf;
+float clamp(float x, float a, float b) { return std::clamp(x,a,b); }
+struct vec2 { float x,y; vec2(float a=0,float b=0): x(a),y(b) {} };
+vec2 operator*(vec2 a,vec2 b) { return {a.x*b.x,a.y*b.y}; }
 struct ivec2 { int x,y; ivec2(int a,int b): x(a),y(b) {} };
-struct Texture { int w, h; std::vector<vec4> pixels; };
+struct vec4 {
+    float x,y,z,w;
+    vec4(float a=0): x(a),y(a),z(a),w(a) {}
+    vec4(float a,float b,float c,float d): x(a),y(b),z(c),w(d) {}
+    vec4& operator+=(vec4 v) { x+=v.x; y+=v.y; z+=v.z; w+=v.w; return *this; }
+};
+vec4 operator-(vec4 a,vec4 b) { return {a.x-b.x,a.y-b.y,a.z-b.z,a.w-b.w}; }
+vec4 operator+(vec4 a,vec4 b) { return {a.x+b.x,a.y+b.y,a.z+b.z,a.w+b.w}; }
+vec4 operator/(vec4 a,float s) { return {a.x/s,a.y/s,a.z/s,a.w/s}; }
+vec4 operator*(vec4 a,float s) { return {a.x*s,a.y*s,a.z*s,a.w*s}; }
+vec4 mix(vec4 a,vec4 b,float f) { return a*(1-f)+b*f; }
+vec4 abs(vec4 a) { return {std::abs(a.x),std::abs(a.y),std::abs(a.z),std::abs(a.w)}; }
+struct Texture { int w,h; std::vector<vec4> pixels; };
 using sampler2D = Texture*;
-ivec2 textureSize(sampler2D t, int) { return {t->w,t->h}; }
-vec4 texelFetch(sampler2D t, ivec2 p, int) {
-    if (p.x < 0 || p.y < 0 || p.x >= t->w || p.y >= t->h)
+vec4 texelFetch(sampler2D t,ivec2 p,int) {
+    if (p.x<0 || p.y<0 || p.x>=t->w || p.y>=t->h)
         throw std::runtime_error("texture fetch out of bounds");
     return t->pixels[p.y*t->w+p.x];
 }
-struct Size { float x, y; vec2 xy; };
-struct { Size OutputSize, OriginalSize, SendSourceSize, SourceSize; float OriginalFPS; } config;
-struct { unsigned FrameCount; float FIELD_ODD; } global;
-int profile_mode;
-int raster_calls;
-#define TIMING_PROFILE_MODE profile_mode
-#define raster_position(pattern, span, index, width) timing_profile_raster_position(profile_mode, config.OriginalSize.y, global.FrameCount, global.FIELD_ODD, index, width)
-float uintBitsToFloat(uint) { return std::numeric_limits<float>::quiet_NaN(); }
-struct SendDIDState { float frame_height, base_frame_width, input_span, output_frame_width, data_length, texture_fits; };
-SendDIDState vSendDIDState;
-struct NoiseTxRxState { float frame_width, frame_height, data_length, tau, storage_width, texture_fits, max_lod; };
-sampler2D Source, DeltaV, Mip1, Mip2, Mip3, Mip4, Mip5, Mip6, Mip7;
+struct Size { float x,y; vec2 xy; };
+struct { Size OutputSize,SourceSize; } config;
+struct NoiseTxRxState { double frame_width; float data_length,storage_width,texture_fits,max_lod; } vNoiseState;
+sampler2D Source;
 vec2 vTexCoord; vec4 FragColor;
-float mock_width, mock_height;
-float TXRX_NOISE_INTERPOLATE_MIPS = 0;
-template<typename... T> float contract_frame_height(T...) { return mock_height; }
-template<typename... T> float contract_frame_width(T...) { return mock_width; }
-template<typename... T> float contract_working_frame_width(T...) { return mock_width; }
-double timing_profile_rate_width(int, double width, float) { return width; }
-float contract_data_length(float width, float height) { return width*height; }
-#define V_FREQ_MODE 0
-#define V_FREQ 0
-#define SC_FREQ_MODE 0
-#define SC_FREQ 0
-#define PIXEL_CLOCK_MODE 0
-#define PIXEL_CLOCK 0
-#define H_FREQ_MODE 0
-#define H_FREQ 0
-#define DSP_WORKING_FS 0
-#define OPTION_XTALK_SAMPLE_COUNT 9
+int current_test_index;
+float debug_bypass,debug_view,debug_lod_value;
+bool invalid_raster;
+#define TXRX_NOISE_BYPASS debug_bypass
+#define TXRX_NOISE_VIEW_MAG_DELTAV debug_view
+#define TXRX_NOISE_MAG_DELTAV_MIP_LOD debug_lod_value
+vec2 fake_raster_position(float index) {
+    if (invalid_raster) return {std::numeric_limits<float>::quiet_NaN(),0};
+    float start = index < 1364 ? 0 : index < 2727 ? 1364 : 2727;
+    return {index-start,0};
+}
+#define raster_position(pattern, exceptions, index, width) fake_raster_position(index)
+const int XTALK_SAMPLE_COUNT = OPTION_XTALK_SAMPLE_COUNT;
 '''
         checks = r'''
-struct Point { int index; vec4 value; };
-vec4 reference_sample(const std::vector<Point>& points, int index) {
-    auto it = std::upper_bound(points.begin(), points.end(), index,
-        [](int i, const Point& point) { return i < point.index; });
-    if (it == points.begin()) return it->value;
-    return (it - 1)->value;
-}
-vec4 reference_consumer_sample(const std::vector<Point>& points, int index,
-                               int length, int raster_width, int span) {
-    index = clamp(index, 0, length-1);
-    int line_start = (index / raster_width) * raster_width;
-    if (profile_mode==1 && index>=259*1364-4)
-        line_start=((index+4)/raster_width)*raster_width-4;
-    else if (profile_mode==2 && index>=18*1364)
-        line_start=index<18*1364+4 ? 17*1364 :
-            ((index-4)/raster_width)*raster_width+4;
-    int aligned_index = line_start - line_start % span +
-                        ((index - line_start) / span) * span;
-    return reference_sample(points, aligned_index);
-}
-vec4 reference_interpolated_sample(const std::vector<Point>& points, int index) {
-    auto next = std::upper_bound(points.begin(), points.end(), index,
-        [](int i, const Point& point) { return i < point.index; });
-    if (next == points.begin()) return next->value;
-    if (next == points.end()) return points.back().value;
-    auto previous = next - 1;
-    float fraction = float(index - previous->index) / float(next->index - previous->index);
-    return (1-fraction)*previous->value + fraction*next->value;
-}
-void check(vec4 actual, vec4 expected) {
-    if (std::abs(actual.x-expected.x)>1e-5 || std::abs(actual.y-expected.y)>1e-5 ||
-        std::abs(actual.z-expected.z)>1e-5 || std::abs(actual.w-expected.w)>1e-5)
-        throw std::runtime_error("shader result differs from independent reference");
-}
-vec4 source_value(int index, int width) {
-    int x = index % width;
-    float value = float((x >= width/3) + (x >= 2*width/3));
-    return vec4(value, -value, value*0.25f, value*0.5f);
-}
-void run_case(int length, int storage_width, int storage_height, int raster_width, int profile=0) {
-    profile_mode=profile;
-    config.OriginalSize.y=profile==2 ? 478 : 239;
-    global.FrameCount=profile==2 ? 0 : 1;
-    float height = float(length+(profile==1 ? 4 : profile==2 ? -4 : 0)) / raster_width;
-    int data_width = int(contract_pixel_packed_width(float(length)));
-    Texture level{storage_width, storage_height, std::vector<vec4>(storage_width*storage_height)};
-    std::vector<Point> reference;
-    for (int i=0; i<length; ++i) {
-        vec4 value = source_value(i, raster_width);
-        vec4 v = value - source_value(max(i-1,0), raster_width);
-        reference.push_back({i,v});
-        level.pixels[(i/data_width)*storage_width+i%data_width] = v;
+void check(vec4 a,vec4 b) {
+    if (std::abs(a.x-b.x)>1e-5 || std::abs(a.y-b.y)>1e-5 ||
+        std::abs(a.z-b.z)>1e-5 || std::abs(a.w-b.w)>1e-5) {
+        std::cerr << "at " << current_test_index << " debug " << debug_view << " lod " << debug_lod_value
+                  << " got " << a.x << " expected " << b.x << '\n';
+        throw std::runtime_error("causal stage result differs");
     }
-    mock_width = float(raster_width);
-    mock_height = height;
-    config.SendSourceSize.x = float(storage_width);
-    config.SendSourceSize.y = float(storage_height);
-    config.SendSourceSize.xy = {float(storage_width),float(storage_height)};
-    int max_lod = pyramid_max_lod(length,9);
-    NoiseTxRxState state{float(raster_width),height,float(length),0,float(data_width),1,float(max_lod)};
-    std::vector<Texture> levels_data{level};
-    std::vector<std::vector<Point>> references{reference};
-    for (int k=1; k<=8; ++k) {
-        int span = 1 << k;
-        int out_width = level.w, out_height = level.h;
-        if (out_width > out_height) out_width = max(out_width / 2,1);
-        else out_height = max(out_height / 2,1);
-        config.SourceSize.x = float(level.w);
-        config.SourceSize.y = float(level.h);
-        config.SourceSize.xy = {float(level.w),float(level.h)};
-        config.OutputSize.x = float(out_width);
-        config.OutputSize.y = float(out_height);
-        config.OutputSize.xy = {float(out_width),float(out_height)};
-        vSendDIDState = compute_send_did_state(profile_mode);
-        if ((k <= max_lod && vSendDIDState.input_span != span/2) ||
-            vSendDIDState.output_frame_width != out_width || vSendDIDState.texture_fits != 1)
-            throw std::runtime_error("incorrect pyramid geometry");
-        Source = &level;
-        Texture output{out_width,out_height,std::vector<vec4>(out_width*out_height)};
-        std::vector<Point> expected;
-        for (int y=0; y<out_height; ++y) {
-            for (int x=0; x<out_width; ++x) {
-                vTexCoord = {(x+0.5f)/out_width,(y+0.5f)/out_height};
-                render_sample();
-                int index = (y*out_width+x)*span;
-                vec4 result(0);
-                if (k<=max_lod && index<length) {
-                    result = 0.5f*(reference_sample(reference,index) +
-                                   reference_sample(reference,index-span/2));
-                    expected.push_back({index,result});
-                }
-                check(FragColor,result);
-                output.pixels[y*out_width+x] = FragColor;
-            }
-        }
-        level = std::move(output);
-        if (k<=max_lod) reference = std::move(expected);
-        levels_data.push_back(level);
-        references.push_back(reference);
-    }
-    sampler2D* samplers[] = {&DeltaV,&Mip1,&Mip2,&Mip3,&Mip4,&Mip5,&Mip6,
-        &Mip7,&Source};
-    for (int k=0; k<=8; ++k) *samplers[k] = &levels_data[k];
-    int test_index = length - 1;
-    raster_calls = 0;
-    int line_start = delta_v_line_start(test_index, state);
-    for (int k=0; k<=max_lod; ++k)
-        check(sample_delta_v_level(test_index, k, line_start, state),
-            reference_consumer_sample(references[k], test_index, length, raster_width, 1 << k));
-    if (raster_calls != 1)
-        throw std::runtime_error("raster alignment was not resolved once per sample");
-    for (int k=0; k<=max_lod; ++k)
-        for (int index=0; index<length; index+=max(length/113,1)) {
-            check(sample_delta_v_level(index,k,state),
-                reference_consumer_sample(references[k], index, length, raster_width, 1 << k));
-        }
-    for (int index : {0, raster_width/3-1, raster_width/3,
-                      raster_width-1, raster_width, raster_width+1,
-                      raster_width+raster_width/3-1, raster_width+raster_width/3,
-                      2*raster_width+raster_width/3, 259*1364-5, 259*1364-4,
-                      259*1364-3, 18*1364-1, 18*1364,
-                      18*1364+3, 18*1364+4, length-1}) {
-        if (index < 0 || index >= length) continue;
-        for (float lod : {-1.0f, 0.0f, 0.5f, 1.0f, 3.5f, 8.0f, 10.0f}) {
-            int effective_lod = int(floor(std::clamp(lod, 0.0f, float(max_lod))));
-            vec4 expected = reference_consumer_sample(
-                references[effective_lod], index, length, raster_width, 1 << effective_lod);
-            render_debug_view(index, lod, state);
-            check(FragColor, expected * float(exp2(effective_lod)));
-        }
-    }
-#ifdef OPTION_DEBUG
-    TXRX_NOISE_INTERPOLATE_MIPS = 1;
-    raster_calls = 0;
-    line_start = delta_v_line_start(test_index, state);
-    for (int k=0; k<=max_lod; ++k)
-        check(sample_delta_v_level(test_index, k, line_start, state),
-            reference_interpolated_sample(references[k], test_index));
-    if (raster_calls != 0)
-        throw std::runtime_error("interpolated debug sampling unnecessarily resolved raster alignment");
-    for (int k=0; k<=max_lod; ++k)
-        for (int index=0; index<length; index+=max(length/113,1))
-            check(sample_delta_v_level(index,k,state),
-                reference_interpolated_sample(references[k], index));
-    for (int index : {0, raster_width-1, raster_width, raster_width+1, length-1}) {
-        if (index < 0 || index >= length) continue;
-        for (float lod : {0.0f, 1.0f, 3.5f, 8.0f}) {
-            int effective_lod = int(floor(std::clamp(lod, 0.0f, float(max_lod))));
-            render_debug_view(index, lod, state);
-            check(FragColor, reference_interpolated_sample(references[effective_lod], index) *
-                float(exp2(effective_lod)));
-        }
-    }
-    TXRX_NOISE_INTERPOLATE_MIPS = 0;
-#endif
+}
+vec4 value(int i) {
+    return {float(i%23)*0.125f,-float(i%11)*0.25f,float(i%5)*0.5f,float(i%7)*0.125f};
+}
+vec4 stage(int i,int span) {
+    i=max(i,0);
+    return value(i)-value(max(i-span,0));
+}
+vec4 expected_stage(int i,int span) {
+    int start=i<1364 ? 0 : i<2727 ? 1364 : 2727;
+    int offset=(i-start)%span;
+    int anchor=i-offset;
+    return mix(stage(anchor-span,span),stage(anchor,span),float(offset)/span);
+}
+void sample(int i) {
+    current_test_index = i;
+    int x=i%8,y=i/8;
+    vTexCoord=vec2((x+0.5f)/16,(y+0.5f)/512);
+    render_sample();
 }
 int main() {
-    Texture triangle{2,2,{vec4(0),vec4(4),vec4(0),vec4(4)}};
-    NoiseTxRxState triangle_state{5,3,13,0,5,1,2};
-    Mip2 = &triangle;
-    check(sample_delta_v_level(-1,2,triangle_state),vec4(0));
-    check(sample_delta_v_level(3,2,triangle_state),vec4(0));
-    check(sample_delta_v_level(4,2,triangle_state),vec4(4));
-    check(sample_delta_v_level(5,2,triangle_state),vec4(4));
-    check(sample_delta_v_level(7,2,triangle_state),vec4(4));
-    check(sample_delta_v_level(8,2,triangle_state),vec4(4));
-    check(sample_delta_v_level(9,2,triangle_state),vec4(0));
-    check(sample_delta_v_level(10,2,triangle_state),vec4(0));
-    check(sample_delta_v_level(12,2,triangle_state),vec4(0));
-    check(sample_delta_v_level(20,2,triangle_state),vec4(0));
-#ifdef OPTION_DEBUG
-    TXRX_NOISE_INTERPOLATE_MIPS = 1;
-    check(sample_delta_v_level(-1,2,triangle_state),vec4(0));
-    check(sample_delta_v_level(3,2,triangle_state),vec4(3));
-    check(sample_delta_v_level(4,2,triangle_state),vec4(4));
-    check(sample_delta_v_level(5,2,triangle_state),vec4(3));
-    check(sample_delta_v_level(7,2,triangle_state),vec4(1));
-    check(sample_delta_v_level(8,2,triangle_state),vec4(0));
-    check(sample_delta_v_level(10,2,triangle_state),vec4(2));
-    check(sample_delta_v_level(12,2,triangle_state),vec4(4));
-    check(sample_delta_v_level(20,2,triangle_state),vec4(4));
-    triangle_state.data_length = 12;
-    check(sample_delta_v_level(11,2,triangle_state),vec4(0));
-    Texture line_mip1{2048,1,std::vector<vec4>(2048)};
-    Texture line_mip2{1024,1,std::vector<vec4>(1024)};
-    Texture line_mip3{1024,1,std::vector<vec4>(1024)};
-    line_mip1.pixels[682] = vec4(11);
-    line_mip2.pixels[341] = vec4(22);
-    line_mip3.pixels[170] = vec4(10);
-    line_mip3.pixels[171] = vec4(30);
-    Mip1 = &line_mip1; Mip2 = &line_mip2; Mip3 = &line_mip3;
-    NoiseTxRxState line_state{1364,262,357386,0,1024,1,8};
-    check(sample_delta_v_level(1364,1,line_state),vec4(11));
-    check(sample_delta_v_level(1364,2,line_state),vec4(22));
-    check(sample_delta_v_level(1364,3,line_state),vec4(20));
-    TXRX_NOISE_INTERPOLATE_MIPS = 0;
-#endif
-    if (pyramid_max_lod(1,9)!=0 || pyramid_max_lod(2,9)!=1 ||
-        pyramid_max_lod(3,9)!=2 || pyramid_max_lod(8,9)!=3 ||
-        pyramid_max_lod(9,9)!=4 || pyramid_max_lod(127,9)!=7 ||
-        pyramid_max_lod(128,9)!=7 || pyramid_max_lod(129,9)!=8 ||
-        pyramid_max_lod(255,9)!=8 ||
-        pyramid_max_lod(256,9)!=8 || pyramid_max_lod(257,9)!=8 ||
-        pyramid_max_lod(4194304,9)!=8 || pyramid_max_lod(4194304,5)!=4 ||
-        pyramid_max_lod(4194304,1)!=0)
-        throw std::runtime_error("incorrect terminal level");
-    for (int length=1; length<=513; ++length) {
-        int span=1, terminal_lod=0;
-        while (span<length && terminal_lod<8) {
-            span *= 2;
-            ++terminal_lod;
-        }
-        for (int count=1; count<=9; ++count)
-            if (pyramid_max_lod(length,count)!=min(terminal_lod,count-1))
-                throw std::runtime_error("incorrect LOD at length or quality boundary");
+    Texture source{16,512,std::vector<vec4>(16*512)};
+    Source=&source;
+    config.OutputSize={16,512,{16,512}};
+    config.SourceSize=config.OutputSize;
+    if (dyadic_max_lod(4194304,21)!=20 || dyadic_max_lod(1048576,21)!=20 ||
+        dyadic_max_lod(1025,21)!=11 || dyadic_max_lod(4194304,11)!=10 ||
+        dyadic_max_lod(4194304,1)!=0)
+        throw std::runtime_error("incorrect maximum quality limit");
+    for (int length=1;length<=513;++length) {
+        int span=1,lod=0;
+        while (span<length && lod<20) { span*=2; ++lod; }
+        for (int count=1;count<=21;++count)
+            if (dyadic_max_lod(length,count)!=min(lod,count-1))
+                throw std::runtime_error("incorrect quality limit");
     }
-    for (int length : {1,2,3,7,8,9,13,16,17})
-        run_case(length,16,8,5);
-    run_case(357386,2048,2048,1364);
-    run_case(357364,2048,2048,1364,1);
-    run_case(425572,2048,2048,1364,2);
-    run_case(2097153,2048,2048,2048);
-    std::cout << "pyramid and sampling checks passed\n";
+    for (int length : {1,13,2801}) {
+        for (int i=0;i<length;++i) source.pixels[(i/8)*16+i%8]=value(i);
+        vNoiseState={1364,float(length),8,1,float(dyadic_max_lod(length,XTALK_SAMPLE_COUNT))};
+        for (int i=0;i<length;++i) {
+            vec4 expected(0);
+            for (int k=0;k<=int(vNoiseState.max_lod);++k)
+                expected += abs(expected_stage(i,1<<k)) / float(k+1);
+            sample(i);
+            check(FragColor,expected);
+        }
+#ifdef OPTION_DEBUG
+        debug_view=1;
+        for (float lod : {-1.0f,0.0f,1.9f,3.0f,8.0f,20.0f}) {
+            debug_lod_value=lod;
+            int lod_i=int(floor(clamp(lod,0.0f,vNoiseState.max_lod)));
+            int i=length-1, span=1<<lod_i;
+            sample(i);
+            check(FragColor,expected_stage(i,span));
+        }
+        debug_view=0; debug_bypass=1;
+        sample(length-1);
+        check(FragColor,value(length-1));
+        debug_bypass=0;
+#endif
+    }
+    vNoiseState.texture_fits=0;
+    sample(0);
+    check(FragColor,vec4(1,0,1,1));
+    vNoiseState.texture_fits=1;
+    current_test_index=0; vTexCoord=vec2(8.5f/16,0.5f/512);
+    render_sample();
+    check(FragColor,vec4(0));
+    invalid_raster=true;
+    sample(0);
+    check(FragColor,vec4(1,0,1,1));
+    Texture large{1024,1537,std::vector<vec4>(1024*1537)};
+    large.pixels[0]=vec4(2);
+    large.pixels[1048576]=vec4(18);
+    Source=&large;
+    config.SourceSize={1024,1537,{1024,1537}};
+    vNoiseState={1024,1572865,1024,1,20};
+    current_test_index=1572864;
+    check(sample_delta_v_level(1572864,20,0,vNoiseState),vec4(8));
 }
 '''
+        code = '\n'.join((shader_function(dsp, 'int dyadic_max_lod('), fetch,
+                          shader_function(consumer, 'vec4 sample_noise_signal('),
+                          shader_function(consumer, 'vec4 sample_delta_v_level('), main))
         with tempfile.TemporaryDirectory() as temp:
-            source = Path(temp) / 'test.cpp'
-            executable = Path(temp) / 'test'
-            source.write_text(harness + shader_code + checks, encoding='utf-8')
-            for domain in ('pixel', 'dsp'):
+            source = Path(temp) / 'causal-noise.cpp'
+            executable = Path(temp) / 'causal-noise'
+            source.write_text(harness + code + checks, encoding='utf-8')
+            for count in (1, 11, 21):
                 for debug in (False, True):
-                    flags = ['-DSEND_PIXEL_DOMAIN'] if domain == 'pixel' else []
+                    flags = [f'-DOPTION_XTALK_SAMPLE_COUNT={count}']
                     if debug:
                         flags.append('-DOPTION_DEBUG')
-                    with self.subTest(domain=domain, debug=debug):
+                    with self.subTest(count=count, debug=debug):
                         subprocess.run([compiler, '-std=c++17', '-O2', *flags, str(source),
                                         '-o', str(executable)], check=True)
                         subprocess.run([str(executable)], check=True)

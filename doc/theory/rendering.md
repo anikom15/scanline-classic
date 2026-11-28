@@ -26,30 +26,24 @@ An undersized pixel-domain allocation produces magenta.
 `sys-bandlimit` reads this packed pixel stream and emits the existing
 line-aligned DSP-domain raster. Its output allocation must therefore be sized
 for the DSP line width and field height, not the packed input dimensions.
-The pixel and DSP delta pyramids pack each reduced level as a continuous
-stream. Their 8 stages alternate the halved texture axis; DSP input and
-output remain line-aligned. The crosstalk quality setting counts the base
-level plus up to 8 mip levels. The consumer stops at the first level
-containing one sample; later fixed preset passes write zero. For crosstalk and
-the debug view, each level subtracts `(line * frame_width) % span` from the
-field-relative index, aligning the lookup grid to the raster line. The consumer
-selects the preceding stored sample without interpolation; the correction can
-select a sample from before the line start. The producer remains field-relative:
-each produced sample averages the previous level at that time and one
-previous-level span earlier. The debug option "Interpolate DeltaV samples in
-field time" replaces the phase-aligned lookup with linear interpolation at the
-unshifted field-relative time, for both crosstalk and the debug view. LODs are
-sampled discretely in either mode; fractional debug
-selections round down after clamping. The debug view scales the selected level
-by 2^LOD.
+The pixel and DSP Tx/Rx noise passes read the packed signal directly. At each
+sample they evaluate causal differences over spans `1, 2, 4, ...` samples,
+clamping history to the start of the field. Line-aligned interpolation blends
+the two most recent stage anchors before their magnitudes are summed with
+weight `1 / (LOD + 1)`. This adds up to one span of delay and never reads a future
+sample. The quality setting counts the base span plus up to 20 larger spans
+(11 stages by default), stopping at the first span covering the field. The
+debug view shows the signed result for the selected discrete stage. This avoids
+line-to-line decimation phase drift without resampling the raster or requiring
+a delta pyramid.
 
 To migrate DSP-domain shaders to packed storage later, derive the packed
 width from their own sample count at the working or output sample rate, use
 that width for sample-index/texture-coordinate conversion, and retain the
 timing-derived raster width separately for line phase, sync, and presentation.
-Update resamplers, neighborhood sampling and dyadic pyramid sizing together;
-do not use texture width as the signal line width. Outside the delta pyramid,
-DSP-domain shaders remain line-aligned. Other older consumers of `frameh` that bypass
+Update resamplers and neighborhood sampling together; do not use texture width
+as the signal line width. DSP-domain shaders remain line-aligned. Other older
+consumers of `frameh` that bypass
 `sys-bandlimit` also require migration to understand the new layout.
 
 ## Compact diagram (at a glance)
@@ -128,6 +122,10 @@ This follows the Slang guidance that complex pipelines should keep conversions i
 ### 1) Direct processing (signal-domain transport + decode)
 
 Treat source as normalized video signal levels, then model console/transport/decoder behavior.
+
+The system Y/C modulator models carrier leakage as an unmodulated cosine-axis
+subcarrier, using the selected carrier shape and without PAL line alternation.
+Its dB setting specifies the fundamental's amplitude relative to unit voltage.
 
 - **Pass 1**: `frameh.slang` (horizontal framing in signal path)
 - **Pass 2**: `famicom-special.slang` (Famicom output waveform synthesis)

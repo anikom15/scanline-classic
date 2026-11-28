@@ -849,6 +849,26 @@ class TimingProfilePresetTests(unittest.TestCase):
             generate_filter_taps(ROOT, output / 'shaders')
         generate_timing_profiles(ROOT, output / 'shaders')
 
+    def test_console_crosstalk_overrides_reach_generated_presets(self):
+        with tempfile.TemporaryDirectory() as temp:
+            for name, system in (('n64-svideo', 'n64'), ('psx-rgb', 'psx')):
+                with self.subTest(preset=name):
+                    output = Path(temp) / name
+                    self.prepare_generated_includes(output)
+                    subprocess.run([
+                        sys.executable, str(ROOT / 'external' / 'presetgen' / 'presetgen.py'),
+                        '--input', str(ROOT / 'presetdata' / 'input' / 'professional' / f'{name}.json'),
+                        '--output', str(output), '--config', str(ROOT / 'presetdata' / 'presetgen.json'),
+                    ], capture_output=True, text=True, check=True)
+                    preset = (output / 'presets' / 'professional' / f'{system}.slangp').read_text(encoding='utf-8')
+                    values = {
+                        key.strip(): value.strip().strip('"')
+                        for line in preset.splitlines() if '=' in line
+                        for key, value in [line.split('=', 1)]
+                    }
+                    self.assertEqual(float(values['TXRX_NOISE_XTALK_DB']), -62.0)
+                    self.assertNotIn('TXRX_NOISE_CROSSTALK_DB', values)
+
     def test_vga_rates_are_exposed_only_to_vga_presets(self):
         cases = (
             ('professional', 'sfc-rgb', 'sfc', None),

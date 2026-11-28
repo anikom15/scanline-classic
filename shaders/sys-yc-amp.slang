@@ -47,9 +47,6 @@ layout(push_constant) uniform Push
     float SYS_GAIN_Y;
     float SYS_GAIN_C;
 
-    float TXRX_NOISE_IMD2;
-    float TXRX_NOISE_IMD3;
-
 #ifdef OPTION_DEBUG
     float SYS_YC_AMP_BYPASS;
 #endif  // OPTION_DEBUG
@@ -66,9 +63,6 @@ layout(push_constant) uniform Push
 #define SYS_GAIN_Y config.SYS_GAIN_Y
 #define SYS_GAIN_C config.SYS_GAIN_C
 
-#define TXRX_NOISE_IMD2 config.TXRX_NOISE_IMD2
-#define TXRX_NOISE_IMD3 config.TXRX_NOISE_IMD3
-
 layout(std140, set = 0, binding = 0) uniform UBO
 {
     mat4 MVP;
@@ -80,7 +74,6 @@ layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
 layout(location = 1) out vec2 gain;
 layout(location = 2) out vec2 bias;
-layout(location = 3) out vec2 imd;
 
 void main()
 {
@@ -96,18 +89,12 @@ void main()
         SYS_BIAS_Y * 10e-3,
         SYS_BIAS_C * 10e-3
     );
-
-    imd = vec2(
-        pow(10.0, TXRX_NOISE_IMD2 / 20.0),
-        4.0 / 3.0 * pow(10.0, TXRX_NOISE_IMD3 / 20.0)
-    );
 }
 
 #pragma stage fragment
 layout(location = 0) in vec2 vTexCoord;
 layout(location = 1) in vec2 gain;
 layout(location = 2) in vec2 bias;
-layout(location = 3) in vec2 imd;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 1) uniform sampler2D Source;
 
@@ -122,8 +109,6 @@ void main()
     }
 #endif  // OPTION_DEBUG
 
-    vec2 distortion = imd.x * (v * v) - imd.y * (v * v * v);
-
-    v = gain * (v + distortion) + bias;
+    v = gain * v + bias;
     FragColor = vec4(v, 0.0, 1.0);
 }

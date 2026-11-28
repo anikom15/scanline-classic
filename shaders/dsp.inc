@@ -46,32 +46,16 @@ vec4 fetch_input_sample(sampler2D source, vec2 source_size, float sample_index, 
     return texelFetch(source, ivec2(texel_x, texel_y), 0);
 }
 
-// Return the highest usable LOD: stop at one sample, the eight supported
-// mip levels, or `sample_count` (which includes the base level), whichever
-// comes first. `data_length` counts original samples, rounded up by the caller.
-int pyramid_max_lod(int data_length, int sample_count)
+// Stop at the first span covering the field, 20 levels, or the quality limit.
+int dyadic_max_lod(int data_length, int sample_count)
 {
     int remaining = max(data_length, 1);
     int lod = 0;
-    while (remaining > 1 && lod < 8) {
+    while (remaining > 1 && lod < 20) {
         remaining = remaining / 2 + remaining % 2;
         lod += 1;
     }
     return min(lod, sample_count - 1);
-}
-
-// Fetch a continuously packed dyadic level at an original-stream index.
-// `sample_index` and `data_length` are in original samples. `span` is the
-// number of original sample intervals between adjacent level samples (2^LOD);
-// sample j corresponds to original index j * span. Indices between grid points
-// select the preceding sample. `width` is the packed stride in texels, not the
-// raster line width. Indices outside the stream repeat the nearest edge.
-vec4 sample_pyramid_signal(sampler2D source, int sample_index, int width, int span, int data_length)
-{
-    int index = clamp(sample_index, 0, data_length - 1);
-    int level_index = index / span;
-    width = max(width, 1);
-    return texelFetch(source, ivec2(level_index % width, level_index / width), 0);
 }
 
 // Reconstructs the absolute wrapped carrier phase at a given sample index
