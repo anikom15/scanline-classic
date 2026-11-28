@@ -1,0 +1,20 @@
+{
+  "filename" : "sfc-composite-iq-test",
+  "type" : "professional",
+  "title" : "Super Famicom composite IQ round-trip test",
+  "description" : "Experimental half-rate IQ analysis and synthesis without RF processing.",
+  "pipelines" : [
+    "sys/rgb-component-composite-iq.json",
+    "disp/crt-composite-sd.json",
+    "misc/post.json"
+  ],
+  "parameter_sets" : [
+    "sys/sfc/base.json",
+    "sys/sfc/profile.json",
+    "disp/ntscj.json",
+    "disp/trinitron.json",
+    "disp/tvl-m-600.json"
+  ],
+  "parameter_overrides" : {
+  }
+}

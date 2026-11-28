@@ -1,0 +1,37 @@
+{
+    "shaders" : {
+        "frame" : "frameh",
+        "sync" : "sys-sync",
+        "noise-dac" : "noise-dac",
+        "bandlimit" : "sys-bandlimit",
+        "component" : "sys-component",
+        "mod" : "sys-component-yc",
+        "amp" : "sys-cv-amp",
+        "cv-iq" : "cv-iq",
+        "iq-cv" : "iq-cv",
+        "noise-txrx" : "noise-txrx-dsp"
+    },
+    "options" : {
+        "frame" : {
+            "scale_type" : ["absolute", "absolute"],
+            "scale" : [2048.0, 2048.0]
+        },
+        "bandlimit" : {
+            "scale_type" : ["absolute", "absolute"],
+            "scale" : [1024.0, 1024.0]
+        },
+        "cv-iq" : {
+            "scale_type" : ["absolute", "absolute"],
+            "scale" : [1024.0, 1024.0]
+        },
+        "iq-cv" : {
+            "scale_type" : ["absolute", "absolute"],
+            "scale" : [1024.0, 1024.0]
+        },
+        "noise-txrx" : {
+            "filter_linear" : true,
+            "scale_type" : ["absolute", "absolute"],
+            "scale" : [1024.0, 1024.0]
+        }
+    }
+}

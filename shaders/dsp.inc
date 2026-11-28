@@ -20,6 +20,9 @@
 const float DSP_SD_WORKING_FS = 32.0e6;
 const float DSP_SD_OUTPUT_FS = 16.0e6;
 
+#define DSP_SD_IQ_WORKING_FS (DSP_SD_WORKING_FS / 2.0)
+#define DSP_DS_IQ_OUTPUT_FS DSP_SD_WORKING_FS
+
 // Samples a packed 2D grid of stored samples as a 1D stream
 //
 // Parameters:

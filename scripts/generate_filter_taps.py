@@ -92,6 +92,39 @@ def _kaiser_taps(sample_rate_hz, transition_hz, attenuation_db):
     return math.ceil((attenuation_db - 8.0) / (2.285 * delta_omega)) | 1
 
 
+def _iq_coefficients(threshold):
+    # Use the common analog attenuation and a 1 MHz transition to size both
+    # kernels. Blackman suppresses finite-length Hilbert ripple.
+    taps = _kaiser_taps(SYSTEM_DSP_HZ, 1.0e6, max(40.0, -20.0 * math.log10(threshold)))
+    radius = ((taps - 1) // 2) | 1
+    h = {}
+    for k in range(-radius, radius + 1, 2):
+        x = math.pi * k / (radius + 1)
+        h[k] = 2.0 / (math.pi * k) * (0.42 + 0.5 * math.cos(x) + 0.08 * math.cos(2.0 * x))
+
+    # Interpolate the even phase with a Hamming-windowed halfband kernel.
+    # The 1 MHz design transition provides margin for the 6 MHz passband.
+    p = {}
+    for k in range(-radius, radius + 1, 2):
+        x = math.pi * k / (radius + 1)
+        p[k] = 2.0 * math.sin(math.pi * k / 2.0) / (math.pi * k) * (0.54 + 0.46 * math.cos(x))
+    gain = sum(p.values())
+    p = {k: value / gain for k, value in p.items()}
+
+    hh = {}
+    for a, x in h.items():
+        for b, y in h.items():
+            hh[a + b] = hh.get(a + b, 0.0) + x * y
+    c = dict(p)
+    # Synthesis combines the inverse Hilbert phase with an even-phase
+    # interpolation of the residual, preserving DC when the Hilbert gain
+    # approaches zero.
+    for a, x in p.items():
+        for b, y in hh.items():
+            c[a + b] = c.get(a + b, 0.0) + x * y
+    return h, c
+
+
 def _minimum_transition(menu, cutoff_name, stopband_name, enforced_minimum):
     cutoff_max = _parameter(menu, cutoff_name)[1]
     stopband_min = _parameter(menu, stopband_name)[0]
@@ -223,6 +256,7 @@ def calculate_filter_taps(root):
     secondary = _gaussian_taps(
         _sigma(_constant(sharpener, 'SHARPNESS_SECONDARY_BANDWIDTH_HZ'), sharpener_attenuation),
         SYSTEM_DSP_HZ, sharpener_thresholds['emphasis2_sigma'])
+    iq_h, iq_c = _iq_coefficients(thresholds['FILTER_THRESHOLD_ANALOG'])
 
     return [
         ('sys-bandlimit.slang', 'SYS_BANDLIMIT_MAX_TAPS',
@@ -239,6 +273,8 @@ def calculate_filter_taps(root):
          {'Kaiser': rgb_kaiser}),
         ('sharpen.slang', 'SHARPEN_MAX_TAPS',
          {'primary Gaussian': primary, 'secondary Gaussian': secondary}),
+        ('cv-iq.slang', 'CV_IQ_MAX_TAPS', {'Hilbert polyphase': len(iq_h)}),
+        ('iq-cv.slang', 'IQ_CV_MAX_TAPS', {'synthesis I polyphase': len(iq_c)}),
     ]
 
 
@@ -254,6 +290,11 @@ def generate_filter_taps(root, output_dir=None):
             detail += '; display-component.slang and display-svideo-filter.slang'
         print(f"  {shader}: {cap} ({detail})", flush=True)
         lines.append(f'const int {symbol} = {cap};')
+    threshold = _constant(Path(root) / 'shaders' / 'common.inc', 'FILTER_THRESHOLD_ANALOG')
+    iq_h, iq_c = _iq_coefficients(threshold)
+    for name, coeffs in (('CV_IQ_H', iq_h), ('IQ_CV_I', iq_c)):
+        values = ', '.join(f'{coeffs[k]:.12e}' for k in sorted(coeffs))
+        lines.append(f'const float {name}[{len(coeffs)}] = float[]({values});')
     output_dir = Path(output_dir) if output_dir is not None else Path(root) / 'out' / 'shaders'
     output_dir.mkdir(parents=True, exist_ok=True)
     output = output_dir / 'filter-taps.inc'

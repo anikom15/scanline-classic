@@ -40,10 +40,23 @@ checks both the pixel-domain source and working-domain destination.
 `display-composite.slang` - Gaussian notch/bandpass and line-comb separation
 `display-svideo-demod.slang` - PAL simple, delay-line, or adaptive chroma decoding
 `sharpen.slang` - dual Gaussian luma bandpass enhancement
+`cv-iq.slang` / `iq-cv.slang` - half-rate analytic conversion and reconstruction
 
 The system lowpass designs share Gaussian gain and Butterworth cutoff and
 prewarped-coefficient calculations in `lowpass.inc`, while retaining their separate guards,
 tap limits and delay handling.
+
+The experimental `rgb-component-composite-iq` system pipeline places the new
+pair after composite encoding without changing the existing RF presets. The
+`sfc-composite-iq-test` preset exercises it. I and Q
+are the even-indexed composite samples and their Hilbert transform respectively,
+packed at 16 MHz; the original field length and 32 MHz packing are restored by
+the second pass. The generated polyphase FIR coefficients use the analog
+threshold (with at least 40 dB attenuation) and a 1 MHz design transition.
+The synthesis residual preserves DC;
+the reference response error is below 1% from DC through 6 MHz away from field
+edges. Repeat-edge extension applies at the field boundaries. Frequencies
+outside that range, especially near Nyquist, are not guaranteed to reconstruct.
 
 ## SD Display DSP domain
 

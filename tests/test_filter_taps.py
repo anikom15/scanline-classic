@@ -1,5 +1,7 @@
 import contextlib
+import cmath
 import io
+import math
 import re
 import shutil
 import subprocess
@@ -18,6 +20,7 @@ from scripts.generate_filter_taps import (
     _butterworth_taps,
     _gaussian_taps,
     _kaiser_taps,
+    _iq_coefficients,
     _sigma,
     calculate_filter_taps,
     generate_filter_taps,
@@ -91,6 +94,137 @@ int main() {
         for _, symbol, designs in calculate_filter_taps(self.root):
             self.assertIn(f'const int {symbol} = {max(designs.values())};', generated)
         self.assertFalse((self.root / 'shaders' / 'filter-taps.inc').exists())
+
+    def test_iq_round_trip_response_and_quadrature(self):
+        h, c = _iq_coefficients(0.01)
+        for khz in range(0, 6001, 10):
+            omega = math.pi * khz / 16000
+            hilbert = sum(v * cmath.exp(-1j * omega * k) for k, v in h.items())
+            residual = sum(v * cmath.exp(-1j * omega * k) for k, v in c.items())
+            # At odd samples the two polyphase branches reconstruct C - H^2.
+            self.assertLess(abs(residual - hilbert * hilbert - 1), 0.01, khz)
+        omega = math.pi * 4 / 16
+        hilbert = sum(v * cmath.exp(-1j * omega * k) for k, v in h.items())
+        self.assertLess(abs(hilbert + 1j), 0.01)
+        self.assertAlmostEqual(sum(h.values()), 0.0, places=12)
+
+    def test_iq_generated_coefficients_and_packing(self):
+        with contextlib.redirect_stdout(io.StringIO()):
+            generate_filter_taps(self.root)
+        include = (self.root / 'out' / 'shaders' / 'filter-taps.inc').read_text(encoding='utf-8')
+        h, c = _iq_coefficients(0.01)
+        for name, coeffs in (('CV_IQ_H', h), ('IQ_CV_I', c)):
+            match = re.search(rf'const float {name}\[(\d+)\] = float\[\]\(([^;]+)\);', include)
+            self.assertIsNotNone(match)
+            values = [float(value) for value in match.group(2).split(',')]
+            self.assertEqual(int(match.group(1)), len(coeffs))
+            for value, offset in zip(values, sorted(coeffs)):
+                self.assertAlmostEqual(value, coeffs[offset], places=11)
+        shader = (ROOT / 'shaders' / 'cv-iq-vertex.inc').read_text(encoding='utf-8')
+        self.assertIn('IQLength = ceil(CVLength * (DSP_SD_IQ_WORKING_FS / DSP_SD_WORKING_FS));', shader)
+        self.assertIn('IQWidth = contract_pixel_packed_width(IQLength);', shader)
+
+    def test_iq_shader_round_trip_on_packed_stream(self):
+        compiler = shutil.which('g++')
+        if compiler is None:
+            self.skipTest('g++ is required to exercise shader functions')
+        h, c = _iq_coefficients(0.01)
+        arrays = '\n'.join(
+            f'const int {count} = {len(coeffs)}; const float {name}[] = {{'
+            + ','.join(f'{coeffs[k]:.12e}f' for k in sorted(coeffs)) + '};'
+            for count, name, coeffs in (
+                ('CV_IQ_MAX_TAPS', 'CV_IQ_H', h), ('IQ_CV_MAX_TAPS', 'IQ_CV_I', c)))
+        analysis = shader_function((ROOT / 'shaders' / 'cv-iq.slang').read_text(encoding='utf-8'),
+                                   'void main(').replace('void main(', 'void analyse(')
+        synthesis = shader_function((ROOT / 'shaders' / 'iq-cv.slang').read_text(encoding='utf-8'),
+                                    'void main(').replace('void main(', 'void synthesise(')
+        harness = r'''
+#include <algorithm>
+#include <cmath>
+#include <stdexcept>
+#include <vector>
+using std::floor;
+struct vec2 {
+    float x,y;
+    vec2(float x, float y): x(x), y(y) {}
+};
+vec2 operator*(vec2 a,vec2 b) { return {a.x*b.x,a.y*b.y}; }
+vec2 floor(vec2 a) { return {floor(a.x),floor(a.y)}; }
+struct vec4 {
+    float r,g,b,a;
+    vec4(): r(0),g(0),b(0),a(0) {}
+    vec4(float v): r(v),g(v),b(v),a(v) {}
+    vec4(float r,float g,float b,float a): r(r),g(g),b(b),a(a) {}
+};
+struct Size { vec2 xy{64,64}; };
+struct Config { Size OutputSize,SourceSize; } config;
+vec2 vTexCoord(0,0);
+float CVLength=2001,IQLength=1001,CVWidth=64,IQWidth=32,TextureFits=1;
+vec4 FragColor;
+int Source;
+std::vector<vec4> input;
+int source_width=64;
+float mod(float a,float b) { return a-b*floor(a/b); }
+vec4 fetch_input_sample(int,vec2,float index,float width,float limit) {
+    if (int(width)!=source_width) throw std::runtime_error("incorrect packed stride");
+    return input[std::clamp(int(floor(index)),0,int(limit))];
+}
+'''
+        checks = r'''
+int main() {
+    const double pi=3.14159265358979323846;
+    for (double mhz : {0.0,0.1,2.0,4.0,6.0}) {
+        std::vector<vec4> original(2001), iq(1001);
+        for (int n=0;n<2001;++n)
+            original[n]=vec4(float(std::cos(2*pi*mhz*n/32+0.37)),0,0,1);
+        input=original;
+        source_width=64;
+        for (int n=0;n<1001;++n) {
+            vTexCoord=vec2((n%32+0.5f)/64,(n/32+0.5f)/64);
+            analyse();
+            iq[n]=FragColor;
+        }
+        input=iq;
+        source_width=32;
+        for (int n=200;n<1800;++n) {
+            vTexCoord=vec2((n%64+0.5f)/64,(n/64+0.5f)/64);
+            synthesise();
+            if (std::abs(FragColor.r-original[n].r)>0.01)
+                throw std::runtime_error("IQ round trip exceeds 1% error");
+        }
+        if (mhz==4.0) {
+            int n=501;
+            vTexCoord=vec2((n%64+0.5f)/64,(n/64+0.5f)/64);
+            synthesise();
+            float with_q=FragColor.r;
+            for (auto& sample: input) sample.g=0;
+            synthesise();
+            if (std::abs(with_q-FragColor.r)<0.1)
+                throw std::runtime_error("quadrature channel does not contribute");
+        }
+        if (mhz==0.0) {
+            for (int n : {0,1,1999,2000}) {
+                vTexCoord=vec2((n%64+0.5f)/64,(n/64+0.5f)/64);
+                synthesise();
+                if (std::abs(FragColor.r-original[n].r)>0.01)
+                    throw std::runtime_error("DC field edge reconstruction failed");
+            }
+            vTexCoord=vec2((2001%64+0.5f)/64,(2001/64+0.5f)/64);
+            synthesise();
+            if (FragColor.r!=0) throw std::runtime_error("padding is not cleared");
+            TextureFits=0;
+            synthesise();
+            if (FragColor.r!=1) throw std::runtime_error("undersized texture not flagged");
+            TextureFits=1;
+        }
+    }
+}
+'''
+        source = self.root / 'iq-round-trip.cpp'
+        executable = self.root / 'iq-round-trip'
+        source.write_text(harness + arrays + analysis + synthesis + checks, encoding='utf-8')
+        subprocess.run([compiler, '-std=c++17', '-O2', str(source), '-o', str(executable)], check=True)
+        subprocess.run([str(executable)], check=True)
 
     def test_sys_yc_filter_supports_svideo_output_mode(self):
         shader = (ROOT / 'shaders' / 'sys-yc-filter.slang').read_text(encoding='utf-8')
