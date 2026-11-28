@@ -118,6 +118,7 @@ vec2 operator*(float s,vec2 v) { return {s*v.x,s*v.y}; }
 float dot(vec2 a,vec2 b) { return a.x*b.x+a.y*b.y; }
 struct vec3 { float r,g,b; };
 float CARRIER_SHAPE=0, ENCODER_SETUP=0;
+float SVIDEO=0;
 '''
         checks = r'''
 void near(float actual,float expected) {
@@ -128,16 +129,16 @@ int main() {
     vec3 input={0.5f,0.2f,-0.1f};
     for (int line : {0,1}) {
         for (int i=0;i<4;++i) {
-            auto base=modulate_sys_component_yc(input,i,line,1,4,0,0,2,0.3f,1);
-            auto with_leak=modulate_sys_component_yc(input,i,line,1,4,0,leak,2,0.3f,1);
+            auto base=modulate_sys_component_yc(input,i,line,1,4,0,0,2,0.3f,0,0,1);
+            auto with_leak=modulate_sys_component_yc(input,i,line,1,4,0,leak,2,0.3f,0,0,1);
             near(with_leak.r,base.r);
             near(with_leak.g-base.g,leak*std::cos(2*PI*i/4));
         }
     }
-    auto shifted=modulate_sys_component_yc({0.5f,0,0},0,0,1,4,0.25f,leak,1,0,0);
+    auto shifted=modulate_sys_component_yc({0.5f,0,0},0,0,1,4,0.25f,leak,1,0,0,0,0);
     near(shifted.g,0);
     CARRIER_SHAPE=1;
-    auto distorted=modulate_sys_component_yc({0.5f,0,0},0,0,1,8,0,leak,1,0,0);
+    auto distorted=modulate_sys_component_yc({0.5f,0,0},0,0,1,8,0,leak,1,0,0,0,0);
     near(distorted.g,leak*(1+1.0f/3));
 }
 '''
@@ -261,6 +262,7 @@ struct vec4 {
 };
 struct Size { float x,y; vec2 xy; };
 struct { Size OutputSize,OriginalSize; uint FrameCount; } config;
+struct { float CV_DIFFERENTIAL_GAIN; float CV_DIFFERENTIAL_PHASE; } global;
 float FrameWidth,DataLength,StorageWidth,TextureFits,InitialSubcarrierPhaseFrac;
 float Fs,Fsc,c_leakage,g_iq,p_iq,field_odd,PalMode; int Source,profile_mode;
 #define vTimingProfileMode profile_mode
@@ -275,7 +277,7 @@ vec4 fetch_input_sample(int,vec2,float index,float width,float) {
     if (width!=1024) throw std::runtime_error("incorrect modulator input stride");
     return vec4(index,0,0,1);
 }
-vec2 modulate_sys_component_yc(vec3 component,float index,float line,float,float,float,float,float,float,float) {
+vec2 modulate_sys_component_yc(vec3 component,float index,float line,float,float,float,float,float,float,float,float,float) {
     if (component.r!=index) throw std::runtime_error("incorrect modulator input index");
     return {index,line};
 }

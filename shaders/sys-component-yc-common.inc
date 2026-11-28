@@ -31,6 +31,7 @@
 #include "menus/parameters/sys-encode.inc"
 #include "menus/parameters/sys-timing.inc"
 #include "menus/parameters/noise-yc.inc"
+#include "menus/parameters/noise-cv.inc"
 
 #pragma include_optional "../config/options.cfg"
 
@@ -66,9 +67,7 @@ layout(push_constant) uniform Push
     float ENCODER_SETUP;
     float CARRIER_SHAPE;
 
-#ifdef SYS_COMPONENT_YC_MODE
     float SVIDEO;
-#endif
 
     float YC_CARRIER_LEAKAGE;
     float YC_IQ_GAIN_IMBALANCE;
@@ -104,9 +103,7 @@ layout(push_constant) uniform Push
 #define DEBUG_PAL_VALUE 0.0
 #endif
 
-#ifdef SYS_COMPONENT_YC_MODE
 #define SVIDEO config.SVIDEO
-#endif
 
 #define YC_CARRIER_LEAKAGE config.YC_CARRIER_LEAKAGE
 #define YC_IQ_GAIN_IMBALANCE config.YC_IQ_GAIN_IMBALANCE
@@ -123,6 +120,10 @@ layout(std140, set = 0, binding = 0) uniform UBO
     float SC_FREQ_FRAC6;
     float SC_FREQ_FRAC11;
     float PIXEL_CLOCK_FRAC6;
+
+    float CV_DIFFERENTIAL_GAIN;
+    float CV_DIFFERENTIAL_PHASE;
+
 #ifdef OPTION_DEBUG
     float DEBUG_PAL;
 #endif
@@ -212,6 +213,8 @@ vec2 modulate_sys_component_yc(
     float carrier_leakage,
     float iq_imbalance_gain,
     float iq_imbalance_phase,
+    float dgain,
+    float dphase,
     float pal)
 {
     component.g *= 0.492111;
@@ -222,7 +225,18 @@ vec2 modulate_sys_component_yc(
         fsc, fs, initial_subcarrier_phase_frac
     );
 
-    vec2 carrier = vec2(sin(phase + iq_imbalance_phase), cos(phase));
+    float gdiff;
+    float pdiff;
+    // Differential gain and phase apply to composite signal
+    if (SVIDEO > 0.5) {
+        gdiff = 1.0;
+        pdiff = 0.0;
+    } else {
+        gdiff = 1.0 - dgain * pow(component.r, 2.0);
+        pdiff = (PI / 180.0) * dphase * pow(component.r, 2.0);
+    }
+
+    vec2 carrier = vec2(sin(phase + iq_imbalance_phase + pdiff), cos(phase + pdiff));
 
     if (CARRIER_SHAPE > 0.5) {
         // Generate carrier harmonics up to Nyquist frequency
@@ -236,8 +250,8 @@ vec2 modulate_sys_component_yc(
 
             // Add the harmonic to the carrier
             carrier += vec2(
-                sin(2.0 * PI * carrier_phase(sample_index, n * fsc, fs, initial_subcarrier_phase_frac) + iq_imbalance_phase) / n,
-                cos(2.0 * PI * carrier_phase(sample_index, n * fsc, fs, initial_subcarrier_phase_frac)) / n
+                sin(2.0 * PI * carrier_phase(sample_index, n * fsc, fs, initial_subcarrier_phase_frac) + iq_imbalance_phase + pdiff) / n,
+                cos(2.0 * PI * carrier_phase(sample_index, n * fsc, fs, initial_subcarrier_phase_frac) + pdiff) / n
             );
         }
     }
@@ -249,7 +263,7 @@ vec2 modulate_sys_component_yc(
 
     vec2 yc = vec2(
         mix(component.r, 0.925 * (component.r + 0.075), ENCODER_SETUP),
-        dot(mix(1.0, 0.925, ENCODER_SETUP) * component.gb,
+        gdiff * dot(mix(1.0, 0.925, ENCODER_SETUP) * component.gb,
             vec2(carrier.x, pal_v_sign * carrier.y))
     );
 
@@ -361,7 +375,9 @@ void main()
     vec2 yc = modulate_sys_component_yc(
         component, sample_index, raster.y,
         Fsc, Fs, InitialSubcarrierPhaseFrac,
-        c_leakage, g_iq, p_iq, PalMode
+        c_leakage, g_iq, p_iq,
+        global.CV_DIFFERENTIAL_GAIN / 100.0, global.CV_DIFFERENTIAL_PHASE,
+        PalMode
     );
 
 #ifdef SYS_COMPONENT_YC_MODE
