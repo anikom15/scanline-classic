@@ -41,7 +41,8 @@
 #pragma include_optional "../config/options.cfg"
 
 #include "timing-profiles.inc"
-#define TIMING_PROFILE_MODE timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS)
+#include "raster-mapping.inc"
+#define TIMING_PROFILE_MODE vTimingProfileMode
 #include "menus/parameters/sys-sync.inc"
 
 layout(push_constant) uniform Push
@@ -104,6 +105,10 @@ layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
 layout(location = 1) flat out SyncState vSyncState;
+layout(location = 11) flat out int vTimingProfileMode;
+layout(location = 12) flat out vec2 SyncDimensions;
+layout(location = 13) flat out vec4 vRasterPattern;
+layout(location = 14) flat out ivec2 vRasterExceptions;
 
 SyncState compute_sync_state()
 {
@@ -192,12 +197,21 @@ void main()
 {
     gl_Position = global.MVP * Position;
     vTexCoord = TexCoord;
+    vTimingProfileMode = timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS);
+    timing_profile_raster_descriptor(TIMING_PROFILE_MODE, config.OriginalSize.y, config.FrameCount,
+        FIELD_ODD, vRasterPattern, vRasterExceptions);
+    SyncDimensions = vec2(timing_profile_horizontal_sync_cycles(TIMING_PROFILE_MODE, 0.0),
+        timing_profile_vertical_sync_lines(TIMING_PROFILE_MODE, 0.0));
     vSyncState = compute_sync_state();
 }
 
 #pragma stage fragment
 layout(location = 0) in vec2 vTexCoord;
 layout(location = 1) flat in SyncState vSyncState;
+layout(location = 11) flat in int vTimingProfileMode;
+layout(location = 12) flat in vec2 SyncDimensions;
+layout(location = 13) flat in vec4 vRasterPattern;
+layout(location = 14) flat in ivec2 vRasterExceptions;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
@@ -230,8 +244,7 @@ void main()
         FragColor = vec4(0.0);
         return;
     }
-    vec2 raster = timing_profile_raster_position(TIMING_PROFILE_MODE, config.OriginalSize.y,
-        config.FrameCount, FIELD_ODD, sample_index, vSyncState.base_frame_width);
+    vec2 raster = raster_position(vRasterPattern, vRasterExceptions, sample_index, vSyncState.base_frame_width);
     output_x = raster.x;
     output_y = raster.y;
     output_y_i = int(output_y);
@@ -263,8 +276,8 @@ void main()
     float v_blanking_active = (!in_active_y && in_frame_y && in_v_blanking_window) ? 1.0 : 0.0;
     float blanking_active = (h_blanking_active > 0.5 || v_blanking_active > 0.5) ? 1.0 : 0.0;
     if (TIMING_PROFILE_MODE > 0) {
-        bool h_sync = in_frame && base_x < timing_profile_horizontal_sync_cycles(TIMING_PROFILE_MODE, 0.0);
-        bool v_sync = in_frame && output_y < timing_profile_vertical_sync_lines(TIMING_PROFILE_MODE, 0.0);
+        bool h_sync = in_frame && base_x < SyncDimensions.x;
+        bool v_sync = in_frame && output_y < SyncDimensions.y;
         blanking_active = (h_sync || v_sync) ? 1.0 : 0.0;
     }
 

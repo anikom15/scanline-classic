@@ -41,7 +41,7 @@
 #pragma include_optional "../config/options.cfg"
 
 #include "timing-profiles.inc"
-#define TIMING_PROFILE_MODE timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS)
+#define TIMING_PROFILE_MODE timingProfileMode
 
 #ifdef OPTION_DEBUG
 #pragma parameter DEBUG_SYS_COMPONENT_HEADER " —— Debug Sys Component —— " 0.0 0.0 0.0 0.0
@@ -132,6 +132,7 @@ void main()
 {
     gl_Position = global.MVP * Position;
     vTexCoord = TexCoord;
+    int timingProfileMode = timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS);
 
     float fs_current = contract_working_sample_rate(
         config.OriginalFPS,

@@ -138,18 +138,20 @@ struct vec4 {
 struct Size { float x,y; vec2 xy; };
 struct { Size OutputSize,OriginalSize; uint FrameCount; } config;
 float FrameWidth,DataLength,StorageWidth,TextureFits,InitialSubcarrierPhaseFrac;
-float Fs,Fsc,c_leakage,g_iq,p_iq,field_odd; int Source,profile_mode;
+float Fs,Fsc,c_leakage,g_iq,p_iq,field_odd,PalMode; int Source,profile_mode;
+#define vTimingProfileMode profile_mode
 vec2 vTexCoord; vec4 FragColor;
 #define SYS_COMPONENT_YC_MODE
 #define SVIDEO 1.0
 #define TIMING_PROFILE_MODE profile_mode
 #define FIELD_ODD field_odd
+#define raster_position(pattern, span, index, width) timing_profile_raster_position(profile_mode, config.OriginalSize.y, config.FrameCount, field_odd, index, width)
 float uintBitsToFloat(uint) { return std::numeric_limits<float>::quiet_NaN(); }
 vec4 fetch_input_sample(int,vec2,float index,float width,float) {
     if (width!=1024) throw std::runtime_error("incorrect modulator input stride");
     return vec4(index,0,0,1);
 }
-vec2 modulate_sys_component_yc(vec3 component,float index,float line,float,float,float,float,float,float) {
+vec2 modulate_sys_component_yc(vec3 component,float index,float line,float,float,float,float,float,float,float) {
     if (component.r!=index) throw std::runtime_error("incorrect modulator input index");
     return {index,line};
 }
@@ -230,6 +232,7 @@ float DeskewSampleRatio, LineCarryClocksOut, ClockFactorOut, BaseFrameWidthOut;
 float captured_floor, captured_fraction;
 vec2 vTexCoord; vec4 FragColor; int Source, profile_mode;
 #define TIMING_PROFILE_MODE profile_mode
+#define raster_line_range(pattern, span, line, width) timing_profile_line_range(profile_mode, config.OriginalSize.y, global.FrameCount, global.FIELD_ODD, line, width)
 #define OPTION_DEBUG
 #define OPTION_CRISPY
 #define DISPLAY_RGB_FILTER_BYPASS 1.0
@@ -360,6 +363,7 @@ float InputPackedWidth,InputTextureFits;
 float DeskewSampleRatio,LineCarryClocksOut,ClockFactorOut,BaseFrameWidthOut;
 float deskew_bypass,captured_fraction,captured_floor; int profile_mode,Source; vec2 vTexCoord; vec4 FragColor;
 #define TIMING_PROFILE_MODE profile_mode
+#define raster_line_range(pattern, span, line, width) timing_profile_line_range(profile_mode, config.OriginalSize.y, config.FrameCount, global.FIELD_ODD, line, width)
 #define OPTION_DEBUG
 #define DISPLAY_COMPONENT_BYPASS 1.0
 #define DESKEW_BYPASS deskew_bypass
@@ -483,6 +487,9 @@ struct { uint FrameCount; float FIELD_ODD; } global;
 float LineCarryClocksOut,ClockFactorOut,SampleRatio,BaseFrameWidthOut,deskew_bypass;
 int profile_mode,Source;
 #define TIMING_PROFILE_MODE profile_mode
+#define raster_line_range(pattern, span, line, width) timing_profile_line_range(profile_mode, config.OriginalSize.y, global.FrameCount, global.FIELD_ODD, line, width)
+struct RasterExceptions { int x; };
+#define vRasterExceptions (RasterExceptions{profile_mode > 0 ? 0 : -1})
 #define DESKEW_BYPASS deskew_bypass
 float mix(float a,float b,float t) { return a*(1-t)+b*t; }
 float uintBitsToFloat(uint) { return std::numeric_limits<float>::quiet_NaN(); }
@@ -576,8 +583,9 @@ struct vec2 {
 };
 struct Size { float x,y; vec2 xy; };
 struct { Size OriginalSize,SourceSize; float H_FREQ_MODE; } config;
-struct { float OriginalFPS,FIELD_ODD; uint FrameCount; int MVP; } global;
-int Position,gl_Position,profile_mode;
+struct { float OriginalFPS,FIELD_ODD,TIMING_PROFILE; uint FrameCount; int MVP; } global;
+int Position,gl_Position,profile_mode,selection_count;
+int timing_profile_select(float, vec2, float) { ++selection_count; return profile_mode; }
 vec2 TexCoord,vTexCoord,ActiveCenterOffset;
 float maskAR,OriginalFrameWidth,OriginalFrameHeight,OriginalFullFrameHeight;
 float IsInterlaced,OutputFrameWidth,OutputFrameHeight;
@@ -625,7 +633,10 @@ void check(int mode, float source_height, float field_height, float expected_ful
         global.FIELD_ODD=float(reversed);
         for (uint frame=0; frame<2; ++frame) {
             global.FrameCount=frame;
+            selection_count=0;
             render_vertex();
+            if (selection_count!=1)
+                throw std::runtime_error("profile selection repeated in vertex");
             if (OriginalFullFrameHeight != expected_full || OutputFrameHeight != expected_output
                 || OriginalFrameHeight != expected_full/2)
                 throw std::runtime_error("interlaced presentation height changed");

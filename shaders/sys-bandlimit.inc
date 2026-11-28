@@ -46,7 +46,7 @@
 #include "menus/parameters/sys-rgb.inc"
 
 #include "timing-profiles.inc"
-#define TIMING_PROFILE_MODE timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS)
+#define TIMING_PROFILE_MODE timingProfileMode
 
 layout(push_constant) uniform Push
 {
@@ -145,6 +145,7 @@ void main()
 {
     gl_Position = global.MVP * Position;
     vTexCoord = TexCoord;
+    int timingProfileMode = timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS);
 
     float PixelClock = contract_pixel_clock(
         PIXEL_CLOCK_MODE,

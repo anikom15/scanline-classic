@@ -60,7 +60,8 @@
 #pragma include_optional "../config/options.cfg"
 
 #include "timing-profiles.inc"
-#define TIMING_PROFILE_MODE timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS)
+#include "raster-mapping.inc"
+#define TIMING_PROFILE_MODE timingProfileMode
 
 #ifdef OPTION_DEBUG
 #pragma parameter DEBUG_DISPLAY_RGB_BANDLIMIT_HEADER " —— Debug Display RGB Bandlimit —— " 0.0 0.0 0.0 0.0
@@ -160,6 +161,8 @@ layout(location = 18) flat out float BaseFrameWidthOut;
 layout(location = 13) flat out float DeskewSampleRatio;
 layout(location = 14) flat out float LineCarryClocksOut;
 layout(location = 15) flat out float ClockFactorOut;
+layout(location = 19) flat out vec4 vRasterPattern;
+layout(location = 20) flat out ivec2 vRasterExceptions;
 
 const int MAX_TAPS = 37;
 const float KAISER_ATTEN_DB = 50.0;
@@ -168,6 +171,9 @@ void main()
 {
     gl_Position = global.MVP * Position;
     vTexCoord = TexCoord;
+    int timingProfileMode = timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS);
+    timing_profile_raster_descriptor(TIMING_PROFILE_MODE, config.OriginalSize.y, global.FrameCount,
+        global.FIELD_ODD, vRasterPattern, vRasterExceptions);
 
     float InputFrameHeight = contract_frame_height(
         config.OriginalSize.xy, config.OriginalFPS,
@@ -277,6 +283,8 @@ layout(location = 18) flat in float BaseFrameWidthOut;
 layout(location = 13) flat in float DeskewSampleRatio;
 layout(location = 14) flat in float LineCarryClocksOut;
 layout(location = 15) flat in float ClockFactorOut;
+layout(location = 19) flat in vec4 vRasterPattern;
+layout(location = 20) flat in ivec2 vRasterExceptions;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
@@ -308,10 +316,8 @@ void main()
     float output_x = float(output_x_i);
     float output_y = float(output_y_i);
 
-    vec2 line_range = timing_profile_line_range(TIMING_PROFILE_MODE, config.OriginalSize.y,
-        global.FrameCount, global.FIELD_ODD, output_y, OutputFrameWidth);
-    vec2 clock_range = timing_profile_line_range(TIMING_PROFILE_MODE, config.OriginalSize.y,
-        global.FrameCount, global.FIELD_ODD, output_y, double(BaseFrameWidthOut));
+    vec2 line_range = raster_line_range(vRasterPattern, vRasterExceptions, output_y, OutputFrameWidth);
+    vec2 clock_range = raster_line_range(vRasterPattern, vRasterExceptions, output_y, double(BaseFrameWidthOut));
     double line_width = double(clock_range.y) * OutputFrameWidth / double(BaseFrameWidthOut);
     if (double(output_x) >= ceil(line_width) || output_y >= OutputFrameHeight) {
         FragColor = vec4(0.0);

@@ -47,7 +47,7 @@
 #pragma include_optional "../config/options.cfg"
 
 #include "timing-profiles.inc"
-#define TIMING_PROFILE_MODE timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS)
+#define TIMING_PROFILE_MODE timingProfileMode
 
 #ifdef OPTION_DEBUG
 #pragma parameter DEBUG_SVIDEO_NOISE_HEADER " —— Debug S-Video Noise —— " 0.0 0.0 0.0 0.0
@@ -149,7 +149,7 @@ layout(location = 1) flat out NoiseSVideoState vNoiseState;
 // Reconstruct the packed 1D raster geometry and timing once per vertex from
 // the contract API. The fragment stage then consumes only these precomputed,
 // contract-consistent values when indexing the DSP signal.
-NoiseSVideoState compute_noise_state()
+NoiseSVideoState compute_noise_state(int timingProfileMode)
 {
     NoiseSVideoState state;
 
@@ -203,7 +203,8 @@ void main()
 {
     gl_Position = global.MVP * Position;
     vTexCoord = TexCoord;
-    vNoiseState = compute_noise_state();
+    int timingProfileMode = timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS);
+    vNoiseState = compute_noise_state(timingProfileMode);
 }
 
 #pragma stage fragment

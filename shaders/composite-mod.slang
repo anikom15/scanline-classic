@@ -34,7 +34,7 @@
 
 #include "timing-profiles.inc"
 #include "signal-standard.inc"
-#define TIMING_PROFILE_MODE timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS)
+#define TIMING_PROFILE_MODE timingProfileMode
 
 #ifdef OPTION_DEBUG
 #pragma parameter DEBUG_COMPOSITE_MOD_HEADER " —— Debug Composite Mod —— " 0.0 0.0 0.0 0.0
@@ -83,9 +83,9 @@ layout(push_constant) uniform Push
 #define H_BLANK_FUZZ config.H_BLANK_FUZZ
 #define ENCODER_SETUP config.ENCODER_SETUP
 #ifdef OPTION_DEBUG
-#define PAL signal_pal(TIMING_PROFILE_MODE, config.OriginalFPS, global.DEBUG_PAL)
+#define DEBUG_PAL_VALUE global.DEBUG_PAL
 #else
-#define PAL signal_pal(TIMING_PROFILE_MODE, config.OriginalFPS, 0.0)
+#define DEBUG_PAL_VALUE 0.0
 #endif
 
 #ifdef OPTION_DEBUG
@@ -107,11 +107,14 @@ layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
 layout(location = 1) out CarrierPhaseConfig carrier;
+layout(location = 6) flat out float PalMode;
 
 void main()
 {
     gl_Position = global.MVP * Position;
     vTexCoord = TexCoord;
+    int timingProfileMode = timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS);
+    PalMode = signal_pal(TIMING_PROFILE_MODE, config.OriginalFPS, DEBUG_PAL_VALUE);
 
     TimebaseConfig tb = compute_timebase(
         config.FrameCount,
@@ -136,6 +139,7 @@ void main()
 #pragma stage fragment
 layout(location = 0) in vec2 vTexCoord;
 layout(location = 1) in CarrierPhaseConfig carrier;
+layout(location = 6) flat in float PalMode;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
@@ -161,7 +165,7 @@ void main()
     float phase0 = compute_carrier_phase(t0, carrier.sc_freq_hz, carrier.field_phase);
 
     // PAL V-axis alternation: simply invert V on odd lines
-    float pal_v_sign = 1.0 - 2.0 * floor(mod(line, 2.0)) * PAL;
+    float pal_v_sign = 1.0 - 2.0 * floor(mod(line, 2.0)) * PalMode;
 
     vec2 carrier0 = sincos_phase_raw(phase0);
     float chroma0 = pixel0.g * carrier0.x + pal_v_sign * pixel0.b * carrier0.y;

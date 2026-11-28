@@ -44,7 +44,8 @@
 #pragma include_optional "../config/options.cfg"
 
 #include "timing-profiles.inc"
-#define TIMING_PROFILE_MODE timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS)
+#include "raster-mapping.inc"
+#define TIMING_PROFILE_MODE timingProfileMode
 
 #ifdef OPTION_DEBUG
 #pragma parameter DEBUG_DESKEW_HEADER " —— Debug Deskew —— " 0.0 0.0 0.0 0.0
@@ -113,11 +114,16 @@ layout(location = 3) flat out float LineCarryClocksOut;
 layout(location = 4) flat out float ClockFactorOut;
 layout(location = 5) flat out float SampleRatio;
 layout(location = 6) flat out float BaseFrameWidthOut;
+layout(location = 7) flat out vec4 vRasterPattern;
+layout(location = 8) flat out ivec2 vRasterExceptions;
 
 void main()
 {
     gl_Position = global.MVP * Position;
     vTexCoord = TexCoord;
+    int timingProfileMode = timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS);
+    timing_profile_raster_descriptor(TIMING_PROFILE_MODE, config.OriginalSize.y, global.FrameCount,
+        global.FIELD_ODD, vRasterPattern, vRasterExceptions);
 
     float BaseFrameWidth = contract_frame_width(
         config.OriginalFPS,
@@ -206,6 +212,8 @@ layout(location = 3) flat in float LineCarryClocksOut;
 layout(location = 4) flat in float ClockFactorOut;
 layout(location = 5) flat in float SampleRatio;
 layout(location = 6) flat in float BaseFrameWidthOut;
+layout(location = 7) flat in vec4 vRasterPattern;
+layout(location = 8) flat in ivec2 vRasterExceptions;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
@@ -222,11 +230,9 @@ vec3 sample_deskewed(float output_x, float output_y, double frame_width)
         ? (int(output_y) * carry_clocks) % clock_factor
         : 0;
     float row_shift = float(row_carry_clocks) * SampleRatio;
-    if (TIMING_PROFILE_MODE > 0) {
-        float clock_start = timing_profile_line_range(TIMING_PROFILE_MODE, config.OriginalSize.y,
-            global.FrameCount, global.FIELD_ODD, output_y, BaseFrameWidthOut).x;
-        float stored_start = timing_profile_line_range(TIMING_PROFILE_MODE, config.OriginalSize.y,
-            global.FrameCount, global.FIELD_ODD, output_y, frame_width).x;
+    if (vRasterExceptions.x >= 0) {
+        float clock_start = raster_line_range(vRasterPattern, vRasterExceptions, output_y, BaseFrameWidthOut).x;
+        float stored_start = raster_line_range(vRasterPattern, vRasterExceptions, output_y, frame_width).x;
         row_shift += contract_hsync_sample_offset(clock_start, BaseFrameWidthOut, frame_width, stored_start);
     }
     float source_x = output_x + mix(row_shift, 0.0, DESKEW_BYPASS);

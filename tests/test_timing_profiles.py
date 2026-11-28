@@ -17,7 +17,7 @@ from scripts.generate_timing_profiles import generate_source, generate_timing_pr
 from scripts.generate_filter_taps import generate_filter_taps
 from test_contract_timings import (
     CPP_HEADER, CPP_MAIN, FIELD_COUNTS, OUTPUT_MODES, REFERENCES, ROOT,
-    cpp_shader_source, phase_distance,
+    cpp_profile_source, cpp_shader_source, phase_distance,
 )
 from test_dyadic_pyramid import shader_function, timing_profile_source
 
@@ -146,7 +146,7 @@ class TimingProfileRuntimeTests(unittest.TestCase):
         cls.addClassCleanup(temporary.cleanup)
         cls.executables = {}
         for palm, custom_rules in ((False, False), (True, False), (False, True)):
-            source = re.sub(r'(?<=\d)lf\b', '', generate_source(rules_data if custom_rules else data))
+            source = re.sub(r'(?<=\d)lf\b', '', cpp_profile_source(generate_source(rules_data if custom_rules else data)))
             define = '#define OPTION_REPLACE_NTSC_PALM\n' if palm else ''
             cpp = Path(temporary.name) / f'profile-{palm}-{custom_rules}.cpp'
             executable = Path(temporary.name) / f'profile-{palm}-{custom_rules}'
@@ -198,7 +198,7 @@ int main() {
         compiler = shutil.which('g++')
         profiles = timing_profile_source()
         standard = (ROOT / 'shaders' / 'signal-standard.inc').read_text(encoding='utf-8')
-        source = re.sub(r'(?<=\d)lf\b', '', profiles)
+        source = re.sub(r'(?<=\d)lf\b', '', cpp_profile_source(profiles))
         function = shader_function(standard, 'float signal_pal(')
         checks = r'''
 int main() {
@@ -359,6 +359,92 @@ int main() {
             subprocess.run([compiler, '-std=c++17', '-O2', str(source), '-o', str(executable)], check=True)
             subprocess.run([str(executable)], check=True)
 
+    def test_selected_raster_mapping_matches_existing_boundaries(self):
+        compiler = shutil.which('g++')
+        if compiler is None:
+            self.skipTest('g++ is required to exercise shader functions')
+        data = json.loads((ROOT / 'presetdata' / 'timing-profiles.json').read_text(encoding='utf-8'))
+        mode = data['profiles'][1]['modes'][0]
+        mode['line_overrides'] = [
+            {'scan': 'interlaced', 'field': 'odd', 'line': 10, 'clocks': 3409},
+            {'scan': 'interlaced', 'field': 'odd', 'line': 13, 'clocks': 3415},
+        ]
+        mode['field_clocks']['interlaced']['odd'] -= 1
+        mapping = (ROOT / 'shaders' / 'raster-mapping.inc').read_text(encoding='utf-8')
+        mapping = re.sub(r'(?<=\d)lf\b', '', mapping)
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / 'selected-raster.cpp'
+            executable = Path(temp) / 'selected-raster'
+            source.write_text(CPP_HEADER + cpp_shader_source(generate_source(data)) + mapping + r'''
+#include <stdexcept>
+int main() {
+    const double clocks[] = {1, 21477270, 21281370, 21453666, 53693175, 53203425};
+    for (int mode : {0, 1, 2, 3, 4, 5}) for (int interlaced : {0, 1})
+    for (uint frame : {0u, 1u}) for (float reverse : {0.0f, 1.0f}) {
+        float height = interlaced ? 576 : 240;
+        float scale = mode == 4 ? 3413 : mode == 5 ? 3405 : 1364;
+        float lines = mode == 0 ? 262 : timing_profile_v_freq(mode, height, frame, reverse, 262);
+        vec4 pattern(0); ivec2 span(0, 0);
+        timing_profile_raster_descriptor(mode, height, frame, reverse, pattern, span);
+        double widths[] = {double(scale), 2047.125,
+                           mode == 0 ? 1025.498 : double(scale) * 16000000.0 / clocks[mode],
+                           mode == 0 ? 2050.996 : double(scale) * 32000000.0 / clocks[mode], 1.125};
+        for (int rate = 0; rate < 5; ++rate) {
+            double width = widths[rate];
+            float length = timing_profile_storage_length(mode, height, frame, reverse, width, width * lines);
+            for (int line = 0; line < int(ceil(lines)); ++line) {
+                vec2 expected = timing_profile_line_range(mode, height, frame, reverse, line, width);
+                vec2 actual = raster_line_range(pattern, span, line, width);
+                if (actual.x != expected.x || actual.y != expected.y)
+                    throw std::runtime_error("selected line range differs");
+                if (mode > 0) {
+                    bool odd = (frame + int(reverse) + (mode == 2 || mode == 5)) % 2;
+                    auto boundary = [&](int n) {
+                        long long c = mode == 4 ? (n / 2) * 6825LL + (n % 2) * 3412LL
+                                                : n * static_cast<long long>(scale);
+                        if ((mode == 1 || mode == 3) && !interlaced && odd && n >= 259) c -= 4;
+                        if (mode == 2 && interlaced && odd && n >= 18) c += 4;
+                        if (mode == 4 && interlaced && odd) {
+                            if (n >= 10) c -= 4;
+                            if (n >= 13) c += 3;
+                        }
+                        long long numerator = rate == 0 ? 1 : rate == 1 ? 16377
+                                                     : rate == 2 ? 16000000 : rate == 3 ? 32000000 : 9;
+                        long long denominator = rate == 0 ? 1 : (rate == 1 || rate == 4) ? 8 * static_cast<long long>(scale)
+                                                                                       : static_cast<long long>(clocks[mode]);
+                        return (c * numerator + denominator - 1) / denominator;
+                    };
+                    long long start = boundary(line), end = boundary(line + 1);
+                    if (actual.x != start || actual.y != end - start)
+                        throw std::runtime_error("selected line range differs from rational reference");
+                }
+                for (float index : {expected.x - 1, expected.x, expected.x + expected.y - 1,
+                                    expected.x + expected.y}) {
+                    if (index < 0 || index >= length) continue;
+                    vec2 reference = timing_profile_raster_position(mode, height, frame, reverse, index, width);
+                    vec2 position = raster_position(pattern, span, index, width);
+                    if (position.x != reference.x || position.y != reference.y)
+                        throw std::runtime_error("selected sample position differs");
+                }
+            }
+        }
+    }
+    vec4 pattern(0); ivec2 span(0, 0);
+    timing_profile_raster_descriptor(-1, 240, 0, 0, pattern, span);
+    vec2 invalid = raster_position(pattern, span, 0, 1364);
+    if (!std::isnan(invalid.x) || !std::isnan(invalid.y))
+        throw std::runtime_error("invalid profile did not propagate");
+    timing_profile_raster_descriptor(4, 480, 1, 0, pattern, span);
+    pattern.w = 262.5f;
+    vec2 partial = raster_line_range(pattern, span, 262, 3413);
+    vec2 position = raster_position(pattern, span, partial.x, 3413);
+    if (position.x != 0 || position.y != 262)
+        throw std::runtime_error("fractional field mapping differs");
+}
+''', encoding='utf-8')
+            subprocess.run([compiler, '-std=c++17', '-O2', str(source), '-o', str(executable)], check=True)
+            subprocess.run([str(executable)], check=True)
+
     def test_exceptional_line_locations_and_field_lengths(self):
         compiler = shutil.which('g++')
         if compiler is None:
@@ -483,6 +569,67 @@ int main() {
         !fits(0, 224, 0, 1025.5, 262, 1026, 512) ||
         fits(-1, 224, 0, 1024, 262, 2048, 512))
         throw std::runtime_error("presentation capacity check mismatch");
+}
+''', encoding='utf-8')
+            subprocess.run([compiler, '-std=c++17', '-O2', str(source), '-o', str(executable)], check=True)
+            subprocess.run([str(executable)], check=True)
+
+    def test_presentation_capacity_matches_all_line_ranges(self):
+        compiler = shutil.which('g++')
+        if compiler is None:
+            self.skipTest('g++ is required to exercise shader functions')
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / 'presentation-all-lines.cpp'
+            executable = Path(temp) / 'presentation-all-lines'
+            source.write_text(CPP_HEADER + cpp_shader_source() + r'''
+#include <stdexcept>
+int main() {
+    for (int mode : {0, 1, 2, 3, 4, 5}) for (int interlaced : {0, 1})
+    for (uint frame : {0u, 1u}) for (int reverse : {0, 1}) {
+        float height = interlaced ? 576 : 240;
+        float base = mode == 4 ? 3413 : mode == 5 ? 3405 : 1364;
+        float lines = mode == 0 ? 262 : timing_profile_v_freq(mode, height, frame, reverse, 262);
+        for (double width : {double(base), 1025.498, 2047.125}) {
+            double maximum = 0;
+            for (int line = 0; line < int(ceil(lines)); ++line) {
+                vec2 range = timing_profile_line_range(mode, height, frame, reverse, line, base);
+                maximum = std::max(maximum, double(range.y) * width / double(base));
+            }
+            float required = float(ceil(maximum));
+            for (float capacity : {required-1, required, required+1}) {
+                bool actual = timing_profile_presentation_fits(mode, height, frame, reverse,
+                    width, base, lines, vec2{capacity, ceil(lines)});
+                if (actual != (capacity >= required))
+                    throw std::runtime_error("presentation capacity differs from line scan");
+            }
+        }
+    }
+}
+''', encoding='utf-8')
+            subprocess.run([compiler, '-std=c++17', '-O2', str(source), '-o', str(executable)], check=True)
+            subprocess.run([str(executable)], check=True)
+
+    def test_presentation_capacity_accounts_for_all_overridden_long_lines(self):
+        compiler = shutil.which('g++')
+        if compiler is None:
+            self.skipTest('g++ is required to exercise shader functions')
+        data = json.loads((ROOT / 'presetdata' / 'timing-profiles.json').read_text(encoding='utf-8'))
+        mode = data['profiles'][1]['modes'][0]
+        mode['line_overrides'] = [
+            {'scan': 'interlaced', 'field': 'odd', 'line': line, 'clocks': 3410}
+            for line in range(2, 263, 2)
+        ]
+        mode['field_clocks']['interlaced']['odd'] -= 3 * len(mode['line_overrides'])
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / 'presentation-overrides.cpp'
+            executable = Path(temp) / 'presentation-overrides'
+            source.write_text(CPP_HEADER + cpp_shader_source(generate_source(data)) + r'''
+#include <stdexcept>
+int main() {
+    if (!timing_profile_presentation_fits(4, 480, 1, 0, 3413, 3413, 262, vec2{3412,262}) ||
+        timing_profile_presentation_fits(4, 480, 1, 0, 3413, 3413, 262, vec2{3411,262}) ||
+        !timing_profile_presentation_fits(2, 478, 0, 0, 1364, 1364, 10, vec2{1364,10}))
+        throw std::runtime_error("incorrect maximum or partial-field fallback");
 }
 ''', encoding='utf-8')
             subprocess.run([compiler, '-std=c++17', '-O2', str(source), '-o', str(executable)], check=True)
@@ -742,11 +889,45 @@ class TimingProfilePresetTests(unittest.TestCase):
                 self.assertIn('#pragma parameter DEBUG_PAL ', source)
                 self.assertIn('signal_pal(TIMING_PROFILE_MODE, config.OriginalFPS, ', source)
                 self.assertNotRegex(source, r'\b(?:config|global)\.PAL\b')
+                vertex, fragment = source.split('#pragma stage vertex', 1)[1].split('#pragma stage fragment', 1)
+                self.assertIn('signal_pal(', vertex)
+                self.assertNotIn('signal_pal(', fragment)
         common = (ROOT / 'shaders' / 'sys-component-yc-common.slang').read_text(encoding='utf-8')
         self.assertIn('signal_pal(TIMING_PROFILE_MODE, config.OriginalFPS, ', common)
+        vertex, fragment = common.split('#pragma stage vertex', 1)[1].split('#pragma stage fragment', 1)
+        self.assertIn('signal_pal(', vertex)
+        self.assertNotIn('signal_pal(', fragment)
         for name in ('sys-yc.slang', 'sys-component-yc.slang'):
             source = (ROOT / 'shaders' / name).read_text(encoding='utf-8')
             self.assertIn('#pragma parameter DEBUG_PAL ', source)
+
+    def test_profile_selection_is_once_per_vertex_not_per_fragment(self):
+        for path in (ROOT / 'shaders').iterdir():
+            if path.suffix not in ('.slang', '.inc'):
+                continue
+            source = path.read_text(encoding='utf-8')
+            if '#define TIMING_PROFILE_MODE ' not in source:
+                continue
+            with self.subTest(shader=path.name):
+                vertex, fragment = source.split('#pragma stage vertex', 1)[1].split('#pragma stage fragment', 1)
+                self.assertEqual(len(re.findall(r'\btiming_profile_select\s*\(', source)), 1)
+                self.assertIn('timing_profile_select(', vertex)
+                self.assertNotIn('timing_profile_select(', fragment)
+                self.assertNotIn('#define TIMING_PROFILE_MODE timing_profile_select', source)
+
+    def test_fragment_raster_mapping_uses_selected_descriptors(self):
+        for path in (ROOT / 'shaders').iterdir():
+            if path.suffix not in ('.slang', '.inc'):
+                continue
+            source = path.read_text(encoding='utf-8')
+            if '#pragma stage fragment' not in source:
+                continue
+            vertex, fragment = source.split('#pragma stage vertex', 1)[1].split('#pragma stage fragment', 1)
+            with self.subTest(shader=path.name):
+                self.assertNotIn('timing_profile_raster_position(', fragment)
+                self.assertNotIn('timing_profile_line_range(', fragment)
+                if 'raster_position(' in fragment or 'raster_line_range(' in fragment:
+                    self.assertIn('timing_profile_raster_descriptor(', vertex)
 
     def test_unprofiled_palm_parameter_sets_fall_back_to_ntsc(self):
         for system in ('sfc', 'md'):

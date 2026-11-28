@@ -41,7 +41,8 @@
 #pragma include_optional "../config/options.cfg"
 
 #include "timing-profiles.inc"
-#define TIMING_PROFILE_MODE timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS)
+#include "raster-mapping.inc"
+#define TIMING_PROFILE_MODE vTimingProfileMode
 
 #ifdef OPTION_DEBUG
 #pragma parameter DEBUG_FRAME_HEADER " —— Debug Frame —— " 0.0 0.0 0.0 0.0
@@ -129,11 +130,36 @@ layout(location = 9) flat out float ClockFactor;
 layout(location = 10) flat out float PackedWidth;
 layout(location = 11) flat out float DataLength;
 layout(location = 12) flat out float TextureFits;
+layout(location = 13) flat out vec4 ActivePlacement;
+layout(location = 14) flat out int vTimingProfileMode;
+layout(location = 15) flat out vec4 vRasterPattern;
+layout(location = 16) flat out ivec2 vRasterExceptions;
+
+vec4 compute_active_placement()
+{
+    float field_parity = IsInterlaced > 0.5 ? Field : 0.0;
+    float active_height = IsInterlaced > 0.5
+        ? max(floor((config.SourceSize.y - field_parity + 1.0) * 0.5), 0.0)
+        : config.SourceSize.y;
+    float clock_factor = float(max(int(floor(ClockFactor + 0.5)), 1));
+    float left = timing_profile_left_blank_cycles(TIMING_PROFILE_MODE,
+        (FrameWidth - config.SourceSize.x * clock_factor) * 0.5);
+    float top = timing_profile_top_blank_lines(TIMING_PROFILE_MODE,
+        floor((ceil(FrameHeight) - active_height) * 0.5));
+    top = timing_profile_active_top(TIMING_PROFILE_MODE, active_height, top);
+    if (timing_profile_centered_overscan(TIMING_PROFILE_MODE, 0.0) > 0.5)
+        left = timing_profile_active_left(TIMING_PROFILE_MODE, FrameWidth, config.SourceSize.x,
+            clock_factor, left);
+    return vec4(left, top, active_height, timing_profile_active_left_tracks_line(TIMING_PROFILE_MODE, 0.0));
+}
 
 void main()
 {
     gl_Position = global.MVP * Position;
     vTexCoord = TexCoord;
+    vTimingProfileMode = timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS);
+    timing_profile_raster_descriptor(TIMING_PROFILE_MODE, config.OriginalSize.y, config.FrameCount,
+        FIELD_ODD, vRasterPattern, vRasterExceptions);
 
     if (TIMING_PROFILE_MODE < 0) {
         ClocksPerLine = 1.0;
@@ -146,6 +172,7 @@ void main()
         DataLength = 1.0;
         PackedWidth = 1.0;
         TextureFits = 0.0;
+        ActivePlacement = vec4(0.0);
         return;
     }
 
@@ -223,6 +250,7 @@ void main()
         config.FrameCount, FIELD_ODD, FrameWidth, ceil(contract_data_length(FrameWidth, FrameHeight)));
     PackedWidth = contract_pixel_packed_width(DataLength);
     TextureFits = contract_pixel_texture_fits(config.OutputSize.xy, DataLength, PackedWidth) ? 1.0 : 0.0;
+    ActivePlacement = compute_active_placement();
     if (TIMING_PROFILE_MODE > 0 && timing_profile_centered_overscan(TIMING_PROFILE_MODE, 0.0) < 0.5) {
         float active_height = IsInterlaced > 0.5
             ? floor((config.SourceSize.y - Field + 1.0) * 0.5) : config.SourceSize.y;
@@ -243,6 +271,10 @@ layout(location = 9) flat in float ClockFactor;
 layout(location = 10) flat in float PackedWidth;
 layout(location = 11) flat in float DataLength;
 layout(location = 12) flat in float TextureFits;
+layout(location = 13) flat in vec4 ActivePlacement;
+layout(location = 14) flat in int vTimingProfileMode;
+layout(location = 15) flat in vec4 vRasterPattern;
+layout(location = 16) flat in ivec2 vRasterExceptions;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
@@ -256,23 +288,15 @@ bool sample_maps_to_active_time(
     float output_y,
     out vec2 source_sample_pos)
 {
-    float frame_height_int = ceil(FrameHeight);
     float field_parity = current_field_parity();
-    float active_source_height = (IsInterlaced > 0.5)
-        ? max(floor((config.SourceSize.y - field_parity + 1.0) * 0.5), 0.0)
-        : config.SourceSize.y;
 
     float line_index = floor(output_y);
     int line_index_int = int(line_index);
     int clock_factor_int = max(int(floor(ClockFactor + 0.5)), 1);
     float clock_factor = float(clock_factor_int);
-    float active_width = config.SourceSize.x * clock_factor;
-    float active_left = timing_profile_left_blank_cycles(TIMING_PROFILE_MODE, (FrameWidth - active_width) * 0.5);
-    float active_top = timing_profile_top_blank_lines(TIMING_PROFILE_MODE, floor((frame_height_int - active_source_height) * 0.5));
-    active_top = timing_profile_active_top(TIMING_PROFILE_MODE, active_source_height, active_top);
-    if (timing_profile_centered_overscan(TIMING_PROFILE_MODE, 0.0) > 0.5) {
-        float line_width = timing_profile_line_range(TIMING_PROFILE_MODE, config.OriginalSize.y,
-            config.FrameCount, FIELD_ODD, line_index, FrameWidth).y;
+    float active_left = ActivePlacement.x;
+    if (ActivePlacement.w > 0.5) {
+        float line_width = raster_line_range(vRasterPattern, vRasterExceptions, line_index, FrameWidth).y;
         active_left = timing_profile_active_left(TIMING_PROFILE_MODE, line_width, config.SourceSize.x,
             clock_factor, active_left);
     }
@@ -290,7 +314,7 @@ bool sample_maps_to_active_time(
     // native 1-clock resolution.
     float source_x = (output_x - active_left - phase_clocks) / clock_factor;
 
-    bool in_active_y = line_index >= active_top && line_index < active_top + active_source_height;
+    bool in_active_y = line_index >= ActivePlacement.y && line_index < ActivePlacement.y + ActivePlacement.z;
     if (!in_active_y) {
         source_sample_pos = vec2(-1.0);
         return false;
@@ -302,7 +326,7 @@ bool sample_maps_to_active_time(
         return false;
     }
 
-    float active_y = line_index - active_top;
+    float active_y = line_index - ActivePlacement.y;
     float source_y = (IsInterlaced > 0.5) ? (active_y * 2.0 + field_parity) : active_y;
     source_sample_pos = vec2(source_x, source_y);
     return true;
@@ -350,8 +374,7 @@ void main()
         return;
     }
 
-    vec2 raster = timing_profile_raster_position(TIMING_PROFILE_MODE, config.OriginalSize.y,
-        config.FrameCount, FIELD_ODD, sample_index, FrameWidth);
+    vec2 raster = raster_position(vRasterPattern, vRasterExceptions, sample_index, FrameWidth);
     vec2 source_sample_pos;
     bool in_active = sample_maps_to_active_time(raster.x, raster.y, source_sample_pos);
 

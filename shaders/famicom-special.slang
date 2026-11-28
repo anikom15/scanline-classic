@@ -29,7 +29,7 @@
 
 #include "timing-profiles.inc"
 #include "signal-standard.inc"
-#define TIMING_PROFILE_MODE timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS)
+#define TIMING_PROFILE_MODE timingProfileMode
 #include "menus/parameters/famicom.inc"
 
 #ifdef OPTION_DEBUG
@@ -60,9 +60,9 @@ layout(push_constant) uniform Push
 } config;
 
 #ifdef OPTION_DEBUG
-#define PAL signal_pal(TIMING_PROFILE_MODE, config.OriginalFPS, global.DEBUG_PAL)
+#define DEBUG_PAL_VALUE global.DEBUG_PAL
 #else
-#define PAL signal_pal(TIMING_PROFILE_MODE, config.OriginalFPS, 0.0)
+#define DEBUG_PAL_VALUE 0.0
 #endif
 
 layout(std140, set = 0, binding = 0) uniform UBO
@@ -81,11 +81,14 @@ layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
 layout(location = 1) out float h_scale;
 layout(location = 2) out CarrierPhaseConfig carrier;
+layout(location = 7) flat out float PalMode;
 
 void main()
 {
     gl_Position = global.MVP * Position;
     vTexCoord = TexCoord;
+    int timingProfileMode = timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS);
+    PalMode = signal_pal(TIMING_PROFILE_MODE, config.OriginalFPS, DEBUG_PAL_VALUE);
 
     TimebaseConfig tb = compute_timebase(
         config.FrameCount,
@@ -249,6 +252,7 @@ bool phase_gate_high(const int color_phase, const int phase_index)
 layout(location = 0) in vec2 vTexCoord;
 layout(location = 1) in float h_scale;
 layout(location = 2) in CarrierPhaseConfig carrier;
+layout(location = 7) flat in float PalMode;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
@@ -295,13 +299,13 @@ void main()
     float cycles_per_pixel = fract(carrier.sc_freq_hz * carrier.pixel_time_px);
     float cycles_per_line = fract(carrier.sc_freq_hz / carrier.h_freq_hz);
     float field_cycles = fract(carrier.field_phase / (2.0 * PI));
-    float phase_offset_cycles = mix(FAMICOM_PHASE_OFFSET_CYCLES_NTSC, FAMICOM_PHASE_OFFSET_CYCLES_PAL, PAL);
+    float phase_offset_cycles = mix(FAMICOM_PHASE_OFFSET_CYCLES_NTSC, FAMICOM_PHASE_OFFSET_CYCLES_PAL, PalMode);
     float base_phase_cycles = fract(
         base_center * cycles_per_pixel
         + line * cycles_per_line
         + field_cycles
         + phase_offset_cycles);
-    float pal_v_sign = 1.0 - 2.0 * floor(mod(line, 2.0)) * PAL;
+    float pal_v_sign = 1.0 - 2.0 * floor(mod(line, 2.0)) * PalMode;
     float phase_cycles = fract(base_phase_cycles * pal_v_sign);
     int phase_index = int(mod(floor(12.0 * phase_cycles + 1e-4), 12.0));
     int wave_phase = int(mod(float(color + phase_index), 12.0));

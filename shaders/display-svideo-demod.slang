@@ -40,9 +40,10 @@
 #pragma include_optional "../config/options.cfg"
 
 #include "timing-profiles.inc"
+#include "raster-mapping.inc"
 #include "signal-standard.inc"
 
-#define TIMING_PROFILE_MODE timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS)
+#define TIMING_PROFILE_MODE timingProfileMode
 
 #ifdef OPTION_DEBUG
 #pragma parameter DEBUG_DISPLAY_SVIDEO_DEMOD_HEADER " —— Debug Display S-Video Demodulator —— " 0.0 0.0 0.0 0.0
@@ -135,11 +136,22 @@ layout(location = 6) flat out float Fsc;
 layout(location = 7) flat out float HorizontalFrequency;
 layout(location = 8) flat out float StorageWidth;
 layout(location = 9) flat out float TextureFits;
+layout(location = 10) flat out vec4 vRasterPattern;
+layout(location = 11) flat out float DecoderPal;
+layout(location = 12) flat out ivec2 vRasterExceptions;
 
 void main()
 {
     gl_Position = global.MVP * Position;
     vTexCoord = TexCoord;
+    int timingProfileMode = timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS);
+    timing_profile_raster_descriptor(TIMING_PROFILE_MODE, config.OriginalSize.y, config.FrameCount,
+        FIELD_ODD, vRasterPattern, vRasterExceptions);
+    float debug_pal = 0.0;
+#ifdef OPTION_DEBUG
+    debug_pal = global.DEBUG_PAL;
+#endif
+    DecoderPal = signal_pal(TIMING_PROFILE_MODE, config.OriginalFPS, debug_pal);
 
     InitialSubcarrierPhaseFrac = contract_initial_subcarrier_phase_frac(
         config.OriginalSize.xy, config.OriginalFPS, config.FrameCount,
@@ -210,6 +222,9 @@ layout(location = 6) flat in float Fsc;
 layout(location = 7) flat in float HorizontalFrequency;
 layout(location = 8) flat in float StorageWidth;
 layout(location = 9) flat in float TextureFits;
+layout(location = 10) flat in vec4 vRasterPattern;
+layout(location = 11) flat in float DecoderPal;
+layout(location = 12) flat in ivec2 vRasterExceptions;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 1) uniform sampler2D Source;
 
@@ -264,13 +279,8 @@ void main()
     );
 
     // PAL V-axis alternation is applied after delay-line component separation.
-    vec2 raster = timing_profile_raster_position(TIMING_PROFILE_MODE, config.OriginalSize.y,
-        config.FrameCount, FIELD_ODD, sample_index, FrameWidth);
-    float debug_pal = 0.0;
-#ifdef OPTION_DEBUG
-    debug_pal = global.DEBUG_PAL;
-#endif
-    float decoder_pal = signal_pal(TIMING_PROFILE_MODE, config.OriginalFPS, debug_pal);
+    vec2 raster = raster_position(vRasterPattern, vRasterExceptions, sample_index, FrameWidth);
+    float decoder_pal = DecoderPal;
     float pal_v_sign = 1.0 - 2.0 * floor(mod(raster.y, 2.0)) * decoder_pal;
 
     float c_gain = 0.01 * (2.0 * USER_COLOR);
@@ -285,10 +295,9 @@ void main()
         Fsc > 0.0 && Fs > 0.0 && HorizontalFrequency > 0.0) {
         float phase_inc_per_sample = 2.0 * PI * Fsc / Fs;
         float previous_y = max(raster.y - 1.0, 0.0);
-        vec2 previous_range = timing_profile_line_range(TIMING_PROFILE_MODE, config.OriginalSize.y,
-            config.FrameCount, FIELD_ODD, previous_y, FrameWidth);
+        vec2 previous_range = raster_line_range(vRasterPattern, vRasterExceptions, previous_y, FrameWidth);
         float system_phase_shift = comb_system_phase_shift(Fsc, HorizontalFrequency);
-        if (TIMING_PROFILE_MODE > 0)
+        if (vRasterExceptions.x >= 0)
             system_phase_shift = comb_system_phase_shift(Fsc, Fs / previous_range.y);
         float phase_offset = comb_phase_offset(0.0, system_phase_shift, phase_inc_per_sample);
         phase_offset += COMB_ADJUST_X;

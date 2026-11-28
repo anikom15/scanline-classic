@@ -41,7 +41,8 @@
 #pragma include_optional "../config/options.cfg"
 
 #include "timing-profiles.inc"
-#define TIMING_PROFILE_MODE timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS)
+#include "raster-mapping.inc"
+#define TIMING_PROFILE_MODE timingProfileMode
 
 #ifdef OPTION_XTALK_SAMPLE_COUNT
 #else
@@ -136,11 +137,13 @@ layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
 layout(location = 1) flat out NoiseTxRxState vNoiseState;
+layout(location = 8) flat out vec4 vRasterPattern;
+layout(location = 9) flat out ivec2 vRasterExceptions;
 
 // Derive the logical line width, field length, storage stride and usable LOD
 // once per vertex. Raster width determines time; storage width maps samples
 // to texels and may include a different row arrangement.
-NoiseTxRxState compute_noise_state()
+NoiseTxRxState compute_noise_state(int timingProfileMode)
 {
     NoiseTxRxState state;
 
@@ -189,12 +192,17 @@ void main()
 {
     gl_Position = global.MVP * Position;
     vTexCoord = TexCoord;
-    vNoiseState = compute_noise_state();
+    int timingProfileMode = timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS);
+    timing_profile_raster_descriptor(TIMING_PROFILE_MODE, config.OriginalSize.y, global.FrameCount,
+        global.FIELD_ODD, vRasterPattern, vRasterExceptions);
+    vNoiseState = compute_noise_state(timingProfileMode);
 }
 
 #pragma stage fragment
 layout(location = 0) in vec2 vTexCoord;
 layout(location = 1) flat in NoiseTxRxState vNoiseState;
+layout(location = 8) flat in vec4 vRasterPattern;
+layout(location = 9) flat in ivec2 vRasterExceptions;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 1) uniform sampler2D SendSource;
 layout(set = 0, binding = 2) uniform sampler2D DeltaV;  // Mip 0
@@ -228,7 +236,19 @@ const int XTALK_SAMPLE_COUNT = OPTION_XTALK_SAMPLE_COUNT;
 // own packed texture width. Normally, align lookup boundaries to the raster
 // line and fetch the preceding sample. The debug option instead interpolates
 // adjacent samples at the unshifted field-relative time.
-vec4 sample_packed_delta_v(sampler2D level, int sample_index, int lod_i, NoiseTxRxState state)
+int delta_v_line_start(int sample_index, NoiseTxRxState state)
+{
+#ifdef OPTION_DEBUG
+    if (TXRX_NOISE_INTERPOLATE_MIPS > 0.5)
+        return 0;
+#endif
+    int data_length = max(int(ceil(state.data_length)), 1);
+    int index = clamp(sample_index, 0, data_length - 1);
+    vec2 raster = raster_position(vRasterPattern, vRasterExceptions, float(index), state.frame_width);
+    return index - int(raster.x);
+}
+
+vec4 sample_packed_delta_v(sampler2D level, int sample_index, int lod_i, int line_start, NoiseTxRxState state)
 {
     int width = lod_i == 0 ? int(state.storage_width) : textureSize(level, 0).x;
     int span = 1 << lod_i;  // exp2(lod_i)
@@ -244,9 +264,6 @@ vec4 sample_packed_delta_v(sampler2D level, int sample_index, int lod_i, NoiseTx
         return mix(current, next, float(remainder) / float(span));
     }
 #endif  // OPTION_DEBUG
-    vec2 raster = timing_profile_raster_position(TIMING_PROFILE_MODE, config.OriginalSize.y,
-        global.FrameCount, global.FIELD_ODD, float(index), state.frame_width);
-    int line_start = index - int(raster.x);
     int aligned_index = index - line_start % span;
 
     return sample_pyramid_signal(level, aligned_index, width, span, data_length);
@@ -256,41 +273,41 @@ vec4 sample_packed_delta_v(sampler2D level, int sample_index, int lod_i, NoiseTx
 // Each level is sampled independently, without interpolation between LODs.
 // Source is the final mip pass; earlier mips are addressed by alias. Unknown
 // levels return magenta as an error color.
-vec4 sample_delta_v_level(int sample_index, int lod_i, NoiseTxRxState state)
+vec4 sample_delta_v_level(int sample_index, int lod_i, int line_start, NoiseTxRxState state)
 {
     if (lod_i <= 0)
-        return sample_packed_delta_v(DeltaV, sample_index, lod_i, state);
+        return sample_packed_delta_v(DeltaV, sample_index, lod_i, line_start, state);
 #if OPTION_XTALK_SAMPLE_COUNT > 1
     if (lod_i == 1)
-        return sample_packed_delta_v(Mip1, sample_index, lod_i, state);
+        return sample_packed_delta_v(Mip1, sample_index, lod_i, line_start, state);
 #endif
 #if OPTION_XTALK_SAMPLE_COUNT > 2
     if (lod_i == 2)
-        return sample_packed_delta_v(Mip2, sample_index, lod_i, state);
+        return sample_packed_delta_v(Mip2, sample_index, lod_i, line_start, state);
 #endif
 #if OPTION_XTALK_SAMPLE_COUNT > 3
     if (lod_i == 3)
-        return sample_packed_delta_v(Mip3, sample_index, lod_i, state);
+        return sample_packed_delta_v(Mip3, sample_index, lod_i, line_start, state);
 #endif
 #if OPTION_XTALK_SAMPLE_COUNT > 4
     if (lod_i == 4)
-        return sample_packed_delta_v(Mip4, sample_index, lod_i, state);
+        return sample_packed_delta_v(Mip4, sample_index, lod_i, line_start, state);
 #endif
 #if OPTION_XTALK_SAMPLE_COUNT > 5
     if (lod_i == 5)
-        return sample_packed_delta_v(Mip5, sample_index, lod_i, state);
+        return sample_packed_delta_v(Mip5, sample_index, lod_i, line_start, state);
 #endif
 #if OPTION_XTALK_SAMPLE_COUNT > 6
     if (lod_i == 6)
-        return sample_packed_delta_v(Mip6, sample_index, lod_i, state);
+        return sample_packed_delta_v(Mip6, sample_index, lod_i, line_start, state);
 #endif
 #if OPTION_XTALK_SAMPLE_COUNT > 7
     if (lod_i == 7)
-        return sample_packed_delta_v(Mip7, sample_index, lod_i, state);
+        return sample_packed_delta_v(Mip7, sample_index, lod_i, line_start, state);
 #endif
 #if OPTION_XTALK_SAMPLE_COUNT > 8
     if (lod_i == 8)
-        return sample_packed_delta_v(Source, sample_index, lod_i, state);
+        return sample_packed_delta_v(Source, sample_index, lod_i, line_start, state);
 #endif
     return vec4(1.0, 0.0, 1.0, 1.0);
 }
@@ -325,12 +342,17 @@ void main()
             input_limit);
         return;
     }
+#endif  // OPTION_DEBUG
 
+    int line_start = delta_v_line_start(sample_index_i, vNoiseState);
+
+#ifdef OPTION_DEBUG
     if (TXRX_NOISE_VIEW_MAG_DELTAV > 0.5) {
         int debug_lod = int(floor(clamp(TXRX_NOISE_MAG_DELTAV_MIP_LOD, 0.0, vNoiseState.max_lod)));
         vec4 debug_delta_v = sample_delta_v_level(
             sample_index_i,
             debug_lod,
+            line_start,
             vNoiseState);
         FragColor = debug_delta_v * exp2(float(debug_lod));
         return;
@@ -351,7 +373,7 @@ void main()
         if (i > max_lod)
             break;
 
-        vec4 delta_sample = sample_delta_v_level(sample_index_i, i, vNoiseState);
+        vec4 delta_sample = sample_delta_v_level(sample_index_i, i, line_start, vNoiseState);
         mag_delta += abs(delta_sample);
     }
 

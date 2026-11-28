@@ -40,7 +40,8 @@
 #pragma include_optional "../config/options.cfg"
 
 #include "timing-profiles.inc"
-#define TIMING_PROFILE_MODE timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS)
+#include "raster-mapping.inc"
+#define TIMING_PROFILE_MODE timingProfileMode
 
 #ifdef OPTION_DEBUG
 #pragma parameter DEBUG_DAC_NOISE_HEADER " —— Debug DAC Noise —— " 0.0 0.0 0.0 0.0
@@ -116,8 +117,10 @@ layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
 layout(location = 1) flat out NoiseDACState vNoiseState;
+layout(location = 6) flat out vec4 vRasterPattern;
+layout(location = 7) flat out ivec2 vRasterExceptions;
 
-NoiseDACState compute_noise_state()
+NoiseDACState compute_noise_state(int timingProfileMode)
 {
     NoiseDACState state;
 
@@ -154,12 +157,17 @@ void main()
 {
     gl_Position = global.MVP * Position;
     vTexCoord = TexCoord;
-    vNoiseState = compute_noise_state();
+    int timingProfileMode = timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS);
+    timing_profile_raster_descriptor(TIMING_PROFILE_MODE, config.OriginalSize.y, config.FrameCount,
+        global.FIELD_ODD, vRasterPattern, vRasterExceptions);
+    vNoiseState = compute_noise_state(timingProfileMode);
 }
 
 #pragma stage fragment
 layout(location = 0) in vec2 vTexCoord;
 layout(location = 1) flat in NoiseDACState vNoiseState;
+layout(location = 6) flat in vec4 vRasterPattern;
+layout(location = 7) flat in ivec2 vRasterExceptions;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 1) uniform sampler2D Source;
 
@@ -210,8 +218,7 @@ void main()
         return;
     }
 
-    vec2 raster = timing_profile_raster_position(TIMING_PROFILE_MODE, config.OriginalSize.y,
-        config.FrameCount, global.FIELD_ODD, sample_index, vNoiseState.frame_width);
+    vec2 raster = raster_position(vRasterPattern, vRasterExceptions, sample_index, vNoiseState.frame_width);
     int raster_y_i = int(raster.y);
 
 #ifdef OPTION_DEBUG

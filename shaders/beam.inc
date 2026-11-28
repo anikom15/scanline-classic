@@ -34,7 +34,7 @@
 #include "menus/parameters/user-uncommon.inc"
 
 #include "timing-profiles.inc"
-#define TIMING_PROFILE_MODE timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, global.OriginalFPS)
+#define TIMING_PROFILE_MODE timingProfileMode
 
 layout(push_constant) uniform Push
 {
@@ -161,6 +161,7 @@ void main()
 {
     gl_Position = global.MVP * Position;
     vTexCoord = TexCoord;
+    int timingProfileMode = timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, global.OriginalFPS);
 
     // Selected target aspect ratio for framing
     maskAR = (ASPECT < 0.5) ? (4.0 / 3.0)

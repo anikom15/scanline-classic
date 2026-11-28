@@ -35,8 +35,9 @@
 #pragma include_optional "../config/options.cfg"
 
 #include "timing-profiles.inc"
+#include "raster-mapping.inc"
 #include "signal-standard.inc"
-#define TIMING_PROFILE_MODE timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS)
+#define TIMING_PROFILE_MODE timingProfileMode
 
 #ifdef OPTION_DEBUG
 #pragma parameter DEBUG_SYS_COMPONENT_YC_HEADER " —— Debug Sys component to YC Modulator —— " 0.0 0.0 0.0 0.0
@@ -98,9 +99,9 @@ layout(push_constant) uniform Push
 #define ENCODER_SETUP config.ENCODER_SETUP
 #define CARRIER_SHAPE config.CARRIER_SHAPE
 #ifdef OPTION_DEBUG
-#define PAL signal_pal(TIMING_PROFILE_MODE, config.OriginalFPS, global.DEBUG_PAL)
+#define DEBUG_PAL_VALUE global.DEBUG_PAL
 #else
-#define PAL signal_pal(TIMING_PROFILE_MODE, config.OriginalFPS, 0.0)
+#define DEBUG_PAL_VALUE 0.0
 #endif
 
 #ifdef SYS_COMPONENT_YC_MODE
@@ -140,7 +141,7 @@ struct SysComponentYCState
     float iq_phase;
 };
 
-SysComponentYCState compute_sys_component_yc_state()
+SysComponentYCState compute_sys_component_yc_state(int timingProfileMode)
 {
     SysComponentYCState state;
 
@@ -210,7 +211,8 @@ vec2 modulate_sys_component_yc(
     float initial_subcarrier_phase_frac,
     float carrier_leakage,
     float iq_imbalance_gain,
-    float iq_imbalance_phase)
+    float iq_imbalance_phase,
+    float pal)
 {
     component.g *= 0.492111;
     component.b *= 0.877283;
@@ -240,7 +242,7 @@ vec2 modulate_sys_component_yc(
         }
     }
 
-    float pal_v_sign = 1.0 - 2.0 * floor(mod(sample_y, 2.0)) * PAL;
+    float pal_v_sign = 1.0 - 2.0 * floor(mod(sample_y, 2.0)) * pal;
 
     component.g /= sqrt(iq_imbalance_gain);
     component.b *= sqrt(iq_imbalance_gain);
@@ -269,13 +271,20 @@ layout(location = 8) flat out float g_iq;
 layout(location = 9) flat out float p_iq;
 layout(location = 10) flat out float StorageWidth;
 layout(location = 11) flat out float TextureFits;
+layout(location = 12) flat out vec4 vRasterPattern;
+layout(location = 13) flat out float PalMode;
+layout(location = 14) flat out ivec2 vRasterExceptions;
 
 void main()
 {
     gl_Position = global.MVP * Position;
     vTexCoord = TexCoord;
 
-    SysComponentYCState state = compute_sys_component_yc_state();
+    int timingProfileMode = timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS);
+    timing_profile_raster_descriptor(TIMING_PROFILE_MODE, config.OriginalSize.y, config.FrameCount,
+        FIELD_ODD, vRasterPattern, vRasterExceptions);
+    PalMode = signal_pal(TIMING_PROFILE_MODE, config.OriginalFPS, DEBUG_PAL_VALUE);
+    SysComponentYCState state = compute_sys_component_yc_state(timingProfileMode);
     FrameWidth = state.frame_width;
     DataLength = state.data_length;
     StorageWidth = contract_pixel_packed_width(DataLength);
@@ -300,6 +309,9 @@ layout(location = 8) flat in float g_iq;
 layout(location = 9) flat in float p_iq;
 layout(location = 10) flat in float StorageWidth;
 layout(location = 11) flat in float TextureFits;
+layout(location = 12) flat in vec4 vRasterPattern;
+layout(location = 13) flat in float PalMode;
+layout(location = 14) flat in ivec2 vRasterExceptions;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 1) uniform sampler2D Source;
 
@@ -345,12 +357,11 @@ void main()
     component.r += rgbs.a;
 #endif
 
-    vec2 raster = timing_profile_raster_position(TIMING_PROFILE_MODE, config.OriginalSize.y,
-        config.FrameCount, FIELD_ODD, sample_index, FrameWidth);
+    vec2 raster = raster_position(vRasterPattern, vRasterExceptions, sample_index, FrameWidth);
     vec2 yc = modulate_sys_component_yc(
         component, sample_index, raster.y,
         Fsc, Fs, InitialSubcarrierPhaseFrac,
-        c_leakage, g_iq, p_iq
+        c_leakage, g_iq, p_iq, PalMode
     );
 
 #ifdef SYS_COMPONENT_YC_MODE

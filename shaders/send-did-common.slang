@@ -35,7 +35,7 @@
 #pragma include_optional "../config/options.cfg"
 
 #include "timing-profiles.inc"
-#define TIMING_PROFILE_MODE timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS)
+#define TIMING_PROFILE_MODE timingProfileMode
 
 layout(push_constant) uniform Push
 {
@@ -90,7 +90,7 @@ layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
 layout(location = 1) flat out SendDIDState vSendDIDState;
 
-SendDIDState compute_send_did_state()
+SendDIDState compute_send_did_state(int timingProfileMode)
 {
     SendDIDState state;
 
@@ -154,7 +154,8 @@ void main()
 {
     gl_Position = global.MVP * Position;
     vTexCoord = TexCoord;
-    vSendDIDState = compute_send_did_state();
+    int timingProfileMode = timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS);
+    vSendDIDState = compute_send_did_state(timingProfileMode);
 }
 
 #pragma stage fragment

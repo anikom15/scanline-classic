@@ -34,7 +34,7 @@
 
 #include "timing-profiles.inc"
 #include "signal-standard.inc"
-#define TIMING_PROFILE_MODE timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS)
+#define TIMING_PROFILE_MODE timingProfileMode
 
 #ifdef OPTION_DEBUG
 #pragma parameter DEBUG_COMPOSITE_DEMOD_HEADER " —— Debug Composite Demod —— " 0.0 0.0 0.0 0.0
@@ -147,11 +147,18 @@ layout(location = 2) out float c_gain;
 layout(location = 3) out float c_phase;
 layout(location = 4) out mat3 toRGB;
 layout(location = 7) out CarrierPhaseConfig carrier;
+layout(location = 12) flat out float DecoderPal;
 
 void main()
 {
     gl_Position = global.MVP * Position;
     vTexCoord = TexCoord;
+    int timingProfileMode = timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS);
+    float debug_pal = 0.0;
+#ifdef OPTION_DEBUG
+    debug_pal = global.DEBUG_PAL;
+#endif
+    DecoderPal = signal_pal(TIMING_PROFILE_MODE, config.OriginalFPS, debug_pal);
 
     // Precompute timebase config for carrier phase extraction
     TimebaseConfig tb = compute_timebase(
@@ -194,6 +201,7 @@ layout(location = 2) in float c_gain;
 layout(location = 3) in float c_phase;
 layout(location = 4) in mat3 toRGB;
 layout(location = 7) in CarrierPhaseConfig carrier;
+layout(location = 12) flat in float DecoderPal;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
 #ifdef OPTION_DEBUG
@@ -246,11 +254,7 @@ void main()
     // Compute phase-neutral carrier (PAL delay line handles alternation via add/subtract)
     vec2 carrier0 = sincos_phase_raw(phase0_full);
 
-    float debug_pal = 0.0;
-#ifdef OPTION_DEBUG
-    debug_pal = global.DEBUG_PAL;
-#endif
-    float decoder_pal = signal_pal(TIMING_PROFILE_MODE, config.OriginalFPS, debug_pal);
+    float decoder_pal = DecoderPal;
 
     // PAL V polarity correction: delay line subtraction produces alternating sign
     float pal_v_sign = 1.0 - 2.0 * floor(mod(line, 2.0)) * step(0.5, decoder_pal);

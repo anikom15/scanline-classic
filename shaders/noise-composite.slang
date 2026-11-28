@@ -46,7 +46,8 @@
 #pragma include_optional "../config/options.cfg"
 
 #include "timing-profiles.inc"
-#define TIMING_PROFILE_MODE timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS)
+#include "raster-mapping.inc"
+#define TIMING_PROFILE_MODE timingProfileMode
 
 #ifdef OPTION_DEBUG
 #pragma parameter DEBUG_COMPOSITE_NOISE_HEADER " —— Debug Composite Noise —— " 0.0 0.0 0.0 0.0
@@ -135,11 +136,13 @@ layout(location = 0) in vec4 Position;
 layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
 layout(location = 1) flat out NoiseCompositeState vNoiseState;
+layout(location = 6) flat out vec4 vRasterPattern;
+layout(location = 7) flat out ivec2 vRasterExceptions;
 
 // Reconstruct the packed 1D raster geometry and timing once per vertex from
 // the contract API. The fragment stage then consumes only these precomputed,
 // contract-consistent values when indexing the DSP signal.
-NoiseCompositeState compute_noise_state()
+NoiseCompositeState compute_noise_state(int timingProfileMode)
 {
     NoiseCompositeState state;
 
@@ -195,12 +198,17 @@ void main()
 {
     gl_Position = global.MVP * Position;
     vTexCoord = TexCoord;
-    vNoiseState = compute_noise_state();
+    int timingProfileMode = timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS);
+    timing_profile_raster_descriptor(TIMING_PROFILE_MODE, config.OriginalSize.y, config.FrameCount,
+        global.FIELD_ODD, vRasterPattern, vRasterExceptions);
+    vNoiseState = compute_noise_state(timingProfileMode);
 }
 
 #pragma stage fragment
 layout(location = 0) in vec2 vTexCoord;
 layout(location = 1) flat in NoiseCompositeState vNoiseState;
+layout(location = 6) flat in vec4 vRasterPattern;
+layout(location = 7) flat in ivec2 vRasterExceptions;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 1) uniform sampler2D Source;
 layout(set = 0, binding = 2) uniform sampler2D CompositeOut;
@@ -347,8 +355,7 @@ void main()
     }
 
     float sample_index = float(double(output_y) * vNoiseState.frame_width + double(output_x));
-    vec2 raster = timing_profile_raster_position(TIMING_PROFILE_MODE, config.OriginalSize.y,
-        config.FrameCount, global.FIELD_ODD, sample_index, vNoiseState.frame_width);
+    vec2 raster = raster_position(vRasterPattern, vRasterExceptions, sample_index, vNoiseState.frame_width);
 
 #ifdef OPTION_DEBUG
         if (COMPOSITE_NOISE_BYPASS > 0.5) {

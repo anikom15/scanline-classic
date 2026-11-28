@@ -40,7 +40,7 @@
 #pragma include_optional "../config/options.cfg"
 
 #include "timing-profiles.inc"
-#define TIMING_PROFILE_MODE timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS)
+#define TIMING_PROFILE_MODE timingProfileMode
 
 layout(push_constant) uniform Push
 {
@@ -92,7 +92,7 @@ layout(location = 1) in vec2 TexCoord;
 layout(location = 0) out vec2 vTexCoord;
 layout(location = 1) flat out DeltaVState vDeltaVState;
 
-DeltaVState compute_delta_v_state()
+DeltaVState compute_delta_v_state(int timingProfileMode)
 {
     DeltaVState state;
 
@@ -142,7 +142,8 @@ void main()
 {
     gl_Position = global.MVP * Position;
     vTexCoord = TexCoord;
-    vDeltaVState = compute_delta_v_state();
+    int timingProfileMode = timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS);
+    vDeltaVState = compute_delta_v_state(timingProfileMode);
 }
 
 #pragma stage fragment

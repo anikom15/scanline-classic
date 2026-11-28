@@ -83,6 +83,12 @@ def load_sfc_timing_parameters(preset_name):
     return parameters
 
 
+def cpp_profile_source(source):
+    source = re.sub(r'const ivec2 TIMING_RASTER_EXCEPTIONS\[\] = ivec2\[\]\((.*?)\n\);',
+                    r'const ivec2 TIMING_RASTER_EXCEPTIONS[] = {\1\n};', source, flags=re.DOTALL)
+    return re.sub(r'\bout (float|int|bool|vec4|ivec2)\s+(\w+)', r'\1& \2', source)
+
+
 def cpp_shader_source(profile_source=None):
     common = (ROOT / 'shaders' / 'common.inc').read_text(encoding='utf-8')
     modulation = (ROOT / 'shaders' / 'modulation.inc').read_text(encoding='utf-8')
@@ -120,7 +126,7 @@ def cpp_shader_source(profile_source=None):
             'float contract_initial_subcarrier_phase_frac(',
         )
     )
-    profiles = profile_source if profile_source is not None else timing_profile_source()
+    profiles = cpp_profile_source(profile_source if profile_source is not None else timing_profile_source())
     source = '\n'.join(declarations + [profiles] + functions)
     source = re.sub(r'\bout (float|int|bool)\s+(\w+)', r'\1& \2', source)
     # GLSL decimal literals are float unless explicitly suffixed with lf.
@@ -153,6 +159,15 @@ struct vec3 {
     vec3() = default;
     vec3(float x, float y, float z) : x(x), y(y), z(z) {}
     explicit vec3(float value) : x(value), y(value), z(value) {}
+};
+struct vec4 {
+    float x, y, z, w;
+    explicit vec4(float value) : x(value), y(value), z(value), w(value) {}
+    vec4(float x, float y, float z, float w) : x(x), y(y), z(z), w(w) {}
+};
+struct ivec2 {
+    int x, y;
+    ivec2(int x, int y) : x(x), y(y) {}
 };
 struct dvec2 {
     double x, y;

@@ -65,6 +65,19 @@ def _line_clock_sum(mode, scan, parity, line):
     return result
 
 
+def _max_field_line_clocks(mode, scan, parity):
+    count = math.ceil(mode['field_lines'][scan][parity])
+    changes = [entry for entry in mode.get('line_overrides', [])
+               if entry['scan'] == scan and entry['field'] == parity]
+    pair = mode.get('line_clocks')
+    candidates = [entry['clocks'] for entry in changes]
+    for line_parity, total in (('odd', (count + 1) // 2), ('even', count // 2)):
+        overridden = sum(entry['line'] % 2 == (line_parity == 'odd') for entry in changes)
+        if total > overridden:
+            candidates.append(pair[line_parity] if pair else mode['clocks_per_line'])
+    return max(candidates)
+
+
 def generate_source(data):
     profiles = data['profiles']
     if not isinstance(profiles, list) or not profiles:
@@ -266,6 +279,61 @@ def generate_source(data):
         lines += ['        return mode;', '    }']
     lines += ['    return -1;', '}', '']
 
+    scans = (('progressive', 'even'), ('progressive', 'odd'),
+             ('interlaced', 'even'), ('interlaced', 'odd'))
+    exception_sets = {}
+    exceptions = []
+    for mode in modes:
+        pair = mode.get('line_clocks')
+        for scan, parity in scans:
+            changes = tuple(
+                (entry['line'], entry['clocks'] -
+                 (pair['odd' if entry['line'] % 2 else 'even'] if pair else mode['clocks_per_line']))
+                for entry in mode.get('line_overrides', [])
+                if entry['scan'] == scan and entry['field'] == parity
+            )
+            if changes and changes not in exception_sets:
+                exception_sets[changes] = len(exceptions)
+                exceptions.extend(changes)
+    if not exceptions:
+        exceptions.append((0, 0))
+    lines += ['const ivec2 TIMING_RASTER_EXCEPTIONS[] = ivec2[](']
+    lines += [f'    ivec2({line}, {delta}){"," if i + 1 < len(exceptions) else ""}'
+              for i, (line, delta) in enumerate(exceptions)]
+    lines += [');', '',
+              'void timing_profile_raster_descriptor(int mode, float height, uint frame_count, float field_odd,',
+              '    out vec4 pattern, out ivec2 exception_span)', '{',
+              '    if (mode == 0) {',
+              '        pattern = vec4(1.0, 1.0, 1.0, 0.0);',
+              '        exception_span = ivec2(-1, 0);',
+              '        return;', '    }']
+    for index, mode in enumerate(modes, 1):
+        pair = mode.get('line_clocks')
+        odd = pair['odd'] if pair else mode['clocks_per_line']
+        even = pair['even'] if pair else mode['clocks_per_line']
+        threshold = _glsl(mode['raster']['interlace_height_threshold'])
+        first = 1 if mode['first_field'] == 'odd' else 0
+        lines += [f'    if (mode == {index}) {{',
+                  f'        bool odd_field = ((frame_count % 2u + {first}u + (field_odd > 0.5 ? 1u : 0u)) % 2u) != 0u;']
+        for scan, parity in scans:
+            changes = tuple(
+                (entry['line'], entry['clocks'] -
+                 (pair['odd' if entry['line'] % 2 else 'even'] if pair else mode['clocks_per_line']))
+                for entry in mode.get('line_overrides', [])
+                if entry['scan'] == scan and entry['field'] == parity
+            )
+            condition = f"height {'>' if scan == 'interlaced' else '<='} {threshold} && {'odd_field' if parity == 'odd' else '!odd_field'}"
+            count = _glsl(mode['field_lines'][scan][parity])
+            offset = exception_sets[changes] if changes else 0
+            lines += [f'        if ({condition}) {{',
+                      f'            pattern = vec4({_glsl(odd)}, {_glsl(even)}, {_glsl(mode["clocks_per_line"])}, {count});',
+                      f'            exception_span = ivec2({offset}, {len(changes)});',
+                      '            return;', '        }']
+        lines += ['    }']
+    lines += ['    pattern = vec4(uintBitsToFloat(0x7fc00000u));',
+              '    exception_span = ivec2(-2, 0);',
+              '}', '']
+
     properties = (
         ('sc_mode', lambda mode: _glsl(STANDARDS[mode['standard']][0])),
         ('pixel_mode', lambda mode: '1.0'),
@@ -282,6 +350,9 @@ def generate_source(data):
         ('initial_phase', lambda mode: _glsl(mode['initial_phase_degrees'])),
         ('pal', lambda mode: '0.0' if mode['standard'] == 'ntsc' else '1.0'),
         ('centered_overscan', lambda mode: '1.0' if 'horizontal_front_porch_cycles' in mode['raster'] else '0.0'),
+        ('active_left_tracks_line', lambda mode: '1.0'
+         if 'horizontal_front_porch_cycles' in mode['raster'] and 'line_clocks' not in mode
+         and mode.get('line_overrides') else '0.0'),
     )
     for prop, value in properties:
         lines += [f'float timing_profile_{prop}(int mode, float legacy)', '{',
@@ -387,8 +458,6 @@ def generate_source(data):
         lines += [f'    if (mode == {index})',
                   f'        return {_glsl(ratio.numerator)} / {_glsl(ratio.denominator)};']
     lines += ['    return uintBitsToFloat(0x7fc00000u);', '}', '']
-    scans = (('progressive', 'even'), ('progressive', 'odd'),
-             ('interlaced', 'even'), ('interlaced', 'odd'))
     lines += ['float timing_profile_storage_length(int mode, float height, uint frame_count, float field_odd,',
               '    double width, float legacy)', '{', '    if (mode == 0)', '        return ceil(legacy);']
     for index, mode in enumerate(modes, 1):
@@ -472,7 +541,24 @@ def generate_source(data):
     lines += ['bool timing_profile_presentation_fits(int mode, float height, uint frame_count, float field_odd,',
               '    double width, float base_width, float field_height, vec2 texture_size)', '{',
               '    if (!(width > 0.0) || !(base_width > 0.0) || !(field_height > 0.0) || !(texture_size.y >= ceil(field_height)))',
-              '        return false;',
+              '        return false;']
+    for index, mode in enumerate(modes, 1):
+        scale = mode['clocks_per_line']
+        threshold = _glsl(mode['raster']['interlace_height_threshold'])
+        first = 1 if mode['first_field'] == 'odd' else 0
+        lines += [f'    if (mode == {index} && base_width == {_glsl(scale)}) {{',
+                  f'        bool odd = ((frame_count % 2u + {first}u + (field_odd > 0.5 ? 1u : 0u)) % 2u) != 0u;']
+        for scan, parity in scans:
+            count = math.ceil(mode['field_lines'][scan][parity])
+            max_line = _max_field_line_clocks(mode, scan, parity)
+            # The existing line scan accumulates clock positions in floats.
+            if count * max_line > 2**24:
+                continue
+            condition = f"height {'>' if scan == 'interlaced' else '<='} {threshold} && {'odd' if parity == 'odd' else '!odd'}"
+            lines += [f'        if ({condition} && ceil(field_height) == {_glsl(count)})',
+                      f'            return double(texture_size.x) >= ceil(double({_glsl(max_line)}) * width / double(base_width));']
+        lines += ['    }']
+    lines += [
               '    for (int line = 0; line < int(ceil(field_height)); ++line) {',
               '        vec2 range = timing_profile_line_range(mode, height, frame_count, field_odd, float(line), double(base_width));',
               '        double line_width = double(range.y) * width / double(base_width);',

@@ -11,6 +11,29 @@ Keep one pixel-domain `frameh.slang` and preserve the contract's independent
 getters. All timing-dependent passes must resolve the same profile from the
 same original-source inputs.
 
+## Current Status
+
+- SFC NTSC, PAL and PAL-M use profile 1; PSX NTSC and PAL use profile 2.
+  Other systems continue to use profile 0 and the legacy timing parameters.
+- Build-time generation validates the catalog and writes
+  `out/shaders/timing-profiles.inc`; generated shaders are not source files.
+  The build also generates the filter tap include in the output tree.
+- Packed raster storage, physical sync, cumulative sample boundaries and
+  presentation deskew account for the SFC exceptional lines and PSX line
+  pattern. SD DSP uses unsnapped 32 MHz working and 16 MHz output rates;
+  VGA retains its separate variable-rate path.
+- Regression tests cover profile selection, exact field phase, exceptional
+  lines, fractional sample boundaries, capacity and presentation geometry.
+  Representative shaders have been compiled and linked, but the fixed-rate
+  migration has not yet been visually validated in RetroArch on a GPU.
+- Timing selection and field geometry remain runtime-dependent. Profile
+  selection and raster descriptors are resolved per vertex; fragment raster
+  mapping still uses double-precision arithmetic.
+- Legacy `compute_timebase` consumers still use approximate field phase.
+  Additional systems, migration guidance and eventual removal of legacy timing
+  controls remain open. Direct validation of `filter.slang` and
+  `noise-svideo.slang` is also blocked by their existing missing includes.
+
 ## Profile Data
 
 Each profile describes one system and contains:
@@ -144,31 +167,124 @@ future profile applications, not assumptions about what the current frontend
 signals can distinguish. Add them only after establishing timing references
 and reliable triggers.
 
-## Implementation
+## Implementation Status
 
-1. Define the profile schema and build-time validation, then encode SFC NTSC,
-   PAL, and PAL-M modes. The initial schema supports subcarrier-multiplied
-   clocks and explicit rational field durations; extend it before migrating
-   systems with other clock models.
-2. Generate shared shader-readable profile data and selection logic.
+1. **Done:** Define the profile schema and build-time validation, and encode
+   SFC NTSC, PAL and PAL-M plus PSX NTSC and PAL modes. The current schema
+   supports subcarrier-multiplied clocks and explicit rational field durations;
+   extend it before migrating systems with other clock models.
+2. **Done, with efficiency work remaining:** Generate shared shader-readable
+   profile data and selection logic in the build output.
    Ensure global options are visible before profile selection is compiled.
    Keep the source shader shared rather than generating `frameh` variants.
-3. Update the contract and timing-dependent passes to resolve the profile
+3. **Partial:** Update the contract and timing-dependent passes to resolve the profile
    consistently. Preserve exact rational field-phase arithmetic and the
    separation between physical timing and raster storage.
    Older `compute_timebase` consumers still use their approximate legacy phase
    calculation and the profile's `field_adjustment` compatibility flag, not
    the explicit field durations. Migrate those consumers before relying on
    arbitrary field patterns throughout the signal chain.
-4. Migrate preset inputs from timing fields to stable profile IDs. SFC presets
+4. **Partial:** Migrate preset inputs from timing fields to stable profile IDs. SFC presets
    use ID 1, PSX uses ID 2, and other systems retain ID 0 and their legacy timing parameters.
    The shared shaders still expose legacy timing controls until those systems
    are migrated; those controls do not override the SFC profile. Preserve
    display and signal-chain settings; consolidating system timing does not
    necessarily merge NTSC and PAL display presets.
-5. Update parameter documentation and migration guidance for existing saved
+5. **Open:** Update parameter documentation and migration guidance for existing saved
    presets and overrides. Keep consumer preferences and educational controls
    separate from hardware timing data.
+
+## Next Subplan: Profile Evaluation Efficiency
+
+Prefer generated, precomputed profile constants; resolve runtime-dependent
+invariants in the vertex stage; use fragment-stage profile calculations only
+when their results genuinely depend on the sample or row. Do not rely on the
+driver to hoist repeated selection, eliminate branches or reduce precision.
+The profile ID, frontend size and refresh, field order and debug overrides
+remain runtime inputs; do not assume one mode can be fixed at build time.
+Consider recommending to remove a debug override if it has a tangible
+performance benefit or can simplify structure.
+
+1. **Establish a baseline.** Audit reachable profile calls after preprocessing
+   the normal, debug and relevant option variants. Record stage, call site,
+   loop nesting and generated shader size, then compile representative SFC,
+   PSX, legacy and VGA paths. Treat reported shader costs as source-level
+   findings until measured on a GPU.
+2. **Resolve draw invariants once.** Replace repeated expansion of the
+   `TIMING_PROFILE_MODE` selector with a single vertex-stage selection per
+   shader. Pass the selected mode and required values as flat stage inputs.
+   Resolve PAL/debug selection, sync dimensions and current-profile active
+   placement there as well, including `frameh`. Preserve profile 0, invalid
+   profile diagnostics, option remapping, field ordering and mode changes.
+   Do not use general structures as vertex outputs to encapsulate timing
+   parameters, be explicit so that the fragment shader's dependencies are
+   obvious; but do group related values into vectors when it makes sense.
+3. **Generate compact mapping parameters.** Precompute invariant constants,
+   line-pattern descriptors and exceptional-line metadata from the catalog.
+   Select scan- and field-dependent values in the vertex stage. Separate that
+   selection from the minimal sample-dependent mapping in fragments, retaining
+   a general path for variable or future profiles rather than hard-coding
+   current systems into individual shaders. Keep a single `frameh` shader.
+4. **Reduce fragment work.** Use the selected parameters for sample-to-line
+   and line-to-sample mapping; avoid profile dispatch and repeated lookups for
+   invariant values. In particular, calculate the noise pyramid's line
+   alignment once per sample rather than once per mip. Evaluate integer or
+   rational arithmetic and base-plus-fraction representations before retaining
+   double operations in fragment shaders; use the precision required by the
+   results, not an unverified float approximation.
+5. **Replace the presentation scan.** Derive a maximum physical line length
+   from the selected field's line pattern and overrides instead of iterating
+   through every line in each vertex. Preserve the legacy path and reject
+   undersized targets, including the SFC PAL extended-line case.
+6. **Verify before and after each step.** Compare generated parameters and
+   mapping against the existing exact references at every line boundary,
+   including samples immediately before and after exceptions, both field
+   orders, interlace, mode switches and 16/32 MHz rates. Preserve cumulative
+   `ceil` boundaries, PSX's 3,412-clock first line and deskew relative to
+   unrounded physical H-sync. Check profile 0, invalid inputs, PAL-M and debug
+   overrides, and exact capacity thresholds. Compile/link normal, debug and
+   relevant option variants, then measure runtime and resource use on target
+   GPUs and visually validate in RetroArch.
+
+The goal is for fragment stages to receive resolved invariants and perform
+only necessary sample- or row-dependent work. Report any remaining fragment
+profile calls and their justification; do not treat compiler optimization as
+proof that they are free.
+
+### Efficiency work in progress
+
+- The Tx/Rx noise passes select the profile in the vertex stage and compute
+  raster alignment once per sample, outside the mip loop. The interpolated
+  debug path does not need raster alignment.
+- Timing-dependent source shaders now select the profile once per vertex.
+  Fragment consumers receive the selected mode as a flat input; PAL and its
+  debug override are also resolved in the vertex stage. `frameh` resolves
+  current-profile active placement there, with a row-dependent fallback for
+  future front-porch profiles with exceptional line lengths. Sync dimensions
+  are likewise resolved before the fragment stage.
+- Presentation capacity uses generated full-field maximum line lengths when
+  the base width is the physical clock width and cumulative clock positions
+  are exactly representable. Legacy, partial-field, and other width cases
+  retain the line scan.
+- Framing, sync, noise, demodulation, deskew and display-filter paths now
+  receive a selected flat line-pattern descriptor and exception span. Shared
+  fragment mapping handles uniform and alternating lines, a single exception,
+  and a general multiple-exception fallback without profile dispatch. The
+  general row-dependent `frameh` fallback still calls the active-left getter
+  for future front-porch profiles with exceptional lines.
+- Mapping retains the existing float clock accumulation and double boundary
+  arithmetic. Tests compare all current field boundaries and adjacent samples
+  with the previous mapping and independent rational references, including
+  16/32 MHz widths and synthetic multiple exceptions. Precision reduction
+  remains open.
+- A complete preprocessed baseline, target-GPU performance and resource
+  measurements, and RetroArch visual validation remain open.
+- Normal, debug, PAL-M-remap and combined variants of the affected production
+  paths have been linked where existing sources allow it. Independent baseline
+  compilation also fails for `composite-demod` and `digital-ycc-filter`
+  (missing `sigma_tb`), `composite-prefilter` (missing `FrameHSize`),
+  `iq-demod` and `iq-filter` (missing `sinc_lowpass_hamming`), and `filter`
+  and `noise-svideo` (missing includes).
 
 ## Mode-Change Phase Policy
 

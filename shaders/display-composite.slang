@@ -37,7 +37,8 @@
 #pragma include_optional "../config/options.cfg"
 
 #include "timing-profiles.inc"
-#define TIMING_PROFILE_MODE timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS)
+#include "raster-mapping.inc"
+#define TIMING_PROFILE_MODE timingProfileMode
 
 #ifdef OPTION_DEBUG
 #pragma parameter DEBUG_DISPLAY_COMPOSITE_PREFILTER_HEADER " —— Debug Display Composite Prefilter —— " 0.0 0.0 0.0 0.0
@@ -97,11 +98,16 @@ layout(location = 7) flat out float Taps;
 layout(location = 8) flat out float HorizontalFrequency;
 layout(location = 9) flat out float StorageWidth;
 layout(location = 10) flat out float TextureFits;
+layout(location = 11) flat out vec4 vRasterPattern;
+layout(location = 12) flat out ivec2 vRasterExceptions;
 
 void main()
 {
     gl_Position = global.MVP * Position;
     vTexCoord = TexCoord;
+    int timingProfileMode = timing_profile_select(global.TIMING_PROFILE, config.OriginalSize.xy, config.OriginalFPS);
+    timing_profile_raster_descriptor(TIMING_PROFILE_MODE, config.OriginalSize.y, global.FrameCount,
+        global.FIELD_ODD, vRasterPattern, vRasterExceptions);
 
     float fs = contract_working_sample_rate(
         config.OriginalFPS, timing_profile_sc_mode(TIMING_PROFILE_MODE, config.SC_FREQ_MODE), timing_decimal_value(vec3(config.SC_FREQ_WHOLE, global.SC_FREQ_FRAC6, config.SC_FREQ_FRAC11)),
@@ -150,6 +156,8 @@ layout(location = 7) flat in float Taps;
 layout(location = 8) flat in float HorizontalFrequency;
 layout(location = 9) flat in float StorageWidth;
 layout(location = 10) flat in float TextureFits;
+layout(location = 11) flat in vec4 vRasterPattern;
+layout(location = 12) flat in ivec2 vRasterExceptions;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 1) uniform sampler2D Source;
 
@@ -225,15 +233,13 @@ void main()
     bool adaptive_comb = config.COLOR_FILTER_MODE >= 1.5;
 
     if (use_comb && ChromaFrequency > 0.0 && HorizontalFrequency > 0.0) {
-        vec2 raster = timing_profile_raster_position(TIMING_PROFILE_MODE, config.OriginalSize.y,
-            global.FrameCount, global.FIELD_ODD, index, FrameWidth);
+        vec2 raster = raster_position(vRasterPattern, vRasterExceptions, index, FrameWidth);
         float previous_y = max(raster.y - 1.0, 0.0);
-        vec2 previous_range = timing_profile_line_range(TIMING_PROFILE_MODE, config.OriginalSize.y,
-            global.FrameCount, global.FIELD_ODD, previous_y, FrameWidth);
+        vec2 previous_range = raster_line_range(vRasterPattern, vRasterExceptions, previous_y, FrameWidth);
         float subcarrier_frequency = ChromaFrequency / (2.0 * PI);
         float system_phase_shift = comb_system_phase_shift(
             subcarrier_frequency, HorizontalFrequency);
-        if (TIMING_PROFILE_MODE > 0)
+        if (vRasterExceptions.x >= 0)
             system_phase_shift = comb_system_phase_shift(subcarrier_frequency, 1.0 / previous_range.y);
         float phase_offset = comb_phase_offset(PI, system_phase_shift, ChromaFrequency);
 

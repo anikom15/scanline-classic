@@ -70,11 +70,12 @@ struct vec4 {
 struct ivec2 { int x,y; ivec2(int a,int b): x(a),y(b) {} };
 struct Size { float x,y; vec2 xy; };
 struct { Size OriginalSize, OutputSize, SourceSize; uint FrameCount; } config;
-vec2 vTexCoord; vec4 FragColor(0); int Source;
+vec2 vTexCoord, SyncDimensions; vec4 FragColor(0); int Source;
 int mode; float field_odd, sync_type;
 #define TIMING_PROFILE_MODE mode
 #define FIELD_ODD field_odd
 #define SYS_SYNC_TYPE sync_type
+#define raster_position(pattern, span, index, width) timing_profile_raster_position(mode, config.OriginalSize.y, config.FrameCount, field_odd, index, width)
 const float BLANKING_APPROX_FRACTION=0.07f;
 float uintBitsToFloat(uint) { return std::numeric_limits<float>::quiet_NaN(); }
 vec4 texelFetch(int, ivec2, int) { return vec4(0.1f,0.2f,0.3f,1); }
@@ -92,6 +93,8 @@ int main() {
     vSyncState.data_length=357364;
     auto sample = [](int index, float expected) {
         int x=index%1024, y=index/1024;
+        SyncDimensions=vec2(timing_profile_horizontal_sync_cycles(mode, 0),
+                            timing_profile_vertical_sync_lines(mode, 0));
         vTexCoord=vec2((x+0.5f)/1024,(y+0.5f)/512);
         render_sample();
         if (std::abs(FragColor.a-expected)>1e-5f)
@@ -157,6 +160,8 @@ int main() {
     vSyncState.data_length=897487;
     auto psx_sample = [](int index, float expected) {
         int x=index%1024, y=index/1024;
+        SyncDimensions=vec2(timing_profile_horizontal_sync_cycles(mode, 0),
+                            timing_profile_vertical_sync_lines(mode, 0));
         vTexCoord=vec2((x+0.5f)/1024,(y+0.5f)/1024);
         render_sample();
         if (std::abs(FragColor.a-expected)>1e-5f)
@@ -176,6 +181,8 @@ int main() {
     vSyncState.data_length=1062360;
     auto pal_sample = [](int index, float expected) {
         int x=index%1024, y=index/1024;
+        SyncDimensions=vec2(timing_profile_horizontal_sync_cycles(mode, 0),
+                            timing_profile_vertical_sync_lines(mode, 0));
         vTexCoord=vec2((x+0.5f)/1024,(y+0.5f)/2048);
         render_sample();
         if (std::abs(FragColor.a-expected)>1e-5f)
@@ -334,20 +341,24 @@ int main() {
         fragment = producer.split('#pragma stage fragment', 1)[1]
         shader_code = '\n'.join((
             shader_function(profiles, 'float timing_profile_storage_length('),
-            shader_function(profiles, 'vec2 timing_profile_raster_position('),
+            shader_function(profiles, 'vec2 timing_profile_raster_position(').replace('{', '{ ++raster_calls;', 1),
             shader_function(contract, 'float contract_pixel_packed_width('),
             shader_function(contract, 'bool contract_pixel_texture_fits('),
             shader_function(dsp, 'int pyramid_max_lod('),
             shader_function(dsp, 'vec4 sample_pyramid_signal('),
-            shader_function(producer, 'SendDIDState compute_send_did_state()'),
+            shader_function(producer, 'SendDIDState compute_send_did_state('),
             shader_function(fragment, 'void main()').replace('void main()', 'void render_sample()', 1),
+            shader_function(consumer, 'int delta_v_line_start('),
             shader_function(consumer, 'vec4 sample_packed_delta_v('),
             shader_function(consumer, 'vec4 sample_delta_v_level('),
+            '''vec4 sample_delta_v_level(int index, int lod, NoiseTxRxState state) {
+    return sample_delta_v_level(index, lod, delta_v_line_start(index, state), state);
+}''',
             shader_function(consumer, 'if (TXRX_NOISE_VIEW_MAG_DELTAV > 0.5)').replace(
                 'if (TXRX_NOISE_VIEW_MAG_DELTAV > 0.5)',
                 'void render_debug_view(int sample_index_i, float TXRX_NOISE_MAG_DELTAV_MIP_LOD, NoiseTxRxState vNoiseState)',
                 1,
-            ),
+            ).replace('int debug_lod =', 'int line_start = delta_v_line_start(sample_index_i, vNoiseState);\n        int debug_lod =', 1),
         ))
         harness = r'''
 #include <algorithm>
@@ -389,7 +400,9 @@ struct Size { float x, y; vec2 xy; };
 struct { Size OutputSize, OriginalSize, SendSourceSize, SourceSize; float OriginalFPS; } config;
 struct { unsigned FrameCount; float FIELD_ODD; } global;
 int profile_mode;
+int raster_calls;
 #define TIMING_PROFILE_MODE profile_mode
+#define raster_position(pattern, span, index, width) timing_profile_raster_position(profile_mode, config.OriginalSize.y, global.FrameCount, global.FIELD_ODD, index, width)
 float uintBitsToFloat(uint) { return std::numeric_limits<float>::quiet_NaN(); }
 struct SendDIDState { float frame_height, base_frame_width, input_span, output_frame_width, data_length, texture_fits; };
 SendDIDState vSendDIDState;
@@ -488,7 +501,7 @@ void run_case(int length, int storage_width, int storage_height, int raster_widt
         config.OutputSize.x = float(out_width);
         config.OutputSize.y = float(out_height);
         config.OutputSize.xy = {float(out_width),float(out_height)};
-        vSendDIDState = compute_send_did_state();
+        vSendDIDState = compute_send_did_state(profile_mode);
         if ((k <= max_lod && vSendDIDState.input_span != span/2) ||
             vSendDIDState.output_frame_width != out_width || vSendDIDState.texture_fits != 1)
             throw std::runtime_error("incorrect pyramid geometry");
@@ -518,6 +531,14 @@ void run_case(int length, int storage_width, int storage_height, int raster_widt
     sampler2D* samplers[] = {&DeltaV,&Mip1,&Mip2,&Mip3,&Mip4,&Mip5,&Mip6,
         &Mip7,&Source};
     for (int k=0; k<=8; ++k) *samplers[k] = &levels_data[k];
+    int test_index = length - 1;
+    raster_calls = 0;
+    int line_start = delta_v_line_start(test_index, state);
+    for (int k=0; k<=max_lod; ++k)
+        check(sample_delta_v_level(test_index, k, line_start, state),
+            reference_consumer_sample(references[k], test_index, length, raster_width, 1 << k));
+    if (raster_calls != 1)
+        throw std::runtime_error("raster alignment was not resolved once per sample");
     for (int k=0; k<=max_lod; ++k)
         for (int index=0; index<length; index+=max(length/113,1)) {
             check(sample_delta_v_level(index,k,state),
@@ -540,6 +561,13 @@ void run_case(int length, int storage_width, int storage_height, int raster_widt
     }
 #ifdef OPTION_DEBUG
     TXRX_NOISE_INTERPOLATE_MIPS = 1;
+    raster_calls = 0;
+    line_start = delta_v_line_start(test_index, state);
+    for (int k=0; k<=max_lod; ++k)
+        check(sample_delta_v_level(test_index, k, line_start, state),
+            reference_interpolated_sample(references[k], test_index));
+    if (raster_calls != 0)
+        throw std::runtime_error("interpolated debug sampling unnecessarily resolved raster alignment");
     for (int k=0; k<=max_lod; ++k)
         for (int index=0; index<length; index+=max(length/113,1))
             check(sample_delta_v_level(index,k,state),
@@ -645,7 +673,13 @@ int main() {
             self.skipTest('g++ is required to exercise shader functions')
 
         source = (ROOT / 'shaders' / 'frameh.slang').read_text(encoding='utf-8')
-        profiles = timing_profile_source()
+        data = json.loads((ROOT / 'presetdata' / 'timing-profiles.json').read_text(encoding='utf-8'))
+        future_mode = data['profiles'][1]['modes'][1]
+        future_mode['line_overrides'] = [
+            {'scan': 'interlaced', 'field': 'odd', 'line': 18, 'clocks': 3409}
+        ]
+        future_mode['field_clocks']['interlaced']['odd'] += 4
+        profiles = generate_source(data)
         fragment = source.split('#pragma stage fragment', 1)[1]
         shader_code = '\n'.join((
             shader_function(profiles, 'float timing_profile_top_blank_lines('),
@@ -654,10 +688,16 @@ int main() {
             shader_function(profiles, 'float timing_profile_nominal_width('),
             shader_function(profiles, 'float timing_profile_active_top('),
             shader_function(profiles, 'float timing_profile_active_left('),
+            shader_function(profiles, 'float timing_profile_active_left_tracks_line('),
             shader_function(profiles, 'vec2 timing_profile_line_range('),
             shader_function(profiles, 'vec2 timing_profile_raster_position('),
+            shader_function(source, 'vec4 compute_active_placement()'),
             shader_function(fragment, 'float current_field_parity()'),
-            shader_function(fragment, 'bool sample_maps_to_active_time(').replace('out vec2', 'vec2&'),
+            shader_function(fragment, 'bool sample_maps_to_active_time(').replace('out vec2', 'vec2&')
+                .replace('ActivePlacement.x', 'ActivePlacement.rgb.x')
+                .replace('ActivePlacement.y', 'ActivePlacement.rgb.y')
+                .replace('ActivePlacement.z', 'ActivePlacement.rgb.z')
+                .replace('ActivePlacement.w', 'ActivePlacement.a'),
             shader_function(fragment, 'vec3 fetch_source_sample('),
             shader_function(fragment, 'vec3 sample_active_content('),
             shader_function(fragment, 'void main()').replace('void main()', 'void render_sample()', 1),
@@ -692,13 +732,15 @@ struct vec4 {
 struct Size { float x,y; vec2 zw; };
 struct { Size SourceSize, OutputSize, OriginalSize; uint FrameCount; } config;
 vec2 vTexCoord;
-vec4 FragColor;
+vec4 FragColor, ActivePlacement;
 float FrameWidth, FrameHeight, IsInterlaced, Field, ClocksPerLine, ClockFactor;
 float PackedWidth, DataLength, TextureFits, field_odd;
 int profile_mode;
 #define TIMING_PROFILE_MODE profile_mode
 #define FIELD_ODD field_odd
 #define BLANKING_COLOR vec3(-1,-1,-1)
+#define raster_position(pattern, span, index, width) timing_profile_raster_position(profile_mode, config.OriginalSize.y, config.FrameCount, field_odd, index, width)
+#define raster_line_range(pattern, span, line, width) timing_profile_line_range(profile_mode, config.OriginalSize.y, config.FrameCount, field_odd, line, width)
 float uintBitsToFloat(unsigned int) { return std::numeric_limits<float>::quiet_NaN(); }
 int Source;
 vec4 texture(int,vec2 uv) {
@@ -713,9 +755,10 @@ void run_case(float height, bool interlaced, float parity, int output_width, int
     IsInterlaced=interlaced ? 1 : 0; Field=parity; field_odd=0;
     config.OriginalSize.y=float(source_height);
     config.FrameCount=(profile == 2 || profile == 5) ? uint(1-parity) : uint(parity);
-    int delta=profile && profile<=3 && parity && ((!interlaced && (profile==1 || profile==3)) ||
-                                      (interlaced && profile==2)) ? (profile==2 ? 4 : -4) : 0;
-    int special_line=profile==2 ? 18 : 259;
+    int delta=profile && parity && ((profile<=3 && ((!interlaced && (profile==1 || profile==3)) ||
+                                      (interlaced && profile==2))) || (profile==5 && interlaced))
+        ? (profile==2 || profile==5 ? 4 : -4) : 0;
+    int special_line=profile==2 || profile==5 ? 18 : 259;
     PackedWidth=1024;
     DataLength=profile==4 ? int(height)/2*6825+(int(height)%2)*3412 : ceil(FrameWidth*height)+delta;
     TextureFits=1;
@@ -726,6 +769,10 @@ void run_case(float height, bool interlaced, float parity, int output_width, int
                        : profile ? 18 : int(floor((ceil(height)-active_height)*0.5f));
     int nominal=source_width>=640 ? 640 : source_width>=512 ? 512 : source_width>=368 ? 368
                                  : source_width>=320 ? 320 : 256;
+    ActivePlacement=compute_active_placement();
+    if (ActivePlacement.rgb.y!=top || ActivePlacement.rgb.z!=active_height ||
+        ActivePlacement.a!=(profile==5 ? 1 : 0))
+        throw std::runtime_error("vertex active placement differs from reference");
     for (int y=0;y<output_height;++y) for (int x=0;x<output_width;++x) {
         vTexCoord=vec2((x+0.5f)/output_width,(y+0.5f)/output_height);
         render_sample();
@@ -743,7 +790,7 @@ void run_case(float height, bool interlaced, float parity, int output_width, int
         }
         else if (delta && index>=start && index<end) { line=special_line-1; clock=index-start; }
         else { int normal=index-(delta && index>=end ? delta : 0); line=normal/width; clock=normal%width; }
-        float left=profile>=4 ? (profile==4 ? 3412 : width)-100
+        float left=profile>=4 ? (profile==4 ? 3412 : width+(delta && line==special_line-1 ? delta : 0))-100
                                     -(nominal+(source_width-nominal)*0.5f)*factor
                               : profile ? 252 : (width-source_width*factor)*0.5f;
         float sx=(clock-left-(profile ? 0 : (line*(width%factor))%factor))/factor;
