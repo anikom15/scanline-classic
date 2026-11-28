@@ -139,8 +139,8 @@ float contract_data_length(float frame_width, float frame_height)
     return frame_width * frame_height;
 }
 
-// Pack the field into a nearly square power-of-two grid, independently of
-// the allocation size. Only the final row may be partially occupied.
+// Pack the field in either pixel or working samples into a nearly square
+// power-of-two grid, independently of allocation size.
 float contract_pixel_packed_width(float data_length)
 {
     return exp2(ceil(log2(sqrt(max(ceil(data_length), 1.0)))));

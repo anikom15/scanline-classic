@@ -156,6 +156,8 @@ layout(location = 9) flat out float InputDataLength;
 layout(location = 10) flat out float OutputDataLength;
 layout(location = 11) flat out float InputFrameWidth;
 layout(location = 12) flat out float OutputFrameWidth;
+layout(location = 16) flat out float InputPackedWidth;
+layout(location = 17) flat out float InputTextureFits;
 layout(location = 13) flat out float DeskewSampleRatio;
 layout(location = 14) flat out float LineCarryClocksOut;
 layout(location = 15) flat out float ClockFactorOut;
@@ -225,6 +227,8 @@ void main()
     InputDataLength = max(timing_profile_storage_length(TIMING_PROFILE_MODE, config.OriginalSize.y,
         global.FrameCount, global.FIELD_ODD, InputFrameWidth,
         contract_data_length(InputFrameWidth, OutputFrameHeight)), 1.0);
+    InputPackedWidth = contract_pixel_packed_width(InputDataLength);
+    InputTextureFits = contract_pixel_texture_fits(config.SourceSize.xy, InputDataLength, InputPackedWidth) ? 1.0 : 0.0;
     OutputDataLength = max(timing_profile_storage_length(TIMING_PROFILE_MODE, config.OriginalSize.y,
         global.FrameCount, global.FIELD_ODD, OutputFrameWidth,
         contract_data_length(OutputFrameWidth, OutputFrameHeight)), 1.0);
@@ -274,6 +278,8 @@ layout(location = 9) flat in float InputDataLength;
 layout(location = 10) flat in float OutputDataLength;
 layout(location = 11) flat in float InputFrameWidth;
 layout(location = 12) flat in float OutputFrameWidth;
+layout(location = 16) flat in float InputPackedWidth;
+layout(location = 17) flat in float InputTextureFits;
 layout(location = 13) flat in float DeskewSampleRatio;
 layout(location = 14) flat in float LineCarryClocksOut;
 layout(location = 15) flat in float ClockFactorOut;
@@ -298,6 +304,11 @@ float compute_row_shift_output_samples(int output_y_i)
 void main()
 {
     vec2 UV = vTexCoord * config.OutputSize.xy;
+    float input_storage_width = InputPackedWidth;
+    if (InputTextureFits < 0.5) {
+        FragColor = vec4(1.0, 0.0, 1.0, 1.0);
+        return;
+    }
     int output_x_i = int(floor(UV.x));
     int output_y_i = int(floor(UV.y));
     float output_x = float(output_x_i);
@@ -328,14 +339,14 @@ void main()
     float input_pos_floor = floor(input_sample_pos);
     int input_index_int = int(input_pos_floor);
     float frac_offset = input_sample_pos - input_pos_floor;
-    float input_data_limit = max(InputDataLength - 1.0, 0.0);
+    float input_data_limit = max(ceil(InputDataLength) - 1.0, 0.0);
 
     vec3 color = vec3(0.0);
 
 #ifdef OPTION_DEBUG
     if (DISPLAY_RGB_FILTER_BYPASS > 0.5) {
         float sample_index = clamp(floor(input_sample_pos + 0.5), 0.0, input_data_limit);
-        color = fetch_input_sample(Source, config.SourceSize.xy, sample_index, InputFrameWidth, input_data_limit).rgb;
+        color = fetch_input_sample(Source, config.SourceSize.xy, sample_index, input_storage_width, input_data_limit).rgb;
     } else {
 #endif  // OPTION_DEBUG
 
@@ -346,7 +357,7 @@ void main()
     for (int k = 0; k < zoh_taps; ++k) {
         float coeff = zoh_area(float(k) - frac_offset, 1.0, Tout);
         float sample_index = clamp(float(input_index_int + k), 0.0, input_data_limit);
-        vec3 rgb = fetch_input_sample(Source, config.SourceSize.xy, sample_index, InputFrameWidth, input_data_limit).rgb;
+        vec3 rgb = fetch_input_sample(Source, config.SourceSize.xy, sample_index, input_storage_width, input_data_limit).rgb;
 
         color += coeff * rgb;
         zoh_sum += coeff;
@@ -359,7 +370,7 @@ void main()
         float w = kaiser(float(tap_offset), kfilt.taps, kfilt.beta);
         float coeff = sinc(float(tap_offset - frac_offset), kfilt.fc_norm) * w;
         float sample_index = clamp(float(input_index_int + tap_offset), 0.0, input_data_limit);
-        vec3 rgb = fetch_input_sample(Source, config.SourceSize.xy, sample_index, InputFrameWidth, input_data_limit).rgb;
+        vec3 rgb = fetch_input_sample(Source, config.SourceSize.xy, sample_index, input_storage_width, input_data_limit).rgb;
 
         color += coeff * rgb;
     }

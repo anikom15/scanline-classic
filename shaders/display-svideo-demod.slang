@@ -132,6 +132,8 @@ layout(location = 4) flat out float InitialSubcarrierPhaseFrac;
 layout(location = 5) flat out float Fs;
 layout(location = 6) flat out float Fsc;
 layout(location = 7) flat out float HorizontalFrequency;
+layout(location = 8) flat out float StorageWidth;
+layout(location = 9) flat out float TextureFits;
 
 void main()
 {
@@ -173,6 +175,8 @@ void main()
 
     DataLength = max(timing_profile_storage_length(TIMING_PROFILE_MODE, config.OriginalSize.y,
         config.FrameCount, FIELD_ODD, FrameWidth, contract_data_length(FrameWidth, FrameHeight)), 1.0);
+    StorageWidth = contract_pixel_packed_width(DataLength);
+    TextureFits = contract_pixel_texture_fits(config.OutputSize.xy, DataLength, StorageWidth) ? 1.0 : 0.0;
 
     Fs = contract_working_sample_rate(
         config.OriginalFPS,
@@ -204,6 +208,8 @@ layout(location = 4) flat in float InitialSubcarrierPhaseFrac;
 layout(location = 5) flat in float Fs;
 layout(location = 6) flat in float Fsc;
 layout(location = 7) flat in float HorizontalFrequency;
+layout(location = 8) flat in float StorageWidth;
+layout(location = 9) flat in float TextureFits;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 1) uniform sampler2D Source;
 
@@ -217,6 +223,11 @@ const float COMB_ADJUST_X = 0.0;
 
 void main()
 {
+    float storage_width = StorageWidth;
+    if (TextureFits < 0.5) {
+        FragColor = vec4(1.0, 0.0, 1.0, 1.0);
+        return;
+    }
 #ifdef OPTION_DEBUG
     if (DISPLAY_SVIDEO_DEMOD_BYPASS > 0.5) {
         FragColor = texture(Source, vTexCoord);
@@ -233,18 +244,18 @@ void main()
     float sample_x = floor(UV.x);
     float sample_y = floor(UV.y);
 
-    if (sample_x >= FrameWidth) {
+    if (sample_x >= storage_width) {
         FragColor = vec4(0.0);
         return;
     }
 
-    float sample_index = sample_y * FrameWidth + sample_x;
+    float sample_index = sample_y * storage_width + sample_x;
     if (sample_index >= DataLength) {
         FragColor = vec4(0.0);
         return;
     }
 
-    vec2 yc = fetch_input_sample(Source, config.OutputSize.xy, sample_index, FrameWidth, DataLength - 1.0).rg;
+    vec2 yc = fetch_input_sample(Source, config.OutputSize.xy, sample_index, storage_width, ceil(DataLength) - 1.0).rg;
 
     // Demodulate chroma from real subcarrier
     float phase = 2.0 * PI * carrier_phase(
@@ -279,7 +290,7 @@ void main()
 
         float pal_delay = fetch_comb_line_sample(
             Source, config.OutputSize.xy, raster.x - phase_offset, previous_range,
-            FrameWidth, DataLength, 1);
+            storage_width, ceil(DataLength), 1);
         vec2 delay_components = vec2(
             (yc.g + pal_delay) * sin(phase_with_hue),
             pal_v_sign * (yc.g - pal_delay) * cos(phase_with_hue));

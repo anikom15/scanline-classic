@@ -107,6 +107,8 @@ layout(location = 3) out flat vec4 sharpness_params;  // (tap_count1, gain1, tap
 layout(location = 4) out flat float FrameWidth;
 layout(location = 5) out flat float FrameHeight;
 layout(location = 6) out flat float DataLength;
+layout(location = 7) out flat float StorageWidth;
+layout(location = 8) out flat float TextureFits;
 
 const float SHARPNESS_MAX_TAPS = float(SHARPEN_MAX_TAPS);
 const float SHARPNESS_PRIMARY_BANDWIDTH_HZ = 3.0e6;
@@ -129,6 +131,9 @@ void main()
         SC_FREQ_MODE, SC_FREQ, PIXEL_CLOCK_MODE, PIXEL_CLOCK, H_FREQ_MODE, H_FREQ);
     DataLength = max(timing_profile_storage_length(TIMING_PROFILE_MODE, config.OriginalSize.y,
         global.FrameCount, global.FIELD_ODD, FrameWidth, contract_data_length(FrameWidth, FrameHeight)), 1.0);
+    StorageWidth = contract_pixel_packed_width(DataLength);
+    TextureFits = contract_pixel_texture_fits(config.SourceSize.xy, DataLength, StorageWidth) &&
+        contract_pixel_texture_fits(config.OutputSize.xy, DataLength, StorageWidth) ? 1.0 : 0.0;
 
 #ifdef OPTION_CRISPY
     sharpness_filters = vec4(0.0);
@@ -179,20 +184,27 @@ layout(location = 3) flat in vec4 sharpness_params;  // (tap_count1, gain1, tap_
 layout(location = 4) flat in float FrameWidth;
 layout(location = 5) flat in float FrameHeight;
 layout(location = 6) flat in float DataLength;
+layout(location = 7) flat in float StorageWidth;
+layout(location = 8) flat in float TextureFits;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
 void main()
 {
     vec2 pixel = floor(vTexCoord * config.OutputSize.xy);
-    float sample_index = pixel.y * FrameWidth + pixel.x;
-    if (pixel.x >= FrameWidth || sample_index >= DataLength) {
+    float storage_width = StorageWidth;
+    if (TextureFits < 0.5) {
+        FragColor = vec4(1.0, 0.0, 1.0, 1.0);
+        return;
+    }
+    float sample_index = pixel.y * storage_width + pixel.x;
+    if (pixel.x >= storage_width || sample_index >= DataLength) {
         FragColor = vec4(0.0);
         return;
     }
 
-    float data_limit = DataLength - 1.0;
-    vec4 center_sample = fetch_input_sample(Source, config.SourceSize.xy, sample_index, FrameWidth, data_limit);
+    float data_limit = ceil(DataLength) - 1.0;
+    vec4 center_sample = fetch_input_sample(Source, config.SourceSize.xy, sample_index, storage_width, data_limit);
 
 #ifdef OPTION_CRISPY
     FragColor = center_sample;
@@ -233,7 +245,7 @@ void main()
     for (int n = -max_center; n <= max_center; ++n) {
         float tap_offset = float(n);
         float sample_luma = (n == 0) ? center_sample.r : fetch_input_sample(
-            Source, config.SourceSize.xy, sample_index + tap_offset, FrameWidth, data_limit).r;
+            Source, config.SourceSize.xy, sample_index + tap_offset, storage_width, data_limit).r;
         if (abs(n) <= center1) {
             float w1 = gaussian_carrier_kernel(tap_offset, emphasis_sigma, emphasis_phase_step);
             band_luma += w1 * sample_luma;

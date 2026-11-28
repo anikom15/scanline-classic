@@ -108,6 +108,8 @@ layout(location = 6) flat out float FrameHeight;
 layout(location = 7) flat out float DataLength;
 layout(location = 8) flat out float Taps;
 layout(location = 9) flat out float ChromaDelay;
+layout(location = 10) flat out float StorageWidth;
+layout(location = 11) flat out float TextureFits;
 
 const float MAX_TAPS = float(SYS_YC_FILTER_MAX_TAPS);
 
@@ -130,6 +132,9 @@ void main()
         timing_profile_pixel_mode(TIMING_PROFILE_MODE, config.PIXEL_CLOCK_MODE), timing_profile_pixel_value(TIMING_PROFILE_MODE, timing_decimal_value(vec3(config.PIXEL_CLOCK_WHOLE, global.PIXEL_CLOCK_FRAC6, global.PIXEL_CLOCK_FRAC11))), timing_profile_h_mode(TIMING_PROFILE_MODE, config.H_FREQ_MODE), timing_profile_h_freq(TIMING_PROFILE_MODE, config.H_FREQ));
     DataLength = max(timing_profile_storage_length(TIMING_PROFILE_MODE, config.OriginalSize.y,
         global.FrameCount, global.FIELD_ODD, FrameWidth, contract_data_length(FrameWidth, FrameHeight)), 1.0);
+    StorageWidth = contract_pixel_packed_width(DataLength);
+    TextureFits = contract_pixel_texture_fits(config.SourceSize.xy, DataLength, StorageWidth) &&
+        contract_pixel_texture_fits(config.OutputSize.xy, DataLength, StorageWidth) ? 1.0 : 0.0;
     ChromaFrequency = 2.0 * PI * contract_subcarrier_freq_hz(
         config.OriginalFPS, timing_profile_sc_mode(TIMING_PROFILE_MODE, config.SC_FREQ_MODE), timing_decimal_value(vec3(config.SC_FREQ_WHOLE, global.SC_FREQ_FRAC6, global.SC_FREQ_FRAC11))) / max(fs, EPS);
 
@@ -208,11 +213,18 @@ layout(location = 6) flat in float FrameHeight;
 layout(location = 7) flat in float DataLength;
 layout(location = 8) flat in float Taps;
 layout(location = 9) flat in float ChromaDelay;
+layout(location = 10) flat in float StorageWidth;
+layout(location = 11) flat in float TextureFits;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 1) uniform sampler2D Source;
 
 void main()
 {
+    float storage_width = StorageWidth;
+    if (TextureFits < 0.5) {
+        FragColor = vec4(1.0, 0.0, 1.0, 1.0);
+        return;
+    }
 #ifdef OPTION_DEBUG
     if (config.SYS_YC_FILTER_BYPASS > 0.5) {
         FragColor = texture(Source, vTexCoord);
@@ -221,8 +233,8 @@ void main()
 #endif
 
     vec2 pixel = floor(vTexCoord * config.OutputSize.xy);
-    float index = pixel.y * FrameWidth + pixel.x;
-    if (pixel.x >= FrameWidth || index >= DataLength) {
+    float index = pixel.y * storage_width + pixel.x;
+    if (pixel.x >= storage_width || index >= DataLength) {
         FragColor = vec4(0.0);
         return;
     }
@@ -245,21 +257,21 @@ void main()
             sample_index = index - t;
         }
 
-        vec2 sample_yc = fetch_input_sample(Source, config.SourceSize.xy, sample_index, FrameWidth, DataLength - 1.0).rg;
+        vec2 sample_yc = fetch_input_sample(Source, config.SourceSize.xy, sample_index, storage_width, ceil(DataLength) - 1.0).rg;
         float chroma = sample_yc.y;
         if (ChromaDelay != 0.0) {
             float chroma_index = sample_index - ChromaDelay;
             float chroma_floor = floor(chroma_index);
-            float c0 = fetch_input_sample(Source, config.SourceSize.xy, chroma_floor, FrameWidth, DataLength - 1.0).g;
-            float c1 = fetch_input_sample(Source, config.SourceSize.xy, chroma_floor + 1.0, FrameWidth, DataLength - 1.0).g;
+            float c0 = fetch_input_sample(Source, config.SourceSize.xy, chroma_floor, storage_width, ceil(DataLength) - 1.0).g;
+            float c1 = fetch_input_sample(Source, config.SourceSize.xy, chroma_floor + 1.0, storage_width, ceil(DataLength) - 1.0).g;
             chroma = mix(c0, c1, fract(chroma_index));
         }
         float y = sample_yc.x;
         if (LumaDelay != 0.0) {
             float y_index = sample_index - LumaDelay;
             float y_floor = floor(y_index);
-            float y0 = fetch_input_sample(Source, config.SourceSize.xy, y_floor, FrameWidth, DataLength - 1.0).r;
-            float y1 = fetch_input_sample(Source, config.SourceSize.xy, y_floor + 1.0, FrameWidth, DataLength - 1.0).r;
+            float y0 = fetch_input_sample(Source, config.SourceSize.xy, y_floor, storage_width, ceil(DataLength) - 1.0).r;
+            float y1 = fetch_input_sample(Source, config.SourceSize.xy, y_floor + 1.0, storage_width, ceil(DataLength) - 1.0).r;
             y = mix(y0, y1, fract(y_index));
         }
         accum.x += h.x * y;
@@ -286,7 +298,7 @@ void main()
     if (config.SYS_YC_BANDPASS_BYPASS > 0.5) {
         vec2 original = fetch_input_sample(
             Source, config.SourceSize.xy, index,
-            FrameWidth, DataLength - 1.0).rg;
+            storage_width, ceil(DataLength) - 1.0).rg;
         yc = original;
     }
 #endif
@@ -309,7 +321,7 @@ void main()
     }
 
     if (config.SYS_CUTOFF_ATTEN_C <= 0.0) {
-        yc.y = fetch_input_sample(Source, config.SourceSize.xy, index, FrameWidth, DataLength - 1.0).g;
+        yc.y = fetch_input_sample(Source, config.SourceSize.xy, index, storage_width, ceil(DataLength) - 1.0).g;
     }
     vec2 cv = vec2(yc.r + yc.g, 0.0);
     yc = mix(cv, yc, SVIDEO);

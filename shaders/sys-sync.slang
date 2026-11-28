@@ -257,6 +257,11 @@ void main()
     float h_blanking_active = (!in_active_x && in_frame_x && in_h_blanking_window) ? 1.0 : 0.0;
     float v_blanking_active = (!in_active_y && in_frame_y && in_v_blanking_window) ? 1.0 : 0.0;
     float blanking_active = (h_blanking_active > 0.5 || v_blanking_active > 0.5) ? 1.0 : 0.0;
+    if (TIMING_PROFILE_MODE > 0) {
+        bool h_sync = in_frame && base_x < timing_profile_horizontal_sync_cycles(TIMING_PROFILE_MODE, 0.0);
+        bool v_sync = in_frame && output_y < timing_profile_vertical_sync_lines(TIMING_PROFILE_MODE, 0.0);
+        blanking_active = (h_sync || v_sync) ? 1.0 : 0.0;
+    }
 
     vec3 color = sample_in.rgb;
     float alpha = sample_in.a;

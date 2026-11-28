@@ -98,6 +98,8 @@ layout(location = 5) flat out float FrameHeight;
 layout(location = 6) flat out float DataLength;
 layout(location = 7) flat out float Taps;
 layout(location = 8) flat out float HorizontalFrequency;
+layout(location = 9) flat out float StorageWidth;
+layout(location = 10) flat out float TextureFits;
 
 void main()
 {
@@ -118,6 +120,9 @@ void main()
         timing_profile_pixel_mode(TIMING_PROFILE_MODE, config.PIXEL_CLOCK_MODE), timing_profile_pixel_value(TIMING_PROFILE_MODE, timing_decimal_value(vec3(config.PIXEL_CLOCK_WHOLE, config.PIXEL_CLOCK_FRAC6, config.PIXEL_CLOCK_FRAC11))), timing_profile_h_mode(TIMING_PROFILE_MODE, config.H_FREQ_MODE), timing_profile_h_freq(TIMING_PROFILE_MODE, config.H_FREQ));
     DataLength = max(timing_profile_storage_length(TIMING_PROFILE_MODE, config.OriginalSize.y,
         global.FrameCount, global.FIELD_ODD, FrameWidth, contract_data_length(FrameWidth, FrameHeight)), 1.0);
+    StorageWidth = contract_pixel_packed_width(DataLength);
+    TextureFits = contract_pixel_texture_fits(config.SourceSize.xy, DataLength, StorageWidth) &&
+        contract_pixel_texture_fits(config.OutputSize.xy, DataLength, StorageWidth) ? 1.0 : 0.0;
     ChromaFrequency = 2.0 * PI * contract_subcarrier_freq_hz(
         config.OriginalFPS, timing_profile_sc_mode(TIMING_PROFILE_MODE, config.SC_FREQ_MODE), timing_decimal_value(vec3(config.SC_FREQ_WHOLE, global.SC_FREQ_FRAC6, config.SC_FREQ_FRAC11))) / max(fs, EPS);
     HorizontalFrequency = contract_h_frequency(
@@ -147,10 +152,12 @@ layout(location = 5) flat in float FrameHeight;
 layout(location = 6) flat in float DataLength;
 layout(location = 7) flat in float Taps;
 layout(location = 8) flat in float HorizontalFrequency;
+layout(location = 9) flat in float StorageWidth;
+layout(location = 10) flat in float TextureFits;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 1) uniform sampler2D Source;
 
-vec2 filter_notch_bandpass(float index, float composite)
+vec2 filter_notch_bandpass(float index, float composite, float storage_width)
 {
 #ifdef OPTION_DEBUG
     if (config.DISPLAY_BANDPASS_BYPASS > 0.5) {
@@ -166,7 +173,7 @@ vec2 filter_notch_bandpass(float index, float composite)
     for (int k = 0; k < int(Taps); ++k) {
         float t = float(k) - (Taps - 1.0) / 2.0;
         float sample_cv = fetch_input_sample(
-            Source, config.SourceSize.xy, index + t, FrameWidth, DataLength - 1.0).r;
+            Source, config.SourceSize.xy, index + t, storage_width, ceil(DataLength) - 1.0).r;
         vec2 h = vec2(gaussian(t, FilterSigma.x), gaussian(t, FilterSigma.y));
         accum.x += gaussian_carrier_kernel(t, FilterSigma.x, ChromaFrequency) * sample_cv;
         accum.y += gaussian_carrier_kernel(t, FilterSigma.y, ChromaFrequency) * sample_cv;
@@ -193,14 +200,19 @@ vec2 filter_notch_bandpass(float index, float composite)
 void main()
 {
     vec2 pixel = floor(vTexCoord * config.OutputSize.xy);
-    float index = pixel.y * FrameWidth + pixel.x;
-    if (pixel.x >= FrameWidth || index >= DataLength) {
+    float storage_width = StorageWidth;
+    if (TextureFits < 0.5) {
+        FragColor = vec4(1.0, 0.0, 1.0, 1.0);
+        return;
+    }
+    float index = pixel.y * storage_width + pixel.x;
+    if (pixel.x >= storage_width || index >= DataLength) {
         FragColor = vec4(0.0);
         return;
     }
 
     float composite = fetch_input_sample(
-        Source, config.SourceSize.xy, index, FrameWidth, DataLength - 1.0).r;
+        Source, config.SourceSize.xy, index, storage_width, ceil(DataLength) - 1.0).r;
 
 #ifdef OPTION_DEBUG
     if (config.DISPLAY_COMPOSITE_PREFILTER_BYPASS > 0.5) {
@@ -210,7 +222,7 @@ void main()
 #endif  // OPTION_DEBUG
 
     vec2 notch = ChromaFrequency > 0.0
-        ? filter_notch_bandpass(index, composite) : vec2(composite, 0.0);
+        ? filter_notch_bandpass(index, composite, storage_width) : vec2(composite, 0.0);
     vec2 yc = notch;
 
     bool use_comb = config.COLOR_FILTER_MODE >= 1.0;
@@ -231,7 +243,7 @@ void main()
 
         float previous_line = fetch_comb_line_sample(
             Source, config.SourceSize.xy, raster.x - phase_offset, previous_range,
-            FrameWidth, DataLength, 0);
+            storage_width, ceil(DataLength), 0);
         float y_comb = 0.5 * (composite + previous_line);
         float c_comb = 0.5 * (composite - previous_line);
 

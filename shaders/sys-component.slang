@@ -127,6 +127,8 @@ layout(location = 3) flat out float FrameWidth;
 layout(location = 4) flat out float FrameHeight;
 layout(location = 5) flat out float DataLength;
 layout(location = 6) flat out float Taps;
+layout(location = 7) flat out float StorageWidth;
+layout(location = 8) flat out float TextureFits;
 
 const float MAX_TAPS = float(SYS_COMPONENT_MAX_TAPS);
 
@@ -167,6 +169,9 @@ void main()
         H_FREQ);
     DataLength = max(timing_profile_storage_length(TIMING_PROFILE_MODE, config.OriginalSize.y,
         config.FrameCount, global.FIELD_ODD, FrameWidth, contract_data_length(FrameWidth, FrameHeight)), 1.0);
+    StorageWidth = contract_pixel_packed_width(DataLength);
+    TextureFits = contract_pixel_texture_fits(config.SourceSize.xy, DataLength, StorageWidth) &&
+        contract_pixel_texture_fits(config.OutputSize.xy, DataLength, StorageWidth) ? 1.0 : 0.0;
 
     // Filter design
     if (SYS_YC_FILTER_TYPE < 0.5) {
@@ -232,11 +237,26 @@ layout(location = 3) flat in float FrameWidth;
 layout(location = 4) flat in float FrameHeight;
 layout(location = 5) flat in float DataLength;
 layout(location = 6) flat in float Taps;
+layout(location = 7) flat in float StorageWidth;
+layout(location = 8) flat in float TextureFits;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 1) uniform sampler2D Source;
 
 void main()
 {
+    float storage_width = StorageWidth;
+    if (TextureFits < 0.5) {
+        FragColor = vec4(1.0, 0.0, 1.0, 1.0);
+        return;
+    }
+    vec2 UV = vTexCoord * config.OutputSize.xy;
+    float output_x = floor(UV.x);
+    float output_y = floor(UV.y);
+    float output_index = output_y * storage_width + output_x;
+    if (output_x >= storage_width || output_index >= DataLength) {
+        FragColor = vec4(0.0);
+        return;
+    }
 #ifdef OPTION_DEBUG
     if (SYS_COMPONENT_BYPASS >= 1.0) {
         FragColor = texture(Source, vTexCoord);
@@ -252,21 +272,6 @@ void main()
     }
 #endif  // OPTION_DEBUG
 
-    vec2 UV = vTexCoord * config.OutputSize.xy;
-    float output_x = floor(UV.x);
-    float output_y = floor(UV.y);
-
-    if (output_x >= FrameWidth) {
-        FragColor = vec4(0.0);
-        return;
-    }
-
-    float output_index = output_y * FrameWidth + output_x;
-    if (output_index >= DataLength) {
-        FragColor = vec4(0.0);
-        return;
-    }
-
     int n_taps = int(Taps);
     vec3 outycc = vec3(0.0);
 
@@ -281,7 +286,7 @@ void main()
                 gaussian(dt, sigma.x),
                 gaussian(dt, sigma.y),
                 gaussian(dt, sigma.z));
-            vec4 rgbs = fetch_input_sample(Source, config.SourceSize.xy, output_index + dt, FrameWidth, DataLength - 1.0);
+            vec4 rgbs = fetch_input_sample(Source, config.SourceSize.xy, output_index + dt, storage_width, ceil(DataLength) - 1.0);
 
             vec3 ycc = rgb_to_luma_chroma(rgbs.rgb);
             ycc.r += rgbs.a;
@@ -302,10 +307,10 @@ void main()
             float dt = float(tap_offset);
             vec3 coeff = (1.0 - alpha) * pow(alpha, vec3(dt));
             vec4 rgbs = vec4(
-                fetch_input_sample(Source, config.SourceSize.xy, float(output_indices.x) - dt, FrameWidth, DataLength - 1.0).r,
-                fetch_input_sample(Source, config.SourceSize.xy, float(output_indices.y) - dt, FrameWidth, DataLength - 1.0).g,
-                fetch_input_sample(Source, config.SourceSize.xy, float(output_indices.z) - dt, FrameWidth, DataLength - 1.0).b,
-                fetch_input_sample(Source, config.SourceSize.xy, float(output_indices.x) - dt, FrameWidth, DataLength - 1.0).a
+                fetch_input_sample(Source, config.SourceSize.xy, float(output_indices.x) - dt, storage_width, ceil(DataLength) - 1.0).r,
+                fetch_input_sample(Source, config.SourceSize.xy, float(output_indices.y) - dt, storage_width, ceil(DataLength) - 1.0).g,
+                fetch_input_sample(Source, config.SourceSize.xy, float(output_indices.z) - dt, storage_width, ceil(DataLength) - 1.0).b,
+                fetch_input_sample(Source, config.SourceSize.xy, float(output_indices.x) - dt, storage_width, ceil(DataLength) - 1.0).a
                 );
 
             vec3 ycc = rgb_to_luma_chroma(rgbs.rgb);

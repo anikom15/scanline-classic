@@ -117,12 +117,20 @@ Each timing mode supplies even and odd physical field line counts in
 `field_lines`. For SFC NTSC interlace these are 263 even and 262 odd.
 `raster` specifies the interlace detection threshold. The shaders use the
 selected field's line count for geometry and `field_clocks` for phase.
-It also specifies `top_blank_lines` and `left_blank_cycles`: SFC uses one
-line and 88 pixel clocks. Bottom and right blanking are the remaining field
-space; presentation centers the active area independently of storage padding.
+It also specifies `vertical_sync_lines`, `vertical_back_porch_lines`,
+`horizontal_sync_cycles`, and `horizontal_back_porch_cycles`. SFC uses 3 sync
+lines followed by 15 blank lines, and 100 sync clocks followed by 152 blank
+clocks. Sync is asserted throughout the vertical pulse and at the start of each
+line; the rest of each porch is blank but not sync. Picture starts at line 19
+and clock 252 (zero-based). A 1,024-clock picture in a 1,364-clock line has
+88 trailing blank clocks. Unused picture lines and additional field lines
+remain blank at the bottom. Presentation centers the active area independently
+of storage padding. Profile 0 retains its legacy approximate sync.
 `line_overrides` records exceptional line lengths by scan type, field parity,
-and one-based line number. SFC NTSC/PAL-M progressive odd line 241 has
-1,360 clocks; PAL interlaced odd line 312 has 1,368. The generator checks
+and one-based line number, with line 1 at the start of vertical sync. SFC
+NTSC/PAL-M progressive odd line 259 has 1,360 clocks; PAL interlaced odd line
+18 has 1,368. Profile line numbers need not match the timing reference's
+numbering. The generator checks
 overridden fields against `field_clocks`, and the packed signal follows those
 line boundaries until the display resampler maps it to presentation rows.
 Fractional-clock field durations are supported for phase, not yet as a general

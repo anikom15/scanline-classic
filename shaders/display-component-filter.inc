@@ -163,6 +163,8 @@ layout(location = 17) flat out vec3 componentBias;
 layout(location = 18) flat out float DeskewSampleRatio;
 layout(location = 19) flat out float LineCarryClocksOut;
 layout(location = 20) flat out float ClockFactorOut;
+layout(location = 21) flat out float InputPackedWidth;
+layout(location = 22) flat out float InputTextureFits;
 
 void main()
 {
@@ -231,6 +233,8 @@ void main()
     InputDataLength = max(timing_profile_storage_length(TIMING_PROFILE_MODE, config.OriginalSize.y,
         config.FrameCount, global.FIELD_ODD, InputFrameWidth,
         contract_data_length(InputFrameWidth, OutputFrameHeight)), 1.0);
+    InputPackedWidth = contract_pixel_packed_width(InputDataLength);
+    InputTextureFits = contract_pixel_texture_fits(config.SourceSize.xy, InputDataLength, InputPackedWidth) ? 1.0 : 0.0;
     OutputDataLength = max(timing_profile_storage_length(TIMING_PROFILE_MODE, config.OriginalSize.y,
         config.FrameCount, global.FIELD_ODD, OutputFrameWidth,
         contract_data_length(OutputFrameWidth, OutputFrameHeight)), 1.0);
@@ -280,6 +284,8 @@ layout(location = 17) flat in vec3 componentBias;
 layout(location = 18) flat in float DeskewSampleRatio;
 layout(location = 19) flat in float LineCarryClocksOut;
 layout(location = 20) flat in float ClockFactorOut;
+layout(location = 21) flat in float InputPackedWidth;
+layout(location = 22) flat in float InputTextureFits;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 1) uniform sampler2D Source;
 
@@ -301,6 +307,11 @@ float compute_row_shift_output_samples(int output_y_i)
 void main()
 {
     vec2 UV = vTexCoord * config.OutputSize.xy;
+    float input_storage_width = InputPackedWidth;
+    if (InputTextureFits < 0.5) {
+        FragColor = vec4(1.0, 0.0, 1.0, 1.0);
+        return;
+    }
     int output_x_i = int(floor(UV.x));
     int output_y_i = int(floor(UV.y));
     float output_x = float(output_x_i);
@@ -328,9 +339,9 @@ void main()
     float input_pos_floor = floor(input_sample_pos);
     int input_index_int = int(input_pos_floor);
     float frac_offset = input_sample_pos - input_pos_floor;
-    float input_data_limit = max(InputDataLength - 1.0, 0.0);
+    float input_data_limit = max(ceil(InputDataLength) - 1.0, 0.0);
     float nearest_sample_index = clamp(floor(input_sample_pos + 0.5), 0.0, input_data_limit);
-    vec4 center_sample = fetch_input_sample(Source, config.SourceSize.xy, nearest_sample_index, InputFrameWidth, input_data_limit);
+    vec4 center_sample = fetch_input_sample(Source, config.SourceSize.xy, nearest_sample_index, input_storage_width, input_data_limit);
 
 #ifdef OPTION_DEBUG
     if (DISPLAY_COMPONENT_BYPASS > 0.5) {
@@ -358,7 +369,7 @@ void main()
     for (int k = 0; k < zoh_taps; ++k) {
         float coeff = zoh_area(float(k) - frac_offset, 1.0, Tout);
         float sample_index = clamp(float(input_index_int + k), 0.0, input_data_limit);
-        filtered_component += coeff * fetch_input_sample(Source, config.SourceSize.xy, sample_index, InputFrameWidth, input_data_limit).rgb;
+        filtered_component += coeff * fetch_input_sample(Source, config.SourceSize.xy, sample_index, input_storage_width, input_data_limit).rgb;
         zoh_sum += coeff;
     }
     filtered_component /= max(zoh_sum, EPS);
@@ -371,7 +382,7 @@ void main()
         float w = kaiser(float(tap_offset), yfilt.taps, yfilt.beta);
         float coeff = sinc(float(tap_offset) - frac_offset, yfilt.fc_norm) * w;
         float sample_index = clamp(float(input_index_int + tap_offset), 0.0, input_data_limit);
-        y_out += coeff * fetch_input_sample(Source, config.SourceSize.xy, sample_index, InputFrameWidth, input_data_limit).r;
+        y_out += coeff * fetch_input_sample(Source, config.SourceSize.xy, sample_index, input_storage_width, input_data_limit).r;
     }
     y_out /= yfilt.gain;
 
@@ -383,7 +394,7 @@ void main()
         float w = kaiser(float(tap_offset), cfilt.taps, cfilt.beta);
         float coeff = sinc(float(tap_offset) - frac_offset, cfilt.fc_norm) * w;
         float sample_index = clamp(float(input_index_int + tap_offset), 0.0, input_data_limit);
-        c_out += coeff * fetch_input_sample(Source, config.SourceSize.xy, sample_index, InputFrameWidth, input_data_limit).gb;
+        c_out += coeff * fetch_input_sample(Source, config.SourceSize.xy, sample_index, input_storage_width, input_data_limit).gb;
     }
     c_out /= cfilt.gain;
 

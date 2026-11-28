@@ -15,8 +15,10 @@
           "clocks_per_line": 1364,
           "raster": {
             "interlace_height_threshold": 262,
-            "top_blank_lines": 1,
-            "left_blank_cycles": 88
+            "vertical_sync_lines": 3,
+            "vertical_back_porch_lines": 15,
+            "horizontal_sync_cycles": 100,
+            "horizontal_back_porch_cycles": 152
           },
           "field_lines": {
             "progressive": {"even": 262, "odd": 262},
@@ -27,7 +29,7 @@
             "interlaced": {"even": 358732, "odd": 357368}
           },
           "line_overrides": [
-            {"scan": "progressive", "field": "odd", "line": 241, "clocks": 1360}
+            {"scan": "progressive", "field": "odd", "line": 259, "clocks": 1360}
           ],
           "first_field": "even",
           "field_adjustment": true,
@@ -41,8 +43,10 @@
           "clocks_per_line": 1364,
           "raster": {
             "interlace_height_threshold": 312,
-            "top_blank_lines": 1,
-            "left_blank_cycles": 88
+            "vertical_sync_lines": 3,
+            "vertical_back_porch_lines": 15,
+            "horizontal_sync_cycles": 100,
+            "horizontal_back_porch_cycles": 152
           },
           "field_lines": {
             "progressive": {"even": 312, "odd": 312},
@@ -53,7 +57,7 @@
             "interlaced": {"even": 426932, "odd": 425572}
           },
           "line_overrides": [
-            {"scan": "interlaced", "field": "odd", "line": 312, "clocks": 1368}
+            {"scan": "interlaced", "field": "odd", "line": 18, "clocks": 1368}
           ],
           "first_field": "odd",
           "field_adjustment": true,
@@ -67,8 +71,10 @@
           "clocks_per_line": 1364,
           "raster": {
             "interlace_height_threshold": 262,
-            "top_blank_lines": 1,
-            "left_blank_cycles": 88
+            "vertical_sync_lines": 3,
+            "vertical_back_porch_lines": 15,
+            "horizontal_sync_cycles": 100,
+            "horizontal_back_porch_cycles": 152
           },
           "field_lines": {
             "progressive": {"even": 262, "odd": 262},
@@ -79,7 +85,7 @@
             "interlaced": {"even": 358732, "odd": 357368}
           },
           "line_overrides": [
-            {"scan": "progressive", "field": "odd", "line": 241, "clocks": 1360}
+            {"scan": "progressive", "field": "odd", "line": 259, "clocks": 1360}
           ],
           "first_field": "even",
           "field_adjustment": true,

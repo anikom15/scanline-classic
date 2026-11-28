@@ -148,6 +148,7 @@ layout(location = 9) flat out float InputDataLength;
 layout(location = 10) flat out float OutputDataLength;
 layout(location = 11) flat out float OutputFrameWidth;
 layout(location = 12) flat out float InputTextureFits;
+layout(location = 13) flat out float OutputPackedWidth;
 
 const float MAX_TAPS = float(SYS_BANDLIMIT_MAX_TAPS);
 
@@ -218,7 +219,9 @@ void main()
         config.FrameCount, global.FIELD_ODD, OutputFrameWidth,
         contract_data_length(OutputFrameWidth, OutputFrameHeight)), 1.0);
     InputPackedWidth = contract_pixel_packed_width(InputDataLength);
-    InputTextureFits = contract_pixel_texture_fits(config.SourceSize.xy, InputDataLength, InputPackedWidth) ? 1.0 : 0.0;
+    OutputPackedWidth = contract_pixel_packed_width(OutputDataLength);
+    InputTextureFits = contract_pixel_texture_fits(config.SourceSize.xy, InputDataLength, InputPackedWidth) &&
+        contract_pixel_texture_fits(config.OutputSize.xy, OutputDataLength, OutputPackedWidth) ? 1.0 : 0.0;
 
     // The upstream framed signal is already ZOH-held. Normalize the analog
     // Gaussian design into pixel clocks, while still compensating for
@@ -295,6 +298,7 @@ layout(location = 9) flat in float InputDataLength;
 layout(location = 10) flat in float OutputDataLength;
 layout(location = 11) flat in float OutputFrameWidth;
 layout(location = 12) flat in float InputTextureFits;
+layout(location = 13) flat in float OutputPackedWidth;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
 
@@ -327,7 +331,7 @@ void main()
     float output_x = float(output_x_i);
     float output_y = float(output_y_i);
 
-    if (output_x >= OutputFrameWidth) {
+    if (output_x >= OutputPackedWidth) {
         FragColor = vec4(0.0);
         return;
     }
@@ -337,7 +341,7 @@ void main()
     int n_taps = int(pfilt.taps);
     int center = (n_taps - 1) / 2;
 
-    float field_output_index = output_y * OutputFrameWidth + output_x;
+    float field_output_index = output_y * OutputPackedWidth + output_x;
     if (field_output_index >= OutputDataLength) {
         FragColor = vec4(0.0);
         return;

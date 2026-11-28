@@ -133,14 +133,10 @@ DeltaVState compute_delta_v_state()
     state.data_length = max(timing_profile_storage_length(TIMING_PROFILE_MODE, config.OriginalSize.y,
         global.FrameCount, global.FIELD_ODD, state.frame_width,
         contract_data_length(state.frame_width, state.frame_height)), 1.0);
-    state.storage_width = state.frame_width;
-    state.texture_fits = 1.0;
-#ifdef SEND_PIXEL_DOMAIN
     state.data_length = ceil(state.data_length);
     state.storage_width = contract_pixel_packed_width(state.data_length);
     state.texture_fits = contract_pixel_texture_fits(config.OutputSize.xy, state.data_length, state.storage_width) &&
         contract_pixel_texture_fits(config.SourceSize.xy, state.data_length, state.storage_width) ? 1.0 : 0.0;
-#endif
 
     return state;
 }
@@ -180,7 +176,6 @@ void main()
     float output_x = floor(UV.x);
     float output_y = floor(UV.y);
 
-#ifdef SEND_PIXEL_DOMAIN
     float storage_width = vDeltaVState.storage_width;
     if (vDeltaVState.texture_fits < 0.5) {
         FragColor = vec4(1.0, 0.0, 1.0, 1.0);
@@ -190,14 +185,6 @@ void main()
         FragColor = vec4(0.0);
         return;
     }
-#else
-    float storage_width = vDeltaVState.frame_width;
-    if (output_x >= vDeltaVState.frame_width) {
-        FragColor = vec4(0.0);
-        return;
-    }
-#endif
-
     float field_output_index = output_y * storage_width + output_x;
     if (field_output_index >= vDeltaVState.data_length) {
         FragColor = vec4(0.0);

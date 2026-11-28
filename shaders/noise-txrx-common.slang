@@ -130,7 +130,7 @@ struct NoiseTxRxState {
     float frame_height;
     float data_length; // Number of original-domain samples in the field.
     float storage_width; // Base signal stride; differs from frame_width when packed.
-    float texture_fits; // Pixel-domain input and output capacity check.
+    float texture_fits; // Input and output capacity check.
     float max_lod; // Limited by quality, available levels and field length.
 };
 
@@ -193,20 +193,12 @@ NoiseTxRxState compute_noise_state()
         PIXEL_CLOCK,
         H_FREQ_MODE,
         H_FREQ);
-#ifdef SEND_PIXEL_DOMAIN
     float nominal_data_length = ceil(contract_data_length(state.frame_width, state.frame_height));
-#else
-    float nominal_data_length = contract_data_length(state.frame_width, state.frame_height);
-#endif
     state.data_length = max(timing_profile_storage_length(TIMING_PROFILE_MODE, config.OriginalSize.y,
         global.FrameCount, global.FIELD_ODD, state.frame_width, nominal_data_length), 1.0);
-    state.storage_width = state.frame_width;
-    state.texture_fits = 1.0;
-#ifdef SEND_PIXEL_DOMAIN
     state.storage_width = contract_pixel_packed_width(state.data_length);
     state.texture_fits = contract_pixel_texture_fits(config.OutputSize.xy, state.data_length, state.storage_width) &&
         contract_pixel_texture_fits(config.SendSourceSize.xy, state.data_length, state.storage_width) ? 1.0 : 0.0;
-#endif
     state.max_lod = float(pyramid_max_lod(int(ceil(state.data_length)), OPTION_XTALK_SAMPLE_COUNT));
     float horizontal_frequency = contract_h_frequency(
         config.OriginalFPS,
@@ -338,7 +330,6 @@ void main()
     float output_x = float(output_x_i);
     float output_y = float(output_y_i);
 
-#ifdef SEND_PIXEL_DOMAIN
     float storage_width = vNoiseState.storage_width;
     if (vNoiseState.texture_fits < 0.5) {
         FragColor = vec4(1.0, 0.0, 1.0, 1.0);
@@ -349,25 +340,8 @@ void main()
         FragColor = vec4(0.0);
         return;
     }
-#else
-    float storage_width = vNoiseState.frame_width;
-    if (output_x >= vNoiseState.frame_width) {
-        FragColor = vec4(0.0);
-        return;
-    }
-
-    int sample_index_i = output_y_i * int(vNoiseState.frame_width) + output_x_i;
-    if (float(sample_index_i) >= vNoiseState.data_length) {
-        FragColor = vec4(0.0);
-        return;
-    }
-#endif
     float sample_index = float(sample_index_i);
-#ifdef SEND_PIXEL_DOMAIN
-    float input_limit = vNoiseState.data_length - 1.0;
-#else
-    float input_limit = vNoiseState.data_length;
-#endif
+    float input_limit = ceil(vNoiseState.data_length) - 1.0;
 
 #ifdef OPTION_DEBUG
     if (TXRX_NOISE_BYPASS > 0.5) {

@@ -263,6 +263,8 @@ layout(location = 6) flat out float Fsc;
 layout(location = 7) flat out float c_leakage;
 layout(location = 8) flat out float g_iq;
 layout(location = 9) flat out float p_iq;
+layout(location = 10) flat out float StorageWidth;
+layout(location = 11) flat out float TextureFits;
 
 void main()
 {
@@ -273,6 +275,8 @@ void main()
     FrameWidth = state.frame_width;
     FrameHeight = state.frame_height;
     DataLength = state.data_length;
+    StorageWidth = contract_pixel_packed_width(DataLength);
+    TextureFits = contract_pixel_texture_fits(config.OutputSize.xy, DataLength, StorageWidth) ? 1.0 : 0.0;
     InitialSubcarrierPhaseFrac = state.initial_subcarrier_phase_frac;
     Fs = state.fs;
     Fsc = state.fsc;
@@ -292,11 +296,18 @@ layout(location = 6) flat in float Fsc;
 layout(location = 7) flat in float c_leakage;
 layout(location = 8) flat in float g_iq;
 layout(location = 9) flat in float p_iq;
+layout(location = 10) flat in float StorageWidth;
+layout(location = 11) flat in float TextureFits;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 1) uniform sampler2D Source;
 
 void main()
 {
+    float storage_width = StorageWidth;
+    if (TextureFits < 0.5) {
+        FragColor = vec4(1.0, 0.0, 1.0, 1.0);
+        return;
+    }
 #ifdef OPTION_DEBUG
     if (DEBUG_SYS_COMPONENT_YC_BYPASS > 0.5) {
         FragColor = texture(Source, vTexCoord);
@@ -313,21 +324,21 @@ void main()
     float sample_x = floor(UV.x);
     float sample_y = floor(UV.y);
 
-    if (sample_x >= FrameWidth) {
+    if (sample_x >= storage_width) {
         FragColor = vec4(0.0);
         return;
     }
 
-    float sample_index = sample_y * FrameWidth + sample_x;
+    float sample_index = sample_y * storage_width + sample_x;
     if (sample_index >= DataLength) {
         FragColor = vec4(0.0);
         return;
     }
 
 #ifdef SYS_COMPONENT_YC_MODE
-    vec3 component = fetch_input_sample(Source, config.OutputSize.xy, sample_index, FrameWidth, DataLength - 1.0).rgb;
+    vec3 component = fetch_input_sample(Source, config.OutputSize.xy, sample_index, storage_width, ceil(DataLength) - 1.0).rgb;
 #else
-    vec4 rgbs = fetch_input_sample(Source, config.OutputSize.xy, sample_index, FrameWidth, DataLength - 1.0);
+    vec4 rgbs = fetch_input_sample(Source, config.OutputSize.xy, sample_index, storage_width, ceil(DataLength) - 1.0);
     vec3 component = rgb_to_luma_chroma(rgbs.rgb);
     component.r += rgbs.a;
 #endif

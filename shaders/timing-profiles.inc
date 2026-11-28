@@ -77,11 +77,11 @@ float timing_profile_top_blank_lines(int mode, float legacy)
     if (mode == 0)
         return legacy;
     if (mode == 1)
-        return 1.0;
+        return 18.0;
     if (mode == 2)
-        return 1.0;
+        return 18.0;
     if (mode == 3)
-        return 1.0;
+        return 18.0;
     return uintBitsToFloat(0x7fc00000u);
 }
 
@@ -90,11 +90,37 @@ float timing_profile_left_blank_cycles(int mode, float legacy)
     if (mode == 0)
         return legacy;
     if (mode == 1)
-        return 88.0;
+        return 252.0;
     if (mode == 2)
-        return 88.0;
+        return 252.0;
     if (mode == 3)
-        return 88.0;
+        return 252.0;
+    return uintBitsToFloat(0x7fc00000u);
+}
+
+float timing_profile_vertical_sync_lines(int mode, float legacy)
+{
+    if (mode == 0)
+        return legacy;
+    if (mode == 1)
+        return 3.0;
+    if (mode == 2)
+        return 3.0;
+    if (mode == 3)
+        return 3.0;
+    return uintBitsToFloat(0x7fc00000u);
+}
+
+float timing_profile_horizontal_sync_cycles(int mode, float legacy)
+{
+    if (mode == 0)
+        return legacy;
+    if (mode == 1)
+        return 100.0;
+    if (mode == 2)
+        return 100.0;
+    if (mode == 3)
+        return 100.0;
     return uintBitsToFloat(0x7fc00000u);
 }
 
@@ -269,13 +295,13 @@ vec2 timing_profile_raster_position(int mode, float height, uint frame_count, fl
     if (mode == 1) {
         bool odd = ((frame_count % 2u + 0u + (field_odd > 0.5 ? 1u : 0u)) % 2u) != 0u;
         if (height <= 262.0 && odd) {
-            if (sample_index < 240.0 * width + ceil(0.0 * width / 1364.0)) {
+            if (sample_index < 258.0 * width + ceil(0.0 * width / 1364.0)) {
                 float index = sample_index - ceil(0.0 * width / 1364.0);
                 float y = floor(index / width);
                 return vec2(index - y * width, y);
             }
-            if (sample_index < 241.0 * width + ceil(-4.0 * width / 1364.0))
-                return vec2(sample_index - (240.0 * width + ceil(0.0 * width / 1364.0)), 240.0);
+            if (sample_index < 259.0 * width + ceil(-4.0 * width / 1364.0))
+                return vec2(sample_index - (258.0 * width + ceil(0.0 * width / 1364.0)), 258.0);
             float index = sample_index - ceil(-4.0 * width / 1364.0);
             float y = floor(index / width);
             return vec2(index - y * width, y);
@@ -286,13 +312,13 @@ vec2 timing_profile_raster_position(int mode, float height, uint frame_count, fl
     if (mode == 2) {
         bool odd = ((frame_count % 2u + 1u + (field_odd > 0.5 ? 1u : 0u)) % 2u) != 0u;
         if (height > 312.0 && odd) {
-            if (sample_index < 311.0 * width + ceil(0.0 * width / 1364.0)) {
+            if (sample_index < 17.0 * width + ceil(0.0 * width / 1364.0)) {
                 float index = sample_index - ceil(0.0 * width / 1364.0);
                 float y = floor(index / width);
                 return vec2(index - y * width, y);
             }
-            if (sample_index < 312.0 * width + ceil(4.0 * width / 1364.0))
-                return vec2(sample_index - (311.0 * width + ceil(0.0 * width / 1364.0)), 311.0);
+            if (sample_index < 18.0 * width + ceil(4.0 * width / 1364.0))
+                return vec2(sample_index - (17.0 * width + ceil(0.0 * width / 1364.0)), 17.0);
             float index = sample_index - ceil(4.0 * width / 1364.0);
             float y = floor(index / width);
             return vec2(index - y * width, y);
@@ -303,13 +329,13 @@ vec2 timing_profile_raster_position(int mode, float height, uint frame_count, fl
     if (mode == 3) {
         bool odd = ((frame_count % 2u + 0u + (field_odd > 0.5 ? 1u : 0u)) % 2u) != 0u;
         if (height <= 262.0 && odd) {
-            if (sample_index < 240.0 * width + ceil(0.0 * width / 1364.0)) {
+            if (sample_index < 258.0 * width + ceil(0.0 * width / 1364.0)) {
                 float index = sample_index - ceil(0.0 * width / 1364.0);
                 float y = floor(index / width);
                 return vec2(index - y * width, y);
             }
-            if (sample_index < 241.0 * width + ceil(-4.0 * width / 1364.0))
-                return vec2(sample_index - (240.0 * width + ceil(0.0 * width / 1364.0)), 240.0);
+            if (sample_index < 259.0 * width + ceil(-4.0 * width / 1364.0))
+                return vec2(sample_index - (258.0 * width + ceil(0.0 * width / 1364.0)), 258.0);
             float index = sample_index - ceil(-4.0 * width / 1364.0);
             float y = floor(index / width);
             return vec2(index - y * width, y);
@@ -332,9 +358,9 @@ vec2 timing_profile_line_range(int mode, float height, uint frame_count, float f
         float start = line * width;
         float length = width;
         if (height <= 262.0 && odd) {
-            if (line > 240.0)
+            if (line > 258.0)
                 start += (ceil(-4.0 * width / 1364.0) - ceil(0.0 * width / 1364.0));
-            else if (line == 240.0)
+            else if (line == 258.0)
                 length += (ceil(-4.0 * width / 1364.0) - ceil(0.0 * width / 1364.0));
         }
         return vec2(start, length);
@@ -344,9 +370,9 @@ vec2 timing_profile_line_range(int mode, float height, uint frame_count, float f
         float start = line * width;
         float length = width;
         if (height > 312.0 && odd) {
-            if (line > 311.0)
+            if (line > 17.0)
                 start += (ceil(4.0 * width / 1364.0) - ceil(0.0 * width / 1364.0));
-            else if (line == 311.0)
+            else if (line == 17.0)
                 length += (ceil(4.0 * width / 1364.0) - ceil(0.0 * width / 1364.0));
         }
         return vec2(start, length);
@@ -356,9 +382,9 @@ vec2 timing_profile_line_range(int mode, float height, uint frame_count, float f
         float start = line * width;
         float length = width;
         if (height <= 262.0 && odd) {
-            if (line > 240.0)
+            if (line > 258.0)
                 start += (ceil(-4.0 * width / 1364.0) - ceil(0.0 * width / 1364.0));
-            else if (line == 240.0)
+            else if (line == 258.0)
                 length += (ceil(-4.0 * width / 1364.0) - ceil(0.0 * width / 1364.0));
         }
         return vec2(start, length);

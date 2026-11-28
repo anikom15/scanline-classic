@@ -35,6 +35,8 @@ class DyadicPyramidTests(unittest.TestCase):
         shader_code = '\n'.join((
             state.group(),
             shader_function(profiles, 'vec2 timing_profile_raster_position('),
+            shader_function(profiles, 'float timing_profile_horizontal_sync_cycles('),
+            shader_function(profiles, 'float timing_profile_vertical_sync_lines('),
             shader_function(fragment, 'vec4 fetch_source_texel('),
             shader_function(fragment, 'void main()').replace('void main()', 'void render_sample()', 1),
         ))
@@ -62,10 +64,10 @@ struct ivec2 { int x,y; ivec2(int a,int b): x(a),y(b) {} };
 struct Size { float x,y; vec2 xy; };
 struct { Size OriginalSize, OutputSize, SourceSize; uint FrameCount; } config;
 vec2 vTexCoord; vec4 FragColor(0); int Source;
-int mode; float field_odd;
+int mode; float field_odd, sync_type;
 #define TIMING_PROFILE_MODE mode
 #define FIELD_ODD field_odd
-#define SYS_SYNC_TYPE 0.0
+#define SYS_SYNC_TYPE sync_type
 const float BLANKING_APPROX_FRACTION=0.07f;
 float uintBitsToFloat(uint) { return std::numeric_limits<float>::quiet_NaN(); }
 vec4 texelFetch(int, ivec2, int) { return vec4(0.1f,0.2f,0.3f,1); }
@@ -75,7 +77,7 @@ int main() {
     config.OutputSize={1024,512,{1024,512}};
     config.SourceSize=config.OutputSize;
     vSyncState.base_frame_width=1364; vSyncState.frame_height=262;
-    vSyncState.active_left_base=88; vSyncState.active_top=1;
+    vSyncState.active_left_base=252; vSyncState.active_top=18;
     vSyncState.active_source_height=239; vSyncState.clock_factor=4;
     vSyncState.clocks_per_line=1364; vSyncState.packed_width=1024;
     vSyncState.texture_fits=1; mode=1; field_odd=0; config.FrameCount=1;
@@ -88,19 +90,60 @@ int main() {
         if (std::abs(FragColor.a-expected)>1e-5f)
             throw std::runtime_error("sync differs at physical line boundary");
     };
-    for (int line : {239,240,241,242,261}) {
-        int start=line*1364-(line>240 ? 4 : 0);
-        sample(start, -0.4f);
-        sample(start+87, -0.4f);
-        sample(start+88, 0.0f);
+    for (int profile : {1,3}) {
+        mode=profile;
+        for (int line : {3,17,18,240,241,256,257,258,259,260,261}) {
+            int start=line*1364-(line>258 ? 4 : 0);
+            sample(start, -0.4f);
+            sample(start+99, -0.4f);
+            sample(start+100, 0.0f);
+            sample(start+251, 0.0f);
+            sample(start+252, 0.0f);
+        }
+        sample(2*1364+1363, -0.4f);
+        sample(3*1364+100, 0.0f);
+        sample(258*1364+1359, 0.0f);
+        sample(259*1364-4, -0.4f);
     }
     sample(357364, 0.0f);
+    sync_type=1;
+    sample(18*1364+99, -1.4f);
+    sample(18*1364+100, 0.0f);
+    sync_type=2;
+    int index=18*1364+99;
+    vTexCoord=vec2((index%1024+0.5f)/1024,(index/1024+0.5f)/512);
+    render_sample();
+    if (std::abs(FragColor.rgb.g+0.2f)>1e-5f || FragColor.a!=0)
+        throw std::runtime_error("sync on green mismatch");
+    sync_type=0;
     mode=2; config.FrameCount=0; config.OriginalSize={256,478,{256,478}};
     vSyncState.frame_height=312; vSyncState.active_source_height=239;
     vSyncState.data_length=425572;
-    sample(311*1364, -0.4f);
+    sample(18*1364+3, 0.0f);
+    sample(18*1364+4, -0.4f);
+    sample(311*1364+4, -0.4f);
     sample(425571, 0.0f);
     sample(425572, 0.0f);
+    for (int profile : {1,2,3}) {
+        mode=profile;
+        bool pal=profile==2;
+        for (int parity : {0,1}) {
+            config.FrameCount=pal ? 1-parity : parity;
+            config.OriginalSize={256,478,{256,478}};
+            vSyncState.frame_height=pal ? 313-parity : 263-parity;
+            vSyncState.data_length=vSyncState.frame_height*1364+(pal && parity ? 4 : 0);
+            sample(2*1364+1363, -0.4f);
+            sample(3*1364+99, -0.4f);
+            sample(3*1364+100, 0.0f);
+            sample(18*1364+252, 0.0f);
+        }
+    }
+    mode=0; config.OriginalSize={256,224,{256,224}};
+    vSyncState.frame_height=262; vSyncState.active_top=19;
+    vSyncState.active_left_base=170; vSyncState.active_source_height=224;
+    vSyncState.data_length=262*1364;
+    sample(3*1364+200, -0.4f);
+    sample(19*1364+100, 0.0f);
 }
 '''
         with tempfile.TemporaryDirectory() as temp:
@@ -167,12 +210,12 @@ int main() {
     config.OriginalSize={256,224,{256,224}};
     height=262; factor=4; interlaced=false; parity=0; mode=1;
     SyncState s=compute_sync_state();
-    if (s.active_top!=1 || s.active_left_base!=88 || s.texture_fits!=1)
+    if (s.active_top!=18 || s.active_left_base!=252 || s.texture_fits!=1)
         throw std::runtime_error("profile blanking mismatch");
     config.OriginalSize={512,478,{512,478}};
     height=262; factor=2; interlaced=true; parity=1;
     s=compute_sync_state();
-    if (s.active_top!=1 || s.active_left_base!=88 || s.active_source_height!=239)
+    if (s.active_top!=18 || s.active_left_base!=252 || s.active_source_height!=239)
         throw std::runtime_error("interlaced profile blanking mismatch");
     config.OriginalSize={400,224,{400,224}};
     factor=4; interlaced=false;
@@ -207,7 +250,7 @@ int main() {
             with self.subTest(pipeline=name):
                 data = json.loads((root / name).read_text(encoding='utf-8'))
                 pixel = data['shaders']['deltav'] == 'send-delta-pixel'
-                width, height = (2048, 2048) if pixel else (4096, 1024)
+                width, height = (2048, 2048)
                 self.assertEqual(
                     [key for key in data['shaders'] if key.startswith('mip')],
                     [f'mip{level}' for level in range(1, 9)],
@@ -226,10 +269,10 @@ int main() {
                     height = int(height * options['scale'][1])
                     self.assertGreaterEqual(min(width, height), 1)
                     self.assertEqual(width * height, 4194304 >> level)
-                self.assertEqual((width, height), (128, 128))
+                self.assertEqual(width * height, 16384)
                 noise = data['options']['noise-txrx']
                 self.assertEqual(noise['scale_type'], ['absolute', 'absolute'])
-                self.assertEqual(noise['scale'], [2048.0, 2048.0] if pixel else [4096.0, 1024.0])
+                self.assertEqual(noise['scale'], [2048.0, 2048.0])
 
     def test_shader_against_domain_reference(self):
         compiler = shutil.which('g++')
@@ -335,10 +378,11 @@ vec4 reference_consumer_sample(const std::vector<Point>& points, int index,
                                int length, int raster_width, int span) {
     index = clamp(index, 0, length-1);
     int line_start = (index / raster_width) * raster_width;
-    if (profile_mode==1 && index>=241*1364-4)
+    if (profile_mode==1 && index>=259*1364-4)
         line_start=((index+4)/raster_width)*raster_width-4;
-    else if (profile_mode==2 && index>=312*1364)
-        line_start=311*1364;
+    else if (profile_mode==2 && index>=18*1364)
+        line_start=index<18*1364+4 ? 17*1364 :
+            ((index-4)/raster_width)*raster_width+4;
     int aligned_index = line_start - line_start % span +
                         ((index - line_start) / span) * span;
     return reference_sample(points, aligned_index);
@@ -367,11 +411,7 @@ void run_case(int length, int storage_width, int storage_height, int raster_widt
     config.OriginalSize.y=profile==2 ? 478 : 239;
     global.FrameCount=profile==2 ? 0 : 1;
     float height = float(length+(profile==1 ? 4 : profile==2 ? -4 : 0)) / raster_width;
-#ifdef SEND_PIXEL_DOMAIN
     int data_width = int(contract_pixel_packed_width(float(length)));
-#else
-    int data_width = raster_width;
-#endif
     Texture level{storage_width, storage_height, std::vector<vec4>(storage_width*storage_height)};
     std::vector<Point> reference;
     for (int i=0; i<length; ++i) {
@@ -438,8 +478,9 @@ void run_case(int length, int storage_width, int storage_height, int raster_widt
     for (int index : {0, raster_width/3-1, raster_width/3,
                       raster_width-1, raster_width, raster_width+1,
                       raster_width+raster_width/3-1, raster_width+raster_width/3,
-                      2*raster_width+raster_width/3, 241*1364-5, 241*1364-4,
-                      241*1364-3, length-1}) {
+                      2*raster_width+raster_width/3, 259*1364-5, 259*1364-4,
+                      259*1364-3, 18*1364-1, 18*1364,
+                      18*1364+3, 18*1364+4, length-1}) {
         if (index < 0 || index >= length) continue;
         for (float lod : {-1.0f, 0.0f, 0.5f, 1.0f, 3.5f, 8.0f, 10.0f}) {
             int effective_lod = int(floor(std::clamp(lod, 0.0f, float(max_lod))));
@@ -621,13 +662,13 @@ void run_case(float height, bool interlaced, float parity, int output_width, int
     config.FrameCount=profile == 2 ? uint(1-parity) : uint(parity);
     int delta=profile && parity && ((!interlaced && (profile==1 || profile==3)) ||
                                       (interlaced && profile==2)) ? (profile==2 ? 4 : -4) : 0;
-    int special_line=profile==2 ? 312 : 241;
+    int special_line=profile==2 ? 18 : 259;
     PackedWidth=1024; DataLength=ceil(FrameWidth*height)+delta; TextureFits=1;
     config.SourceSize={float(source_width),float(source_height),vec2(1.0f/source_width,1.0f/source_height)};
     config.OutputSize={float(output_width),float(output_height),vec2()};
     int active_height=interlaced ? int(floor((source_height-parity+1)*0.5f)) : source_height;
-    int top=profile ? 1 : int(floor((ceil(height)-active_height)*0.5f));
-    float left=profile ? 88 : (width-source_width*factor)*0.5f;
+    int top=profile ? 18 : int(floor((ceil(height)-active_height)*0.5f));
+    float left=profile ? 252 : (width-source_width*factor)*0.5f;
     for (int y=0;y<output_height;++y) for (int x=0;x<output_width;++x) {
         vTexCoord=vec2((x+0.5f)/output_width,(y+0.5f)/output_height);
         render_sample();

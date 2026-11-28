@@ -89,16 +89,19 @@ def generate_source(data):
             raster = mode['raster']
             if _number(raster['interlace_height_threshold'], f'{name}/{mode_name} interlace height threshold') <= 0:
                 raise ValueError(f'Invalid interlace height threshold for {name}/{mode_name}')
-            for key in ('top_blank_lines', 'left_blank_cycles'):
+            for key in ('vertical_sync_lines', 'vertical_back_porch_lines',
+                        'horizontal_sync_cycles', 'horizontal_back_porch_cycles'):
                 if type(raster[key]) is not int or raster[key] < 0:
                     raise ValueError(f'Invalid {key} for {name}/{mode_name}')
-            if raster['left_blank_cycles'] >= mode['clocks_per_line']:
+            left_blank = raster['horizontal_sync_cycles'] + raster['horizontal_back_porch_cycles']
+            top_blank = raster['vertical_sync_lines'] + raster['vertical_back_porch_lines']
+            if left_blank >= mode['clocks_per_line']:
                 raise ValueError(f'Left blanking exceeds line length for {name}/{mode_name}')
             for scan in ('progressive', 'interlaced'):
                 for parity in ('even', 'odd'):
                     if _number(mode['field_lines'][scan][parity], f'{name}/{mode_name} {scan} {parity} lines') <= 0:
                         raise ValueError(f'Invalid field lines for {name}/{mode_name}')
-                    if raster['top_blank_lines'] >= mode['field_lines'][scan][parity]:
+                    if top_blank >= mode['field_lines'][scan][parity]:
                         raise ValueError(f'Top blanking exceeds field length for {name}/{mode_name}')
                     _field_clocks(mode['field_clocks'][scan][parity], f'{name}/{mode_name} {scan} {parity}')
             overrides = mode.get('line_overrides', [])
@@ -112,7 +115,7 @@ def generate_source(data):
                 if (scan not in ('progressive', 'interlaced') or parity not in ('even', 'odd')
                         or type(line) is not int or type(clocks) is not int
                         or line <= 0 or line > mode['field_lines'][scan][parity]
-                        or not 1 <= clocks <= 2**24 or (scan, parity, line) in seen_lines):
+                        or not left_blank < clocks <= 2**24 or (scan, parity, line) in seen_lines):
                     raise ValueError(f'Invalid line override for {name}/{mode_name}')
                 seen_lines.add((scan, parity, line))
             for scan in ('progressive', 'interlaced'):
@@ -219,8 +222,10 @@ def generate_source(data):
         ('pixel_mode', lambda mode: '1.0'),
         ('h_mode', lambda mode: '1.0'),
         ('h_freq', lambda mode: _glsl(mode['clocks_per_line'])),
-        ('top_blank_lines', lambda mode: _glsl(mode['raster']['top_blank_lines'])),
-        ('left_blank_cycles', lambda mode: _glsl(mode['raster']['left_blank_cycles'])),
+        ('top_blank_lines', lambda mode: _glsl(mode['raster']['vertical_sync_lines'] + mode['raster']['vertical_back_porch_lines'])),
+        ('left_blank_cycles', lambda mode: _glsl(mode['raster']['horizontal_sync_cycles'] + mode['raster']['horizontal_back_porch_cycles'])),
+        ('vertical_sync_lines', lambda mode: _glsl(mode['raster']['vertical_sync_lines'])),
+        ('horizontal_sync_cycles', lambda mode: _glsl(mode['raster']['horizontal_sync_cycles'])),
         ('field_adjustment', lambda mode: '1.0' if mode['field_adjustment'] else '0.0'),
         ('first_field_odd', lambda mode: '1.0' if mode['first_field'] == 'odd' else '0.0'),
         ('initial_phase', lambda mode: _glsl(mode['initial_phase_degrees'])),

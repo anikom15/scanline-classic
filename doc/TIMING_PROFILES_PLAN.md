@@ -47,12 +47,18 @@ uses the current field's line count; `FIELD_ODD` reverses field ordering.
 Neither physical line count nor a nominal width alone determines field
 duration: `field_clocks` accounts for shortened and lengthened lines.
 
-Profiles specify top blank lines and left blank pixel-clock cycles; remaining
-blanking follows from the field and source dimensions. SFC uses one top blank
-line and 88 left blank cycles. Line numbering starts at 1. For SFC, storage
-starts on line 1, which is blank; picture begins on line 2. A 224-line picture ends on line 225; a 239-line
-picture extends through line 240. PAL and interlaced fields extend downward,
-adding bottom blanking rather than moving the picture. Future profiles may
+Profiles specify vertical sync and back-porch lines and horizontal sync and
+back-porch pixel-clock cycles; remaining blanking follows from the field and
+source dimensions. SFC has 3 vertical sync lines and 15 back-porch lines,
+and 100 horizontal sync clocks and 152 back-porch clocks. The vertical pulse
+is asserted across all three lines; horizontal sync is asserted at the start
+of every line. Line 1 starts at vertical sync: picture begins on line 19 and
+at zero-based clock 252. A 224-line picture ends on line 242; a 239-line
+picture extends through line 257. In a 262-line field these leave 20 or 5
+blank lines at the bottom, respectively. A 1,024-clock picture leaves 88
+blank clocks at the end of a normal 1,364-clock line. PAL and interlaced
+fields extend downward, adding bottom blanking rather than moving the picture.
+Profile 0 retains the legacy approximate sync. Future profiles may
 use estimates based on NTSC, PAL or GTF. Presentation centers the active area
 independently of the physical storage padding. For interlaced output, beam
 scaling and centering use the combined height of both fields (equivalently,
@@ -60,12 +66,16 @@ their average field height); storage still uses the current field's actual
 line count.
 
 `line_overrides` identifies exceptional line lengths by scan type, field
-parity, one-based line number, and total clock count. SFC NTSC/PAL-M progressive
-odd line 241 contains 1,360 clocks; PAL interlaced odd line 312 contains 1,368.
+parity, one-based line number from the start of vertical sync, and total clock
+count. SFC NTSC/PAL-M progressive odd line 259 contains 1,360 clocks; PAL
+interlaced odd line 18 contains 1,368. The timing reference uses its own line
+numbering for these exceptions; PAL's shift wraps across the field boundary.
 The generator checks each overridden field's line lengths against its declared
 `field_clocks`. The packed field and downstream signal passes use the resulting
-time-ordered stream, and the final display resamplers map it back to fixed-width
-presentation rows. At other sample rates, line boundaries and field lengths round
+time-ordered stream. Pixel- and working-rate streams use nearly square,
+power-of-two storage strides independent of the timing line width. The final
+display resamplers map the stream back to fixed-width presentation rows and
+apply deskew within the resampling filter. At other sample rates, line boundaries and field lengths round
 up to the next sample. The mapping adds or removes clocks at the end of the
 line; the timing reference does not specify their exact placement within the
 blanking interval.

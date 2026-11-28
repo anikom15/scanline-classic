@@ -132,14 +132,8 @@ SendDIDState compute_send_did_state()
     state.data_length = max(timing_profile_storage_length(TIMING_PROFILE_MODE, config.OriginalSize.y,
         global.FrameCount, global.FIELD_ODD, base_frame_width,
         ceil(contract_data_length(base_frame_width, state.frame_height))), 1.0);
-#ifdef SEND_PIXEL_DOMAIN
     state.base_frame_width = contract_pixel_packed_width(state.data_length);
     state.texture_fits = contract_pixel_texture_fits(config.SendSourceSize.xy, state.data_length, state.base_frame_width) ? 1.0 : 0.0;
-#else
-    state.base_frame_width = base_frame_width;
-    state.texture_fits = config.SendSourceSize.x >= base_frame_width &&
-        config.SendSourceSize.y >= ceil(state.data_length / base_frame_width) ? 1.0 : 0.0;
-#endif
     float base_area = config.SendSourceSize.x * config.SendSourceSize.y;
     float source_area = max(config.SourceSize.x * config.SourceSize.y, 1.0);
     state.input_span = exp2(round(log2(max(base_area / source_area, 1.0))));

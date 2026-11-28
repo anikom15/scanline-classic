@@ -23,7 +23,7 @@
 //   - `source`: the input texture containing the packed sample grid
 //   - `source_size`: the dimensions of the input texture in pixels
 //   - `sample_index`: the 0-based index of the sample to fetch in the 1D stream
-//   - `frame_width`: the number of samples per line in the packed grid
+//   - `frame_width`: the storage stride in samples, not the raster line width
 //   - `input_data_limit`: the inclusive index of the last valid sample;
 //     out-of-range indices are clamped with repeat-edge behavior
 //

@@ -72,14 +72,15 @@ class TimingProfileGenerationTests(unittest.TestCase):
             lambda data: data['profiles'][0]['modes'][0]['field_clocks']['interlaced'].update(odd=2**52),
             lambda data: data['profiles'][0]['modes'][0].update(first_field='unknown'),
             lambda data: data['profiles'][0]['modes'][0]['raster'].update(interlace_height_threshold=0),
-            lambda data: data['profiles'][0]['modes'][0]['raster'].update(top_blank_lines=-1),
-            lambda data: data['profiles'][0]['modes'][0]['raster'].update(top_blank_lines=262),
-            lambda data: data['profiles'][0]['modes'][0]['raster'].update(left_blank_cycles=1364),
-            lambda data: data['profiles'][0]['modes'][0]['raster'].update(left_blank_cycles=1.5),
+            lambda data: data['profiles'][0]['modes'][0]['raster'].update(vertical_sync_lines=-1),
+            lambda data: data['profiles'][0]['modes'][0]['raster'].update(vertical_back_porch_lines=259),
+            lambda data: data['profiles'][0]['modes'][0]['raster'].update(horizontal_back_porch_cycles=1264),
+            lambda data: data['profiles'][0]['modes'][0]['raster'].update(horizontal_sync_cycles=1.5),
             lambda data: data['profiles'][0]['modes'][0]['field_lines']['interlaced'].update(even=0),
             lambda data: data['profiles'][0]['modes'][0]['field_lines']['progressive'].update(odd=True),
             lambda data: data['profiles'][0]['modes'][0]['line_overrides'][0].update(line=263),
             lambda data: data['profiles'][0]['modes'][0]['line_overrides'][0].update(clocks=0),
+            lambda data: data['profiles'][0]['modes'][0]['line_overrides'][0].update(clocks=252),
             lambda data: data['profiles'][0]['modes'][0]['line_overrides'][0].update(clocks=1361),
             lambda data: data['profiles'][0]['modes'][0]['line_overrides'].append(
                 copy.deepcopy(data['profiles'][0]['modes'][0]['line_overrides'][0])),
@@ -211,9 +212,9 @@ int main() {
                                 frame % 2 ^ reverse]
                             exception = None
                             if odd and not interlaced and region in ('ntsc', 'palm'):
-                                exception = (241, -4)
+                                exception = (259, -4)
                             elif odd and interlaced and region == 'pal':
-                                exception = (312, 4)
+                                exception = (18, 4)
                             for width in (1364, 2047):
                                 delta = math.ceil(Fraction((exception or (0, 0))[1] * width, 1364))
                                 length = width * line_count + delta
@@ -252,7 +253,7 @@ int main() {
             self.skipTest('g++ is required to exercise shader functions')
         data = json.loads((ROOT / 'presetdata' / 'timing-profiles.json').read_text(encoding='utf-8'))
         mode = data['profiles'][0]['modes'][0]
-        mode['line_overrides'].append({'scan': 'progressive', 'field': 'odd', 'line': 242, 'clocks': 1367})
+        mode['line_overrides'].append({'scan': 'progressive', 'field': 'odd', 'line': 260, 'clocks': 1367})
         mode['field_clocks']['progressive']['odd'] += 3
         with tempfile.TemporaryDirectory() as temp:
             source = Path(temp) / 'multiple-lines.cpp'
@@ -261,16 +262,16 @@ int main() {
 #include <stdexcept>
 int main() {
     float width = 2047;
-    vec2 first = timing_profile_line_range(1, 239, 1, 0, 240, width);
-    vec2 second = timing_profile_line_range(1, 239, 1, 0, 241, width);
-    vec2 third = timing_profile_line_range(1, 239, 1, 0, 242, width);
-    if (first.x != 240*width || first.y != width-6 ||
-        second.x != 241*width-6 || second.y != width+5 ||
-        third.x != 242*width-1 || third.y != width)
+    vec2 first = timing_profile_line_range(1, 239, 1, 0, 258, width);
+    vec2 second = timing_profile_line_range(1, 239, 1, 0, 259, width);
+    vec2 third = timing_profile_line_range(1, 239, 1, 0, 260, width);
+    if (first.x != 258*width || first.y != width-6 ||
+        second.x != 259*width-6 || second.y != width+5 ||
+        third.x != 260*width-1 || third.y != width)
         throw std::runtime_error("multiple line adjustments are not cumulative");
     vec2 at_second = timing_profile_raster_position(1, 239, 1, 0, second.x, width);
     vec2 at_third = timing_profile_raster_position(1, 239, 1, 0, third.x, width);
-    if (at_second.x != 0 || at_second.y != 241 || at_third.x != 0 || at_third.y != 242 ||
+    if (at_second.x != 0 || at_second.y != 259 || at_third.x != 0 || at_third.y != 260 ||
         timing_profile_storage_length(1, 239, 1, 0, width, 262*width) != 262*width-1)
         throw std::runtime_error("multiple line positions or field length are incorrect");
 }

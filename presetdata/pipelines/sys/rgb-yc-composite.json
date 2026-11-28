@@ -25,7 +25,7 @@
         },
         "bandlimit" : {
             "scale_type" : ["absolute", "absolute"],
-            "scale" : [4096.0, 1024.0]
+            "scale" : [2048.0, 2048.0]
         },
         "amp" : {
             "alias" : "SendSource"
@@ -73,7 +73,7 @@
         "noise-txrx" : {
             "filter_linear" : true,
             "scale_type" : ["absolute", "absolute"],
-            "scale" : [4096.0, 1024.0]
+            "scale" : [2048.0, 2048.0]
         }
     }
 }
